@@ -75,6 +75,20 @@ import { GoogleSheetCategoriesModal } from './components/GoogleSheetCategoriesMo
 import { PdfExportModal } from './components/PdfExportModal';
 import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
+import { 
+  checkBackendHealth,
+  fetchBackendReservations,
+  saveBackendReservations,
+  upsertBackendReservation,
+  deleteBackendReservation,
+  batchDeleteBackendReservations,
+  fetchBackendRooms,
+  saveBackendRooms,
+  updateBackendRoom,
+  resetBackendRooms,
+  fetchBackendSettings,
+  saveBackendSettings,
+} from './services/api';
 
 export default function App() {
   // Navigation tabs: dashboard | reservations | upgrades | rooms
@@ -84,6 +98,9 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_ZAEREEN_CATEGORIES);
+
+  // Live Backend Connection Status
+  const [isLiveBackendConnected, setIsLiveBackendConnected] = useState<boolean>(true);
 
   // User Role & Permissions (Admin: editable, Receptionist: view-only)
   const [userRole, setUserRole] = useState<UserRole>(() => getStoredUserRole());
@@ -121,6 +138,7 @@ export default function App() {
     setAdminPin(newPin);
     saveStoredUserRole(newRole);
     saveStoredAdminPin(newPin);
+    saveBackendSettings({ userRole: newRole, adminPin: newPin });
     showToast(
       `Access rights set to ${
         newRole === 'admin' ? 'Administrator (Full Editable Rights)' : 'Receptionist (View-Only Rights)'
@@ -128,17 +146,70 @@ export default function App() {
     );
   };
 
-  // Load initial data from localStorage
+  // Load persistent backend data on startup with local fallback
   useEffect(() => {
-    const loadedRooms = getStoredRooms();
-    const loadedReservations = getStoredReservations();
-    const loadedSheetsConfig = getStoredSheetsConfig();
-    const loadedCategories = getStoredCategories();
+    async function loadData() {
+      // 1. Initial immediate hydrate from local storage
+      const localRooms = getStoredRooms();
+      const localReservations = getStoredReservations();
+      const localSheetsConfig = getStoredSheetsConfig();
+      const localCategories = getStoredCategories();
 
-    setRooms(loadedRooms);
-    setReservations(loadedReservations);
-    setSheetsConfig(loadedSheetsConfig);
-    setCategories(loadedCategories);
+      setRooms(localRooms);
+      setReservations(localReservations);
+      setSheetsConfig(localSheetsConfig);
+      setCategories(localCategories);
+
+      // 2. Query live server backend
+      try {
+        const health = await checkBackendHealth();
+        if (health) {
+          setIsLiveBackendConnected(true);
+          const [backendRes, backendRooms, backendSettings] = await Promise.all([
+            fetchBackendReservations(),
+            fetchBackendRooms(),
+            fetchBackendSettings(),
+          ]);
+
+          if (backendRes && Array.isArray(backendRes)) {
+            setReservations(backendRes);
+            saveReservations(backendRes);
+          } else if (localReservations.length > 0) {
+            saveBackendReservations(localReservations);
+          }
+
+          if (backendRooms && Array.isArray(backendRooms)) {
+            setRooms(backendRooms);
+            saveRooms(backendRooms);
+          } else if (localRooms.length > 0) {
+            saveBackendRooms(localRooms);
+          }
+
+          if (backendSettings) {
+            if (backendSettings.sheetsConfig) {
+              setSheetsConfig(backendSettings.sheetsConfig);
+              saveSheetsConfig(backendSettings.sheetsConfig);
+            }
+            if (backendSettings.categories) {
+              setCategories(backendSettings.categories);
+              saveStoredCategories(backendSettings.categories);
+            }
+            if (backendSettings.userRole) {
+              setUserRole(backendSettings.userRole);
+              saveStoredUserRole(backendSettings.userRole);
+            }
+            if (backendSettings.adminPin) {
+              setAdminPin(backendSettings.adminPin);
+              saveStoredAdminPin(backendSettings.adminPin);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Backend sync initialized from local cache:', err);
+      }
+    }
+
+    loadData();
   }, []);
 
   // Initialize Firebase Auth listener
@@ -316,6 +387,7 @@ export default function App() {
     const updated = [newReservation, ...reservations];
     setReservations(updated);
     saveReservations(updated);
+    upsertBackendReservation(newReservation);
     showToast(`Added zaer record for ${newReservation.applicantName}`);
     triggerAutoSync(updated, rooms);
   };
@@ -327,6 +399,7 @@ export default function App() {
     );
     setReservations(updated);
     saveReservations(updated);
+    upsertBackendReservation(updatedReservation);
     triggerAutoSync(updated, rooms);
   };
 
@@ -337,6 +410,7 @@ export default function App() {
     const updated = reservations.filter((r) => r.id !== id);
     setReservations(updated);
     saveReservations(updated);
+    deleteBackendReservation(id);
     showToast(`Deleted zaer record for ${target.applicantName} (${target.itsId || target.tourRefNo})`);
     triggerAutoSync(updated, rooms);
   };
@@ -349,6 +423,7 @@ export default function App() {
     const updated = reservations.filter((r) => !idSet.has(r.id));
     setReservations(updated);
     saveReservations(updated);
+    batchDeleteBackendReservations(ids);
     showToast(`Deleted ${count} zaer record${count > 1 ? 's' : ''}`);
     triggerAutoSync(updated, rooms);
   };
@@ -482,6 +557,7 @@ export default function App() {
 
     setReservations(updated);
     saveReservations(updated);
+    saveBackendReservations(updated);
     triggerAutoSync(updated, rooms);
     showToast(
       roomNumber
@@ -508,11 +584,13 @@ export default function App() {
     if (mergedCats.length > categories.length) {
       setCategories(mergedCats);
       saveStoredCategories(mergedCats);
+      saveBackendSettings({ categories: mergedCats });
     }
 
     setReservations(finalReservations);
     saveReservations(finalReservations);
-    showToast(`Successfully imported ${imported.length} zaereen from Excel!`);
+    saveBackendReservations(finalReservations);
+    showToast(`Successfully imported ${imported.length} zaereen from Excel! Saved to backend data store.`);
     triggerAutoSync(finalReservations, rooms);
     setActiveTab('reservations');
   };
@@ -522,6 +600,7 @@ export default function App() {
     const updatedRooms = rooms.map((r) => (r.id === roomId ? { ...r, status } : r));
     setRooms(updatedRooms);
     saveRooms(updatedRooms);
+    updateBackendRoom(roomId, { status });
     triggerAutoSync(reservations, updatedRooms);
   };
 
@@ -529,6 +608,7 @@ export default function App() {
     const updatedRooms = rooms.map((r) => (r.id === updatedRoom.id ? updatedRoom : r));
     setRooms(updatedRooms);
     saveRooms(updatedRooms);
+    updateBackendRoom(updatedRoom.id, updatedRoom);
     triggerAutoSync(reservations, updatedRooms);
   };
 
@@ -536,6 +616,8 @@ export default function App() {
     if (window.confirm('Reset hotel inventory to the official 114 rooms across Burhani (44) and Saifee (70)?')) {
       const freshRooms = resetToSaifeeBurhani114Rooms();
       setRooms(freshRooms);
+      saveRooms(freshRooms);
+      resetBackendRooms();
       showToast('Restored official 114 rooms across Burhani (44) and Saifee (70).');
       triggerAutoSync(reservations, freshRooms);
     }
@@ -559,6 +641,7 @@ export default function App() {
         onGoogleLogout={handleGoogleLogout}
         isLoggingIn={isLoggingIn}
         onQuickSync={handleQuickSync}
+        isLiveBackendConnected={isLiveBackendConnected}
       />
 
       {/* Main Container - Full Screen Width for complete visibility */}

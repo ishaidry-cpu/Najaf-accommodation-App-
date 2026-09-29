@@ -38,6 +38,7 @@ interface NavbarProps {
   onGoogleLogout: () => void;
   isLoggingIn: boolean;
   onQuickSync: () => void;
+  isLiveBackendConnected?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -55,6 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onGoogleLogout,
   isLoggingIn,
   onQuickSync,
+  isLiveBackendConnected = true,
 }) => {
   const isReceptionist = userRole === 'receptionist';
 
@@ -125,6 +127,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Action Icons / Buttons */}
           <div className="flex items-center gap-2">
             
+            {/* Live Backend Data & Sheets Sync Status Indicator */}
+            {isLiveBackendConnected && (
+              <div
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-100/80 text-emerald-950 border border-emerald-300 text-xs font-bold shadow-2xs"
+                title="Data is stored on live backend server until deleted, and synchronizes with Google Sheets & Rooms Timeline"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                <span>Live Backend & Sheets</span>
+              </div>
+            )}
+
             {/* Role Rights Badge / Switcher */}
             <button
               type="button"
