@@ -1,0 +1,6 @@
+{
+  "name": "Zaereen Accommodation & Google Sheets Reservation Manager",
+  "description": "Comprehensive accommodation management system for guest (Zaereen) room reservations, Tour ID tracking, Category B to A (Nizaam) payment upgrades, real-time room availability, Google Sheets sync, occupancy analytics, and administrative PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
