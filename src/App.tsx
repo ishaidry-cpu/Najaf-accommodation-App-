@@ -55,6 +55,7 @@ import {
 } from './services/firebaseAuth';
 import { 
   syncAllToGoogleSheet, 
+  twoWaySyncWithGoogleSheet,
   fetchRoomsFromGoogleSheet, 
   fetchReservationsFromGoogleSheet,
   fetchCategoriesFromGoogleSheet,
@@ -345,34 +346,97 @@ export default function App() {
     }
   };
 
-  // Quick Sync button from navbar
+  // Open Google Sheet directly
+  const handleOpenGoogleSheet = () => {
+    if (sheetsConfig.spreadsheetId) {
+      const url =
+        sheetsConfig.spreadsheetUrl ||
+        `https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`;
+      window.open(url, '_blank');
+    } else {
+      setIsSheetsModalOpen(true);
+    }
+  };
+
+  // 1-Click Two-Way Sync (User request: "once updated in google sheet it shows in the app and if updated in app it shows in google sheet with once sync button")
   const handleQuickSync = async () => {
-    if (!accessToken || !sheetsConfig.spreadsheetId) {
+    let currentToken = accessToken;
+
+    // If not signed in to Google yet, prompt login
+    if (!currentToken) {
+      try {
+        setIsLoggingIn(true);
+        const res = await googleSignIn();
+        if (res) {
+          setUser(res.user);
+          setAccessToken(res.accessToken);
+          currentToken = res.accessToken;
+          showToast(`Signed in to Google as ${res.user.displayName || res.user.email}`);
+        } else {
+          setIsSheetsModalOpen(true);
+          return;
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Google sign-in is required to sync with Google Sheets.', 'error');
+        setIsSheetsModalOpen(true);
+        return;
+      } finally {
+        setIsLoggingIn(false);
+      }
+    }
+
+    if (!sheetsConfig.spreadsheetId) {
       setIsSheetsModalOpen(true);
       return;
     }
+
     setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
     try {
-      const res = await syncAllToGoogleSheet(
-        accessToken,
+      // Execute bidirectional synchronization:
+      // 1. Pull changes from Google Sheet (new zaereen, modified room assignments, status)
+      // 2. Merge without overwriting backend data
+      // 3. Push full updated state back to Google Sheet, including Rooms Availability & Departure Timeline tab
+      const syncResult = await twoWaySyncWithGoogleSheet(
+        currentToken,
         sheetsConfig.spreadsheetId,
         reservations,
         rooms
       );
-      if (res.success) {
-        const updated = {
+
+      if (syncResult.success) {
+        setReservations(syncResult.mergedReservations);
+        setRooms(syncResult.mergedRooms);
+        saveReservations(syncResult.mergedReservations);
+        saveRooms(syncResult.mergedRooms);
+
+        // Persist to backend server so data remains until deleted
+        if (isLiveBackendConnected) {
+          saveBackendReservations(syncResult.mergedReservations);
+          saveBackendRooms(syncResult.mergedRooms);
+        }
+
+        const updatedConfig: GoogleSheetsConfig = {
           ...sheetsConfig,
+          spreadsheetUrl: syncResult.spreadsheetUrl,
           lastSyncedAt: new Date().toISOString(),
           isSyncing: false,
           syncError: null,
         };
-        setSheetsConfig(updated);
-        saveSheetsConfig(updated);
-        showToast('Quick synced data with Google Sheet successfully!');
+
+        setSheetsConfig(updatedConfig);
+        saveSheetsConfig(updatedConfig);
+        if (isLiveBackendConnected) {
+          saveBackendSettings({ sheetsConfig: updatedConfig });
+        }
+
+        showToast(
+          `✓ Synced with Google Sheet! Updated ${syncResult.pulledReservationsCount} zaereen, 114 rooms & Rooms Availability & Departure Timeline.`
+        );
       } else {
-        throw new Error(res.error);
+        throw new Error(syncResult.error || 'Sync failed');
       }
     } catch (err: any) {
+      console.error('Two-way sync error:', err);
       setSheetsConfig((prev) => ({
         ...prev,
         isSyncing: false,
@@ -634,6 +698,7 @@ export default function App() {
         userRole={userRole}
         onOpenRoleModal={() => setIsRoleModalOpen(true)}
         onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+        onOpenGoogleSheet={handleOpenGoogleSheet}
         onOpenPdfModal={() => setIsPdfModalOpen(true)}
         onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
         onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
@@ -665,6 +730,11 @@ export default function App() {
             }}
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
+            sheetsConfig={sheetsConfig}
+            onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+            onOpenGoogleSheet={handleOpenGoogleSheet}
+            onQuickSync={handleQuickSync}
+            isLiveBackendConnected={isLiveBackendConnected}
           />
         )}
 

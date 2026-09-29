@@ -22,9 +22,11 @@ import {
   CheckSquare,
   Sparkles,
   Trash2,
-  X
+  X,
+  ArrowUpRight,
+  RefreshCw
 } from 'lucide-react';
-import { Reservation, Room, UserRole } from '../types';
+import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { getRoomStatusOnDate, getRoomBookingOnDate, getVacantRoomsForDuration } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
@@ -42,6 +44,11 @@ interface DashboardProps {
   onToggleBlockRoom?: (roomId: string) => void;
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
+  sheetsConfig?: GoogleSheetsConfig;
+  onOpenSheetsModal?: () => void;
+  onOpenGoogleSheet?: () => void;
+  onQuickSync?: () => void;
+  isLiveBackendConnected?: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -57,6 +64,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onToggleBlockRoom,
   userRole = 'admin',
   onOpenQuickAllotModal,
+  sheetsConfig,
+  onOpenSheetsModal,
+  onOpenGoogleSheet,
+  onQuickSync,
+  isLiveBackendConnected = true,
 }) => {
   // Rooms View Mode: 'timeline' (Top Dates & Horizontal Rooms) vs 'buttons' (Compact Matrix)
   const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>('timeline');
@@ -214,6 +226,86 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Template</span>
           </button>
+        </div>
+      </div>
+
+      {/* GOOGLE SHEETS & LIVE BACKEND REAL-TIME SYNC BAR (User Request: "syced with rooms Availability & Departure Timeline, live website with backhand data until delted") */}
+      <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-100/90 text-emerald-900 flex items-center justify-center shrink-0 border border-emerald-300 shadow-2xs">
+            <FileSpreadsheet className="w-5 h-5 text-emerald-800" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-xs font-bold text-stone-900">
+                {sheetsConfig?.spreadsheetName ? `Google Sheet: ${sheetsConfig.spreadsheetName}` : 'Google Sheets Two-Way Synchronization'}
+              </h4>
+              {isLiveBackendConnected && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 text-[10px] font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  Live Backend Persistent Data
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-stone-500 mt-0.5">
+              Synced with <strong>Rooms Availability & Departure Timeline</strong>, Zaereen Allotments, 114 Rooms & Accounts Slips. Data remains on backend until deleted.
+              {sheetsConfig?.lastSyncedAt && (
+                <span className="ml-2 font-medium text-emerald-800">
+                  • Last Synced: {new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          {sheetsConfig?.spreadsheetId ? (
+            <>
+              {/* Access Google Sheet in New Tab */}
+              <button
+                onClick={onOpenGoogleSheet || onOpenSheetsModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs transition cursor-pointer"
+                title="Open Google Sheet in new browser tab"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                <span>Open Google Sheet</span>
+                <ArrowUpRight className="w-3 h-3 text-emerald-700" />
+              </button>
+
+              {/* 1-Click Sync */}
+              <button
+                onClick={onQuickSync}
+                disabled={sheetsConfig?.isSyncing}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
+                  sheetsConfig?.isSyncing
+                    ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
+                    : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white'
+                }`}
+                title="One-Click Two-Way Sync: Updates Google Sheet and App with Latest Changes"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-spin' : ''}`} />
+                <span>{sheetsConfig?.isSyncing ? 'Syncing...' : '1-Click Sync'}</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onOpenSheetsModal}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <span>Connect Google Sheet</span>
+            </button>
+          )}
+
+          {onOpenSheetsModal && (
+            <button
+              onClick={onOpenSheetsModal}
+              className="p-1.5 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition cursor-pointer"
+              title="Sheet settings & configuration"
+            >
+              <Filter className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

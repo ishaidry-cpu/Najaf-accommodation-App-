@@ -31,6 +31,7 @@ interface NavbarProps {
   userRole: UserRole;
   onOpenRoleModal: () => void;
   onOpenSheetsModal: () => void;
+  onOpenGoogleSheet?: () => void;
   onOpenPdfModal: () => void;
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip: () => void;
@@ -49,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   userRole,
   onOpenRoleModal,
   onOpenSheetsModal,
+  onOpenGoogleSheet,
   onOpenPdfModal,
   onOpenUploadExcel,
   onOpenReceptionSlip,
@@ -59,6 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLiveBackendConnected = true,
 }) => {
   const isReceptionist = userRole === 'receptionist';
+  const hasLinkedSheet = Boolean(sheetsConfig.spreadsheetId);
 
   return (
     <header className="sticky top-0 z-40 bg-[#FAF7F2] border-b border-[#E6DFD5] shadow-xs">
@@ -186,15 +189,57 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden lg:inline">Reception Slip</span>
             </button>
 
-            {/* Google Sheets Modal Button (Admin only) */}
+            {/* Google Sheets Access & 1-Click Sync (User request: "once sync button & i can access the google") */}
             {!isReceptionist && (
-              <button
-                onClick={onOpenSheetsModal}
-                className="p-1.5 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition cursor-pointer"
-                title="Google Sheets Cloud Sync"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-800" />
-              </button>
+              <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 p-1 rounded-xl shadow-2xs">
+                {hasLinkedSheet ? (
+                  <>
+                    {/* Open Google Sheet Directly */}
+                    <button
+                      onClick={onOpenGoogleSheet || onOpenSheetsModal}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                      title="Open synced Google Sheet in new tab"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                      <span className="hidden sm:inline">Google Sheet</span>
+                      <ArrowUpRight className="w-3 h-3 text-emerald-700" />
+                    </button>
+
+                    {/* 1-Click Sync Button */}
+                    <button
+                      onClick={onQuickSync}
+                      disabled={sheetsConfig.isSyncing}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        sheetsConfig.isSyncing
+                          ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
+                          : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs'
+                      }`}
+                      title="1-Click Two-Way Sync: Syncs Zaereen, 114 Rooms & Rooms Availability & Departure Timeline"
+                    >
+                      <RefreshCw className={`w-3 h-3 text-[#EBD59E] ${sheetsConfig.isSyncing ? 'animate-spin' : ''}`} />
+                      <span>{sheetsConfig.isSyncing ? 'Syncing...' : 'Sync'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={onOpenSheetsModal}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                    title="Connect Google Sheet to sync rooms, zaereen & departure timeline"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                    <span className="hidden sm:inline">Connect Sheet</span>
+                  </button>
+                )}
+
+                {/* Settings icon to open Google Sheets Modal */}
+                <button
+                  onClick={onOpenSheetsModal}
+                  className="p-1 rounded-md text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                  title="Configure Google Sheet settings"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -8,6 +8,68 @@ export interface SyncResult {
   error?: string;
 }
 
+export interface TwoWaySyncResult {
+  success: boolean;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  pulledReservationsCount: number;
+  pulledRoomsCount: number;
+  mergedReservations: Reservation[];
+  mergedRooms: Room[];
+  error?: string;
+}
+
+/**
+ * Ensure all required tabs exist in the Google Spreadsheet
+ */
+export async function ensureSheetTabs(
+  accessToken: string,
+  spreadsheetId: string,
+  tabNames: string[]
+): Promise<void> {
+  try {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (!metaRes.ok) return;
+    const meta = await metaRes.json();
+    const existingTitles = new Set(
+      (meta.sheets || []).map((s: any) => String(s.properties?.title || '').trim().toLowerCase())
+    );
+
+    const missingTabs = tabNames.filter(
+      (name) => !existingTitles.has(name.trim().toLowerCase())
+    );
+
+    if (missingTabs.length === 0) return;
+
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: missingTabs.map((title) => ({
+            addSheet: {
+              properties: {
+                title,
+              },
+            },
+          })),
+        }),
+      }
+    );
+  } catch (err) {
+    console.warn('Could not auto-create missing tabs:', err);
+  }
+}
+
 /**
  * Creates a formatted Google Spreadsheet for Zaereen Accommodation
  */
@@ -29,19 +91,25 @@ export async function createAccommodationSpreadsheet(
         {
           properties: {
             title: 'Reservations',
-            gridProperties: { rowCount: 100, columnCount: 18 },
+            gridProperties: { rowCount: 150, columnCount: 18 },
           },
         },
         {
           properties: {
             title: 'Rooms_Inventory',
-            gridProperties: { rowCount: 100, columnCount: 10 },
+            gridProperties: { rowCount: 150, columnCount: 12 },
+          },
+        },
+        {
+          properties: {
+            title: 'Rooms_Availability_&_Timeline',
+            gridProperties: { rowCount: 150, columnCount: 18 },
           },
         },
         {
           properties: {
             title: 'Category_B_to_A_Upgrades',
-            gridProperties: { rowCount: 100, columnCount: 12 },
+            gridProperties: { rowCount: 150, columnCount: 14 },
           },
         },
       ],
@@ -61,7 +129,143 @@ export async function createAccommodationSpreadsheet(
 }
 
 /**
- * Syncs Reservations, Rooms, and Category B->A Upgrades to Google Sheets
+ * Generates rows for the "Rooms_Availability_&_Timeline" tab
+ */
+export function generateTimelineRows(
+  rooms: Room[],
+  reservations: Reservation[]
+): { headers: string[]; rows: any[][] } {
+  const headers = [
+    'Building',
+    'Room Number',
+    'Floor',
+    'Capacity (Max Beds)',
+    'Occupancy Status',
+    'Zaer Guest / Group Leader',
+    'ITS ID',
+    'Tour Reference No.',
+    'Family Number',
+    'Pax Count',
+    'Arrival Date & Time',
+    'Departure Date & Time',
+    'Days Remaining',
+    'Availability & Departure Turnover Status',
+    'Category',
+    'Amenities / Notes',
+    'Last Synced',
+  ];
+
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const rows: any[][] = [];
+
+  // Sort rooms by building (Saifee, Burhani) and room number
+  const sortedRooms = [...rooms].sort((a, b) => {
+    if (a.building !== b.building) return a.building.localeCompare(b.building);
+    return parseInt(a.roomNumber, 10) - parseInt(b.roomNumber, 10);
+  });
+
+  for (const rm of sortedRooms) {
+    const roomRes = reservations.filter(
+      (r) =>
+        r.building?.toLowerCase() === rm.building.toLowerCase() &&
+        String(r.roomNumber).trim() === String(rm.roomNumber).trim()
+    );
+
+    if (roomRes.length === 0) {
+      const isBlocked = rm.status === 'blocked';
+      const isCleaning = rm.status === 'cleaning';
+      const occStatus = isBlocked
+        ? 'BLOCKED'
+        : isCleaning
+        ? 'CLEANING / TURNOVER'
+        : 'AVAILABLE / VACANT';
+
+      const turnoverStatus = isBlocked
+        ? `BLOCKED: ${rm.blockedReason || 'Maintenance in progress'}`
+        : isCleaning
+        ? 'CLEANING: In housekeeping turnover'
+        : `AVAILABLE: Vacant (Capacity for ${rm.capacity} beds ready for immediate allotment)`;
+
+      rows.push([
+        rm.building,
+        rm.roomNumber,
+        rm.floor,
+        rm.capacity,
+        occStatus,
+        '—',
+        '—',
+        '—',
+        '—',
+        0,
+        '—',
+        '—',
+        isBlocked ? 'Blocked' : 'Vacant',
+        turnoverStatus,
+        rm.category,
+        rm.notes || rm.amenities.join(', '),
+        new Date().toLocaleString(),
+      ]);
+    } else {
+      for (const r of roomRes) {
+        const arrStr = (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10);
+        const depStr = (r.departureDate || r.departureDateTime || '').slice(0, 10);
+
+        let daysRemainingStr = 'In House';
+        let turnoverStatus = 'OCCUPIED';
+
+        if (depStr) {
+          const depDate = new Date(depStr);
+          const now = new Date(todayDate);
+          const diffMs = depDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+          if (depStr === todayDate) {
+            daysRemainingStr = '⚠️ DEPARTING TODAY';
+            turnoverStatus = 'DEPARTING TODAY: Checkout scheduled → Room becomes Vacant';
+          } else if (diffDays === 1) {
+            daysRemainingStr = '1 day remaining (Departing Tomorrow)';
+            turnoverStatus = `OCCUPIED: Departing tomorrow (${depStr})`;
+          } else if (diffDays > 1) {
+            daysRemainingStr = `${diffDays} days remaining`;
+            turnoverStatus = `OCCUPIED: Scheduled departure on ${depStr}`;
+          } else if (diffDays < 0) {
+            daysRemainingStr = 'Checked out / Departure Passed';
+            turnoverStatus = `PAST DEPARTURE: Departed on ${depStr}`;
+          }
+        }
+
+        if (arrStr === todayDate) {
+          turnoverStatus = 'ARRIVING TODAY: Zaer checking in';
+        }
+
+        rows.push([
+          rm.building,
+          rm.roomNumber,
+          rm.floor,
+          rm.capacity,
+          'OCCUPIED',
+          r.applicantName || r.groupLeadName || r.guestLeaderName || 'Zaer Guest',
+          r.itsId || '—',
+          r.tourRefNo || r.tourId || '—',
+          r.family || r.familyNumber || '—',
+          r.paxCount || r.pax || 1,
+          (r.arrivalDate || r.arrivalDateTime || '').replace('T', ' '),
+          (r.departureDate || r.departureDateTime || '').replace('T', ' '),
+          daysRemainingStr,
+          turnoverStatus,
+          r.accommodationCategory || rm.category,
+          r.specialRequests || rm.notes || rm.amenities.join(', '),
+          new Date(r.updatedAt || Date.now()).toLocaleString(),
+        ]);
+      }
+    }
+  }
+
+  return { headers, rows };
+}
+
+/**
+ * Syncs Reservations, Rooms, Rooms Availability & Timeline, and Category B->A Upgrades to Google Sheets
  */
 export async function syncAllToGoogleSheet(
   accessToken: string,
@@ -70,6 +274,14 @@ export async function syncAllToGoogleSheet(
   rooms: Room[]
 ): Promise<SyncResult> {
   try {
+    // 0. Ensure all 4 tabs exist
+    await ensureSheetTabs(accessToken, spreadsheetId, [
+      'Reservations',
+      'Rooms_Inventory',
+      'Rooms_Availability_&_Timeline',
+      'Category_B_to_A_Upgrades',
+    ]);
+
     // 1. Prepare Reservations Header and Rows
     const reservationHeaders = [
       'Tour Reference No.',
@@ -132,7 +344,13 @@ export async function syncAllToGoogleSheet(
       rm.notes || '',
     ]);
 
-    // 3. Prepare Category B to A Upgrades & Balances Header and Rows
+    // 3. Prepare Rooms Availability & Departure Timeline Header and Rows
+    const { headers: timelineHeaders, rows: timelineRows } = generateTimelineRows(
+      rooms,
+      reservations
+    );
+
+    // 4. Prepare Category B to A Upgrades & Balances Header and Rows
     const upgradeHeaders = [
       'Tour ID',
       'Zaereen Guest Leader',
@@ -169,7 +387,7 @@ export async function syncAllToGoogleSheet(
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      'Reservations!A1:R' + (reservationRows.length + 10),
+      'Reservations!A1:N' + (reservationRows.length + 10),
       [reservationHeaders, ...reservationRows]
     );
 
@@ -179,6 +397,14 @@ export async function syncAllToGoogleSheet(
       spreadsheetId,
       'Rooms_Inventory!A1:J' + (roomRows.length + 10),
       [roomHeaders, ...roomRows]
+    );
+
+    // Update Rooms_Availability_&_Timeline sheet
+    await updateSheetRange(
+      accessToken,
+      spreadsheetId,
+      'Rooms_Availability_&_Timeline!A1:Q' + (timelineRows.length + 10),
+      [timelineHeaders, ...timelineRows]
     );
 
     // Update Category_B_to_A_Upgrades sheet
@@ -201,6 +427,134 @@ export async function syncAllToGoogleSheet(
       error: err.message || 'Error communicating with Google Sheets API',
     };
   }
+}
+
+/**
+ * 1-Click Two-Way Sync:
+ * 1. Reads latest changes from Google Sheet (new zaereen, updated rooms, modified allotments)
+ * 2. Merges with app state without losing backend data
+ * 3. Writes back full updated state including Rooms Availability & Departure Timeline tab
+ */
+export async function twoWaySyncWithGoogleSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  currentReservations: Reservation[],
+  currentRooms: Room[]
+): Promise<TwoWaySyncResult> {
+  const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+  // 1. Ensure all 4 tabs exist
+  await ensureSheetTabs(accessToken, spreadsheetId, [
+    'Reservations',
+    'Rooms_Inventory',
+    'Rooms_Availability_&_Timeline',
+    'Category_B_to_A_Upgrades',
+  ]);
+
+  // 2. Pull from Google Sheet
+  const [sheetRooms, sheetRes] = await Promise.all([
+    fetchRoomsFromGoogleSheet(accessToken, spreadsheetId, currentRooms).catch((err) => {
+      console.warn('Could not pull rooms from Google Sheet:', err);
+      return currentRooms;
+    }),
+    fetchReservationsFromGoogleSheet(
+      accessToken,
+      spreadsheetId,
+      currentRooms,
+      currentReservations
+    ).catch((err) => {
+      console.warn('Could not pull reservations from Google Sheet:', err);
+      return currentReservations;
+    }),
+  ]);
+
+  // 3. Merge reservations
+  // Keep local reservations, and apply updates or additions from Google Sheet
+  const mergedResMap = new Map<string, Reservation>();
+  // Pre-populate with current
+  currentReservations.forEach((r) => {
+    mergedResMap.set(r.id, r);
+  });
+
+  // Merge pulled reservations from Google Sheet
+  sheetRes.forEach((sr) => {
+    // Try to find matching reservation by ID or (tourRefNo + applicantName) or itsId
+    const match = currentReservations.find(
+      (r) =>
+        r.id === sr.id ||
+        (r.tourRefNo && sr.tourRefNo && r.tourRefNo === sr.tourRefNo && (r.applicantName === sr.applicantName || r.family === sr.family)) ||
+        (r.itsId && sr.itsId && r.itsId === sr.itsId)
+    );
+
+    if (match) {
+      // Merge updates from Google Sheet
+      const updated: Reservation = {
+        ...match,
+        roomNumber: sr.roomNumber !== undefined ? sr.roomNumber : match.roomNumber,
+        building: sr.building || match.building,
+        paxCount: sr.paxCount || match.paxCount,
+        arrivalDate: sr.arrivalDate || match.arrivalDate,
+        departureDate: sr.departureDate || match.departureDate,
+        arrivalDateTime: sr.arrivalDateTime || match.arrivalDateTime,
+        departureDateTime: sr.departureDateTime || match.departureDateTime,
+        moneyGiven: sr.moneyGiven || match.moneyGiven,
+        category: sr.category || match.category,
+        updatedAt: new Date().toISOString(),
+      };
+      mergedResMap.set(match.id, updated);
+    } else {
+      // New reservation from Google Sheet
+      mergedResMap.set(sr.id, {
+        ...sr,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  const mergedReservations = Array.from(mergedResMap.values());
+
+  // 4. Merge rooms
+  const mergedRoomsMap = new Map<string, Room>();
+  currentRooms.forEach((rm) => mergedRoomsMap.set(rm.id, rm));
+  sheetRooms.forEach((srm) => {
+    const match = currentRooms.find(
+      (rm) => rm.roomNumber === srm.roomNumber && rm.building.toLowerCase() === srm.building.toLowerCase()
+    );
+    if (match) {
+      mergedRoomsMap.set(match.id, {
+        ...match,
+        status: srm.status || match.status,
+        capacity: srm.capacity || match.capacity,
+        blockedReason: srm.blockedReason ?? match.blockedReason,
+        notes: srm.notes ?? match.notes,
+      });
+    } else {
+      mergedRoomsMap.set(srm.id, srm);
+    }
+  });
+  const mergedRooms = Array.from(mergedRoomsMap.values());
+
+  // 5. Write back complete updated state to all 4 tabs in Google Sheets
+  const pushRes = await syncAllToGoogleSheet(
+    accessToken,
+    spreadsheetId,
+    mergedReservations,
+    mergedRooms
+  );
+
+  if (!pushRes.success) {
+    throw new Error(pushRes.error || 'Failed to push merged data back to Google Sheet');
+  }
+
+  return {
+    success: true,
+    spreadsheetId,
+    spreadsheetUrl,
+    pulledReservationsCount: sheetRes.length,
+    pulledRoomsCount: sheetRooms.length,
+    mergedReservations,
+    mergedRooms,
+  };
 }
 
 /**

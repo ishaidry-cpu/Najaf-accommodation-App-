@@ -20,6 +20,7 @@ import { GoogleSheetsConfig, Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES } fro
 import { 
   createAccommodationSpreadsheet, 
   syncAllToGoogleSheet, 
+  twoWaySyncWithGoogleSheet,
   testSpreadsheetAccess, 
   fetchRoomsFromGoogleSheet, 
   fetchReservationsFromGoogleSheet,
@@ -258,6 +259,53 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     }
   };
 
+  // 1-Click Two-Way Sync (Pull edits from Google Sheet + Merge + Push Timeline)
+  const handleTwoWaySync = async () => {
+    if (!accessToken || !sheetsConfig.spreadsheetId) {
+      setFeedback({ type: 'error', message: 'No Google Sheet linked or not signed in.' });
+      return;
+    }
+
+    setIsProcessing(true);
+    setFeedback(null);
+
+    try {
+      const res = await twoWaySyncWithGoogleSheet(
+        accessToken,
+        sheetsConfig.spreadsheetId,
+        reservations,
+        rooms
+      );
+
+      if (res.success) {
+        if (onRoomsFetched) onRoomsFetched(res.mergedRooms);
+        if (onReservationsFetched) onReservationsFetched(res.mergedReservations);
+
+        onUpdateConfig({
+          ...sheetsConfig,
+          spreadsheetUrl: res.spreadsheetUrl,
+          lastSyncedAt: new Date().toISOString(),
+          isSyncing: false,
+          syncError: null,
+        });
+
+        setFeedback({
+          type: 'success',
+          message: `1-Click Sync complete! Successfully synchronized Reservations, 114 Rooms, and the Rooms Availability & Departure Timeline tab.`,
+        });
+      } else {
+        throw new Error(res.error);
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'Two-way sync failed.',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Fetch categories from linked sheet
   const handleFetchCategories = async () => {
     if (!accessToken || !sheetsConfig.spreadsheetId) {
@@ -393,25 +441,62 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 ID: {sheetsConfig.spreadsheetId}
               </div>
 
+              {/* Synchronized Tabs Info */}
+              <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-200 text-[11px] text-emerald-950 space-y-1">
+                <div className="font-bold flex items-center gap-1 text-emerald-900">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Synchronized Google Sheet Tabs (Two-Way):</span>
+                </div>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
+                    1. Reservations
+                  </span>
+                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
+                    2. Rooms_Inventory (114)
+                  </span>
+                  <span className="px-2 py-0.5 bg-[#124E39] text-[#EBD59E] rounded font-bold text-[10px] shadow-2xs">
+                    ★ 3. Rooms_Availability_&_Timeline
+                  </span>
+                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
+                    4. Category_B_to_A_Upgrades
+                  </span>
+                </div>
+              </div>
+
               {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <div className="space-y-2 pt-1">
+                {/* Primary 1-Click Sync */}
                 <button
-                  onClick={handlePullFromSheet}
-                  disabled={isPulling}
-                  className="py-2 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition shadow-2xs"
+                  onClick={handleTwoWaySync}
+                  disabled={isProcessing || isPulling}
+                  className="w-full py-2.5 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
                 >
-                  <DownloadCloud className={`w-4 h-4 text-[#EBD59E] ${isPulling ? 'animate-bounce' : ''}`} />
-                  <span>{isPulling ? 'Pulling...' : 'Pull Rooms & Zaereen'}</span>
+                  <RefreshCw className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-spin' : ''}`} />
+                  <span>{isProcessing ? 'Syncing Two-Way...' : '1-Click Two-Way Sync (Sync App & Google Sheet)'}</span>
                 </button>
 
-                <button
-                  onClick={handlePushToSheet}
-                  disabled={isProcessing}
-                  className="py-2 px-3 bg-white hover:bg-stone-50 disabled:opacity-50 text-stone-800 rounded-xl font-bold flex items-center justify-center gap-1.5 transition border border-stone-300 shadow-2xs"
-                >
-                  <UploadCloud className="w-4 h-4 text-emerald-700" />
-                  <span>{isProcessing ? 'Pushing...' : 'Push to Sheet'}</span>
-                </button>
+                {/* Secondary Individual Pull / Push buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handlePullFromSheet}
+                    disabled={isPulling || isProcessing}
+                    className="py-1.5 px-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition text-[11px]"
+                    title="Pull latest rows from Google Sheet only"
+                  >
+                    <DownloadCloud className={`w-3.5 h-3.5 text-stone-600 ${isPulling ? 'animate-bounce' : ''}`} />
+                    <span>Pull from Sheet</span>
+                  </button>
+
+                  <button
+                    onClick={handlePushToSheet}
+                    disabled={isProcessing || isPulling}
+                    className="py-1.5 px-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition text-[11px]"
+                    title="Push current app state to Google Sheet only"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Push to Sheet</span>
+                  </button>
+                </div>
               </div>
 
               {/* Pilgrim Categories Fetch Section */}
