@@ -448,14 +448,14 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                   <span>Synchronized Google Sheet Tabs (Two-Way):</span>
                 </div>
                 <div className="flex flex-wrap gap-1 pt-0.5">
-                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
-                    1. Reservations
-                  </span>
-                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
-                    2. Rooms_Inventory (114)
+                  <span className="px-2 py-0.5 bg-[#124E39] text-[#EBD59E] rounded font-bold text-[10px] shadow-2xs">
+                    ★ 1. Zaereen_Lodging_&_Room_Allotment_Grid
                   </span>
                   <span className="px-2 py-0.5 bg-[#124E39] text-[#EBD59E] rounded font-bold text-[10px] shadow-2xs">
-                    ★ 3. Rooms_Availability_&_Timeline
+                    ★ 2. Rooms_Availability_&_Timeline
+                  </span>
+                  <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
+                    3. Rooms_Inventory (114)
                   </span>
                   <span className="px-2 py-0.5 bg-white rounded border border-emerald-300 font-semibold text-[10px]">
                     4. Category_B_to_A_Upgrades
@@ -543,7 +543,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 <span>Option 1: Auto-Create New Formatted Sheet</span>
               </h4>
               <p className="text-[11px] text-stone-600 mb-3">
-                Generates a new Google Sheet in your Google Drive with tabs for Reservations, Rooms, and Categories.
+                Generates a new Google Sheet in your Google Drive with tabs for Zaereen Lodging & Room Allotment Grid, Rooms Availability & Timeline, and Inventory.
               </p>
               <button
                 onClick={handleCreateNewSheet}

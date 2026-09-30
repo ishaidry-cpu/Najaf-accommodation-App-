@@ -19,6 +19,8 @@ export interface TwoWaySyncResult {
   error?: string;
 }
 
+export const ZAEREEN_GRID_TAB = 'Zaereen_Lodging_&_Room_Allotment_Grid';
+
 /**
  * Ensure all required tabs exist in the Google Spreadsheet
  */
@@ -29,7 +31,7 @@ export async function ensureSheetTabs(
 ): Promise<void> {
   try {
     const metaRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`,
       {
         headers: { Authorization: `Bearer ${accessToken}` },
       }
@@ -71,7 +73,62 @@ export async function ensureSheetTabs(
 }
 
 /**
+ * Removes old/present obsolete tabs (e.g. 'Reservations', empty 'Sheet1') from the spreadsheet
+ * As requested: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
+ */
+export async function removeOldPresentTabs(
+  accessToken: string,
+  spreadsheetId: string,
+  obsoleteTabNames: string[] = ['Reservations', 'Sheet1']
+): Promise<void> {
+  try {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (!metaRes.ok) return;
+    const meta = await metaRes.json();
+    const sheetsList: Array<{ sheetId: number; title: string }> = (meta.sheets || []).map(
+      (s: any) => ({
+        sheetId: s.properties?.sheetId,
+        title: String(s.properties?.title || '').trim(),
+      })
+    );
+
+    const obsoleteLower = new Set(obsoleteTabNames.map((t) => t.trim().toLowerCase()));
+    const toDelete = sheetsList.filter((s) => obsoleteLower.has(s.title.toLowerCase()));
+
+    // Never delete all sheets (Google Sheets requires at least 1 sheet to remain)
+    if (toDelete.length === 0 || sheetsList.length <= toDelete.length) return;
+
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: toDelete.map((s) => ({
+            deleteSheet: {
+              sheetId: s.sheetId,
+            },
+          })),
+        }),
+      }
+    );
+    console.log(`[Google Sheets] Cleaned obsolete present tabs: ${toDelete.map((s) => s.title).join(', ')}`);
+  } catch (err) {
+    console.warn('Could not remove obsolete tabs:', err);
+  }
+}
+
+/**
  * Creates a formatted Google Spreadsheet for Zaereen Accommodation
+ * Features the exact "Zaereen_Lodging_&_Room_Allotment_Grid" as the master zaereen sheet!
  */
 export async function createAccommodationSpreadsheet(
   accessToken: string,
@@ -90,20 +147,20 @@ export async function createAccommodationSpreadsheet(
       sheets: [
         {
           properties: {
-            title: 'Reservations',
-            gridProperties: { rowCount: 150, columnCount: 18 },
+            title: ZAEREEN_GRID_TAB,
+            gridProperties: { rowCount: 200, columnCount: 25 },
+          },
+        },
+        {
+          properties: {
+            title: 'Rooms_Availability_&_Timeline',
+            gridProperties: { rowCount: 150, columnCount: 20 },
           },
         },
         {
           properties: {
             title: 'Rooms_Inventory',
             gridProperties: { rowCount: 150, columnCount: 12 },
-          },
-        },
-        {
-          properties: {
-            title: 'Rooms_Availability_&_Timeline',
-            gridProperties: { rowCount: 150, columnCount: 18 },
           },
         },
         {
@@ -265,7 +322,62 @@ export function generateTimelineRows(
 }
 
 /**
- * Syncs Reservations, Rooms, Rooms Availability & Timeline, and Category B->A Upgrades to Google Sheets
+ * Generates rows matching EXACTLY the "Zaereen Lodging & Room Allotment Grid"
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | MAIN PORTAL | SHIFT B TO A (NIZAAM) | MONEY GIVEN | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
+ */
+export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
+  const headers = [
+    'SR #',
+    'ITS',
+    'NAME',
+    'AGE',
+    'FAMILY',
+    'OFFICE NAME',
+    'TOUR ID',
+    'BUILDING',
+    'ROOM ALLOTTMENT',
+    'GENDER',
+    'GROUP LEAD',
+    'ARRIVAL',
+    'DEPARTURE',
+    'CATEGORY',
+    'MAIN PORTAL',
+    'SHIFT B TO A (NIZAAM)',
+    'MONEY GIVEN',
+    'REQUEST SLIP NO.',
+    'PAX COUNT',
+    'LAST UPDATED',
+  ];
+
+  const rows = reservations.map((r, index) => [
+    index + 1,
+    r.itsId || '',
+    r.applicantName || r.groupLeadName || '',
+    r.age ?? '',
+    r.family || r.familyNumber || '',
+    r.officeName || '',
+    r.tourRefNo || r.tourId || '',
+    r.building || '',
+    r.roomNumber || '',
+    r.gender || 'Male',
+    r.groupLeadName || r.applicantName || '',
+    (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
+    (r.departureDate || r.departureDateTime || '').slice(0, 10),
+    r.category || 'Mumineen',
+    r.isUploadedToPortal ? 'Uploaded' : 'Pending',
+    r.shiftToCategoryA ? 'Yes (Nizaam)' : 'No',
+    r.moneyGiven || 'No',
+    r.requestSlipNo || '',
+    r.paxCount || r.pax || 1,
+    new Date(r.updatedAt || Date.now()).toLocaleString(),
+  ]);
+
+  return { headers, rows };
+}
+
+/**
+ * Syncs Zaereen Lodging & Room Allotment Grid, Rooms Availability & Timeline, and Inventories to Google Sheets.
+ * Removes the old present 'Reservations' tab.
  */
 export async function syncAllToGoogleSheet(
   accessToken: string,
@@ -274,48 +386,16 @@ export async function syncAllToGoogleSheet(
   rooms: Room[]
 ): Promise<SyncResult> {
   try {
-    // 0. Ensure all 4 tabs exist
+    // 0. Ensure all required tabs exist
     await ensureSheetTabs(accessToken, spreadsheetId, [
-      'Reservations',
-      'Rooms_Inventory',
+      ZAEREEN_GRID_TAB,
       'Rooms_Availability_&_Timeline',
+      'Rooms_Inventory',
       'Category_B_to_A_Upgrades',
     ]);
 
-    // 1. Prepare Reservations Header and Rows
-    const reservationHeaders = [
-      'Tour Reference No.',
-      'Family Number',
-      'Office Name',
-      'Pax Count',
-      'Arrival Date & Time',
-      'Entry Port',
-      'Departure Date & Time',
-      'Exit Port',
-      'Building Assigned',
-      'Room Number',
-      'Shift B to A (Nizaam)',
-      'Money Given to Accounts',
-      'Request Slip No.',
-      'Last Updated',
-    ];
-
-    const reservationRows = reservations.map((r) => [
-      r.tourRefNo || r.tourId || '',
-      r.family || r.familyNumber || r.familyNo || '',
-      r.officeName || '',
-      r.paxCount || r.pax || r.totalGuests || 1,
-      (r.arrivalDate || r.arrivalDateTime || '').replace('T', ' '),
-      r.entryPort || 'Najaf Airport (NJF)',
-      (r.departureDate || r.departureDateTime || '').replace('T', ' '),
-      r.exitPort || 'Najaf Airport (NJF)',
-      r.building || '',
-      r.roomNumber || '',
-      r.category || (r.shiftToCategoryA ? 'B to A' : 'Category A'),
-      r.moneyGiven || 'No',
-      r.requestSlipNo || '',
-      new Date(r.updatedAt || Date.now()).toLocaleString(),
-    ]);
+    // 1. Prepare Zaereen Lodging & Room Allotment Grid Header and Rows (User Request: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one")
+    const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(reservations);
 
     // 2. Prepare Rooms Header and Rows
     const roomHeaders = [
@@ -383,12 +463,12 @@ export async function syncAllToGoogleSheet(
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
 
-    // Update Reservations sheet
+    // Update Zaereen Lodging & Room Allotment Grid sheet
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      'Reservations!A1:N' + (reservationRows.length + 10),
-      [reservationHeaders, ...reservationRows]
+      `'${ZAEREEN_GRID_TAB}'!A1:T` + (gridRows.length + 10),
+      [gridHeaders, ...gridRows]
     );
 
     // Update Rooms_Inventory sheet
@@ -415,6 +495,10 @@ export async function syncAllToGoogleSheet(
       [upgradeHeaders, ...upgradeRows]
     );
 
+    // 5. Explicit user instruction: "remove the present one"
+    // Deletes the obsolete 'Reservations' tab and any empty default 'Sheet1'
+    await removeOldPresentTabs(accessToken, spreadsheetId, ['Reservations', 'Sheet1']);
+
     return {
       success: true,
       spreadsheetId,
@@ -433,7 +517,8 @@ export async function syncAllToGoogleSheet(
  * 1-Click Two-Way Sync:
  * 1. Reads latest changes from Google Sheet (new zaereen, updated rooms, modified allotments)
  * 2. Merges with app state without losing backend data
- * 3. Writes back full updated state including Rooms Availability & Departure Timeline tab
+ * 3. Writes back full updated state with the Zaereen Lodging & Room Allotment Grid and Rooms Availability & Departure Timeline tab
+ * 4. Removes the old present 'Reservations' tab
  */
 export async function twoWaySyncWithGoogleSheet(
   accessToken: string,
@@ -443,11 +528,11 @@ export async function twoWaySyncWithGoogleSheet(
 ): Promise<TwoWaySyncResult> {
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
-  // 1. Ensure all 4 tabs exist
+  // 1. Ensure all required tabs exist
   await ensureSheetTabs(accessToken, spreadsheetId, [
-    'Reservations',
-    'Rooms_Inventory',
+    ZAEREEN_GRID_TAB,
     'Rooms_Availability_&_Timeline',
+    'Rooms_Inventory',
     'Category_B_to_A_Upgrades',
   ]);
 
@@ -469,16 +554,12 @@ export async function twoWaySyncWithGoogleSheet(
   ]);
 
   // 3. Merge reservations
-  // Keep local reservations, and apply updates or additions from Google Sheet
   const mergedResMap = new Map<string, Reservation>();
-  // Pre-populate with current
   currentReservations.forEach((r) => {
     mergedResMap.set(r.id, r);
   });
 
-  // Merge pulled reservations from Google Sheet
   sheetRes.forEach((sr) => {
-    // Try to find matching reservation by ID or (tourRefNo + applicantName) or itsId
     const match = currentReservations.find(
       (r) =>
         r.id === sr.id ||
@@ -487,9 +568,13 @@ export async function twoWaySyncWithGoogleSheet(
     );
 
     if (match) {
-      // Merge updates from Google Sheet
       const updated: Reservation = {
         ...match,
+        applicantName: sr.applicantName || match.applicantName,
+        age: sr.age !== undefined && !Number.isNaN(Number(sr.age)) ? Number(sr.age) : match.age,
+        gender: sr.gender || match.gender,
+        officeName: sr.officeName || match.officeName,
+        family: sr.family || match.family,
         roomNumber: sr.roomNumber !== undefined ? sr.roomNumber : match.roomNumber,
         building: sr.building || match.building,
         paxCount: sr.paxCount || match.paxCount,
@@ -499,11 +584,14 @@ export async function twoWaySyncWithGoogleSheet(
         departureDateTime: sr.departureDateTime || match.departureDateTime,
         moneyGiven: sr.moneyGiven || match.moneyGiven,
         category: sr.category || match.category,
+        isUploadedToPortal: sr.isUploadedToPortal !== undefined ? sr.isUploadedToPortal : match.isUploadedToPortal,
+        shiftToCategoryA: sr.shiftToCategoryA !== undefined ? sr.shiftToCategoryA : match.shiftToCategoryA,
+        requestSlipNo: sr.requestSlipNo || match.requestSlipNo,
+        groupLeadName: sr.groupLeadName || match.groupLeadName,
         updatedAt: new Date().toISOString(),
       };
       mergedResMap.set(match.id, updated);
     } else {
-      // New reservation from Google Sheet
       mergedResMap.set(sr.id, {
         ...sr,
         updatedAt: new Date().toISOString(),
@@ -534,7 +622,7 @@ export async function twoWaySyncWithGoogleSheet(
   });
   const mergedRooms = Array.from(mergedRoomsMap.values());
 
-  // 5. Write back complete updated state to all 4 tabs in Google Sheets
+  // 5. Write back complete updated state to Google Sheets & remove obsolete present tabs
   const pushRes = await syncAllToGoogleSheet(
     accessToken,
     spreadsheetId,
@@ -725,7 +813,7 @@ export async function fetchRoomsFromGoogleSheet(
 }
 
 /**
- * Fetch and parse Reservations from Google Sheet
+ * Fetch and parse Reservations directly from Google Sheet (from Zaereen Lodging & Room Allotment Grid)
  */
 export async function fetchReservationsFromGoogleSheet(
   accessToken: string,
@@ -742,16 +830,27 @@ export async function fetchReservationsFromGoogleSheet(
   const metaData = await metaRes.json();
   const sheets: any[] = metaData.sheets || [];
 
-  const targetTab = sheets.find((s) => {
+  // Locate the Zaereen Lodging & Room Allotment Grid tab
+  let targetTab = sheets.find((s) => {
     const title = (s.properties?.title || '').toLowerCase();
-    return title.includes('reservation');
+    return (
+      title.includes('lodging') ||
+      title.includes('allotment') ||
+      title.includes('grid') ||
+      title.includes('zaereen') ||
+      title.includes('reservation')
+    );
   })?.properties?.title;
+
+  if (!targetTab && sheets.length > 0) {
+    targetTab = sheets[0]?.properties?.title;
+  }
 
   if (!targetTab) return existingReservations;
 
   const valRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-      targetTab + '!A1:Z500'
+      `'${targetTab}'!A1:Z500`
     )}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -765,42 +864,44 @@ export async function fetchReservationsFromGoogleSheet(
   if (rawRows.length <= 1) return existingReservations;
 
   const headerRow = rawRows[0].map((h: any) => String(h || '').trim().toLowerCase());
-  let famIdx = headerRow.findIndex((h: string) => h.includes('fam'));
-  let tourIdx = headerRow.findIndex((h: string) => h.includes('tour'));
-  let leaderIdx = headerRow.findIndex((h: string) => h.includes('leader') || h.includes('name'));
-  let phoneIdx = headerRow.findIndex((h: string) => h.includes('phone') || h.includes('contact'));
-  let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest'));
-  let bIdx = headerRow.findIndex((h: string) => h.includes('building'));
-  let rIdx = headerRow.findIndex((h: string) => h.includes('room'));
+  let itsIdx = headerRow.findIndex((h: string) => h === 'its' || h.includes('its id') || h === 'its_id');
+  let nameIdx = headerRow.findIndex((h: string) => h === 'name' || h.includes('applicant') || h.includes('zaer'));
+  let ageIdx = headerRow.findIndex((h: string) => h === 'age');
+  let famIdx = headerRow.findIndex((h: string) => h === 'family' || h.includes('fam'));
+  let officeIdx = headerRow.findIndex((h: string) => h.includes('office'));
+  let tourIdx = headerRow.findIndex((h: string) => h === 'tour id' || h.includes('tour'));
+  let bIdx = headerRow.findIndex((h: string) => h.includes('building') || h.includes('bldg'));
+  let rIdx = headerRow.findIndex((h: string) => h.includes('room allottment') || h.includes('room allotment') || h.includes('room'));
+  let genderIdx = headerRow.findIndex((h: string) => h.includes('gender') || h === 'sex');
+  let leaderIdx = headerRow.findIndex((h: string) => h === 'group lead' || h.includes('group lead') || h.includes('leader'));
   let arrIdx = headerRow.findIndex((h: string) => h.includes('arrival'));
   let depIdx = headerRow.findIndex((h: string) => h.includes('departure'));
   let catIdx = headerRow.findIndex((h: string) => h.includes('category'));
-  let upgIdx = headerRow.findIndex((h: string) => h.includes('upgraded') || h.includes('nizaam'));
-  let baseIdx = headerRow.findIndex((h: string) => h.includes('base'));
-  let feeIdx = headerRow.findIndex((h: string) => h.includes('upgrade fee'));
-  let totalIdx = headerRow.findIndex((h: string) => h.includes('total cost'));
-  let paidIdx = headerRow.findIndex((h: string) => h.includes('paid'));
-  let balIdx = headerRow.findIndex((h: string) => h.includes('balance'));
-  let statIdx = headerRow.findIndex((h: string) => h.includes('status'));
-  let noteIdx = headerRow.findIndex((h: string) => h.includes('note') || h.includes('request'));
+  let portalIdx = headerRow.findIndex((h: string) => h.includes('portal') || h.includes('upload'));
+  let shiftIdx = headerRow.findIndex((h: string) => h.includes('shift') || h.includes('nizaam'));
+  let moneyIdx = headerRow.findIndex((h: string) => h.includes('money') || h.includes('account'));
+  let slipIdx = headerRow.findIndex((h: string) => h.includes('slip'));
+  let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest') || h.includes('count'));
 
-  if (tourIdx === -1) tourIdx = famIdx !== -1 ? 1 : 0;
-  if (leaderIdx === -1) leaderIdx = 15;
-  if (phoneIdx === -1) phoneIdx = 16;
-  if (paxIdx === -1) paxIdx = 2;
-  if (bIdx === -1) bIdx = 5;
-  if (rIdx === -1) rIdx = 6;
-  if (arrIdx === -1) arrIdx = 3;
-  if (depIdx === -1) depIdx = 4;
-  if (catIdx === -1) catIdx = 7;
-  if (upgIdx === -1) upgIdx = 8;
-  if (baseIdx === -1) baseIdx = 9;
-  if (feeIdx === -1) feeIdx = 10;
-  if (totalIdx === -1) totalIdx = 11;
-  if (paidIdx === -1) paidIdx = 12;
-  if (balIdx === -1) balIdx = 13;
-  if (statIdx === -1) statIdx = 14;
-  if (noteIdx === -1) noteIdx = 17;
+  // Fallbacks if not matched by name
+  if (tourIdx === -1) tourIdx = 6;
+  if (itsIdx === -1) itsIdx = 1;
+  if (nameIdx === -1) nameIdx = 2;
+  if (ageIdx === -1) ageIdx = 3;
+  if (famIdx === -1) famIdx = 4;
+  if (officeIdx === -1) officeIdx = 5;
+  if (bIdx === -1) bIdx = 7;
+  if (rIdx === -1) rIdx = 8;
+  if (genderIdx === -1) genderIdx = 9;
+  if (leaderIdx === -1) leaderIdx = 10;
+  if (arrIdx === -1) arrIdx = 11;
+  if (depIdx === -1) depIdx = 12;
+  if (catIdx === -1) catIdx = 13;
+  if (portalIdx === -1) portalIdx = 14;
+  if (shiftIdx === -1) shiftIdx = 15;
+  if (moneyIdx === -1) moneyIdx = 16;
+  if (slipIdx === -1) slipIdx = 17;
+  if (paxIdx === -1) paxIdx = 18;
 
   const parsedReservations: Reservation[] = [];
 
@@ -808,97 +909,100 @@ export async function fetchReservationsFromGoogleSheet(
     const row = rawRows[i];
     if (!row || row.length === 0) continue;
 
-    const tourId = String(row[tourIdx] || '').trim();
-    if (!tourId || tourId.toLowerCase() === 'tour id') continue;
+    const tourId = tourIdx !== -1 && row[tourIdx] ? String(row[tourIdx]).trim() : '';
+    const itsId = itsIdx !== -1 && row[itsIdx] ? String(row[itsIdx]).trim().replace(/['"]/g, '') : '';
+    const applicantName = nameIdx !== -1 && row[nameIdx] ? String(row[nameIdx]).trim() : '';
 
-    const familyNo = famIdx !== -1 ? String(row[famIdx] || '').trim() : `FAM-${i.toString().padStart(2, '0')}`;
-    const guestLeaderName = leaderIdx !== -1 && row[leaderIdx] ? String(row[leaderIdx]).trim() : `Zaereen Family ${familyNo}`;
-    const guestContact = phoneIdx !== -1 && row[phoneIdx] ? String(row[phoneIdx]).trim() : '';
-    const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx])) : 2;
-    const totalGuests = pax;
-    const building = String(row[bIdx] || '').trim();
-    const roomNumber = String(row[rIdx] || '').trim().replace(/^room\s+/i, '');
+    // Skip empty lines or duplicated headers
+    if (!tourId && !applicantName && !itsId) continue;
+    if (tourId.toLowerCase() === 'tour id' || itsId.toLowerCase() === 'its') continue;
 
+    const age = ageIdx !== -1 && !isNaN(parseInt(String(row[ageIdx]))) ? parseInt(String(row[ageIdx]), 10) : 38;
+    const familyNo = famIdx !== -1 && row[famIdx] ? String(row[famIdx]).trim() : `F-${i}`;
+    const officeName = officeIdx !== -1 && row[officeIdx] ? String(row[officeIdx]).trim() : 'Fayz E Husayni Trust Mumbai';
+    const building = bIdx !== -1 && row[bIdx] ? String(row[bIdx]).trim() : 'Saifee';
+    const roomNumber = rIdx !== -1 && row[rIdx] ? String(row[rIdx]).trim().replace(/^room\s+/i, '') : '';
+    const gender = genderIdx !== -1 && row[genderIdx] ? String(row[genderIdx]).trim() : 'Male';
+    const groupLeadName = leaderIdx !== -1 && row[leaderIdx] ? String(row[leaderIdx]).trim() : (applicantName || 'Group Lead');
+    
     const matchingRoom = rooms.find(
       (rm) => rm.roomNumber === roomNumber && rm.building.toLowerCase() === building.toLowerCase()
     );
     const roomId = matchingRoom ? matchingRoom.id : `rm-${building}-${roomNumber}`;
 
-    const rawArr = String(row[arrIdx] || '').trim();
-    const rawDep = String(row[depIdx] || '').trim();
-    const arrivalDateTime = rawArr ? rawArr.replace(' ', 'T') : new Date().toISOString();
-    const departureDateTime = rawDep ? rawDep.replace(' ', 'T') : new Date(Date.now() + 7 * 86400000).toISOString();
+    const rawArr = arrIdx !== -1 && row[arrIdx] ? String(row[arrIdx]).trim() : '';
+    const rawDep = depIdx !== -1 && row[depIdx] ? String(row[depIdx]).trim() : '';
+    const arrivalDate = rawArr ? rawArr.slice(0, 10) : '2026-10-01';
+    const departureDate = rawDep ? rawDep.slice(0, 10) : '2026-10-06';
+    const arrivalDateTime = rawArr ? rawArr.replace(' ', 'T') : `${arrivalDate}T11:00:00`;
+    const departureDateTime = rawDep ? rawDep.replace(' ', 'T') : `${departureDate}T01:00:00`;
 
-    const rawUpg = String(row[upgIdx] || '').toLowerCase();
-    const isUpgradedFromBToA = rawUpg.includes('yes') || rawUpg.includes('upgrade') || rawUpg.includes('nizaam');
+    const rawCategory = catIdx !== -1 && row[catIdx] ? String(row[catIdx]).trim() : 'Mumineen';
+    const rawPortal = portalIdx !== -1 && row[portalIdx] ? String(row[portalIdx]).toLowerCase() : '';
+    const isUploadedToPortal = rawPortal.includes('yes') || rawPortal.includes('upload') || rawPortal.includes('true');
 
-    const rawCategory = String(row[catIdx] || '').toLowerCase();
-    let assignedCategory: Reservation['assignedCategory'] = 'Category B (Standard)';
-    if (isUpgradedFromBToA || rawCategory.includes('a') || rawCategory.includes('nizaam')) {
-      assignedCategory = 'Category A (Nizaam)';
-    }
+    const rawShift = shiftIdx !== -1 && row[shiftIdx] ? String(row[shiftIdx]).toLowerCase() : '';
+    const shiftToCategoryA = rawShift.includes('yes') || rawShift.includes('nizaam');
 
-    const baseCost = parseFloat(String(row[baseIdx] || '0').replace(/[^0-9.]/g, '')) || 1000;
-    const upgradeFee = isUpgradedFromBToA
-      ? parseFloat(String(row[feeIdx] || '0').replace(/[^0-9.]/g, '')) || 350
-      : 0;
-    const totalCost = parseFloat(String(row[totalIdx] || '0').replace(/[^0-9.]/g, '')) || (baseCost + upgradeFee);
-    const amountPaid = parseFloat(String(row[paidIdx] || '0').replace(/[^0-9.]/g, '')) || 0;
-    const balanceDue = Math.max(0, totalCost - amountPaid);
-
-    const rawStat = String(row[statIdx] || '').trim();
-    const moneyGiven = /yes|paid/i.test(rawStat) ? 'Yes' : 'No';
+    const rawMoney = moneyIdx !== -1 && row[moneyIdx] ? String(row[moneyIdx]).trim() : '';
+    const moneyGiven: Reservation['moneyGiven'] = /yes|paid/i.test(rawMoney) ? 'Yes' : 'No';
     const paymentStatus: Reservation['paymentStatus'] = moneyGiven === 'Yes' ? 'Paid' : 'Pending';
 
-    const specialRequests = String(row[noteIdx] || '').trim();
+    const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
+    const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
 
+    // Match with existing reservation to preserve internal IDs and logs
     const existing = existingReservations.find(
-      (r) => r.tourId === tourId && r.guestLeaderName === guestLeaderName
+      (r) =>
+        (itsId && r.itsId && r.itsId === itsId) ||
+        (tourId && applicantName && r.tourRefNo === tourId && r.applicantName === applicantName) ||
+        (tourId && familyNo && r.tourRefNo === tourId && r.family === familyNo)
     );
 
     parsedReservations.push({
       id: existing ? existing.id : `res-${Date.now()}-${i}`,
-      itsId: existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
-      applicantName: guestLeaderName || existing?.applicantName || 'Zaer Guest',
-      age: existing?.age || 38,
-      category: isUpgradedFromBToA ? 'B to A' : 'Category A',
+      itsId: itsId || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
+      applicantName: applicantName || existing?.applicantName || 'Zaer Guest',
+      age,
+      category: rawCategory,
       idara: existing?.idara || 'Faiz-e-Husaini',
-      gender: existing?.gender || 'Male',
-      family: familyNo || existing?.family || 'FAM-01',
-      tourRefNo: tourId,
-      officeName: existing ? existing.officeName : 'Karachi Central Office',
-      groupLeadName: guestLeaderName,
-      arrivalDate: arrivalDateTime.slice(0, 10),
-      departureDate: departureDateTime.slice(0, 10),
-      shiftToCategoryA: isUpgradedFromBToA,
-      requestSlipNo: existing ? existing.requestSlipNo : `SLIP-2026-${i.toString().padStart(3, '0')}`,
+      gender,
+      family: familyNo,
+      tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
+      officeName,
+      groupLeadName,
+      arrivalDate,
+      departureDate,
+      shiftToCategoryA,
+      accommodationCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
+      requestSlipNo: requestSlipNo || existing?.requestSlipNo || undefined,
       moneyGiven,
-      building: (building === 'Burhani' ? 'Burhani' : 'Saifee'),
+      building: building === 'Burhani' ? 'Burhani' : 'Saifee',
       roomNumber,
       roomId,
-      isUploadedToPortal: existing?.isUploadedToPortal || false,
+      isUploadedToPortal,
       paxCount: pax,
       arrivalDateTime,
       entryPort: existing ? existing.entryPort : 'Najaf Airport (NJF)',
       departureDateTime,
       exitPort: existing ? existing.exitPort : 'Najaf Airport (NJF)',
-      guestLeaderName,
-      guestContact,
+      guestLeaderName: groupLeadName,
+      guestContact: existing ? existing.guestContact : '',
       zaereenGuests: existing?.zaereenGuests || [],
-      specialRequests: specialRequests || undefined,
+      specialRequests: existing?.specialRequests || undefined,
       // Compatibility fields
-      tourId,
+      tourId: tourId || existing?.tourId || 'NKERP/TOUR/2026/1333',
       familyNo,
       pax,
       totalGuests: pax,
-      tourName: 'Zaereen Group',
-      assignedCategory: 'Category A (Nizaam)',
-      isUpgradedFromBToA,
-      baseCost,
-      upgradeFee,
-      totalCost,
-      amountPaid,
-      balanceDue,
+      tourName: existing?.tourName || 'Zaereen Group',
+      assignedCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
+      isUpgradedFromBToA: shiftToCategoryA,
+      baseCost: existing ? existing.baseCost : 1000,
+      upgradeFee: shiftToCategoryA ? (existing?.upgradeFee || 350) : 0,
+      totalCost: existing ? existing.totalCost : 1000,
+      amountPaid: moneyGiven === 'Yes' ? (existing?.totalCost || 1000) : 0,
+      balanceDue: moneyGiven === 'Yes' ? 0 : (existing?.totalCost || 1000),
       paymentStatus,
       paymentHistory: existing ? existing.paymentHistory : [],
       createdAt: existing ? existing.createdAt : new Date().toISOString(),

@@ -430,7 +430,7 @@ export default function App() {
         }
 
         showToast(
-          `✓ Synced with Google Sheet! Updated ${syncResult.pulledReservationsCount} zaereen, 114 rooms & Rooms Availability & Departure Timeline.`
+          `✓ Synced with Google Sheet! Updated Zaereen Lodging & Room Allotment Grid, 114 rooms & Rooms Availability Timeline.`
         );
       } else {
         throw new Error(syncResult.error || 'Sync failed');
