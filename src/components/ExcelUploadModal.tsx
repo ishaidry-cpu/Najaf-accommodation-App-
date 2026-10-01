@@ -20,12 +20,14 @@ import {
   ParsedZaerRow 
 } from '../services/excelService';
 import { Reservation } from '../types';
+import { deduplicateForAppend } from '../utils/deduplication';
 
 interface ExcelUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportSuccess: (importedReservations: Reservation[], mode: 'replace' | 'append') => void;
   existingCount: number;
+  existingReservations?: Reservation[];
 }
 
 export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
@@ -33,6 +35,7 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
   onClose,
   onImportSuccess,
   existingCount,
+  existingReservations = [],
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -307,33 +310,62 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
               )}
             </div>
 
-            {/* Import Mode Radio */}
-            <div className="mt-4 p-3 bg-white border border-[#E6DFD5] rounded-xl flex items-center justify-between text-xs">
-              <span className="font-medium text-stone-700">Import Method:</span>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="importMode"
-                    value="append"
-                    checked={importMode === 'append'}
-                    onChange={() => setImportMode('append')}
-                    className="accent-emerald-700"
-                  />
-                  <span>Append to existing ({existingCount} current)</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="importMode"
-                    value="replace"
-                    checked={importMode === 'replace'}
-                    onChange={() => setImportMode('replace')}
-                    className="accent-emerald-700"
-                  />
-                  <span className="text-amber-800 font-medium">Replace all</span>
-                </label>
+            {/* Import Mode Radio & Duplicate Prevention Indicator */}
+            <div className="mt-4 p-3 bg-white border border-[#E6DFD5] rounded-xl flex flex-col gap-2.5 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="font-bold text-stone-700">Import Method:</span>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="append"
+                      checked={importMode === 'append'}
+                      onChange={() => setImportMode('append')}
+                      className="accent-emerald-700"
+                    />
+                    <span className="font-semibold text-emerald-950">
+                      Append unique only (skips duplicates)
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="replace"
+                      checked={importMode === 'replace'}
+                      onChange={() => setImportMode('replace')}
+                      className="accent-emerald-700"
+                    />
+                    <span className="text-amber-800 font-medium">Replace all</span>
+                  </label>
+                </div>
               </div>
+
+              {/* Deduplication Status Banner (User request: "When append dont append duplicates only unique should be added") */}
+              {(() => {
+                if (importMode !== 'append' || parsedRows.length === 0) return null;
+                const sampleRes = convertRowsToReservations(parsedRows);
+                const dedup = deduplicateForAppend(existingReservations, sampleRes);
+                return (
+                  <div className="p-2 rounded-lg bg-emerald-50/80 border border-emerald-300 text-[11px] text-emerald-950 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span>
+                        <strong>Deduplication Guard:</strong> <strong>{dedup.uniqueToAppend.length}</strong> unique zaereen will be added.
+                        {dedup.totalDuplicatesSkipped > 0 && (
+                          <span className="text-amber-800 font-semibold ml-1">
+                            ({dedup.totalDuplicatesSkipped} duplicate{dedup.totalDuplicatesSkipped > 1 ? 's' : ''} skipped)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-bold text-[10px]">
+                      Zero Duplicates
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -355,7 +387,16 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-md transition"
             >
               <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
-              <span>Import {parsedRows.length} Zaereen Applicants</span>
+              <span>
+                {(() => {
+                  if (importMode === 'append') {
+                    const sampleRes = convertRowsToReservations(parsedRows);
+                    const dedup = deduplicateForAppend(existingReservations, sampleRes);
+                    return `Append ${dedup.uniqueToAppend.length} Unique Zaereen`;
+                  }
+                  return `Replace with ${parsedRows.length} Zaereen Applicants`;
+                })()}
+              </span>
             </button>
           )}
         </div>

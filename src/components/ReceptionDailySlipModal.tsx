@@ -265,31 +265,31 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     // Room-by-room preparation matrix table for PDF
     const prepRows = filteredRoomPrep.map((item) => {
       const depText = item.deps.length > 0
-        ? item.deps.map((d) => `${d.applicantName} (${d.itsId} • ${d.family})`).join('\n')
+        ? item.deps.map((d) => `• ${d.applicantName}\n  Tour: ${d.tourRefNo || '—'} | Fam #${d.family || '—'} (ITS: ${d.itsId})`).join('\n\n')
         : '— None';
 
       const arrText = item.arrs.length > 0
-        ? item.arrs.map((a) => `${a.applicantName} (${a.itsId} • ${a.family})`).join('\n')
+        ? item.arrs.map((a) => `• ${a.applicantName}\n  Tour: ${a.tourRefNo || '—'} | Fam #${a.family || '—'} (ITS: ${a.itsId})`).join('\n\n')
         : '— None';
 
       return [
-        `Room ${item.room.roomNumber}\n${item.room.building} • Fl ${item.room.floor}`,
-        `Pax: ${item.room.capacity}${item.room.buffer ? ` +${item.room.buffer}B` : ''}\n${item.room.toiletType || ''}`,
+        `Room ${item.room.roomNumber}\n${item.room.building} Hotel\nFl ${item.room.floor}`,
         depText,
         arrText,
         item.actionLabel,
-        '[ ] Cleaned\n[ ] Fresh Linens\n[ ] Key Ready',
+        '[ ] Cleaned\n[ ] Fresh Linens\n[ ] Toilet Sanitized\n[ ] Wajba/cards ready\n[ ] Key Cards Ready',
       ];
     });
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Room & Hotel', 'Specs / Pax', 'Departures (Check-outs)', 'Arrivals (New Zaereen)', 'Turnover Prep Action', 'Housekeeping Sign-off']],
-      body: prepRows.length > 0 ? prepRows : [['No rooms with turnover activity on selected date', '', '', '', '', '']],
+      head: [['Room & Hotel', 'Departures (Check-outs)', 'Arrivals (New Zaereen)', 'Turnover Prep Action', 'Housekeeping Sign-off']],
+      body: prepRows.length > 0 ? prepRows : [['No rooms with turnover activity on selected date', '', '', '', '']],
       margin: { left: 20, right: 20 },
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 5 },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 6, textColor: [30, 30, 30] },
+      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      bodyStyles: { textColor: [30, 30, 30] },
       didDrawPage: (data) => {
         currentY = data.cursor?.y || currentY;
       },
@@ -615,15 +615,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 </span>
               </div>
 
-              <div className="overflow-x-auto border border-stone-200 rounded-xl">
-                <table className="w-full text-left text-[11px] border-collapse">
-                  <thead className="bg-[#124E39] text-white uppercase text-[9px] font-bold">
+              <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold tracking-wider">
                     <tr>
-                      <th className="py-2.5 px-3 w-[15%]">Room & Hotel</th>
-                      <th className="py-2.5 px-3 w-[14%]">Specs & Capacity</th>
-                      <th className="py-2.5 px-3 w-[26%] bg-amber-950/40">Departures (Vacating Today)</th>
-                      <th className="py-2.5 px-3 w-[26%] bg-emerald-950/40">Arrivals (New Zaereen)</th>
-                      <th className="py-2.5 px-3 w-[19%]">Turnover Status & Checklist</th>
+                      <th className="py-3 px-3 w-[18%]">Room & Hotel</th>
+                      <th className="py-3 px-3 w-[31%] bg-[#124E39]/95">Departures (Vacating Today)</th>
+                      <th className="py-3 px-3 w-[31%] bg-[#124E39]/95">Arrivals (New Zaereen)</th>
+                      <th className="py-3 px-3 w-[20%]">Turnover Status & Housekeeping Sign-off</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-200">
@@ -635,118 +634,120 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                             key={idx}
                             className={`transition ${
                               isTurnover
-                                ? 'bg-purple-50/70 font-medium'
+                                ? 'bg-purple-50/40 font-medium'
                                 : item.actionType === 'new_arrival'
-                                ? 'bg-emerald-50/40'
+                                ? 'bg-emerald-50/30'
                                 : item.actionType === 'departure_clean'
-                                ? 'bg-amber-50/40'
+                                ? 'bg-amber-50/30'
                                 : 'hover:bg-stone-50'
                             }`}
                           >
                             {/* 1. Room & Hotel */}
-                            <td className="py-2.5 px-3 align-top">
-                              <div className="font-serif font-extrabold text-sm text-[#124E39]">
+                            <td className="py-3 px-3 align-top">
+                              <div className="font-serif font-extrabold text-base text-[#124E39]">
                                 Room {item.room.roomNumber}
                               </div>
-                              <div className="text-[10px] text-stone-600 font-bold">
+                              <div className="text-[11px] text-stone-700 font-bold mt-0.5">
                                 {item.room.building} Hotel • {item.room.floorLabel || `Floor ${item.room.floor}`}
                               </div>
+                              {/* Tour ID and Family quick label if present */}
+                              {(item.arrs[0] || item.deps[0]) && (
+                                <div className="mt-2 text-[10px] text-stone-800 space-y-0.5 bg-stone-100 p-1.5 rounded border border-stone-200">
+                                  <div>Tour: <span className="font-mono font-bold text-stone-900">{item.arrs[0]?.tourRefNo || item.deps[0]?.tourRefNo || '—'}</span></div>
+                                  <div>Family: <span className="font-mono font-bold text-stone-900">#{item.arrs[0]?.family || item.deps[0]?.family || '—'}</span></div>
+                                </div>
+                              )}
                             </td>
 
-                            {/* 2. Specs & Capacity */}
-                            <td className="py-2.5 px-3 align-top">
-                              <div className="font-bold text-stone-800">
-                                Pax: {item.room.capacity}
-                                {item.room.buffer ? (
-                                  <span className="text-amber-700"> (+{item.room.buffer} Buf)</span>
-                                ) : null}
-                              </div>
-                              <div className="text-[10px] text-stone-500">
-                                🚽 {item.room.toiletType || 'Standard'}
-                              </div>
-                              <div className="text-[10px] text-stone-500">
-                                🛏️ {item.room.bedType || 'Single Beds'}
-                              </div>
-                            </td>
-
-                            {/* 3. Departures (Vacating Today) */}
-                            <td className="py-2.5 px-3 align-top border-l border-amber-200/60">
+                            {/* 2. Departures (Vacating Today) */}
+                            <td className="py-3 px-3 align-top border-l border-stone-200">
                               {item.deps.length > 0 ? (
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                   {item.deps.map((d, dIdx) => (
-                                    <div key={dIdx} className="p-1.5 rounded bg-amber-100/70 border border-amber-300 text-amber-950">
-                                      <div className="font-bold text-[11px] flex items-center justify-between">
+                                    <div key={dIdx} className="p-2 rounded-lg bg-stone-50 border border-stone-300 text-stone-900 shadow-2xs">
+                                      <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
                                         <span>{d.applicantName}</span>
-                                        <span className="font-mono text-[10px] bg-amber-200 px-1 rounded">{d.family}</span>
+                                        <span className="font-mono font-bold text-stone-900 bg-stone-200/90 px-1.5 py-0.5 rounded text-[11px]">
+                                          Family #{d.family || '—'}
+                                        </span>
                                       </div>
-                                      <div className="text-[10px] text-amber-900 flex items-center gap-2 mt-0.5">
-                                        <span>ITS: {d.itsId}</span>
-                                        <span>•</span>
-                                        <span>Tour: {d.tourRefNo}</span>
+                                      <div className="text-[11px] text-stone-800 flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="font-bold text-stone-900 bg-stone-200/90 px-1.5 py-0.5 rounded">
+                                          Tour: {d.tourRefNo || '—'}
+                                        </span>
+                                        <span className="font-mono text-stone-700">ITS: {d.itsId}</span>
                                       </div>
                                       {d.rawDepartureStr && (
-                                        <div className="text-[9px] text-amber-800 font-semibold mt-0.5">
-                                          Time: {d.rawDepartureStr}
+                                        <div className="text-[10px] text-stone-700 font-semibold mt-1">
+                                          Checkout Time: {d.rawDepartureStr}
                                         </div>
                                       )}
                                     </div>
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-stone-400 italic text-[10px]">
+                                <span className="text-stone-400 italic text-[11px]">
                                   No departures today
                                 </span>
                               )}
                             </td>
 
-                            {/* 4. Arrivals (New Zaereen) */}
-                            <td className="py-2.5 px-3 align-top border-l border-emerald-200/60">
+                            {/* 3. Arrivals (New Zaereen) */}
+                            <td className="py-3 px-3 align-top border-l border-stone-200">
                               {item.arrs.length > 0 ? (
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                   {item.arrs.map((a, aIdx) => (
-                                    <div key={aIdx} className="p-1.5 rounded bg-emerald-100/70 border border-emerald-300 text-emerald-950">
-                                      <div className="font-bold text-[11px] flex items-center justify-between">
+                                    <div key={aIdx} className="p-2 rounded-lg bg-stone-50 border border-stone-300 text-stone-900 shadow-2xs">
+                                      <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
                                         <span>{a.applicantName}</span>
-                                        <span className="font-mono text-[10px] bg-emerald-200 px-1 rounded">{a.family}</span>
+                                        <span className="font-mono font-bold text-stone-900 bg-stone-200/90 px-1.5 py-0.5 rounded text-[11px]">
+                                          Family #{a.family || '—'}
+                                        </span>
                                       </div>
-                                      <div className="text-[10px] text-emerald-900 flex items-center gap-2 mt-0.5">
-                                        <span>ITS: {a.itsId}</span>
-                                        <span>•</span>
-                                        <span className="font-bold">{a.category}</span>
+                                      <div className="text-[11px] text-stone-800 flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="font-bold text-stone-900 bg-stone-200/90 px-1.5 py-0.5 rounded">
+                                          Tour: {a.tourRefNo || '—'}
+                                        </span>
+                                        <span className="font-mono text-stone-700">ITS: {a.itsId}</span>
+                                        <span className="font-semibold text-stone-700">• {a.category}</span>
                                       </div>
                                       {a.rawArrivalStr && (
-                                        <div className="text-[9px] text-emerald-800 font-semibold mt-0.5">
-                                          Time: {a.rawArrivalStr}
+                                        <div className="text-[10px] text-stone-700 font-semibold mt-1">
+                                          Arrival Time: {a.rawArrivalStr}
                                         </div>
                                       )}
                                     </div>
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-stone-400 italic text-[10px]">
+                                <span className="text-stone-400 italic text-[11px]">
                                   No new arrival today
                                 </span>
                               )}
                             </td>
 
-                            {/* 5. Turnover Status & Checklist */}
-                            <td className="py-2.5 px-3 align-top border-l border-stone-200">
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] border mb-1.5 ${item.actionBadge}`}>
+                            {/* 4. Turnover Status & Housekeeping Sign-off */}
+                            <td className="py-3 px-3 align-top border-l border-stone-200">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] border mb-2 font-bold ${item.actionBadge}`}>
                                 {item.actionLabel}
                               </span>
 
                               {/* Housekeeping Checkboxes for printed slip */}
-                              <div className="space-y-0.5 text-[9px] text-stone-600 font-medium">
-                                <div className="flex items-center gap-1">
-                                  <span className="inline-block w-3 h-3 border border-stone-400 rounded-2xs" />
+                              <div className="space-y-1 text-[10px] text-stone-900 font-medium">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-3.5 h-3.5 border border-stone-600 rounded-2xs bg-white shrink-0" />
                                   <span>Linen & Bed Fresh</span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="inline-block w-3 h-3 border border-stone-400 rounded-2xs" />
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-3.5 h-3.5 border border-stone-600 rounded-2xs bg-white shrink-0" />
                                   <span>Toilet Clean & Sanitized</span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="inline-block w-3 h-3 border border-stone-400 rounded-2xs" />
+                                <div className="flex items-center gap-1.5 font-bold text-stone-950">
+                                  <span className="inline-block w-3.5 h-3.5 border-2 border-stone-800 rounded-2xs bg-white shrink-0" />
+                                  <span>Wajba/cards ready</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-3.5 h-3.5 border border-stone-600 rounded-2xs bg-white shrink-0" />
                                   <span>Key Cards Ready</span>
                                 </div>
                               </div>
@@ -756,7 +757,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       })
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-10 text-center">
+                        <td colSpan={4} className="py-10 text-center">
                           <div className="text-stone-500 font-semibold text-xs">
                             No room preparation or turnover activity scheduled for {selectedDate}.
                           </div>
@@ -816,45 +817,43 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       <span>Room-wise Arrivals ({saifeeArrivals.length})</span>
                     </h4>
                     <div className="overflow-x-auto border border-stone-200 rounded-lg">
-                      <table className="w-full text-left text-[11px]">
-                        <thead className="bg-[#124E39] text-white uppercase text-[9px] font-semibold">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold">
                           <tr>
-                            <th className="py-2 px-2.5">Room #</th>
-                            <th className="py-2 px-2.5">Family</th>
-                            <th className="py-2 px-2.5">Applicant / Guest</th>
-                            <th className="py-2 px-2.5">ITS ID</th>
-                            <th className="py-2 px-2.5">Tour Ref</th>
-                            <th className="py-2 px-2.5">Office</th>
-                            <th className="py-2 px-2.5">Category</th>
-                            <th className="py-2 px-2.5">Money Given (B➔A)</th>
-                            <th className="py-2 px-2.5">Dep Date</th>
+                            <th className="py-2.5 px-3">Room #</th>
+                            <th className="py-2.5 px-3">Family</th>
+                            <th className="py-2.5 px-3">Applicant / Guest</th>
+                            <th className="py-2.5 px-3">ITS ID</th>
+                            <th className="py-2.5 px-3">Tour Ref</th>
+                            <th className="py-2.5 px-3">Office</th>
+                            <th className="py-2.5 px-3">Category</th>
+                            <th className="py-2.5 px-3">Money Given (B➔A)</th>
+                            <th className="py-2.5 px-3">Dep Date</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-100">
+                        <tbody className="divide-y divide-stone-200">
                           {saifeeArrivals.length > 0 ? (
                             saifeeArrivals.map((r, i) => (
-                              <tr key={i} className="hover:bg-emerald-50/40">
-                                <td className="py-1.5 px-2.5 font-bold text-[#124E39]">
-                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-700 font-extrabold">Unallotted</span>}
+                              <tr key={i} className="hover:bg-stone-50">
+                                <td className="py-2 px-3 font-bold text-[#124E39]">
+                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold">Unallotted</span>}
                                 </td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-700">{r.family}</td>
-                                <td className="py-1.5 px-2.5 font-semibold text-stone-900">{r.applicantName}</td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-600">{r.itsId}</td>
-                                <td className="py-1.5 px-2.5 text-stone-700">{r.tourRefNo}</td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.officeName}</td>
-                                <td className="py-1.5 px-2.5">
-                                  <span className="font-semibold text-emerald-800">{r.category}</span>
-                                </td>
-                                <td className="py-1.5 px-2.5">
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
+                                <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
+                                <td className="py-2 px-3 font-mono text-stone-800">{r.itsId}</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
+                                <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
+                                <td className="py-2 px-3">
                                   {r.category === 'B to A' || r.shiftToCategoryA ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'}`}>
+                                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
                                       {r.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending ✗'}
                                     </span>
                                   ) : (
                                     <span className="text-stone-400">—</span>
                                   )}
                                 </td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.departureDate}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.departureDate}</td>
                               </tr>
                             ))
                           ) : (
@@ -871,36 +870,36 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
                   {/* Saifee Departures */}
                   <div>
-                    <h4 className="text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-1.5">
-                      <LogOut className="w-3.5 h-3.5" />
+                    <h4 className="text-xs font-bold text-stone-800 mb-1.5 flex items-center gap-1.5">
+                      <LogOut className="w-3.5 h-3.5 text-stone-600" />
                       <span>Scheduled Departures ({saifeeDepartures.length})</span>
                     </h4>
                     <div className="overflow-x-auto border border-stone-200 rounded-lg">
-                      <table className="w-full text-left text-[11px]">
-                        <thead className="bg-stone-700 text-white uppercase text-[9px] font-semibold">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-stone-800 text-white uppercase text-[10px] font-bold">
                           <tr>
-                            <th className="py-2 px-2.5">Room #</th>
-                            <th className="py-2 px-2.5">Family</th>
-                            <th className="py-2 px-2.5">Applicant / Guest</th>
-                            <th className="py-2 px-2.5">ITS ID</th>
-                            <th className="py-2 px-2.5">Tour Ref</th>
-                            <th className="py-2 px-2.5">Office</th>
-                            <th className="py-2 px-2.5">Check-out Notes</th>
+                            <th className="py-2.5 px-3">Room #</th>
+                            <th className="py-2.5 px-3">Family</th>
+                            <th className="py-2.5 px-3">Applicant / Guest</th>
+                            <th className="py-2.5 px-3">ITS ID</th>
+                            <th className="py-2.5 px-3">Tour Ref</th>
+                            <th className="py-2.5 px-3">Office</th>
+                            <th className="py-2.5 px-3">Check-out Notes</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-100">
+                        <tbody className="divide-y divide-stone-200">
                           {saifeeDepartures.length > 0 ? (
                             saifeeDepartures.map((r, i) => (
-                              <tr key={i} className="hover:bg-amber-50/40">
-                                <td className="py-1.5 px-2.5 font-bold text-stone-900">
+                              <tr key={i} className="hover:bg-stone-50">
+                                <td className="py-2 px-3 font-bold text-stone-900">
                                   {r.roomNumber ? `Room ${r.roomNumber}` : '—'}
                                 </td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-700">{r.family}</td>
-                                <td className="py-1.5 px-2.5 font-semibold text-stone-900">{r.applicantName}</td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-600">{r.itsId}</td>
-                                <td className="py-1.5 px-2.5 text-stone-700">{r.tourRefNo}</td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.officeName}</td>
-                                <td className="py-1.5 px-2.5 text-emerald-700 font-medium">Clear keys & prepare for cleaning</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
+                                <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
+                                <td className="py-2 px-3 font-mono text-stone-800">{r.itsId}</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
+                                <td className="py-2 px-3 text-stone-800 font-medium">Clear keys & prepare for cleaning</td>
                               </tr>
                             ))
                           ) : (
@@ -932,50 +931,48 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
                   {/* Burhani Arrivals */}
                   <div>
-                    <h4 className="text-xs font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
-                      <LogIn className="w-3.5 h-3.5" />
+                    <h4 className="text-xs font-bold text-stone-800 mb-1.5 flex items-center gap-1.5">
+                      <LogIn className="w-3.5 h-3.5 text-stone-600" />
                       <span>Room-wise Arrivals ({burhaniArrivals.length})</span>
                     </h4>
                     <div className="overflow-x-auto border border-stone-200 rounded-lg">
-                      <table className="w-full text-left text-[11px]">
-                        <thead className="bg-[#124E39] text-white uppercase text-[9px] font-semibold">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold">
                           <tr>
-                            <th className="py-2 px-2.5">Room #</th>
-                            <th className="py-2 px-2.5">Family</th>
-                            <th className="py-2 px-2.5">Applicant / Guest</th>
-                            <th className="py-2 px-2.5">ITS ID</th>
-                            <th className="py-2 px-2.5">Tour Ref</th>
-                            <th className="py-2 px-2.5">Office</th>
-                            <th className="py-2 px-2.5">Category</th>
-                            <th className="py-2 px-2.5">Money Given (B➔A)</th>
-                            <th className="py-2 px-2.5">Dep Date</th>
+                            <th className="py-2.5 px-3">Room #</th>
+                            <th className="py-2.5 px-3">Family</th>
+                            <th className="py-2.5 px-3">Applicant / Guest</th>
+                            <th className="py-2.5 px-3">ITS ID</th>
+                            <th className="py-2.5 px-3">Tour Ref</th>
+                            <th className="py-2.5 px-3">Office</th>
+                            <th className="py-2.5 px-3">Category</th>
+                            <th className="py-2.5 px-3">Money Given (B➔A)</th>
+                            <th className="py-2.5 px-3">Dep Date</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-100">
+                        <tbody className="divide-y divide-stone-200">
                           {burhaniArrivals.length > 0 ? (
                             burhaniArrivals.map((r, i) => (
-                              <tr key={i} className="hover:bg-emerald-50/40">
-                                <td className="py-1.5 px-2.5 font-bold text-[#124E39]">
-                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-700 font-extrabold">Unallotted</span>}
+                              <tr key={i} className="hover:bg-stone-50">
+                                <td className="py-2 px-3 font-bold text-[#124E39]">
+                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold">Unallotted</span>}
                                 </td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-700">{r.family}</td>
-                                <td className="py-1.5 px-2.5 font-semibold text-stone-900">{r.applicantName}</td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-600">{r.itsId}</td>
-                                <td className="py-1.5 px-2.5 text-stone-700">{r.tourRefNo}</td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.officeName}</td>
-                                <td className="py-1.5 px-2.5">
-                                  <span className="font-semibold text-emerald-800">{r.category}</span>
-                                </td>
-                                <td className="py-1.5 px-2.5">
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
+                                <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
+                                <td className="py-2 px-3 font-mono text-stone-800">{r.itsId}</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
+                                <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
+                                <td className="py-2 px-3">
                                   {r.category === 'B to A' || r.shiftToCategoryA ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'}`}>
+                                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
                                       {r.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending ✗'}
                                     </span>
                                   ) : (
                                     <span className="text-stone-400">—</span>
                                   )}
                                 </td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.departureDate}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.departureDate}</td>
                               </tr>
                             ))
                           ) : (
@@ -992,36 +989,36 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
                   {/* Burhani Departures */}
                   <div>
-                    <h4 className="text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-1.5">
-                      <LogOut className="w-3.5 h-3.5" />
+                    <h4 className="text-xs font-bold text-stone-800 mb-1.5 flex items-center gap-1.5">
+                      <LogOut className="w-3.5 h-3.5 text-stone-600" />
                       <span>Scheduled Departures ({burhaniDepartures.length})</span>
                     </h4>
                     <div className="overflow-x-auto border border-stone-200 rounded-lg">
-                      <table className="w-full text-left text-[11px]">
-                        <thead className="bg-stone-700 text-white uppercase text-[9px] font-semibold">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-stone-800 text-white uppercase text-[10px] font-bold">
                           <tr>
-                            <th className="py-2 px-2.5">Room #</th>
-                            <th className="py-2 px-2.5">Family</th>
-                            <th className="py-2 px-2.5">Applicant / Guest</th>
-                            <th className="py-2 px-2.5">ITS ID</th>
-                            <th className="py-2 px-2.5">Tour Ref</th>
-                            <th className="py-2 px-2.5">Office</th>
-                            <th className="py-2 px-2.5">Check-out Notes</th>
+                            <th className="py-2.5 px-3">Room #</th>
+                            <th className="py-2.5 px-3">Family</th>
+                            <th className="py-2.5 px-3">Applicant / Guest</th>
+                            <th className="py-2.5 px-3">ITS ID</th>
+                            <th className="py-2.5 px-3">Tour Ref</th>
+                            <th className="py-2.5 px-3">Office</th>
+                            <th className="py-2.5 px-3">Check-out Notes</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-100">
+                        <tbody className="divide-y divide-stone-200">
                           {burhaniDepartures.length > 0 ? (
                             burhaniDepartures.map((r, i) => (
-                              <tr key={i} className="hover:bg-amber-50/40">
-                                <td className="py-1.5 px-2.5 font-bold text-stone-900">
+                              <tr key={i} className="hover:bg-stone-50">
+                                <td className="py-2 px-3 font-bold text-stone-900">
                                   {r.roomNumber ? `Room ${r.roomNumber}` : '—'}
                                 </td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-700">{r.family}</td>
-                                <td className="py-1.5 px-2.5 font-semibold text-stone-900">{r.applicantName}</td>
-                                <td className="py-1.5 px-2.5 font-mono text-stone-600">{r.itsId}</td>
-                                <td className="py-1.5 px-2.5 text-stone-700">{r.tourRefNo}</td>
-                                <td className="py-1.5 px-2.5 text-stone-600">{r.officeName}</td>
-                                <td className="py-1.5 px-2.5 text-emerald-700 font-medium">Clear keys & prepare for cleaning</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
+                                <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
+                                <td className="py-2 px-3 font-mono text-stone-800">{r.itsId}</td>
+                                <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
+                                <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
+                                <td className="py-2 px-3 text-stone-800 font-medium">Clear keys & prepare for cleaning</td>
                               </tr>
                             ))
                           ) : (

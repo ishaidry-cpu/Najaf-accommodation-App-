@@ -1,4 +1,11 @@
 import { Reservation, Room } from '../types';
+import { 
+  deduplicateReservationList, 
+  deduplicateForAppend, 
+  isDuplicateReservation,
+  normalizeItsId,
+  normalizeText 
+} from '../utils/deduplication';
 
 export interface SyncResult {
   success: boolean;
@@ -16,10 +23,16 @@ export interface TwoWaySyncResult {
   pulledRoomsCount: number;
   mergedReservations: Reservation[];
   mergedRooms: Room[];
+  uniqueAppendedCount?: number;
+  duplicatesSkippedCount?: number;
   error?: string;
 }
 
-export const ZAEREEN_GRID_TAB = 'Zaereen_Lodging_&_Room_Allotment_Grid';
+/**
+ * EXACT sheet title as requested by user:
+ * "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
+ */
+export const ZAEREEN_GRID_TAB = 'Zaereen Lodging & Room Allotment Grid';
 
 /**
  * Ensure all required tabs exist in the Google Spreadsheet
@@ -73,13 +86,13 @@ export async function ensureSheetTabs(
 }
 
 /**
- * Removes old/present obsolete tabs (e.g. 'Reservations', empty 'Sheet1') from the spreadsheet
+ * Removes old/present obsolete tabs (e.g. 'Reservations', empty 'Sheet1', 'Sheet 1', 'Zaereen_Lodging_&_Room_Allotment_Grid') from the spreadsheet
  * As requested: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
  */
 export async function removeOldPresentTabs(
   accessToken: string,
   spreadsheetId: string,
-  obsoleteTabNames: string[] = ['Reservations', 'Sheet1']
+  obsoleteTabNames: string[] = ['Reservations', 'Sheet1', 'Sheet 1', 'Zaereen_Lodging_&_Room_Allotment_Grid']
 ): Promise<void> {
   try {
     const metaRes = await fetch(
@@ -98,6 +111,9 @@ export async function removeOldPresentTabs(
     );
 
     const obsoleteLower = new Set(obsoleteTabNames.map((t) => t.trim().toLowerCase()));
+    // Make sure we never delete the active target master grid
+    obsoleteLower.delete(ZAEREEN_GRID_TAB.toLowerCase());
+
     const toDelete = sheetsList.filter((s) => obsoleteLower.has(s.title.toLowerCase()));
 
     // Never delete all sheets (Google Sheets requires at least 1 sheet to remain)
@@ -127,8 +143,90 @@ export async function removeOldPresentTabs(
 }
 
 /**
+ * Applies header styling and freezes row 1 in Google Sheets
+ */
+export async function formatSheetHeader(
+  accessToken: string,
+  spreadsheetId: string,
+  tabTitle: string
+): Promise<void> {
+  try {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (!metaRes.ok) return;
+    const meta = await metaRes.json();
+    const targetSheet = (meta.sheets || []).find(
+      (s: any) => String(s.properties?.title || '').trim().toLowerCase() === tabTitle.trim().toLowerCase()
+    );
+
+    if (!targetSheet || targetSheet.properties?.sheetId === undefined) return;
+    const sheetId = targetSheet.properties.sheetId;
+
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            // Freeze row 1
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId,
+                  gridProperties: {
+                    frozenRowCount: 1,
+                  },
+                },
+                fields: 'gridProperties.frozenRowCount',
+              },
+            },
+            // Format Header Row (Dark Emerald background #124E39, bold white text)
+            {
+              repeatCell: {
+                range: {
+                  sheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: {
+                      red: 18 / 255,
+                      green: 78 / 255,
+                      blue: 57 / 255,
+                    },
+                    textFormat: {
+                      foregroundColor: { red: 1, green: 1, blue: 1 },
+                      bold: true,
+                      fontSize: 10,
+                    },
+                    horizontalAlignment: 'CENTER',
+                    verticalAlignment: 'MIDDLE',
+                  },
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
+              },
+            },
+          ],
+        }),
+      }
+    );
+  } catch (err) {
+    console.warn('Could not format sheet header:', err);
+  }
+}
+
+/**
  * Creates a formatted Google Spreadsheet for Zaereen Accommodation
- * Features the exact "Zaereen_Lodging_&_Room_Allotment_Grid" as the master zaereen sheet!
+ * Features the exact "Zaereen Lodging & Room Allotment Grid" as the master zaereen sheet!
  */
 export async function createAccommodationSpreadsheet(
   accessToken: string,
@@ -148,25 +246,25 @@ export async function createAccommodationSpreadsheet(
         {
           properties: {
             title: ZAEREEN_GRID_TAB,
-            gridProperties: { rowCount: 200, columnCount: 25 },
+            gridProperties: { rowCount: 200, columnCount: 25, frozenRowCount: 1 },
           },
         },
         {
           properties: {
             title: 'Rooms_Availability_&_Timeline',
-            gridProperties: { rowCount: 150, columnCount: 20 },
+            gridProperties: { rowCount: 150, columnCount: 20, frozenRowCount: 1 },
           },
         },
         {
           properties: {
             title: 'Rooms_Inventory',
-            gridProperties: { rowCount: 150, columnCount: 12 },
+            gridProperties: { rowCount: 150, columnCount: 12, frozenRowCount: 1 },
           },
         },
         {
           properties: {
             title: 'Category_B_to_A_Upgrades',
-            gridProperties: { rowCount: 150, columnCount: 14 },
+            gridProperties: { rowCount: 150, columnCount: 14, frozenRowCount: 1 },
           },
         },
       ],
@@ -181,6 +279,9 @@ export async function createAccommodationSpreadsheet(
   const data = await response.json();
   const spreadsheetId = data.spreadsheetId;
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+  // Apply styling
+  await formatSheetHeader(accessToken, spreadsheetId, ZAEREEN_GRID_TAB);
 
   return { spreadsheetId, spreadsheetUrl };
 }
@@ -394,8 +495,11 @@ export async function syncAllToGoogleSheet(
       'Category_B_to_A_Upgrades',
     ]);
 
-    // 1. Prepare Zaereen Lodging & Room Allotment Grid Header and Rows (User Request: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one")
-    const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(reservations);
+    // 1. Prepare Zaereen Lodging & Room Allotment Grid Header and Rows
+    // User Request: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
+    // User Request: "When append dont append duplicates only unique should be added"
+    const uniqueReservations = deduplicateReservationList(reservations);
+    const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(uniqueReservations);
 
     // 2. Prepare Rooms Header and Rows
     const roomHeaders = [
@@ -496,8 +600,16 @@ export async function syncAllToGoogleSheet(
     );
 
     // 5. Explicit user instruction: "remove the present one"
-    // Deletes the obsolete 'Reservations' tab and any empty default 'Sheet1'
-    await removeOldPresentTabs(accessToken, spreadsheetId, ['Reservations', 'Sheet1']);
+    // Deletes obsolete present tabs (Reservations, Sheet1, Sheet 1, or old underscore tab)
+    await removeOldPresentTabs(accessToken, spreadsheetId, [
+      'Reservations',
+      'Sheet1',
+      'Sheet 1',
+      'Zaereen_Lodging_&_Room_Allotment_Grid',
+    ]);
+
+    // 6. Format header row of the Zaereen Grid (Emerald background #124E39, bold white font, freeze top row)
+    await formatSheetHeader(accessToken, spreadsheetId, ZAEREEN_GRID_TAB);
 
     return {
       success: true,
@@ -553,21 +665,22 @@ export async function twoWaySyncWithGoogleSheet(
     }),
   ]);
 
-  // 3. Merge reservations
+  // 3. Merge reservations: Ensure only unique records are added (prevent duplicates)
+  // "When append dont append duplicates only unique should be added"
   const mergedResMap = new Map<string, Reservation>();
   currentReservations.forEach((r) => {
     mergedResMap.set(r.id, r);
   });
 
+  let uniqueFromSheetCount = 0;
+  let skippedSheetDuplicatesCount = 0;
+
   sheetRes.forEach((sr) => {
-    const match = currentReservations.find(
-      (r) =>
-        r.id === sr.id ||
-        (r.tourRefNo && sr.tourRefNo && r.tourRefNo === sr.tourRefNo && (r.applicantName === sr.applicantName || r.family === sr.family)) ||
-        (r.itsId && sr.itsId && r.itsId === sr.itsId)
-    );
+    const currentList = Array.from(mergedResMap.values());
+    const match = currentList.find((r) => isDuplicateReservation(r, sr));
 
     if (match) {
+      skippedSheetDuplicatesCount++;
       const updated: Reservation = {
         ...match,
         applicantName: sr.applicantName || match.applicantName,
@@ -592,6 +705,7 @@ export async function twoWaySyncWithGoogleSheet(
       };
       mergedResMap.set(match.id, updated);
     } else {
+      uniqueFromSheetCount++;
       mergedResMap.set(sr.id, {
         ...sr,
         updatedAt: new Date().toISOString(),
@@ -599,7 +713,7 @@ export async function twoWaySyncWithGoogleSheet(
     }
   });
 
-  const mergedReservations = Array.from(mergedResMap.values());
+  const mergedReservations = deduplicateReservationList(Array.from(mergedResMap.values()));
 
   // 4. Merge rooms
   const mergedRoomsMap = new Map<string, Room>();
@@ -640,9 +754,77 @@ export async function twoWaySyncWithGoogleSheet(
     spreadsheetUrl,
     pulledReservationsCount: sheetRes.length,
     pulledRoomsCount: sheetRooms.length,
+    uniqueAppendedCount: uniqueFromSheetCount,
+    duplicatesSkippedCount: skippedSheetDuplicatesCount,
     mergedReservations,
     mergedRooms,
   };
+}
+
+/**
+ * Appends only unique reservations to the Google Sheet (never adds duplicates)
+ * As requested: "When append dont append duplicates only unique should be added"
+ */
+export async function appendUniqueReservationsToGoogleSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  incomingReservations: Reservation[],
+  currentRooms: Room[],
+  existingReservations: Reservation[] = []
+): Promise<{ success: boolean; appendedCount: number; duplicatesSkipped: number; finalReservations: Reservation[]; error?: string }> {
+  try {
+    // 1. Pull existing reservations directly from the sheet
+    const sheetRes = await fetchReservationsFromGoogleSheet(
+      accessToken,
+      spreadsheetId,
+      currentRooms,
+      existingReservations
+    );
+
+    // 2. Deduplicate incoming against existing
+    const baseList = sheetRes.length > 0 ? sheetRes : existingReservations;
+    const { uniqueToAppend, totalDuplicatesSkipped, finalReservations } = deduplicateForAppend(
+      baseList,
+      incomingReservations
+    );
+
+    if (uniqueToAppend.length === 0) {
+      return {
+        success: true,
+        appendedCount: 0,
+        duplicatesSkipped: totalDuplicatesSkipped,
+        finalReservations: baseList,
+      };
+    }
+
+    // 3. Sync full unique state to Google Sheet
+    const syncRes = await syncAllToGoogleSheet(
+      accessToken,
+      spreadsheetId,
+      finalReservations,
+      currentRooms
+    );
+
+    if (!syncRes.success) {
+      throw new Error(syncRes.error || 'Failed to update Google Sheet');
+    }
+
+    return {
+      success: true,
+      appendedCount: uniqueToAppend.length,
+      duplicatesSkipped: totalDuplicatesSkipped,
+      finalReservations,
+    };
+  } catch (err: any) {
+    console.error('Error appending unique to Google Sheet:', err);
+    return {
+      success: false,
+      appendedCount: 0,
+      duplicatesSkipped: 0,
+      finalReservations: existingReservations,
+      error: err.message || 'Failed to append unique records to Google Sheet',
+    };
+  }
 }
 
 /**
@@ -832,15 +1014,22 @@ export async function fetchReservationsFromGoogleSheet(
 
   // Locate the Zaereen Lodging & Room Allotment Grid tab
   let targetTab = sheets.find((s) => {
-    const title = (s.properties?.title || '').toLowerCase();
-    return (
-      title.includes('lodging') ||
-      title.includes('allotment') ||
-      title.includes('grid') ||
-      title.includes('zaereen') ||
-      title.includes('reservation')
-    );
+    const title = (s.properties?.title || '').trim().toLowerCase();
+    return title === ZAEREEN_GRID_TAB.toLowerCase() || title === 'zaereen_lodging_&_room_allotment_grid';
   })?.properties?.title;
+
+  if (!targetTab) {
+    targetTab = sheets.find((s) => {
+      const title = (s.properties?.title || '').toLowerCase();
+      return (
+        title.includes('lodging') ||
+        title.includes('allotment') ||
+        title.includes('grid') ||
+        title.includes('zaereen') ||
+        title.includes('reservation')
+      );
+    })?.properties?.title;
+  }
 
   if (!targetTab && sheets.length > 0) {
     targetTab = sheets[0]?.properties?.title;
@@ -1010,7 +1199,7 @@ export async function fetchReservationsFromGoogleSheet(
     });
   }
 
-  return parsedReservations;
+  return deduplicateReservationList(parsedReservations);
 }
 
 /**

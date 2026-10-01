@@ -62,6 +62,11 @@ import {
   fetchCategoriesFromGoogleSheetUrl
 } from './services/googleSheets';
 import { downloadSampleExcelTemplate } from './services/excelService';
+import { 
+  deduplicateForAppend, 
+  deduplicateReservationList, 
+  isDuplicateReservation 
+} from './utils/deduplication';
 
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
@@ -630,16 +635,31 @@ export default function App() {
     );
   };
 
-  // Import from Excel Sheet
+  // Import from Excel Sheet (User request: "When append dont append duplicates only unique should be added")
   const handleImportFromExcel = (
     imported: Reservation[],
     mode: 'replace' | 'append'
   ) => {
     let finalReservations: Reservation[];
+    let feedbackToast = '';
+
     if (mode === 'replace') {
-      finalReservations = imported;
+      finalReservations = deduplicateReservationList(imported);
+      feedbackToast = `Replaced all zaereen with ${finalReservations.length} records from Excel. Saved to backend.`;
     } else {
-      finalReservations = [...reservations, ...imported];
+      const { uniqueToAppend, totalDuplicatesSkipped, finalReservations: merged } = deduplicateForAppend(
+        reservations,
+        imported
+      );
+      finalReservations = merged;
+
+      if (uniqueToAppend.length === 0) {
+        feedbackToast = `All ${imported.length} zaereen in the sheet are already present. No duplicates were added!`;
+      } else if (totalDuplicatesSkipped > 0) {
+        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen (${totalDuplicatesSkipped} duplicate${totalDuplicatesSkipped > 1 ? 's' : ''} skipped). Saved to backend!`;
+      } else {
+        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen to database. Saved to backend!`;
+      }
     }
 
     // Auto-discover any new categories from the imported sheet
@@ -654,7 +674,7 @@ export default function App() {
     setReservations(finalReservations);
     saveReservations(finalReservations);
     saveBackendReservations(finalReservations);
-    showToast(`Successfully imported ${imported.length} zaereen from Excel! Saved to backend data store.`);
+    showToast(feedbackToast);
     triggerAutoSync(finalReservations, rooms);
     setActiveTab('reservations');
   };
@@ -786,6 +806,7 @@ export default function App() {
         onClose={() => setIsExcelUploadOpen(false)}
         onImportSuccess={handleImportFromExcel}
         existingCount={reservations.length}
+        existingReservations={reservations}
       />
 
       {/* Reception Daily Operational Slip Modal */}
@@ -831,8 +852,11 @@ export default function App() {
           showToast(`Imported ${newRooms.length} rooms from Google Sheet!`);
         }}
         onReservationsFetched={(newRes) => {
-          setReservations(newRes);
-          saveReservations(newRes);
+          const uniqueRes = deduplicateReservationList(newRes);
+          setReservations(uniqueRes);
+          saveReservations(uniqueRes);
+          saveBackendReservations(uniqueRes);
+          showToast(`Synchronized ${uniqueRes.length} unique zaereen from Google Sheet!`);
         }}
         onCategoriesFetched={(newCats) => {
           setCategories(newCats);

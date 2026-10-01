@@ -291,7 +291,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
         setFeedback({
           type: 'success',
-          message: `1-Click Sync complete! Successfully synchronized Reservations, 114 Rooms, and the Rooms Availability & Departure Timeline tab.`,
+          message: `1-Click Sync complete! Successfully synchronized Zaereen Lodging & Room Allotment Grid, 114 Rooms, and Timeline with zero duplicates.`,
         });
       } else {
         throw new Error(res.error);
@@ -449,7 +449,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   <span className="px-2 py-0.5 bg-[#124E39] text-[#EBD59E] rounded font-bold text-[10px] shadow-2xs">
-                    ★ 1. Zaereen_Lodging_&_Room_Allotment_Grid
+                    ★ 1. Zaereen Lodging & Room Allotment Grid
                   </span>
                   <span className="px-2 py-0.5 bg-[#124E39] text-[#EBD59E] rounded font-bold text-[10px] shadow-2xs">
                     ★ 2. Rooms_Availability_&_Timeline

@@ -24,7 +24,8 @@ import {
   Trash2,
   X,
   ArrowUpRight,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -92,19 +93,107 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Unallotted zaereen who need rooms
   const unallottedZaereen = reservations.filter((r) => !r.roomNumber || r.roomNumber.trim() === '');
 
+  // Search & filter state for Tour & Family Room Allotment Overview
+  const [tourSearchQuery, setTourSearchQuery] = useState<string>('');
+  const [tourArrivalDateFilter, setTourArrivalDateFilter] = useState<string>('');
+
+  // Rich summaries for each tour (Zaereen count, families count, arrival dates)
+  const tourSummaries = useMemo(() => {
+    const map = new Map<string, {
+      tourId: string;
+      totalZaereen: number;
+      familiesSet: Set<string>;
+      arrivalDatesSet: Set<string>;
+      earliestArrival: string;
+      latestArrival: string;
+    }>();
+
+    reservations.forEach((r) => {
+      const tid = (r.tourRefNo || '').trim();
+      if (!tid) return;
+
+      if (!map.has(tid)) {
+        map.set(tid, {
+          tourId: tid,
+          totalZaereen: 0,
+          familiesSet: new Set(),
+          arrivalDatesSet: new Set(),
+          earliestArrival: '',
+          latestArrival: '',
+        });
+      }
+
+      const item = map.get(tid)!;
+      item.totalZaereen += 1;
+      if (r.family) item.familiesSet.add(r.family.trim());
+      const arr = (r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr || '').slice(0, 10);
+      if (arr && arr.length >= 8) {
+        item.arrivalDatesSet.add(arr);
+        if (!item.earliestArrival || arr < item.earliestArrival) {
+          item.earliestArrival = arr;
+        }
+        if (!item.latestArrival || arr > item.latestArrival) {
+          item.latestArrival = arr;
+        }
+      }
+    });
+
+    return Array.from(map.values())
+      .map((item) => ({
+        tourId: item.tourId,
+        totalZaereen: item.totalZaereen,
+        familiesCount: item.familiesSet.size,
+        arrivalDates: Array.from(item.arrivalDatesSet).sort(),
+        primaryArrivalDate: item.earliestArrival,
+      }))
+      .sort((a, b) => a.tourId.localeCompare(b.tourId));
+  }, [reservations]);
+
   // Distinct Tour IDs from all reservations
   const distinctTourIds = useMemo(() => {
-    return Array.from(new Set(reservations.map((r) => r.tourRefNo).filter(Boolean))).sort();
-  }, [reservations]);
+    return tourSummaries.map((t) => t.tourId);
+  }, [tourSummaries]);
+
+  // Filtered tours matching search by Tour ID AND/OR Arrival Date
+  const filteredTourSummaries = useMemo(() => {
+    return tourSummaries.filter((t) => {
+      // 1. Tour ID search query (case-insensitive substring match)
+      if (tourSearchQuery.trim()) {
+        const q = tourSearchQuery.trim().toLowerCase();
+        if (!t.tourId.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+
+      // 2. Arrival Date filter (checks if any Zaer in this tour arrives on or starts with the selected date)
+      if (tourArrivalDateFilter.trim()) {
+        const targetDate = tourArrivalDateFilter.trim();
+        const hasDate = t.arrivalDates.some((d) => d.startsWith(targetDate) || targetDate.startsWith(d));
+        if (!hasDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [tourSummaries, tourSearchQuery, tourArrivalDateFilter]);
 
   // Selected Tour ID for the Overview Family Allotment section
   const [dashTourId, setDashTourId] = useState<string>('');
 
   useEffect(() => {
-    if (!dashTourId && distinctTourIds.length > 0) {
-      setDashTourId(distinctTourIds[0]);
+    // Keep selected tour in sync with search and filter results
+    if (filteredTourSummaries.length > 0) {
+      const isCurrentInFiltered = filteredTourSummaries.some((t) => t.tourId === dashTourId);
+      if (!isCurrentInFiltered) {
+        setDashTourId(filteredTourSummaries[0].tourId);
+      }
+    } else if (tourSummaries.length > 0 && !tourSearchQuery && !tourArrivalDateFilter) {
+      if (!dashTourId) {
+        setDashTourId(tourSummaries[0].tourId);
+      }
     }
-  }, [distinctTourIds, dashTourId]);
+  }, [filteredTourSummaries, dashTourId, tourSummaries, tourSearchQuery, tourArrivalDateFilter]);
 
   // Inspect drawer allotment state
   const [inspectAllotMode, setInspectAllotMode] = useState<'family' | 'individual'>('family');
@@ -392,42 +481,145 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* for respective tour IDs"                                                  */}
       {/* ========================================================================= */}
       <div className="bg-white border border-[#E6DFD5] rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-stone-200">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded bg-[#124E39] text-[#EBD59E]">
-                <Users className="w-4 h-4" />
-              </span>
-              <h3 className="text-sm font-bold text-[#124E39] tracking-tight">
-                Tour & Family Room Allotment Overview
-              </h3>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-950 border border-emerald-300">
-                1-Click Family Allocation
-              </span>
+        <div className="space-y-3 pb-3 border-b border-stone-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded bg-[#124E39] text-[#EBD59E]">
+                  <Users className="w-4 h-4" />
+                </span>
+                <h3 className="text-sm font-bold text-[#124E39] tracking-tight">
+                  Tour & Family Room Allotment Overview
+                </h3>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-950 border border-emerald-300">
+                  1-Click Family Allocation
+                </span>
+              </div>
+              <p className="text-xs text-stone-500 mt-1">
+                Search by Tour ID or Arrival Date to review family clusters and allot rooms to whole families in one go.
+              </p>
             </div>
-            <p className="text-xs text-stone-500 mt-1">
-              Select a Tour ID to review its family clusters and allot rooms to whole families in one go. Each member can also be expanded and edited individually.
-            </p>
+
+            {/* Tour count indicator & Reset button */}
+            {tourSummaries.length > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-stone-600 font-semibold">
+                  {filteredTourSummaries.length} of {tourSummaries.length} Tours
+                </span>
+                {(tourSearchQuery || tourArrivalDateFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTourSearchQuery('');
+                      setTourArrivalDateFilter('');
+                    }}
+                    className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    title="Reset search and date filters"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Reset Search</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Tour ID Picker for Dashboard */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-stone-700">Tour ID:</span>
-            <select
-              value={currentTourId}
-              onChange={(e) => setDashTourId(e.target.value)}
-              className="bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-[#124E39] focus:outline-none cursor-pointer shadow-2xs"
-            >
-              {distinctTourIds.map((tid) => {
-                const count = reservations.filter((r) => r.tourRefNo === tid).length;
+          {/* Search Controls: Tour ID Search, Arrival Date Filter, Tour Dropdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 pt-1">
+            {/* 1. Search by Tour ID */}
+            <div className="lg:col-span-4 relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search Tour ID (e.g. 101, T-2...)"
+                value={tourSearchQuery}
+                onChange={(e) => setTourSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl text-xs font-mono font-bold text-[#124E39] placeholder:text-stone-400 placeholder:font-sans focus:outline-none focus:ring-1 focus:ring-[#124E39] shadow-2xs"
+              />
+              {tourSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTourSearchQuery('')}
+                  className="absolute right-2 text-stone-400 hover:text-stone-700 p-0.5 cursor-pointer"
+                  title="Clear Tour ID search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* 2. Filter by Arrival Date */}
+            <div className="lg:col-span-3 flex items-center gap-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-[#124E39] shrink-0" />
+              <span className="text-[11px] font-bold text-stone-600 shrink-0">Arrival:</span>
+              <input
+                type="date"
+                value={tourArrivalDateFilter}
+                onChange={(e) => setTourArrivalDateFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full"
+                title="Filter tours arriving on date"
+              />
+              {tourArrivalDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTourArrivalDateFilter('')}
+                  className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
+                  title="Clear arrival date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* 3. Tour Selection Dropdown */}
+            <div className="lg:col-span-5 flex items-center gap-2">
+              <span className="text-xs font-bold text-stone-700 shrink-0 hidden lg:inline">Tour:</span>
+              <select
+                value={currentTourId}
+                onChange={(e) => setDashTourId(e.target.value)}
+                className="w-full bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39] cursor-pointer shadow-2xs truncate"
+              >
+                {filteredTourSummaries.length > 0 ? (
+                  filteredTourSummaries.map((t) => (
+                    <option key={t.tourId} value={t.tourId}>
+                      {t.tourId} {t.primaryArrivalDate ? `• Arr: ${t.primaryArrivalDate}` : ''} ({t.totalZaereen} Zaereen{t.familiesCount > 0 ? `, ${t.familiesCount} Fam` : ''})
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No tours found matching search</option>
+                )}
+              </select>
+            </div>
+          </div>
+
+          {/* Quick matching tour pills if filtered with multiple matches */}
+          {filteredTourSummaries.length > 1 && filteredTourSummaries.length <= 8 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
+              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider shrink-0">Matching Tours:</span>
+              {filteredTourSummaries.map((t) => {
+                const isSelected = t.tourId === currentTourId;
                 return (
-                  <option key={tid} value={tid}>
-                    {tid} ({count} Zaereen)
-                  </option>
+                  <button
+                    key={t.tourId}
+                    type="button"
+                    onClick={() => setDashTourId(t.tourId)}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-mono font-bold transition shrink-0 cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#124E39] text-[#EBD59E] shadow-2xs'
+                        : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200'
+                    }`}
+                  >
+                    <span>{t.tourId}</span>
+                    {t.primaryArrivalDate && (
+                      <span className="text-[10px] font-sans font-normal opacity-80 ml-1">
+                        ({t.primaryArrivalDate.slice(5)})
+                      </span>
+                    )}
+                  </button>
                 );
               })}
-            </select>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Families list for the selected Tour ID */}
@@ -657,8 +849,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
             })}
           </div>
         ) : (
-          <div className="py-8 text-center text-stone-400 text-xs">
-            No reservations found for the selected Tour ID. Please upload an Excel sheet or select another tour.
+          <div className="py-10 text-center space-y-3">
+            <div className="text-stone-500 font-semibold text-xs">
+              {filteredTourSummaries.length === 0
+                ? `No tours found matching ${tourSearchQuery ? `Tour ID "${tourSearchQuery}"` : ''}${tourSearchQuery && tourArrivalDateFilter ? ' and ' : ''}${tourArrivalDateFilter ? `Arrival Date "${tourArrivalDateFilter}"` : ''}.`
+                : `No reservations found for the selected Tour ID ${currentTourId || ''}.`}
+            </div>
+            {(tourSearchQuery || tourArrivalDateFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTourSearchQuery('');
+                  setTourArrivalDateFilter('');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs shadow-2xs hover:bg-[#0E3C2C] transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reset Tour Search & Arrival Date</span>
+              </button>
+            )}
           </div>
         )}
       </div>
