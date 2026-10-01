@@ -25,7 +25,8 @@ import {
   X,
   ArrowUpRight,
   RefreshCw,
-  Search
+  Search,
+  Plus
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -38,6 +39,7 @@ interface DashboardProps {
   onNavigateTab: (tab: 'dashboard' | 'reservations' | 'upgrades' | 'rooms') => void;
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip: () => void;
+  onOpenAddZaer?: () => void;
   onDownloadTemplate: () => void;
   onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
@@ -58,6 +60,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateTab,
   onOpenUploadExcel,
   onOpenReceptionSlip,
+  onOpenAddZaer,
   onDownloadTemplate,
   onAllotRoom,
   onBatchAllotFamily,
@@ -291,6 +294,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenAddZaer && (
+            <button
+              onClick={onOpenAddZaer}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition cursor-pointer"
+              title="Manually add all details of a Zair with duplicate check"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Zair</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenUploadExcel}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-sm transition"

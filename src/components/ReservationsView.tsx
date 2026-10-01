@@ -49,6 +49,7 @@ interface ReservationsViewProps {
   onDownloadTemplate: () => void;
   onOpenAccountsSlip: (reservation: Reservation) => void;
   onOpenReceptionSlip: () => void;
+  onOpenAddZaer?: () => void;
   onOpenPdfModal?: () => void;
   onOpenCategoriesModal?: () => void;
   onNavigateToShifts?: () => void;
@@ -69,6 +70,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onDownloadTemplate,
   onOpenAccountsSlip,
   onOpenReceptionSlip,
+  onOpenAddZaer,
   onOpenPdfModal,
   onOpenCategoriesModal,
   onNavigateToShifts,
@@ -561,13 +563,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <span>Reception Slip</span>
           </button>
 
-          {/* Add Row Button */}
+          {/* Add Zair Button */}
           <button
-            onClick={handleAddNewRow}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition"
+            onClick={onOpenAddZaer || handleAddNewRow}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition cursor-pointer"
+            title="Manually add all details of a Zair with duplicate check"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Zaer</span>
+            <span>Add Zair</span>
           </button>
         </div>
       </div>

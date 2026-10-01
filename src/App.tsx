@@ -81,6 +81,7 @@ import { GoogleSheetCategoriesModal } from './components/GoogleSheetCategoriesMo
 import { PdfExportModal } from './components/PdfExportModal';
 import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
+import { AddZaerModal } from './components/AddZaerModal';
 import { 
   checkBackendHealth,
   fetchBackendReservations,
@@ -128,6 +129,7 @@ export default function App() {
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isAddZaerOpen, setIsAddZaerOpen] = useState(false);
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -451,14 +453,23 @@ export default function App() {
     }
   };
 
-  // Add Reservation
+  // Add Reservation (ensures unique zaereen only)
   const handleAddReservation = (newReservation: Reservation) => {
+    const existing = reservations.find((r) => isDuplicateReservation(r, newReservation));
+    if (existing) {
+      showToast(
+        `Zair already in list: ${existing.applicantName} (${existing.itsId ? `ITS ${existing.itsId}` : existing.tourRefNo})`,
+        'error'
+      );
+      return false;
+    }
     const updated = [newReservation, ...reservations];
     setReservations(updated);
     saveReservations(updated);
     upsertBackendReservation(newReservation);
-    showToast(`Added zaer record for ${newReservation.applicantName}`);
+    showToast(`Added Zair record for ${newReservation.applicantName}`);
     triggerAutoSync(updated, rooms);
+    return true;
   };
 
   // Update Reservation
@@ -738,6 +749,7 @@ export default function App() {
             onNavigateTab={setActiveTab}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
+            onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
             onAllotRoom={handleAllotRoom}
             onBatchAllotFamily={handleBatchAllotFamily}
@@ -771,6 +783,7 @@ export default function App() {
             onDownloadTemplate={downloadSampleExcelTemplate}
             onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
             onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
+            onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
             onOpenCategoriesModal={() => setIsCategoriesModalOpen(true)}
             onNavigateToShifts={() => setActiveTab('upgrades')}
@@ -807,6 +820,16 @@ export default function App() {
         onImportSuccess={handleImportFromExcel}
         existingCount={reservations.length}
         existingReservations={reservations}
+      />
+
+      {/* Add Zair Manual Entry Modal */}
+      <AddZaerModal
+        isOpen={isAddZaerOpen}
+        onClose={() => setIsAddZaerOpen(false)}
+        onAddZaer={handleAddReservation}
+        existingReservations={reservations}
+        rooms={rooms}
+        categories={categories}
       />
 
       {/* Reception Daily Operational Slip Modal */}

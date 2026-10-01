@@ -289,6 +289,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       theme: 'grid',
       styles: { fontSize: 9, cellPadding: 6, textColor: [30, 30, 30] },
       headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+      columnStyles: {
+        0: { fontStyle: 'bold', fontSize: 12, cellWidth: 85, halign: 'center' },
+      },
       bodyStyles: { textColor: [30, 30, 30] },
       didDrawPage: (data) => {
         currentY = data.cursor?.y || currentY;
@@ -644,15 +647,21 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           >
                             {/* 1. Room & Hotel */}
                             <td className="py-3 px-3 align-top">
-                              <div className="font-serif font-extrabold text-base text-[#124E39]">
-                                Room {item.room.roomNumber}
-                              </div>
-                              <div className="text-[11px] text-stone-700 font-bold mt-0.5">
-                                {item.room.building} Hotel • {item.room.floorLabel || `Floor ${item.room.floor}`}
+                              <div className="bg-[#124E39]/10 border-2 border-[#124E39]/30 rounded-xl p-2 text-center shadow-xs">
+                                <div className="text-[10px] uppercase font-bold tracking-wider text-stone-600">Room</div>
+                                <div className="font-mono font-black text-3xl sm:text-4xl text-[#124E39] leading-tight tracking-tight my-0.5">
+                                  {item.room.roomNumber}
+                                </div>
+                                <div className="text-xs font-black text-stone-900">
+                                  {item.room.building} Hotel
+                                </div>
+                                <div className="text-[10px] text-stone-600 font-semibold">
+                                  {item.room.floorLabel || `Floor ${item.room.floor}`}
+                                </div>
                               </div>
                               {/* Tour ID and Family quick label if present */}
                               {(item.arrs[0] || item.deps[0]) && (
-                                <div className="mt-2 text-[10px] text-stone-800 space-y-0.5 bg-stone-100 p-1.5 rounded border border-stone-200">
+                                <div className="mt-2 text-[10px] text-stone-800 space-y-0.5 bg-stone-100 p-1.5 rounded-lg border border-stone-200">
                                   <div>Tour: <span className="font-mono font-bold text-stone-900">{item.arrs[0]?.tourRefNo || item.deps[0]?.tourRefNo || '—'}</span></div>
                                   <div>Family: <span className="font-mono font-bold text-stone-900">#{item.arrs[0]?.family || item.deps[0]?.family || '—'}</span></div>
                                 </div>
@@ -835,8 +844,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           {saifeeArrivals.length > 0 ? (
                             saifeeArrivals.map((r, i) => (
                               <tr key={i} className="hover:bg-stone-50">
-                                <td className="py-2 px-3 font-bold text-[#124E39]">
-                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold">Unallotted</span>}
+                                <td className="py-2.5 px-3 font-mono font-black text-sm sm:text-base text-[#124E39]">
+                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
                                 </td>
                                 <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
                                 <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
@@ -891,7 +900,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           {saifeeDepartures.length > 0 ? (
                             saifeeDepartures.map((r, i) => (
                               <tr key={i} className="hover:bg-stone-50">
-                                <td className="py-2 px-3 font-bold text-stone-900">
+                                <td className="py-2.5 px-3 font-mono font-black text-sm sm:text-base text-stone-900">
                                   {r.roomNumber ? `Room ${r.roomNumber}` : '—'}
                                 </td>
                                 <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
@@ -954,8 +963,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           {burhaniArrivals.length > 0 ? (
                             burhaniArrivals.map((r, i) => (
                               <tr key={i} className="hover:bg-stone-50">
-                                <td className="py-2 px-3 font-bold text-[#124E39]">
-                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold">Unallotted</span>}
+                                <td className="py-2.5 px-3 font-mono font-black text-sm sm:text-base text-[#124E39]">
+                                  {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
                                 </td>
                                 <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
                                 <td className="py-2 px-3 font-bold text-stone-900">{r.applicantName}</td>
@@ -1010,7 +1019,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           {burhaniDepartures.length > 0 ? (
                             burhaniDepartures.map((r, i) => (
                               <tr key={i} className="hover:bg-stone-50">
-                                <td className="py-2 px-3 font-bold text-stone-900">
+                                <td className="py-2.5 px-3 font-mono font-black text-sm sm:text-base text-stone-900">
                                   {r.roomNumber ? `Room ${r.roomNumber}` : '—'}
                                 </td>
                                 <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.family}</td>
