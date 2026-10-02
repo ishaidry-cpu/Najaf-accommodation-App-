@@ -402,5 +402,51 @@ export function generateAdministrativePdf(
   }
 
   const fileName = `Zaereen_${options.reportType}_${new Date().toISOString().slice(0, 10)}.pdf`;
-  doc.save(fileName);
+  saveOrDownloadPdf(doc, fileName);
+}
+
+export interface PdfDownloadResult {
+  fileName: string;
+  blobUrl: string;
+  success: boolean;
+}
+
+export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResult {
+  try {
+    const blob = doc.output('blob');
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Primary: DOM download link
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      try {
+        document.body.removeChild(link);
+      } catch (e) {}
+    }, 2000);
+
+    // Secondary doc.save fallback
+    try {
+      doc.save(fileName);
+    } catch (e) {
+      // Ignore if doc.save restricted in iframe
+    }
+
+    return { fileName, blobUrl, success: true };
+  } catch (err) {
+    console.error('saveOrDownloadPdf error:', err);
+    try {
+      doc.save(fileName);
+      return { fileName, blobUrl: '', success: true };
+    } catch (e2) {
+      console.error('doc.save also failed:', e2);
+      return { fileName, blobUrl: '', success: false };
+    }
+  }
 }

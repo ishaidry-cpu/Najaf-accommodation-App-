@@ -885,13 +885,15 @@ export default function App() {
       />
 
       {/* Reception Daily Operational Slip Modal */}
-      <ReceptionDailySlipModal
-        isOpen={isReceptionSlipOpen}
-        onClose={() => setIsReceptionSlipOpen(false)}
-        reservations={reservations}
-        rooms={rooms}
-        onUpdateReservation={handleUpdateReservation}
-      />
+      {isReceptionSlipOpen && (
+        <ReceptionDailySlipModal
+          isOpen={isReceptionSlipOpen}
+          onClose={() => setIsReceptionSlipOpen(false)}
+          reservations={reservations}
+          rooms={rooms}
+          onUpdateReservation={handleUpdateReservation}
+        />
+      )}
 
       {/* Category B to A Accounts Request Slip Modal */}
       <AccountsRequestSlipModal

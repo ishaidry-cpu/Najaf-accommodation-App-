@@ -182,11 +182,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Reception Daily Slip Button */}
             <button
               onClick={onOpenReceptionSlip}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-[#124E39]/40 shadow-xs transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-[#124E39]/40 shadow-xs transition cursor-pointer"
               title="Print Reception Manager Daily Operational & Room Turnover Slip"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">Reception Slip</span>
+              <span className="hidden sm:inline">Reception Slip</span>
+              <span className="sm:hidden">Slip</span>
+            </button>
+
+            {/* Administrative Export PDF Button */}
+            <button
+              onClick={onOpenPdfModal}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 shadow-xs transition cursor-pointer"
+              title="Export Administrative PDF Reports (Manifest, Room Inventory, Category Upgrades)"
+            >
+              <FileText className="w-3.5 h-3.5 text-stone-600" />
+              <span className="hidden xl:inline">Export PDF</span>
             </button>
 
             {/* Google Sheets Access & 1-Click Sync (User request: "once sync button & i can access the google") */}
@@ -270,6 +281,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           className={`px-2 py-1 rounded ${activeTab === 'rooms' ? 'bg-[#124E39] text-white' : 'text-stone-700'}`}
         >
           Rooms
+        </button>
+        <button
+          onClick={onOpenReceptionSlip}
+          className="px-2 py-1 rounded text-[#124E39] bg-emerald-50 border border-emerald-200 flex items-center gap-1 cursor-pointer font-bold"
+        >
+          <Printer className="w-3 h-3" />
+          <span>Slip</span>
         </button>
       </div>
     </header>

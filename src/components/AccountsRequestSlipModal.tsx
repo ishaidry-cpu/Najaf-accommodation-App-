@@ -17,6 +17,7 @@ import {
 import jsPDF from 'jspdf';
 import { Reservation, MoneyGivenStatus } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
+import { saveOrDownloadPdf } from '../services/pdfExport';
 
 interface AccountsRequestSlipModalProps {
   reservation: Reservation | null;
@@ -156,7 +157,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     doc.text('_____________________________', pageWidth - 160, sigY);
     doc.text('Received by: Accounts Cashier', pageWidth - 160, sigY + 12);
 
-    doc.save(`Faiz_Husaini_Accounts_Slip_${reservation.family || 'FAM'}_${slipNo}.pdf`);
+    saveOrDownloadPdf(doc, `Faiz_Husaini_Accounts_Slip_${reservation.family || 'FAM'}_${slipNo}.pdf`);
   };
 
   return (
