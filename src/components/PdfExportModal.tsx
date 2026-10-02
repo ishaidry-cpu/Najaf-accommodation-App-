@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FileText, 
   Download, 
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Reservation, Room } from '../types';
 import { generateAdministrativePdf, PdfExportOptions } from '../services/pdfExport';
+import { normalizeDate } from '../services/excelService';
 
 interface PdfExportModalProps {
   isOpen: boolean;
@@ -31,11 +32,26 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   const [reportType, setReportType] = useState<PdfExportOptions['reportType']>('all_reservations');
   const [tourIdFilter, setTourIdFilter] = useState('ALL');
   const [buildingFilter, setBuildingFilter] = useState('ALL');
+  const [arrivalDateFilter, setArrivalDateFilter] = useState('ALL');
   const [includeSignatures, setIncludeSignatures] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const uniqueTourIds = Array.from(new Set(reservations.map((r) => r.tourId)));
+  const uniqueTourIds = Array.from(new Set(reservations.map((r) => r.tourId || r.tourRefNo).filter(Boolean)));
   const uniqueBuildings = Array.from(new Set(rooms.map((r) => r.building)));
+
+  // Unique arrival dates with count of arriving guests
+  const uniqueArrivalDates = useMemo(() => {
+    const datesMap = new Map<string, number>();
+    reservations.forEach((r) => {
+      const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+      if (arr) {
+        datesMap.set(arr, (datesMap.get(arr) || 0) + 1);
+      }
+    });
+    return Array.from(datesMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+  }, [reservations]);
 
   const handleExport = () => {
     setIsGenerating(true);
@@ -44,6 +60,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         reportType,
         tourIdFilter,
         buildingFilter,
+        arrivalDateFilter,
         includeSignatures,
       });
       setTimeout(() => {
@@ -191,41 +208,96 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           </div>
 
           {/* Filters Row */}
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
-            <div>
-              <label className="block text-slate-400 font-semibold mb-1">
-                Filter Tour ID
+          <div className="space-y-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
+            {/* Arrival Date Filter - Prompt: "I want the downloaded pdf of the date of arrival I have chosen" */}
+            <div className="bg-slate-900/90 p-2.5 rounded-lg border border-amber-500/40">
+              <label className="block text-amber-300 font-bold mb-1.5 flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Filter Date of Arrival (Chosen Arrival PDF)</span>
+                </span>
+                {arrivalDateFilter !== 'ALL' && (
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold border border-amber-500/40">
+                    Selected: {arrivalDateFilter}
+                  </span>
+                )}
               </label>
-              <select
-                value={tourIdFilter}
-                onChange={(e) => setTourIdFilter(e.target.value)}
-                className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none"
-              >
-                <option value="ALL">All Tours</option>
-                {uniqueTourIds.map((tid) => (
-                  <option key={tid} value={tid}>
-                    {tid}
-                  </option>
-                ))}
-              </select>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={arrivalDateFilter}
+                  onChange={(e) => setArrivalDateFilter(e.target.value)}
+                  className="w-full bg-slate-950 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                >
+                  <option value="ALL">All Arrival Dates (Entire Manifest)</option>
+                  {uniqueArrivalDates.map(({ date, count }) => (
+                    <option key={date} value={date}>
+                      {date} — {count} Zaereen Arriving
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={arrivalDateFilter === 'ALL' ? '' : arrivalDateFilter}
+                    onChange={(e) => setArrivalDateFilter(e.target.value || 'ALL')}
+                    className="w-full bg-slate-950 text-white px-2 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                    title="Or choose custom date of arrival"
+                  />
+                  {arrivalDateFilter !== 'ALL' && (
+                    <button
+                      type="button"
+                      onClick={() => setArrivalDateFilter('ALL')}
+                      className="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold whitespace-nowrap cursor-pointer"
+                      title="Reset to all arrival dates"
+                    >
+                      All
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Select an arrival date above to download the PDF manifest specifically for all Zaereen arriving on that chosen date.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-slate-400 font-semibold mb-1">
-                Filter Building
-              </label>
-              <select
-                value={buildingFilter}
-                onChange={(e) => setBuildingFilter(e.target.value)}
-                className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none"
-              >
-                <option value="ALL">All Buildings</option>
-                {uniqueBuildings.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  Filter Tour ID
+                </label>
+                <select
+                  value={tourIdFilter}
+                  onChange={(e) => setTourIdFilter(e.target.value)}
+                  className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none"
+                >
+                  <option value="ALL">All Tours</option>
+                  {uniqueTourIds.map((tid) => (
+                    <option key={tid} value={tid}>
+                      {tid}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-semibold mb-1">
+                  Filter Building
+                </label>
+                <select
+                  value={buildingFilter}
+                  onChange={(e) => setBuildingFilter(e.target.value)}
+                  className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none"
+                >
+                  <option value="ALL">All Buildings</option>
+                  {uniqueBuildings.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -245,21 +317,39 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="pt-5 mt-5 border-t border-slate-800 flex items-center justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={isGenerating}
-            className="px-5 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-amber-900/30 disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            <span>{isGenerating ? 'Generating PDF...' : 'Download Administrative PDF'}</span>
-          </button>
+        <div className="pt-5 mt-5 border-t border-slate-800 flex items-center justify-between gap-3">
+          <div className="text-slate-400 text-[11px]">
+            {arrivalDateFilter !== 'ALL' ? (
+              <span className="text-amber-300 font-medium">
+                Generating for Arrival Date: <strong className="font-mono text-white">{arrivalDateFilter}</strong>
+              </span>
+            ) : (
+              <span>Full System Manifest</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={isGenerating}
+              className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 text-white rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-amber-200" />
+              <span>
+                {isGenerating
+                  ? 'Generating PDF...'
+                  : arrivalDateFilter !== 'ALL'
+                  ? `Download PDF (${arrivalDateFilter})`
+                  : 'Download Administrative PDF'}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

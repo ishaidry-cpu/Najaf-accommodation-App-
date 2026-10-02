@@ -1,11 +1,13 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Reservation, Room } from '../types';
+import { normalizeDate } from './excelService';
 
 export interface PdfExportOptions {
   reportType: 'all_reservations' | 'category_upgrades' | 'rooms_inventory' | 'tour_manifest';
   tourIdFilter?: string;
   buildingFilter?: string;
+  arrivalDateFilter?: string;
   includeSignatures?: boolean;
 }
 
@@ -33,10 +35,16 @@ export function generateAdministrativePdf(
     filteredReservations = filteredReservations.filter((r) => r.isUpgradedFromBToA);
   }
   if (options.tourIdFilter && options.tourIdFilter !== 'ALL') {
-    filteredReservations = filteredReservations.filter((r) => r.tourId === options.tourIdFilter);
+    filteredReservations = filteredReservations.filter((r) => r.tourId === options.tourIdFilter || r.tourRefNo === options.tourIdFilter);
   }
   if (options.buildingFilter && options.buildingFilter !== 'ALL') {
     filteredReservations = filteredReservations.filter((r) => r.building === options.buildingFilter);
+  }
+  if (options.arrivalDateFilter && options.arrivalDateFilter !== 'ALL') {
+    filteredReservations = filteredReservations.filter((r) => {
+      const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+      return arr === options.arrivalDateFilter;
+    });
   }
 
   // Header banner background
@@ -63,6 +71,9 @@ export function generateAdministrativePdf(
     subtitle = 'ROOM INVENTORY, AVAILABILITY STATUS & BLOCKED ROOMS AUDIT';
   } else if (options.reportType === 'tour_manifest') {
     subtitle = `TOUR ID MANIFEST: ${options.tourIdFilter || 'ALL TOURS'}`;
+  }
+  if (options.arrivalDateFilter && options.arrivalDateFilter !== 'ALL') {
+    subtitle += ` • ARRIVAL DATE: ${options.arrivalDateFilter} (${filteredReservations.length} ZAEREEN)`;
   }
   doc.text(subtitle, 40, 48);
 
@@ -401,7 +412,10 @@ export function generateAdministrativePdf(
     doc.text(`CONFIDENTIAL ADMINISTRATIVE RECORD`, pageWidth - 200, pageHeight - 12);
   }
 
-  const fileName = `Zaereen_${options.reportType}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const arrivalSuffix = options.arrivalDateFilter && options.arrivalDateFilter !== 'ALL'
+    ? `_Arrival_${options.arrivalDateFilter}`
+    : '';
+  const fileName = `Zaereen_${options.reportType}${arrivalSuffix}_${new Date().toISOString().slice(0, 10)}.pdf`;
   saveOrDownloadPdf(doc, fileName);
 }
 
@@ -413,32 +427,36 @@ export interface PdfDownloadResult {
 
 export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResult {
   try {
-    const blob = doc.output('blob');
-    const blobUrl = URL.createObjectURL(blob);
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const blob = doc.output('blob');
+      const blobUrl = URL.createObjectURL(blob);
 
-    // Primary: DOM download link
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = fileName;
-    link.rel = 'noopener';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
+      // Primary: DOM download link
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.rel = 'noopener';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
 
-    setTimeout(() => {
+      setTimeout(() => {
+        try {
+          document.body.removeChild(link);
+        } catch (e) {}
+      }, 2000);
+
+      // Secondary doc.save fallback
       try {
-        document.body.removeChild(link);
-      } catch (e) {}
-    }, 2000);
+        doc.save(fileName);
+      } catch (e) {
+        // Ignore if doc.save restricted in iframe
+      }
 
-    // Secondary doc.save fallback
-    try {
-      doc.save(fileName);
-    } catch (e) {
-      // Ignore if doc.save restricted in iframe
+      return { fileName, blobUrl, success: true };
+    } else {
+      return { fileName, blobUrl: '', success: true };
     }
-
-    return { fileName, blobUrl, success: true };
   } catch (err) {
     console.error('saveOrDownloadPdf error:', err);
     try {

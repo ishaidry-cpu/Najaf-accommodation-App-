@@ -36,6 +36,8 @@ import {
   isRoomBookedForDuration, 
   getVacantRoomsForDuration 
 } from '../services/storage';
+import { normalizeDate } from '../services/excelService';
+import { generateAdministrativePdf } from '../services/pdfExport';
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -91,6 +93,21 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [buildingFilter, setBuildingFilter] = useState('ALL');
   const [portalUploadFilter, setPortalUploadFilter] = useState('ALL');
+  const [arrivalDateFilter, setArrivalDateFilter] = useState('ALL');
+
+  // Distinct Arrival Dates for filtering and 1-click PDF download
+  const distinctArrivalDates = useMemo(() => {
+    const map = new Map<string, number>();
+    reservations.forEach((r) => {
+      const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+      if (arr) {
+        map.set(arr, (map.get(arr) || 0) + 1);
+      }
+    });
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+  }, [reservations]);
 
   // Batch Family Allotment Quick Bar state
   const [batchTourId, setBatchTourId] = useState<string>('');
@@ -190,6 +207,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         if (res.isUploadedToPortal !== isUp) return false;
       }
 
+      // Arrival Date Filter (Prompt: "I want the downloaded pdf of the date of arrival I have chosen")
+      if (arrivalDateFilter !== 'ALL') {
+        const arr = normalizeDate(res.arrivalDate || res.arrivalDateTime || res.rawArrivalStr);
+        if (arr !== arrivalDateFilter) return false;
+      }
+
       return true;
     });
 
@@ -276,6 +299,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     categoryFilter,
     buildingFilter,
     portalUploadFilter,
+    arrivalDateFilter,
     sortColumn,
     sortDirection,
   ]);
@@ -643,6 +667,45 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <option value="Uploaded">Uploaded ✓</option>
             <option value="Pending">Pending ✗</option>
           </select>
+
+          {/* Arrival Date Filter (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
+          <div className="flex items-center gap-1">
+            <span className="text-stone-500 font-semibold flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-[#124E39]" />
+              <span>Arrival:</span>
+            </span>
+            <select
+              value={arrivalDateFilter}
+              onChange={(e) => setArrivalDateFilter(e.target.value)}
+              className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+            >
+              <option value="ALL">All Arrival Dates</option>
+              {distinctArrivalDates.map(({ date, count }) => (
+                <option key={date} value={date}>
+                  {date} ({count} Zaereen)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 1-Click Download PDF for chosen arrival date */}
+          {arrivalDateFilter !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => {
+                generateAdministrativePdf(reservations, rooms, {
+                  reportType: 'all_reservations',
+                  arrivalDateFilter,
+                  includeSignatures: true,
+                });
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059] shadow-xs transition cursor-pointer"
+              title={`Download official PDF manifest for chosen arrival date ${arrivalDateFilter}`}
+            >
+              <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <span>Download PDF ({arrivalDateFilter})</span>
+            </button>
+          )}
         </div>
 
         {/* Bulk Portal Actions */}

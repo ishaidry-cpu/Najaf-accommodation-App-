@@ -863,6 +863,102 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     setPdfDownloadStatus(res);
   };
 
+  // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen")
+  const handleDownloadArrivalsPdf = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Top Header Banner
+    doc.setFillColor(18, 78, 57); // #124E39 deep green
+    doc.rect(0, 0, pageWidth, 55, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text('FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST & GUEST ALLOTMENT', pageWidth / 2, 24, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(235, 213, 158); // Gold #EBD59E
+    doc.text(
+      `OFFICIAL ARRIVAL DATE: ${selectedDate} • TOTAL ZAEREEN ARRIVING: ${arrivalsOnDate.length} • GROUPED BY TOUR ID & SORTED BY ARRIVAL TIME`,
+      pageWidth / 2,
+      42,
+      { align: 'center' }
+    );
+
+    let currentY = 70;
+
+    const arrivalRows: string[][] = [];
+    let counter = 1;
+    allArrivalsGroupedByTour.forEach((group) => {
+      group.reservations.forEach((r) => {
+        const paxInfo = getRoomPaxInfo(r);
+        const arrTime = getReservationArrivalTime(r, '11:00 AM');
+        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Needs Room]';
+        arrivalRows.push([
+          String(counter++),
+          `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
+          roomStr,
+          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
+          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+          `Time: ${arrTime}`,
+          `Dep: ${r.departureDate || '—'}`,
+          r.category || 'Mumineen',
+          r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
+          '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
+        ]);
+      });
+    });
+
+    safeAutoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Tour ID & Office', 'Room # & Hotel', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Payment / Cat', 'Reception Sign-off']],
+      body: arrivalRows.length > 0 ? arrivalRows : [[`No arrivals scheduled for arrival date ${selectedDate}`, '', '', '', '', '', '', '', '', '']],
+      margin: { left: 20, right: 20 },
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
+      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+      columnStyles: {
+        0: { cellWidth: 25, halign: 'center' },
+        1: { fontStyle: 'bold', fontSize: 8, cellWidth: 105 },
+        2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 80, halign: 'center' },
+        3: { fontSize: 8, cellWidth: 80 },
+        4: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
+        5: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
+        6: { fontSize: 8, cellWidth: 65, halign: 'center' },
+        7: { fontSize: 7.5, cellWidth: 60, halign: 'center' },
+        8: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
+        9: { fontSize: 7, cellWidth: 90 },
+      },
+      didDrawPage: (data: any) => {
+        currentY = data.cursor?.y || currentY;
+      },
+    });
+
+    currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
+    currentY += 15;
+    if (currentY + 60 > doc.internal.pageSize.getHeight()) {
+      doc.addPage();
+      currentY = 40;
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Reception In-Charge Sign-off: ___________________________  Arrival Date: ${selectedDate}`, 40, currentY + 25);
+    doc.text('Tour Coordinator Received: ___________________________', pageWidth - 280, currentY + 25);
+
+    const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}.pdf`;
+    const res = saveOrDownloadPdf(doc, fileName);
+    setPdfDownloadStatus(res);
+  };
+
   // Download Tour Roster PDF (Requirement 2)
   const handleDownloadRosterPdf = () => {
     const doc = new jsPDF({
@@ -1311,6 +1407,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span>Print Slip</span>
               </button>
 
+              {/* Dedicated Chosen Arrival Date PDF (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
+              <button
+                type="button"
+                onClick={handleDownloadArrivalsPdf}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059] shadow-sm transition cursor-pointer ring-2 ring-[#EBD59E]/40"
+                title={`Download official Arrivals Manifest PDF specifically for chosen arrival date: ${selectedDate}`}
+              >
+                <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>Arrivals PDF ({selectedDate})</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleDownloadPdf}
@@ -1483,6 +1590,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   );
                 })}
               </div>
+
+              {/* 1-Click Download PDF for chosen arrival date */}
+              <button
+                type="button"
+                onClick={handleDownloadArrivalsPdf}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer whitespace-nowrap"
+                title={`Download official PDF of all arrivals for ${selectedDate}`}
+              >
+                <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>Download PDF ({selectedDate})</span>
+              </button>
             </div>
 
             {/* Hotel Filter Tabs */}
@@ -1649,10 +1767,21 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               <span className="text-base font-extrabold text-purple-900">{activeTurnoversCount} Rooms</span>
               <span className="text-[10px] text-stone-500 block">Departing ➔ Arriving same day</span>
             </div>
-            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
-              <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrivals Today</span>
-              <span className="text-base font-extrabold text-emerald-800">{newArrivalsPrepCount} Rooms ({arrivalsOnDate.length} Zaereen)</span>
-              <span className="text-[10px] text-stone-500 block">Fresh check-ins to welcome</span>
+            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col justify-between">
+              <div>
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrivals Today</span>
+                <span className="text-base font-extrabold text-emerald-800">{newArrivalsPrepCount} Rooms ({arrivalsOnDate.length} Zaereen)</span>
+                <span className="text-[10px] text-stone-500 block">Fresh check-ins to welcome</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDownloadArrivalsPdf}
+                className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-[#124E39] hover:text-[#0E3C2C] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
+                title={`Download official PDF of arrivals for ${selectedDate}`}
+              >
+                <Download className="w-3 h-3 text-[#124E39]" />
+                <span>Arrivals PDF</span>
+              </button>
             </div>
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200">
               <span className="text-stone-500 text-[10px] uppercase font-bold block">Checkouts / Freeing Up</span>
@@ -2317,14 +2446,25 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       <div className="space-y-5">
                         {/* All Arrivals */}
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between bg-emerald-900 text-white px-3.5 py-2 rounded-xl shadow-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-900 text-white px-3.5 py-2 rounded-xl shadow-xs">
                             <div className="flex items-center gap-2 font-bold text-sm">
                               <LogIn className="w-4 h-4 text-emerald-300" />
                               <span>ALL SCHEDULED ARRIVALS ({arrivalsOnDate.length} Zaereen • {allArrivalsGroupedByTour.length} Tours)</span>
                             </div>
-                            <span className="text-xs text-emerald-200 font-medium">
-                              Date: {selectedDate} • Sorted by Arrival Time
-                            </span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={handleDownloadArrivalsPdf}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#EBD59E] hover:bg-[#dfc488] text-[#124E39] shadow-2xs transition cursor-pointer"
+                                title={`Download PDF specifically for all arrivals on ${selectedDate}`}
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Download Arrivals PDF ({selectedDate})</span>
+                              </button>
+                              <span className="text-xs text-emerald-200 font-medium">
+                                Sorted by Arrival Time
+                              </span>
+                            </div>
                           </div>
                           {renderArrivalsTable(allArrivalsGroupedByTour, arrivalsOnDate, 'All Hotels')}
                         </div>
