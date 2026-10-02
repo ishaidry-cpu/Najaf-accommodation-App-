@@ -50,6 +50,7 @@ interface ReservationsViewProps {
   onOpenAccountsSlip: (reservation: Reservation) => void;
   onOpenReceptionSlip: () => void;
   onOpenAddZaer?: () => void;
+  onOpenAddTourGroup?: () => void;
   onOpenPdfModal?: () => void;
   onOpenCategoriesModal?: () => void;
   onNavigateToShifts?: () => void;
@@ -71,6 +72,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onOpenAccountsSlip,
   onOpenReceptionSlip,
   onOpenAddZaer,
+  onOpenAddTourGroup,
   onOpenPdfModal,
   onOpenCategoriesModal,
   onNavigateToShifts,
@@ -567,11 +569,23 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <button
             onClick={onOpenAddZaer || handleAddNewRow}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition cursor-pointer"
-            title="Manually add all details of a Zair with duplicate check"
+            title="Manually add all details of a single Zair with duplicate check"
           >
             <Plus className="w-4 h-4" />
             <span>Add Zair</span>
           </button>
+
+          {/* Add Tour Group Button (Shared Tour ID, Shared Dates, Different Family IDs & Multiple Individuals) */}
+          {onOpenAddTourGroup && (
+            <button
+              onClick={onOpenAddTourGroup}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
+              title="Add a Tour ID with different family IDs and multiple individuals with same arrival and departure dates"
+            >
+              <Users className="w-4 h-4 text-[#EBD59E]" />
+              <span>Add Tour Group</span>
+            </button>
+          )}
         </div>
       </div>
 

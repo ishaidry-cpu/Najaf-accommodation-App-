@@ -95,6 +95,8 @@ export interface Reservation {
   groupLeadName: string;    // Group Lead Name (e.g. 'Husain Shaikh Asgar Arsiwala')
   arrivalDate: string;      // Arrival Date (YYYY-MM-DD or formatted)
   departureDate: string;    // Departure Date (YYYY-MM-DD or formatted)
+  arrivalTime?: string;     // Arrival Time (e.g. '11:00 AM')
+  departureTime?: string;   // Departure Time (e.g. '01:00 AM')
   rawArrivalStr?: string;   // Original raw arrival text (e.g. '01-10-2026 11:00 AM')
   rawDepartureStr?: string; // Original raw departure text (e.g. '06-10-2026 01:00 AM')
 

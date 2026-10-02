@@ -82,6 +82,7 @@ import { PdfExportModal } from './components/PdfExportModal';
 import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
 import { AddZaerModal } from './components/AddZaerModal';
+import { AddTourGroupModal } from './components/AddTourGroupModal';
 import { 
   checkBackendHealth,
   fetchBackendReservations,
@@ -130,6 +131,7 @@ export default function App() {
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isAddZaerOpen, setIsAddZaerOpen] = useState(false);
+  const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -472,6 +474,40 @@ export default function App() {
     return true;
   };
 
+  // Add Tour Batch (Multiple individuals sharing same Tour ID & dates, with distinct Family IDs)
+  const handleAddTourBatch = (newBatch: Reservation[]) => {
+    if (!newBatch || newBatch.length === 0) return false;
+    const { finalReservations, uniqueToAppend, totalDuplicatesSkipped } = deduplicateForAppend(
+      reservations,
+      newBatch
+    );
+
+    if (uniqueToAppend.length === 0) {
+      showToast('All entered individuals are duplicates of existing records.', 'error');
+      return false;
+    }
+
+    setReservations(finalReservations);
+    saveReservations(finalReservations);
+    saveBackendReservations(finalReservations);
+
+    const tourId = newBatch[0]?.tourRefNo || 'Tour Group';
+    const famCount = new Set(uniqueToAppend.map((r) => r.family.trim()).filter(Boolean)).size;
+
+    if (totalDuplicatesSkipped > 0) {
+      showToast(
+        `Added Tour ${tourId}: ${uniqueToAppend.length} zaereen across ${famCount} families (${totalDuplicatesSkipped} duplicates skipped).`,
+        'info'
+      );
+    } else {
+      showToast(
+        `Added Tour ${tourId}: ${uniqueToAppend.length} zaereen across ${famCount} families successfully!`
+      );
+    }
+    triggerAutoSync(finalReservations, rooms);
+    return true;
+  };
+
   // Update Reservation
   const handleUpdateReservation = (updatedReservation: Reservation) => {
     const updated = reservations.map((r) =>
@@ -750,6 +786,7 @@ export default function App() {
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
+            onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
             onAllotRoom={handleAllotRoom}
             onBatchAllotFamily={handleBatchAllotFamily}
@@ -784,6 +821,7 @@ export default function App() {
             onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
             onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
+            onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
             onOpenCategoriesModal={() => setIsCategoriesModalOpen(true)}
             onNavigateToShifts={() => setActiveTab('upgrades')}
@@ -830,6 +868,20 @@ export default function App() {
         existingReservations={reservations}
         rooms={rooms}
         categories={categories}
+        onSwitchToAddTourGroup={() => {
+          setIsAddZaerOpen(false);
+          setIsAddTourGroupOpen(true);
+        }}
+      />
+
+      {/* Add Tour Group (Shared Tour ID, Shared Dates, Different Family IDs & Multiple Individuals) */}
+      <AddTourGroupModal
+        isOpen={isAddTourGroupOpen}
+        onClose={() => setIsAddTourGroupOpen(false)}
+        onAddTourBatch={handleAddTourBatch}
+        existingReservations={reservations}
+        rooms={rooms}
+        categories={categories}
       />
 
       {/* Reception Daily Operational Slip Modal */}
@@ -838,6 +890,7 @@ export default function App() {
         onClose={() => setIsReceptionSlipOpen(false)}
         reservations={reservations}
         rooms={rooms}
+        onUpdateReservation={handleUpdateReservation}
       />
 
       {/* Category B to A Accounts Request Slip Modal */}

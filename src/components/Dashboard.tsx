@@ -40,6 +40,7 @@ interface DashboardProps {
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip: () => void;
   onOpenAddZaer?: () => void;
+  onOpenAddTourGroup?: () => void;
   onDownloadTemplate: () => void;
   onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
@@ -61,6 +62,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenUploadExcel,
   onOpenReceptionSlip,
   onOpenAddZaer,
+  onOpenAddTourGroup,
   onDownloadTemplate,
   onAllotRoom,
   onBatchAllotFamily,
@@ -305,6 +307,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </button>
           )}
 
+          {onOpenAddTourGroup && (
+            <button
+              onClick={onOpenAddTourGroup}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
+              title="Add a Tour ID with different family IDs and multiple individuals with same arrival and departure dates"
+            >
+              <Users className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <span>Add Tour Group</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenUploadExcel}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-sm transition"
@@ -515,27 +528,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Tour count indicator & Reset button */}
-            {tourSummaries.length > 0 && (
-              <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              {onOpenAddTourGroup && (
+                <button
+                  type="button"
+                  onClick={onOpenAddTourGroup}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
+                  title="Add a Tour ID with multiple individuals across different family IDs"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>+ Add Tour Group</span>
+                </button>
+              )}
+
+              {tourSummaries.length > 0 && (
                 <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-stone-600 font-semibold">
                   {filteredTourSummaries.length} of {tourSummaries.length} Tours
                 </span>
-                {(tourSearchQuery || tourArrivalDateFilter) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTourSearchQuery('');
-                      setTourArrivalDateFilter('');
-                    }}
-                    className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                    title="Reset search and date filters"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Reset Search</span>
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+              {(tourSearchQuery || tourArrivalDateFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTourSearchQuery('');
+                    setTourArrivalDateFilter('');
+                  }}
+                  className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  title="Reset search and date filters"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Reset Search</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Search Controls: Tour ID Search, Arrival Date Filter, Tour Dropdown */}

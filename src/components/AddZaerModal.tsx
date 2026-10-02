@@ -24,6 +24,7 @@ interface AddZaerModalProps {
   existingReservations: Reservation[];
   rooms: Room[];
   categories: string[];
+  onSwitchToAddTourGroup?: () => void;
 }
 
 export const AddZaerModal: React.FC<AddZaerModalProps> = ({
@@ -33,6 +34,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   existingReservations,
   rooms,
   categories,
+  onSwitchToAddTourGroup,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const defaultDepartureStr = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
@@ -263,6 +265,29 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Quick Switch to Tour Group Builder */}
+        {onSwitchToAddTourGroup && (
+          <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-emerald-950 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#124E39] shrink-0" />
+              <span>
+                Adding a full tour group? Add one Tour ID with <strong>different family IDs</strong> & multiple individuals sharing the same dates.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onSwitchToAddTourGroup();
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer shrink-0 text-xs"
+            >
+              <span>Add Tour Group Instead</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 py-4 space-y-5 pr-1">
