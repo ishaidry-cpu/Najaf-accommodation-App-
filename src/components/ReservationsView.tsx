@@ -688,23 +688,61 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </select>
           </div>
 
-          {/* 1-Click Download PDF for chosen arrival date */}
+          {/* 1-Click Download PDF for chosen arrival date with Hotel Bifurcation options */}
           {arrivalDateFilter !== 'ALL' && (
-            <button
-              type="button"
-              onClick={() => {
-                generateAdministrativePdf(reservations, rooms, {
-                  reportType: 'all_reservations',
-                  arrivalDateFilter,
-                  includeSignatures: true,
-                });
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059] shadow-xs transition cursor-pointer"
-              title={`Download official PDF manifest for chosen arrival date ${arrivalDateFilter}`}
-            >
-              <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-              <span>Download PDF ({arrivalDateFilter})</span>
-            </button>
+            <div className="flex items-center rounded-lg bg-[#124E39] p-0.5 border border-[#C5A059] shadow-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  generateAdministrativePdf(reservations, rooms, {
+                    reportType: 'all_reservations',
+                    arrivalDateFilter,
+                    buildingFilter: buildingFilter !== 'ALL' ? buildingFilter : 'ALL',
+                    includeSignatures: true,
+                  });
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer"
+                title={`Download official PDF for arrival date ${arrivalDateFilter} (${buildingFilter === 'ALL' ? 'Joined Bifurcated Both Hotels' : `${buildingFilter} Hotel`})`}
+              >
+                <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>
+                  {buildingFilter === 'ALL'
+                    ? `Download PDF (${arrivalDateFilter})`
+                    : `Download ${buildingFilter} PDF (${arrivalDateFilter})`}
+                </span>
+              </button>
+              <div className="h-3.5 w-px bg-[#C5A059]/40 my-auto" />
+              <button
+                type="button"
+                onClick={() => {
+                  generateAdministrativePdf(reservations, rooms, {
+                    reportType: 'all_reservations',
+                    arrivalDateFilter,
+                    buildingFilter: 'Saifee',
+                    includeSignatures: true,
+                  });
+                }}
+                className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded transition cursor-pointer"
+                title={`Download separate Saifee Hotel PDF for arrival date ${arrivalDateFilter}`}
+              >
+                Saifee
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  generateAdministrativePdf(reservations, rooms, {
+                    reportType: 'all_reservations',
+                    arrivalDateFilter,
+                    buildingFilter: 'Burhani',
+                    includeSignatures: true,
+                  });
+                }}
+                className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded transition cursor-pointer"
+                title={`Download separate Burhani Hotel PDF for arrival date ${arrivalDateFilter}`}
+              >
+                Burhani
+              </button>
+            </div>
           )}
         </div>
 

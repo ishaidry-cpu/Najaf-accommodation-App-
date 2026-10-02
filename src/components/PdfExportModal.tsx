@@ -282,21 +282,24 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">
-                  Filter Building
+                <label className="block text-slate-400 font-semibold mb-1 flex items-center justify-between">
+                  <span>Hotel / Building (Print Mode)</span>
+                  <span className="text-[10px] text-amber-400 font-normal">
+                    {buildingFilter === 'ALL' ? 'Joined & Bifurcated' : `${buildingFilter} Separate Print`}
+                  </span>
                 </label>
                 <select
                   value={buildingFilter}
                   onChange={(e) => setBuildingFilter(e.target.value)}
-                  className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none"
+                  className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none font-medium"
                 >
-                  <option value="ALL">All Buildings</option>
-                  {uniqueBuildings.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
+                  <option value="ALL">All Hotels (Joined & Bifurcated with Page Breaks)</option>
+                  <option value="Saifee">Saifee Hotel (Print Separately — 70 Rooms)</option>
+                  <option value="Burhani">Burhani Hotel (Print Separately — 44 Rooms)</option>
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Choose 'All Hotels' for a joined document bifurcated with clean page breaks, or select a hotel to print separately.
+                </p>
               </div>
             </div>
           </div>
@@ -308,7 +311,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               id="sigCheck"
               checked={includeSignatures}
               onChange={(e) => setIncludeSignatures(e.target.checked)}
-              className="w-4 h-4 text-amber-500 rounded border-slate-700"
+              className="w-4 h-4 text-amber-500 rounded border-slate-700 cursor-pointer"
             />
             <label htmlFor="sigCheck" className="text-slate-300 text-xs cursor-pointer">
               Include Official Administrative Signatures & Stamp block
@@ -317,36 +320,93 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="pt-5 mt-5 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div className="pt-5 mt-5 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-slate-400 text-[11px]">
             {arrivalDateFilter !== 'ALL' ? (
               <span className="text-amber-300 font-medium">
-                Generating for Arrival Date: <strong className="font-mono text-white">{arrivalDateFilter}</strong>
+                Arrival Date: <strong className="font-mono text-white">{arrivalDateFilter}</strong>
+                {' • '}
+                <span>{buildingFilter === 'ALL' ? 'Joined (Both Hotels Bifurcated)' : `${buildingFilter} Hotel (Separate)`}</span>
               </span>
             ) : (
-              <span>Full System Manifest</span>
+              <span>Full System Manifest ({buildingFilter === 'ALL' ? 'Both Hotels Bifurcated' : `${buildingFilter} Hotel`})</span>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition cursor-pointer"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition cursor-pointer text-xs"
             >
               Cancel
             </button>
+
+            {/* Quick Separate Hotel Buttons */}
+            <button
+              type="button"
+              disabled={isGenerating}
+              onClick={() => {
+                setIsGenerating(true);
+                setTimeout(() => {
+                  try {
+                    generateAdministrativePdf(reservations, rooms, {
+                      reportType,
+                      tourIdFilter,
+                      buildingFilter: 'Saifee',
+                      arrivalDateFilter,
+                      includeSignatures,
+                    });
+                  } finally {
+                    setIsGenerating(false);
+                    onClose();
+                  }
+                }, 100);
+              }}
+              className="px-3 py-2 bg-slate-800 hover:bg-emerald-950 text-emerald-300 border border-emerald-700/60 rounded-xl font-semibold text-xs transition cursor-pointer"
+              title="Download only Saifee Hotel records"
+            >
+              Saifee Only
+            </button>
+
+            <button
+              type="button"
+              disabled={isGenerating}
+              onClick={() => {
+                setIsGenerating(true);
+                setTimeout(() => {
+                  try {
+                    generateAdministrativePdf(reservations, rooms, {
+                      reportType,
+                      tourIdFilter,
+                      buildingFilter: 'Burhani',
+                      arrivalDateFilter,
+                      includeSignatures,
+                    });
+                  } finally {
+                    setIsGenerating(false);
+                    onClose();
+                  }
+                }, 100);
+              }}
+              className="px-3 py-2 bg-slate-800 hover:bg-emerald-950 text-emerald-300 border border-emerald-700/60 rounded-xl font-semibold text-xs transition cursor-pointer"
+              title="Download only Burhani Hotel records"
+            >
+              Burhani Only
+            </button>
+
+            {/* Main Export Button */}
             <button
               onClick={handleExport}
               disabled={isGenerating}
-              className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 text-white rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 text-white rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer text-xs"
             >
               <Download className="w-4 h-4 text-amber-200" />
               <span>
                 {isGenerating
                   ? 'Generating PDF...'
-                  : arrivalDateFilter !== 'ALL'
-                  ? `Download PDF (${arrivalDateFilter})`
-                  : 'Download Administrative PDF'}
+                  : buildingFilter === 'ALL'
+                  ? `Download Joined PDF (${arrivalDateFilter !== 'ALL' ? arrivalDateFilter : 'All Dates'})`
+                  : `Download ${buildingFilter} PDF (${arrivalDateFilter !== 'ALL' ? arrivalDateFilter : 'All Dates'})`}
               </span>
             </button>
           </div>

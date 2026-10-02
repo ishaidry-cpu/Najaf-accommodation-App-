@@ -288,8 +288,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     return arr && dep && arr < selectedDate && dep > selectedDate;
   });
 
-  // Unallotted arrivals today (need immediate room assignment)
-  const unallottedArrivals = arrivalsOnDate.filter((r) => !r.roomNumber || r.roomNumber.trim() === '');
+  // Unallotted arrivals & departures today (need immediate room assignment)
+  const unallottedArrivals = arrivalsOnDate.filter(
+    (r) => !r.building || (!r.building.toLowerCase().includes('saifee') && !r.building.toLowerCase().includes('burhani')) || !r.roomNumber || r.roomNumber.trim() === ''
+  );
+  const unallottedDepartures = departuresOnDate.filter(
+    (r) => !r.building || (!r.building.toLowerCase().includes('saifee') && !r.building.toLowerCase().includes('burhani')) || !r.roomNumber || r.roomNumber.trim() === ''
+  );
 
   // Bifurcated by Hotel: Saifee & Burhani
   const saifeeArrivals = arrivalsOnDate.filter((r) => (r.building || '').toLowerCase().includes('saifee'));
@@ -482,6 +487,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const saifeeDeparturesGroupedByTour = useMemo(() => groupAndSortByTour(saifeeDepartures, false), [saifeeDepartures]);
   const burhaniArrivalsGroupedByTour = useMemo(() => groupAndSortByTour(burhaniArrivals, true), [burhaniArrivals]);
   const burhaniDeparturesGroupedByTour = useMemo(() => groupAndSortByTour(burhaniDepartures, false), [burhaniDepartures]);
+  const unallottedArrivalsGroupedByTour = useMemo(() => groupAndSortByTour(unallottedArrivals, true), [unallottedArrivals]);
+  const unallottedDeparturesGroupedByTour = useMemo(() => groupAndSortByTour(unallottedDepartures, false), [unallottedDepartures]);
 
   // Worker Room Operations Summary (Requirement 3):
   // Base is Room Number, followed by Departure/Arrival Time, grouped by Office Name and Tour ID in timing sequence.
@@ -753,7 +760,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     window.print();
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -761,90 +773,116 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Top Header Banner
-    doc.setFillColor(18, 78, 57); // #124E39 deep green
-    doc.rect(0, 0, pageWidth, 55, 'F');
+    const renderPrepSection = (hotelTitle: string, prepList: typeof filteredRoomPrep, startAtY: number) => {
+      doc.setFillColor(18, 78, 57);
+      doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text(hotelTitle, 30, startAtY + 16);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`Rooms in Section: ${prepList.length}`, pageWidth - 160, startAtY + 16);
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('FAIZ-E-HUSAINI — ZAEREEN ACCOMMODATION MANAGEMENT', pageWidth / 2, 25, { align: 'center' });
+      const prepRows = prepList.map((item) => {
+        const activeResInRoom = item.arrs.length > 0 ? item.arrs : (item.inHouse.length > 0 ? item.inHouse : item.deps);
+        const famPaxMap = new Map<string, number>();
+        activeResInRoom.forEach((r) => {
+          const fam = (r.family || 'Unassigned').trim();
+          famPaxMap.set(fam, (famPaxMap.get(fam) || 0) + 1);
+        });
+        const famPaxSummary = Array.from(famPaxMap.entries())
+          .map(([fam, count]) => `Fam #${fam} (${count} Pax)`)
+          .join('\n');
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(235, 213, 158); // Gold #EBD59E
-    doc.text(
-      `ROOM TURNOVER & PREPARATION RECEPTION SLIP • OPERATIONAL DATE: ${selectedDate}`,
-      pageWidth / 2,
-      43,
-      { align: 'center' }
-    );
+        const depText = item.deps.length > 0
+          ? item.deps.map((d) => {
+              const timeStr = getReservationDepartureTime(d, '12:00 PM');
+              const famPax = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
+              return `• ${d.applicantName} (ITS: ${d.itsId})\n  DEP: ${timeStr} | Fam #${d.family || '—'} (${famPax} Pax) | Tour: ${d.tourRefNo || '—'}`;
+            }).join('\n\n')
+          : '— None';
+
+        const arrText = item.arrs.length > 0
+          ? item.arrs.map((a) => {
+              const timeStr = getReservationArrivalTime(a, '11:00 AM');
+              const famPax = item.arrs.filter(x => (x.family || '').trim() === (a.family || '').trim()).length;
+              return `• ${a.applicantName} (ITS: ${a.itsId})\n  ARR: ${timeStr} | Fam #${a.family || '—'} (${famPax} Pax) | Tour: ${a.tourRefNo || '—'}`;
+            }).join('\n\n')
+          : '— None';
+
+        const roomCell = `Room ${item.room.roomNumber}\n${item.room.building} Hotel • Fl ${item.room.floor}\n\n[Total: ${activeResInRoom.length} Pax in Room]\n${famPaxSummary || 'No Zaereen'}`;
+
+        return [
+          roomCell,
+          depText,
+          arrText,
+          item.actionLabel,
+          '[ ] Cleaned\n[ ] Fresh Linens\n[ ] Toilet Sanitized\n[ ] Wajba/cards ready\n[ ] Key Cards Ready',
+        ];
+      });
+
+      safeAutoTable(doc, {
+        startY: startAtY + 28,
+        head: [['Room & Hotel (Pax & Family)', 'Departures (Check-outs & Times)', 'Arrivals (New Zaereen & Times)', 'Turnover Prep Action', 'Housekeeping Sign-off']],
+        body: prepRows.length > 0 ? prepRows : [['No rooms with turnover activity in this hotel section on selected date', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+        columnStyles: {
+          0: { fontStyle: 'bold', fontSize: 9, cellWidth: 110, halign: 'center' },
+          1: { fontSize: 7.5, cellWidth: 155 },
+          2: { fontSize: 7.5, cellWidth: 155 },
+          3: { fontSize: 8, cellWidth: 90 },
+          4: { fontSize: 7, cellWidth: 90 },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 30);
+    };
+
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+    };
 
     let currentY = 75;
 
-    // Room-by-room preparation matrix table for PDF
-    const prepRows = filteredRoomPrep.map((item) => {
-      // Calculate pax in this specific room along with family numbers
-      const activeResInRoom = item.arrs.length > 0 ? item.arrs : (item.inHouse.length > 0 ? item.inHouse : item.deps);
-      const famPaxMap = new Map<string, number>();
-      activeResInRoom.forEach((r) => {
-        const fam = (r.family || 'Unassigned').trim();
-        famPaxMap.set(fam, (famPaxMap.get(fam) || 0) + 1);
-      });
-      const famPaxSummary = Array.from(famPaxMap.entries())
-        .map(([fam, count]) => `Fam #${fam} (${count} Pax in Room)`)
-        .join('\n');
+    const saifeePrep = filteredRoomPrep.filter((p) => (p.room.building || '').toLowerCase().includes('saifee'));
+    const burhaniPrep = filteredRoomPrep.filter((p) => (p.room.building || '').toLowerCase().includes('burhani'));
 
-      const depText = item.deps.length > 0
-        ? item.deps.map((d) => {
-            const timeStr = getReservationDepartureTime(d, '12:00 PM');
-            const famPax = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
-            return `• ${d.applicantName} (ITS: ${d.itsId})\n  DEP TIME: ${timeStr}\n  Fam #${d.family || '—'} (${famPax} Pax in Room) | Tour: ${d.tourRefNo || '—'}`;
-          }).join('\n\n')
-        : '— None';
+    if (targetHotel === 'Saifee') {
+      renderHeader('FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) TURNOVER SLIP', `ROOM TURNOVER & PREPARATION RECEPTION SLIP • DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderPrepSection('SAIFEE HOTEL (70 ROOMS) — ROOM TURNOVER & PREPARATION MATRIX', saifeePrep, currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) TURNOVER SLIP', `ROOM TURNOVER & PREPARATION RECEPTION SLIP • DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderPrepSection('BURHANI HOTEL (44 ROOMS) — ROOM TURNOVER & PREPARATION MATRIX', burhaniPrep, currentY);
+    } else {
+      // ALL HOTELS: JOINED & BIFURCATED WITH PAGE BREAKS (Prompt: "pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+      renderHeader('FAIZ-E-HUSAINI — ROOM TURNOVER & PREPARATION RECEPTION SLIP (JOINED & BIFURCATED)', `OPERATIONAL DATE: ${selectedDate} • SAIFEE HOTEL (70 ROOMS) & BURHANI HOTEL (44 ROOMS)`);
+      renderPrepSection('PART 1: SAIFEE HOTEL (70 ROOMS) — ROOM TURNOVER & PREPARATION MATRIX', saifeePrep, currentY);
 
-      const arrText = item.arrs.length > 0
-        ? item.arrs.map((a) => {
-            const timeStr = getReservationArrivalTime(a, '11:00 AM');
-            const famPax = item.arrs.filter(x => (x.family || '').trim() === (a.family || '').trim()).length;
-            return `• ${a.applicantName} (ITS: ${a.itsId})\n  ARR TIME: ${timeStr}\n  Fam #${a.family || '—'} (${famPax} Pax in Room) | Tour: ${a.tourRefNo || '—'}`;
-          }).join('\n\n')
-        : '— None';
+      doc.addPage();
+      renderHeader('FAIZ-E-HUSAINI — ROOM TURNOVER & PREPARATION RECEPTION SLIP (PART 2: BURHANI HOTEL)', `OPERATIONAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS)`);
+      currentY = 75;
+      renderPrepSection('PART 2: BURHANI HOTEL (44 ROOMS) — ROOM TURNOVER & PREPARATION MATRIX', burhaniPrep, currentY);
+    }
 
-      const roomCell = `Room ${item.room.roomNumber}\n${item.room.building} Hotel • Fl ${item.room.floor}\n\n[Total: ${activeResInRoom.length} Pax in Room]\n${famPaxSummary || 'No Zaereen'}`;
-
-      return [
-        roomCell,
-        depText,
-        arrText,
-        item.actionLabel,
-        '[ ] Cleaned\n[ ] Fresh Linens\n[ ] Toilet Sanitized\n[ ] Wajba/cards ready\n[ ] Key Cards Ready',
-      ];
-    });
-
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['Room & Hotel (Pax & Family)', 'Departures (Check-outs & Times)', 'Arrivals (New Zaereen & Times)', 'Turnover Prep Action', 'Housekeeping Sign-off']],
-      body: prepRows.length > 0 ? prepRows : [['No rooms with turnover activity on selected date', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8.5, cellPadding: 5.5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 9.5, cellWidth: 105, halign: 'center' },
-      },
-      bodyStyles: { textColor: [30, 30, 30] },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
-
-    currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 30);
+    currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
     currentY += 15;
-
-    // Signatures
-    if (currentY + 60 > doc.internal.pageSize.getHeight()) {
+    if (currentY + 50 > pageHeight) {
       doc.addPage();
       currentY = 40;
     }
@@ -852,19 +890,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text('____________________________________', 60, currentY + 35);
-    doc.text('Prepared by: Accommodation Control Desk', 60, currentY + 48);
+    doc.text('____________________________________', 60, currentY + 30);
+    doc.text('Prepared by: Accommodation Control Desk', 60, currentY + 42);
+    doc.text('____________________________________', pageWidth - 260, currentY + 30);
+    doc.text('Received by: Housekeeping & Reception Duty Manager', pageWidth - 260, currentY + 42);
 
-    doc.text('____________________________________', pageWidth - 260, currentY + 35);
-    doc.text('Received by: Housekeeping & Reception Duty Manager', pageWidth - 260, currentY + 48);
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Room Turnover — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
+      doc.text('CONFIDENTIAL OPERATIONAL RECORD', pageWidth - 200, pageHeight - 12);
+    }
 
-    const fileName = `Faiz_Husaini_Room_Turnover_Prep_Slip_${selectedDate}.pdf`;
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
+    const fileName = `Faiz_Husaini_Room_Turnover_Prep_Slip_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
 
-  // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen")
-  const handleDownloadArrivalsPdf = () => {
+  // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+  const handleDownloadArrivalsPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -872,78 +924,140 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Top Header Banner
-    doc.setFillColor(18, 78, 57); // #124E39 deep green
-    doc.rect(0, 0, pageWidth, 55, 'F');
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+    };
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST & GUEST ALLOTMENT', pageWidth / 2, 24, { align: 'center' });
+    const renderArrivalsTable = (
+      hotelTitle: string,
+      tourGroups: typeof allArrivalsGroupedByTour,
+      arrivalsList: Reservation[],
+      startAtY: number,
+      bannerColor: [number, number, number] = [18, 78, 57]
+    ) => {
+      doc.setFillColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+      doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text(hotelTitle, 30, startAtY + 16);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`Total Arrivals in Section: ${arrivalsList.length} Zaereen • ${tourGroups.length} Tours`, pageWidth - 260, startAtY + 16);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(235, 213, 158); // Gold #EBD59E
-    doc.text(
-      `OFFICIAL ARRIVAL DATE: ${selectedDate} • TOTAL ZAEREEN ARRIVING: ${arrivalsOnDate.length} • GROUPED BY TOUR ID & SORTED BY ARRIVAL TIME`,
-      pageWidth / 2,
-      42,
-      { align: 'center' }
-    );
-
-    let currentY = 70;
-
-    const arrivalRows: string[][] = [];
-    let counter = 1;
-    allArrivalsGroupedByTour.forEach((group) => {
-      group.reservations.forEach((r) => {
-        const paxInfo = getRoomPaxInfo(r);
-        const arrTime = getReservationArrivalTime(r, '11:00 AM');
-        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Needs Room]';
-        arrivalRows.push([
-          String(counter++),
-          `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
-          roomStr,
-          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
-          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
-          `Time: ${arrTime}`,
-          `Dep: ${r.departureDate || '—'}`,
-          r.category || 'Mumineen',
-          r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
-          '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
-        ]);
+      const rows: string[][] = [];
+      let counter = 1;
+      tourGroups.forEach((group) => {
+        group.reservations.forEach((r) => {
+          const paxInfo = getRoomPaxInfo(r);
+          const arrTime = getReservationArrivalTime(r, '11:00 AM');
+          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Assign Rm]';
+          rows.push([
+            String(counter++),
+            `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
+            roomStr,
+            `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
+            `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+            `Time: ${arrTime}`,
+            `Dep: ${r.departureDate || '—'}`,
+            r.category || 'Mumineen',
+            r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
+            '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
+          ]);
+        });
       });
-    });
 
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['#', 'Tour ID & Office', 'Room # & Hotel', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Payment / Cat', 'Reception Sign-off']],
-      body: arrivalRows.length > 0 ? arrivalRows : [[`No arrivals scheduled for arrival date ${selectedDate}`, '', '', '', '', '', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      columnStyles: {
-        0: { cellWidth: 25, halign: 'center' },
-        1: { fontStyle: 'bold', fontSize: 8, cellWidth: 105 },
-        2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 80, halign: 'center' },
-        3: { fontSize: 8, cellWidth: 80 },
-        4: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
-        5: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
-        6: { fontSize: 8, cellWidth: 65, halign: 'center' },
-        7: { fontSize: 7.5, cellWidth: 60, halign: 'center' },
-        8: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
-        9: { fontSize: 7, cellWidth: 90 },
-      },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
+      safeAutoTable(doc, {
+        startY: startAtY + 28,
+        head: [['#', 'Tour ID & Office', 'Room # & Hotel', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Payment / Cat', 'Reception Sign-off']],
+        body: rows.length > 0 ? rows : [[`No arrivals scheduled for this section on ${selectedDate}`, '', '', '', '', '', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 25, halign: 'center' },
+          1: { fontStyle: 'bold', fontSize: 8, cellWidth: 105 },
+          2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 80, halign: 'center' },
+          3: { fontSize: 8, cellWidth: 80 },
+          4: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
+          5: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
+          6: { fontSize: 8, cellWidth: 65, halign: 'center' },
+          7: { fontSize: 7.5, cellWidth: 60, halign: 'center' },
+          8: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
+          9: { fontSize: 7, cellWidth: 90 },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 40);
+    };
+
+    let currentY = 75;
+
+    if (targetHotel === 'Saifee') {
+      renderHeader(
+        'FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) ARRIVALS MANIFEST',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • ${saifeeArrivals.length} ZAEREEN ARRIVING`
+      );
+      renderArrivalsTable('SAIFEE HOTEL (70 ROOMS) — SCHEDULED ARRIVALS & GUEST ALLOTMENT', saifeeArrivalsGroupedByTour, saifeeArrivals, currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader(
+        'FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) ARRIVALS MANIFEST',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • ${burhaniArrivals.length} ZAEREEN ARRIVING`
+      );
+      renderArrivalsTable('BURHANI HOTEL (44 ROOMS) — SCHEDULED ARRIVALS & GUEST ALLOTMENT', burhaniArrivalsGroupedByTour, burhaniArrivals, currentY);
+    } else {
+      // JOINED & BIFURCATED AS PER HOTELS (Prompt: "pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+      renderHeader(
+        'FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST (JOINED & BIFURCATED AS PER HOTELS)',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • TOTAL ZAEREEN: ${arrivalsOnDate.length} (SAIFEE: ${saifeeArrivals.length} | BURHANI: ${burhaniArrivals.length})`
+      );
+
+      // Part 1: Saifee Hotel
+      renderArrivalsTable('PART 1: SAIFEE HOTEL (70 ROOMS) — ARRIVALS MANIFEST & GUEST ALLOTMENT', saifeeArrivalsGroupedByTour, saifeeArrivals, currentY);
+
+      // Page break for Part 2: Burhani Hotel (So each hotel can be printed separately from this PDF or joined together)
+      doc.addPage();
+      renderHeader(
+        'FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST (PART 2: BURHANI HOTEL)',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS) • ${burhaniArrivals.length} ZAEREEN ARRIVING`
+      );
+      currentY = 75;
+      renderArrivalsTable('PART 2: BURHANI HOTEL (44 ROOMS) — ARRIVALS MANIFEST & GUEST ALLOTMENT', burhaniArrivalsGroupedByTour, burhaniArrivals, currentY);
+
+      // If unallotted zaereen exist, add Part 3 on clean page
+      if (unallottedArrivals.length > 0) {
+        doc.addPage();
+        renderHeader(
+          'FAIZ-E-HUSAINI — UNALLOTTED ZAEREEN ARRIVALS (ATTENTION REQUIRED)',
+          `OFFICIAL ARRIVAL DATE: ${selectedDate} • PENDING ROOM ALLOTMENT • ${unallottedArrivals.length} ZAEREEN`
+        );
+        currentY = 75;
+        renderArrivalsTable(
+          'PART 3: UNALLOTTED ZAEREEN (PENDING HOTEL & ROOM ALLOTMENT)',
+          unallottedArrivalsGroupedByTour,
+          unallottedArrivals,
+          currentY,
+          [185, 28, 28] // red banner
+        );
+      }
+    }
 
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
     currentY += 15;
-    if (currentY + 60 > doc.internal.pageSize.getHeight()) {
+    if (currentY + 50 > pageHeight) {
       doc.addPage();
       currentY = 40;
     }
@@ -954,13 +1068,28 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     doc.text(`Reception In-Charge Sign-off: ___________________________  Arrival Date: ${selectedDate}`, 40, currentY + 25);
     doc.text('Tour Coordinator Received: ___________________________', pageWidth - 280, currentY + 25);
 
-    const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}.pdf`;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Arrivals Manifest — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
+      doc.text('BIFURCATED ADMINISTRATIVE RECORD', pageWidth - 200, pageHeight - 12);
+    }
+
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
+    const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
 
-  // Download Tour Roster PDF (Requirement 2)
-  const handleDownloadRosterPdf = () => {
+  // Download Tour Roster PDF (Requirement 2) - bifurcated as per hotels
+  const handleDownloadRosterPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -968,135 +1097,154 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Top Header Banner
-    doc.setFillColor(18, 78, 57); // #124E39 deep green
-    doc.rect(0, 0, pageWidth, 55, 'F');
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+    };
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('FAIZ-E-HUSAINI — DAILY TOUR ROSTER (ARRIVALS & DEPARTURES)', pageWidth / 2, 24, { align: 'center' });
+    const renderRosterTables = (
+      hotelTitle: string,
+      arrGroups: typeof allArrivalsGroupedByTour,
+      arrList: Reservation[],
+      depGroups: typeof allDeparturesGroupedByTour,
+      depList: Reservation[],
+      startAtY: number
+    ) => {
+      let y = startAtY;
+      doc.setFillColor(18, 78, 57);
+      doc.roundedRect(20, y, pageWidth - 40, 22, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text(`${hotelTitle} — ARRIVALS (${arrList.length} Zaereen • ${arrGroups.length} Tours)`, 30, y + 15);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(235, 213, 158); // Gold #EBD59E
-    doc.text(
-      `GROUPED BY TOUR ID & CHRONOLOGICALLY SORTED BY TIMING • OPERATIONAL DATE: ${selectedDate}`,
-      pageWidth / 2,
-      42,
-      { align: 'center' }
-    );
-
-    let currentY = 70;
-
-    // 1. ARRIVALS SECTION
-    const arrivalRows: string[][] = [];
-    allArrivalsGroupedByTour.forEach((group) => {
-      group.reservations.forEach((r) => {
-        const paxInfo = getRoomPaxInfo(r);
-        const arrTime = getReservationArrivalTime(r, '11:00 AM');
-        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED';
-        arrivalRows.push([
-          `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
-          roomStr,
-          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
-          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
-          `Arr: ${arrTime}`,
-          r.departureDate || '—',
-          r.category || 'Mumineen',
-          r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
-        ]);
+      const arrivalRows: string[][] = [];
+      arrGroups.forEach((group) => {
+        group.reservations.forEach((r) => {
+          const paxInfo = getRoomPaxInfo(r);
+          const arrTime = getReservationArrivalTime(r, '11:00 AM');
+          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED';
+          arrivalRows.push([
+            `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
+            roomStr,
+            `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax)`,
+            `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+            `Arr: ${arrTime}`,
+            r.departureDate || '—',
+            r.category || 'Mumineen',
+            r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
+          ]);
+        });
       });
-    });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(18, 78, 57);
-    doc.text(`SCHEDULED ARRIVALS (${arrivalsOnDate.length} Zaereen across ${allArrivalsGroupedByTour.length} Tours)`, 20, currentY);
-    currentY += 10;
+      safeAutoTable(doc, {
+        startY: y + 26,
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Money (B➔A)']],
+        body: arrivalRows.length > 0 ? arrivalRows : [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+          0: { fontStyle: 'bold', fontSize: 8, cellWidth: 120 },
+          1: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 75, halign: 'center' },
+          2: { fontSize: 8, cellWidth: 85 },
+          3: { fontStyle: 'bold', fontSize: 8, cellWidth: 125 },
+          4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
+          5: { fontSize: 8, cellWidth: 70, halign: 'center' },
+          6: { fontSize: 8, cellWidth: 65, halign: 'center' },
+          7: { fontSize: 8, cellWidth: 65, halign: 'center' },
+        },
+      });
 
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Money (B➔A)']],
-      body: arrivalRows.length > 0 ? arrivalRows : [['No arrivals scheduled for this date', '', '', '', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 8, cellWidth: 120 },
-        1: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 75, halign: 'center' },
-        2: { fontSize: 8, cellWidth: 85 },
-        3: { fontStyle: 'bold', fontSize: 8, cellWidth: 125 },
-        4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
-        5: { fontSize: 8, cellWidth: 70, halign: 'center' },
-        6: { fontSize: 8, cellWidth: 65, halign: 'center' },
-        7: { fontSize: 8, cellWidth: 65, halign: 'center' },
-      },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
+      y = (doc as any).lastAutoTable?.finalY ?? (y + 30);
+      y += 15;
 
-    currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
-    currentY += 15;
+      // Departures section
+      if (y + 100 > pageHeight) {
+        doc.addPage();
+        y = 40;
+      }
 
-    // 2. DEPARTURES SECTION
-    if (currentY + 100 > doc.internal.pageSize.getHeight()) {
+      doc.setFillColor(50, 60, 70);
+      doc.roundedRect(20, y, pageWidth - 40, 22, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`${hotelTitle} — DEPARTURES (${depList.length} Zaereen • ${depGroups.length} Tours)`, 30, y + 15);
+
+      const departureRows: string[][] = [];
+      depGroups.forEach((group) => {
+        group.reservations.forEach((r) => {
+          const paxInfo = getRoomPaxInfo(r);
+          const depTime = getReservationDepartureTime(r, '12:00 PM');
+          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : '—';
+          departureRows.push([
+            `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
+            roomStr,
+            `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax)`,
+            `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+            `Dep: ${depTime}`,
+            r.arrivalDate || '—',
+            'Clear key cards & prepare for cleaning',
+          ]);
+        });
+      });
+
+      safeAutoTable(doc, {
+        startY: y + 26,
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date', 'Turnover / Check-out Notes']],
+        body: departureRows.length > 0 ? departureRows : [['No departures scheduled for this section on this date', '', '', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: [40, 50, 60], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+          0: { fontStyle: 'bold', fontSize: 8, cellWidth: 120 },
+          1: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 75, halign: 'center' },
+          2: { fontSize: 8, cellWidth: 85 },
+          3: { fontStyle: 'bold', fontSize: 8, cellWidth: 125 },
+          4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
+          5: { fontSize: 8, cellWidth: 70, halign: 'center' },
+          6: { fontSize: 8, cellWidth: 130 },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (y + 30);
+    };
+
+    let currentY = 75;
+
+    if (targetHotel === 'Saifee') {
+      renderHeader('FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) TOUR ROSTER', `ARRIVALS & DEPARTURES • OPERATIONAL DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderRosterTables('SAIFEE HOTEL', saifeeArrivalsGroupedByTour, saifeeArrivals, saifeeDeparturesGroupedByTour, saifeeDepartures, currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) TOUR ROSTER', `ARRIVALS & DEPARTURES • OPERATIONAL DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderRosterTables('BURHANI HOTEL', burhaniArrivalsGroupedByTour, burhaniArrivals, burhaniDeparturesGroupedByTour, burhaniDepartures, currentY);
+    } else {
+      // Joined & Bifurcated
+      renderHeader('FAIZ-E-HUSAINI — DAILY TOUR ROSTER (JOINED & BIFURCATED AS PER HOTELS)', `OPERATIONAL DATE: ${selectedDate} • GROUPED BY TOUR ID & SORTED BY TIMING`);
+      renderRosterTables('PART 1: SAIFEE HOTEL', saifeeArrivalsGroupedByTour, saifeeArrivals, saifeeDeparturesGroupedByTour, saifeeDepartures, currentY);
+
       doc.addPage();
-      currentY = 40;
+      renderHeader('FAIZ-E-HUSAINI — DAILY TOUR ROSTER (PART 2: BURHANI HOTEL)', `OPERATIONAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS)`);
+      currentY = 75;
+      renderRosterTables('PART 2: BURHANI HOTEL', burhaniArrivalsGroupedByTour, burhaniArrivals, burhaniDeparturesGroupedByTour, burhaniDepartures, currentY);
     }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(18, 78, 57);
-    doc.text(`SCHEDULED DEPARTURES (${departuresOnDate.length} Zaereen across ${allDeparturesGroupedByTour.length} Tours)`, 20, currentY);
-    currentY += 10;
-
-    const departureRows: string[][] = [];
-    allDeparturesGroupedByTour.forEach((group) => {
-      group.reservations.forEach((r) => {
-        const paxInfo = getRoomPaxInfo(r);
-        const depTime = getReservationDepartureTime(r, '12:00 PM');
-        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : '—';
-        departureRows.push([
-          `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
-          roomStr,
-          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
-          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
-          `Dep: ${depTime}`,
-          r.arrivalDate || '—',
-          'Clear key cards & prepare for cleaning',
-        ]);
-      });
-    });
-
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date', 'Turnover / Check-out Notes']],
-      body: departureRows.length > 0 ? departureRows : [['No departures scheduled for this date', '', '', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [40, 50, 60], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 8, cellWidth: 120 },
-        1: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 75, halign: 'center' },
-        2: { fontSize: 8, cellWidth: 85 },
-        3: { fontStyle: 'bold', fontSize: 8, cellWidth: 125 },
-        4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
-        5: { fontSize: 8, cellWidth: 70, halign: 'center' },
-        6: { fontSize: 8, cellWidth: 130 },
-      },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
-
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
     currentY += 15;
-    if (currentY + 50 > doc.internal.pageSize.getHeight()) {
+    if (currentY + 50 > pageHeight) {
       doc.addPage();
       currentY = 40;
     }
@@ -1107,13 +1255,28 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     doc.text('Reception Manager Sign-off: ___________________________', 40, currentY + 25);
     doc.text('Tour Co-ordinator Received: ___________________________', pageWidth - 280, currentY + 25);
 
-    const fileName = `Faiz_Husaini_Tour_Roster_Arrivals_Departures_${selectedDate}.pdf`;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Tour Roster — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
+      doc.text('BIFURCATED ADMINISTRATIVE RECORD', pageWidth - 200, pageHeight - 12);
+    }
+
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
+    const fileName = `Faiz_Husaini_Tour_Roster_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
 
-  // Download Worker Room Operations Summary Sheet (Requirement 3)
-  const handleDownloadWorkerPdf = () => {
+  // Download Worker Room Operations Summary Sheet (Requirement 3) - bifurcated as per hotels
+  const handleDownloadWorkerPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -1121,78 +1284,98 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Top Header Banner
-    doc.setFillColor(18, 78, 57); // #124E39 deep green
-    doc.rect(0, 0, pageWidth, 55, 'F');
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+    };
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('FAIZ-E-HUSAINI — WORKER ROOM OPERATIONS & TURNOVER SHEET', pageWidth / 2, 24, { align: 'center' });
+    const renderWorkerSection = (hotelTitle: string, buildingName: string, startAtY: number) => {
+      doc.setFillColor(18, 78, 57);
+      doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text(hotelTitle, 30, startAtY + 16);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(235, 213, 158); // Gold #EBD59E
-    doc.text(
-      `HOUSEKEEPING & ROOM ATTENDANTS EXECUTION SHEET • DATE: ${selectedDate} • GROUPED BY OFFICE ➔ TOUR ID ➔ TIME SEQUENCE`,
-      pageWidth / 2,
-      42,
-      { align: 'center' }
-    );
+      const tableRows: string[][] = [];
+      workerRoomSummary.forEach((officeGroup) => {
+        officeGroup.tours.forEach((tourGroup) => {
+          tourGroup.items.forEach((item) => {
+            if (buildingName !== 'ALL' && !item.building.toLowerCase().includes(buildingName.toLowerCase())) {
+              return;
+            }
+            const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
+            const officeTourCell = `Office:\n${officeGroup.officeName}\n\nTour ID:\n${tourGroup.tourRefNo}`;
+            const timingCell = `${item.actionType}\n${item.timeLabel}`;
+            const famPaxCell = `Family #${item.familyNumbers}\n\n[Total: ${item.totalPaxInRoom} Pax in Room]`;
+            const guestCell = `${item.leadGuestName}\nITS: ${item.leadGuestIts}`;
+            const checklistCell = `[ ] Bed Sheets & Linens Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Key Cards Ready\n[ ] Worker Sign: ___________`;
 
-    let currentY = 70;
-
-    // Build flattened table rows from workerRoomSummary
-    const tableRows: string[][] = [];
-
-    workerRoomSummary.forEach((officeGroup) => {
-      officeGroup.tours.forEach((tourGroup) => {
-        tourGroup.items.forEach((item) => {
-          const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
-          const officeTourCell = `Office:\n${officeGroup.officeName}\n\nTour ID:\n${tourGroup.tourRefNo}`;
-          const timingCell = `${item.actionType}\n${item.timeLabel}`;
-          const famPaxCell = `Family #${item.familyNumbers}\n\n[Total: ${item.totalPaxInRoom} Pax in Room]`;
-          const guestCell = `${item.leadGuestName}\nITS: ${item.leadGuestIts}`;
-          const checklistCell = `[ ] Bed Sheets & Linens Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Key Cards Ready\n[ ] Worker Sign: ___________`;
-
-          tableRows.push([
-            roomCell,
-            officeTourCell,
-            timingCell,
-            famPaxCell,
-            guestCell,
-            checklistCell,
-          ]);
+            tableRows.push([
+              roomCell,
+              officeTourCell,
+              timingCell,
+              famPaxCell,
+              guestCell,
+              checklistCell,
+            ]);
+          });
         });
       });
-    });
 
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['Room # & Hotel (Base)', 'Office & Tour ID', 'Event & Timing Sequence', 'Family # & Room Pax', 'Guest Details', 'Worker Checklist & Sign-off']],
-      body: tableRows.length > 0 ? tableRows : [['No room operations scheduled for workers on selected date', '', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8.5, cellPadding: 5.5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 10, cellWidth: 90, halign: 'center' },
-        1: { fontSize: 8, cellWidth: 125 },
-        2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 120 },
-        3: { fontSize: 8.5, cellWidth: 100 },
-        4: { fontSize: 8, cellWidth: 110 },
-        5: { fontSize: 7.5, cellWidth: 145 },
-      },
-      bodyStyles: { textColor: [30, 30, 30] },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
+      safeAutoTable(doc, {
+        startY: startAtY + 28,
+        head: [['Room # & Hotel (Base)', 'Office & Tour ID', 'Event & Timing Sequence', 'Family # & Room Pax', 'Guest Details', 'Worker Checklist & Sign-off']],
+        body: tableRows.length > 0 ? tableRows : [[`No room operations scheduled for workers in this hotel on selected date`, '', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+        columnStyles: {
+          0: { fontStyle: 'bold', fontSize: 9.5, cellWidth: 95, halign: 'center' },
+          1: { fontSize: 8, cellWidth: 125 },
+          2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 120 },
+          3: { fontSize: 8.5, cellWidth: 100 },
+          4: { fontSize: 8, cellWidth: 110 },
+          5: { fontSize: 7.5, cellWidth: 140 },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 30);
+    };
+
+    let currentY = 75;
+
+    if (targetHotel === 'Saifee') {
+      renderHeader('FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) WORKER SHEET', `HOUSEKEEPING EXECUTION • DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderWorkerSection('SAIFEE HOTEL (70 ROOMS) — ROOM OPERATIONS & TURNOVER', 'Saifee', currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) WORKER SHEET', `HOUSEKEEPING EXECUTION • DATE: ${selectedDate} • SEPARATE PRINT`);
+      renderWorkerSection('BURHANI HOTEL (44 ROOMS) — ROOM OPERATIONS & TURNOVER', 'Burhani', currentY);
+    } else {
+      // Joined & Bifurcated
+      renderHeader('FAIZ-E-HUSAINI — WORKER ROOM OPERATIONS SHEET (JOINED & BIFURCATED)', `HOUSEKEEPING & ROOM ATTENDANTS EXECUTION SHEET • DATE: ${selectedDate}`);
+      renderWorkerSection('PART 1: SAIFEE HOTEL (70 ROOMS) — ROOM OPERATIONS', 'Saifee', currentY);
+
+      doc.addPage();
+      renderHeader('FAIZ-E-HUSAINI — WORKER ROOM OPERATIONS SHEET (PART 2: BURHANI HOTEL)', `HOUSEKEEPING & ROOM ATTENDANTS EXECUTION SHEET • DATE: ${selectedDate}`);
+      currentY = 75;
+      renderWorkerSection('PART 2: BURHANI HOTEL (44 ROOMS) — ROOM OPERATIONS', 'Burhani', currentY);
+    }
 
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
     currentY += 15;
-    if (currentY + 50 > doc.internal.pageSize.getHeight()) {
+    if (currentY + 50 > pageHeight) {
       doc.addPage();
       currentY = 40;
     }
@@ -1203,13 +1386,28 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     doc.text('Supervisor Shift In-charge: ___________________________', 40, currentY + 25);
     doc.text('Housekeeping Team Lead Received: ___________________________', pageWidth - 320, currentY + 25);
 
-    const fileName = `Faiz_Husaini_Worker_Room_Operations_Sheet_${selectedDate}.pdf`;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Worker Sheet — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
+      doc.text('BIFURCATED ADMINISTRATIVE RECORD', pageWidth - 200, pageHeight - 12);
+    }
+
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
+    const fileName = `Faiz_Husaini_Worker_Room_Operations_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
 
-  // Download Assistant Portal Allotment Checklist PDF (Requirement 4)
-  const handleDownloadPortalUploadPdf = () => {
+  // Download Assistant Portal Allotment Checklist PDF (Requirement 4) - bifurcated as per hotels
+  const handleDownloadPortalUploadPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -1217,113 +1415,134 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Top Header Banner
-    doc.setFillColor(18, 78, 57); // #124E39 deep green
-    doc.rect(0, 0, pageWidth, 55, 'F');
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+    };
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST', pageWidth / 2, 24, { align: 'center' });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.setTextColor(235, 213, 158); // Gold #EBD59E
-    doc.text(
-      `TOUR & FAMILY ROOM ALLOTMENT VERIFICATION SHEET FOR MAIN PORTAL • DATE: ${selectedDate} • SCOPE: ${portalFilterScope === 'all' ? 'ALL SYSTEM TOURS' : 'ACTIVE TOURS ON DATE'}`,
-      pageWidth / 2,
-      42,
-      { align: 'center' }
-    );
-
-    let currentY = 70;
-
-    // Collect all reservations active around selectedDate or matching date's tours
     const dateTours = new Set([
       ...arrivalsOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
       ...departuresOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
       ...inHouseOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
     ]);
 
-    const portalReservations = reservations.filter((r) => {
-      const tour = (r.tourRefNo || '').trim();
-      return portalFilterScope === 'all' ? true : (dateTours.size > 0 ? dateTours.has(tour) : true);
-    });
+    const renderPortalSection = (hotelTitle: string, buildingName: string, startAtY: number) => {
+      doc.setFillColor(18, 78, 57);
+      doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text(hotelTitle, 30, startAtY + 16);
 
-    // Group by Tour ID
-    const tourMap = new Map<string, Reservation[]>();
-    portalReservations.forEach((r) => {
-      const t = (r.tourRefNo || 'Unassigned Tour').trim();
-      const existing = tourMap.get(t) || [];
-      existing.push(r);
-      tourMap.set(t, existing);
-    });
-
-    const sortedTours = Array.from(tourMap.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-    const portalRows: string[][] = [];
-    let counter = 1;
-
-    sortedTours.forEach((tourId) => {
-      const items = tourMap.get(tourId) || [];
-      items.sort((a, b) => {
-        const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
-        if (famA !== 0) return famA;
-        return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
+      const portalReservations = reservations.filter((r) => {
+        const tour = (r.tourRefNo || '').trim();
+        const matchesScope = portalFilterScope === 'all' ? true : (dateTours.size > 0 ? dateTours.has(tour) : true);
+        if (!matchesScope) return false;
+        if (buildingName !== 'ALL') {
+          return (r.building || '').toLowerCase().includes(buildingName.toLowerCase());
+        }
+        return true;
       });
 
-      items.forEach((r) => {
-        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building} Hotel)` : 'UNALLOTTED\n[Needs Room]';
-        const isUploaded = (portalUploadedMap[r.id] ?? r.isUploadedToPortal) ? '[✓] Uploaded' : '[  ] Pending';
-        const arrTime = getReservationArrivalTime(r, '11:00 AM');
-        const depTime = getReservationDepartureTime(r, '12:00 PM');
-        const arrDep = `Arr: ${r.arrivalDate || '—'}${arrTime ? ` (${arrTime})` : ''}\nDep: ${r.departureDate || '—'}${depTime ? ` (${depTime})` : ''}`;
-
-        portalRows.push([
-          String(counter++),
-          tourId,
-          `Fam #${r.family || '—'}`,
-          roomStr,
-          `${r.applicantName}\n(Office: ${r.officeName || '—'})`,
-          r.itsId || '—',
-          `${r.age || '—'} / ${r.gender || '—'}`,
-          r.category || 'Mumineen',
-          arrDep,
-          isUploaded,
-        ]);
+      const tourMap = new Map<string, Reservation[]>();
+      portalReservations.forEach((r) => {
+        const t = (r.tourRefNo || 'Unassigned Tour').trim();
+        const existing = tourMap.get(t) || [];
+        existing.push(r);
+        tourMap.set(t, existing);
       });
-    });
 
-    safeAutoTable(doc, {
-      startY: currentY,
-      head: [['#', 'Tour ID', 'Family #', 'Allotted Room & Building', 'Applicant / Member Name', 'ITS ID', 'Age / Sex', 'Category', 'Arrival ➔ Departure', 'Portal Status & Checkbox']],
-      body: portalRows.length > 0 ? portalRows : [['No reservations found for portal verification', '', '', '', '', '', '', '', '', '']],
-      margin: { left: 20, right: 20 },
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 5, textColor: [30, 30, 30] },
-      headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      columnStyles: {
-        0: { cellWidth: 25, halign: 'center' },
-        1: { fontStyle: 'bold', fontSize: 7.5, cellWidth: 95 },
-        2: { fontStyle: 'bold', fontSize: 8, cellWidth: 55, halign: 'center' },
-        3: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 85, halign: 'center' },
-        4: { fontSize: 8, cellWidth: 120 },
-        5: { fontStyle: 'bold', fontSize: 8, cellWidth: 55, halign: 'center' },
-        6: { fontSize: 7.5, cellWidth: 55, halign: 'center' },
-        7: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
-        8: { fontSize: 7.5, cellWidth: 80, halign: 'center' },
-        9: { fontStyle: 'bold', fontSize: 8, cellWidth: 75, halign: 'center' },
-      },
-      bodyStyles: { textColor: [30, 30, 30] },
-      didDrawPage: (data: any) => {
-        currentY = data.cursor?.y || currentY;
-      },
-    });
+      const sortedTours = Array.from(tourMap.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const portalRows: string[][] = [];
+      let counter = 1;
+
+      sortedTours.forEach((tourId) => {
+        const items = tourMap.get(tourId) || [];
+        items.sort((a, b) => {
+          const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
+          if (famA !== 0) return famA;
+          return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
+        });
+
+        items.forEach((r) => {
+          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building} Hotel)` : 'UNALLOTTED\n[Needs Room]';
+          const isUploaded = (portalUploadedMap[r.id] ?? r.isUploadedToPortal) ? '[✓] Uploaded' : '[  ] Pending';
+          const arrTime = getReservationArrivalTime(r, '11:00 AM');
+          const depTime = getReservationDepartureTime(r, '12:00 PM');
+          const arrDep = `Arr: ${r.arrivalDate || '—'}${arrTime ? ` (${arrTime})` : ''}\nDep: ${r.departureDate || '—'}${depTime ? ` (${depTime})` : ''}`;
+
+          portalRows.push([
+            String(counter++),
+            tourId,
+            `Fam #${r.family || '—'}`,
+            roomStr,
+            `${r.applicantName}\n(Office: ${r.officeName || '—'})`,
+            r.itsId || '—',
+            `${r.age || '—'} / ${r.gender || '—'}`,
+            r.category || 'Mumineen',
+            arrDep,
+            isUploaded,
+          ]);
+        });
+      });
+
+      safeAutoTable(doc, {
+        startY: startAtY + 28,
+        head: [['#', 'Tour ID', 'Family #', 'Allotted Room & Building', 'Applicant / Member Name', 'ITS ID', 'Age / Sex', 'Category', 'Arrival ➔ Departure', 'Portal Status & Checkbox']],
+        body: portalRows.length > 0 ? portalRows : [[`No zaereen found for portal verification in this section`, '', '', '', '', '', '', '', '', '']],
+        margin: { left: 20, right: 20 },
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 25, halign: 'center' },
+          1: { fontStyle: 'bold', fontSize: 7.5, cellWidth: 95 },
+          2: { fontStyle: 'bold', fontSize: 8, cellWidth: 55, halign: 'center' },
+          3: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 85, halign: 'center' },
+          4: { fontSize: 8, cellWidth: 120 },
+          5: { fontStyle: 'bold', fontSize: 8, cellWidth: 55, halign: 'center' },
+          6: { fontSize: 7.5, cellWidth: 55, halign: 'center' },
+          7: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
+          8: { fontSize: 7.5, cellWidth: 80, halign: 'center' },
+          9: { fontStyle: 'bold', fontSize: 8, cellWidth: 75, halign: 'center' },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 30);
+    };
+
+    let currentY = 75;
+
+    if (targetHotel === 'Saifee') {
+      renderHeader('FAIZ-E-HUSAINI — SAIFEE HOTEL PORTAL UPLOAD CHECKLIST', `DATE: ${selectedDate} • SEPARATE PRINT • SAIFEE (70 ROOMS)`);
+      renderPortalSection('SAIFEE HOTEL — ASSISTANT PORTAL ALLOTMENT CHECKLIST', 'Saifee', currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL PORTAL UPLOAD CHECKLIST', `DATE: ${selectedDate} • SEPARATE PRINT • BURHANI (44 ROOMS)`);
+      renderPortalSection('BURHANI HOTEL — ASSISTANT PORTAL ALLOTMENT CHECKLIST', 'Burhani', currentY);
+    } else {
+      // Joined & Bifurcated
+      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (JOINED & BIFURCATED)', `TOUR & FAMILY ALLOTMENT VERIFICATION • DATE: ${selectedDate}`);
+      renderPortalSection('PART 1: SAIFEE HOTEL (70 ROOMS) — PORTAL ALLOTMENT CHECKLIST', 'Saifee', currentY);
+
+      doc.addPage();
+      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (PART 2: BURHANI HOTEL)', `TOUR & FAMILY ALLOTMENT VERIFICATION • DATE: ${selectedDate}`);
+      currentY = 75;
+      renderPortalSection('PART 2: BURHANI HOTEL (44 ROOMS) — PORTAL ALLOTMENT CHECKLIST', 'Burhani', currentY);
+    }
 
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
     currentY += 15;
-    if (currentY + 50 > doc.internal.pageSize.getHeight()) {
+    if (currentY + 50 > pageHeight) {
       doc.addPage();
       currentY = 40;
     }
@@ -1334,7 +1553,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     doc.text('Portal Upload Assistant: ___________________________  Date/Time: ___________________', 40, currentY + 25);
     doc.text('Supervisor Verification Sign-off: ___________________________', pageWidth - 280, currentY + 25);
 
-    const fileName = `Faiz_Husaini_Assistant_Portal_Upload_Checklist_${selectedDate}.pdf`;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Portal Checklist — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
+      doc.text('BIFURCATED ADMINISTRATIVE RECORD', pageWidth - 200, pageHeight - 12);
+    }
+
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
+    const fileName = `Faiz_Husaini_Assistant_Portal_Upload_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
@@ -1407,26 +1636,48 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span>Print Slip</span>
               </button>
 
-              {/* Dedicated Chosen Arrival Date PDF (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
-              <button
-                type="button"
-                onClick={handleDownloadArrivalsPdf}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059] shadow-sm transition cursor-pointer ring-2 ring-[#EBD59E]/40"
-                title={`Download official Arrivals Manifest PDF specifically for chosen arrival date: ${selectedDate}`}
-              >
-                <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>Arrivals PDF ({selectedDate})</span>
-              </button>
+              {/* Dedicated Chosen Arrival Date PDF Group (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too") */}
+              <div className="flex items-center rounded-xl bg-[#124E39] p-0.5 border border-[#C5A059] shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('ALL')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer"
+                  title={`Download official Arrivals Manifest PDF (Joined & Bifurcated with page breaks) for chosen arrival date: ${selectedDate}`}
+                >
+                  <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Arrivals PDF ({selectedDate})</span>
+                </button>
+
+                <div className="h-4 w-px bg-[#C5A059]/40 my-auto" />
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                  className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                  title={`Print Saifee Hotel Arrivals Separately for ${selectedDate}`}
+                >
+                  Saifee ({saifeeArrivals.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                  className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                  title={`Print Burhani Hotel Arrivals Separately for ${selectedDate}`}
+                >
+                  Burhani ({burhaniArrivals.length})
+                </button>
+              </div>
 
               <button
                 type="button"
-                onClick={handleDownloadPdf}
+                onClick={() => handleDownloadPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'turnover'
                     ? 'bg-[#124E39] text-white ring-2 ring-[#EBD59E]'
                     : 'bg-emerald-900/80 hover:bg-[#124E39] text-white'
                 }`}
-                title="Download Room Turnover Slip PDF"
+                title={`Download Room Turnover Slip PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
                 <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
                 <span>Turnover PDF</span>
@@ -1434,13 +1685,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               <button
                 type="button"
-                onClick={handleDownloadRosterPdf}
+                onClick={() => handleDownloadRosterPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'roster'
                     ? 'bg-[#124E39] text-white ring-2 ring-[#EBD59E]'
                     : 'bg-emerald-900/80 hover:bg-[#124E39] text-white'
                 }`}
-                title="Download Tour ID Roster PDF (Requirement 2)"
+                title={`Download Tour ID Roster PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
                 <Users className="w-3.5 h-3.5 text-[#EBD59E]" />
                 <span>Roster PDF</span>
@@ -1448,13 +1699,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               <button
                 type="button"
-                onClick={handleDownloadWorkerPdf}
+                onClick={() => handleDownloadWorkerPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'worker_summary'
                     ? 'bg-amber-800 text-white ring-2 ring-amber-300'
                     : 'bg-amber-700 hover:bg-amber-800 text-white'
                 }`}
-                title="Download Worker Operations Summary PDF (Requirement 3)"
+                title={`Download Worker Operations Summary PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
                 <HardHat className="w-3.5 h-3.5 text-[#EBD59E]" />
                 <span>Worker Sheet PDF</span>
@@ -1462,13 +1713,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               <button
                 type="button"
-                onClick={handleDownloadPortalUploadPdf}
+                onClick={() => handleDownloadPortalUploadPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'portal_upload'
                     ? 'bg-blue-800 text-white ring-2 ring-blue-300'
                     : 'bg-blue-700 hover:bg-blue-800 text-white'
                 }`}
-                title="Download Assistant Portal Allotment Checklist PDF (Requirement 4)"
+                title={`Download Assistant Portal Allotment Checklist PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
                 <ClipboardList className="w-3.5 h-3.5 text-blue-200" />
                 <span>Portal Upload PDF</span>
@@ -1592,15 +1843,34 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               </div>
 
               {/* 1-Click Download PDF for chosen arrival date */}
-              <button
-                type="button"
-                onClick={handleDownloadArrivalsPdf}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer whitespace-nowrap"
-                title={`Download official PDF of all arrivals for ${selectedDate}`}
-              >
-                <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>Download PDF ({selectedDate})</span>
-              </button>
+              <div className="flex items-center rounded-xl bg-[#124E39] p-0.5 border border-[#C5A059]/50 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('ALL')}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer whitespace-nowrap"
+                  title={`Download PDF with Saifee & Burhani bifurcated on separate pages for ${selectedDate}`}
+                >
+                  <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Download PDF ({selectedDate})</span>
+                </button>
+                <div className="h-3.5 w-px bg-[#C5A059]/40 my-auto" />
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                  className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                  title={`Print Saifee Hotel Arrivals Separately for ${selectedDate}`}
+                >
+                  Saifee
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                  className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                  title={`Print Burhani Hotel Arrivals Separately for ${selectedDate}`}
+                >
+                  Burhani
+                </button>
+              </div>
             </div>
 
             {/* Hotel Filter Tabs */}
@@ -2452,15 +2722,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <span>ALL SCHEDULED ARRIVALS ({arrivalsOnDate.length} Zaereen • {allArrivalsGroupedByTour.length} Tours)</span>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={handleDownloadArrivalsPdf}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#EBD59E] hover:bg-[#dfc488] text-[#124E39] shadow-2xs transition cursor-pointer"
-                                title={`Download PDF specifically for all arrivals on ${selectedDate}`}
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Download Arrivals PDF ({selectedDate})</span>
-                              </button>
+                              <div className="flex items-center rounded-lg bg-emerald-800 p-0.5 border border-emerald-700">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadArrivalsPdf('ALL')}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#EBD59E] hover:bg-[#dfc488] text-[#124E39] shadow-2xs transition cursor-pointer"
+                                  title={`Download PDF with Saifee and Burhani bifurcated on separate pages for ${selectedDate}`}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download Joined PDF (Both Hotels)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                                  className="px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 rounded transition cursor-pointer"
+                                  title="Print Saifee Hotel Arrivals Separately"
+                                >
+                                  Saifee ({saifeeArrivals.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                                  className="px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 rounded transition cursor-pointer"
+                                  title="Print Burhani Hotel Arrivals Separately"
+                                >
+                                  Burhani ({burhaniArrivals.length})
+                                </button>
+                              </div>
                               <span className="text-xs text-emerald-200 font-medium">
                                 Sorted by Arrival Time
                               </span>
@@ -2488,14 +2776,25 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     {/* Saifee Hotel Section */}
                     {activeHotelFilter === 'Saifee' && (
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between bg-[#124E39]/10 border border-[#124E39]/30 px-3 py-2 rounded-lg">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#124E39]/10 border border-[#124E39]/30 px-3 py-2 rounded-lg">
                           <div className="flex items-center gap-2 font-bold text-sm text-[#124E39]">
                             <Building2 className="w-4 h-4 text-[#124E39]" />
                             <span>SAIFEE HOTEL — DAILY ROSTER ({selectedDate})</span>
                           </div>
-                          <span className="text-xs font-semibold text-[#124E39]">
-                            {saifeeArrivals.length} Arrivals • {saifeeDepartures.length} Departures
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
+                              title={`Download separate PDF for Saifee Hotel Arrivals on ${selectedDate}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download Saifee Arrivals PDF</span>
+                            </button>
+                            <span className="text-xs font-semibold text-[#124E39]">
+                              {saifeeArrivals.length} Arrivals • {saifeeDepartures.length} Departures
+                            </span>
+                          </div>
                         </div>
 
                         {/* Saifee Arrivals */}
@@ -2521,14 +2820,25 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     {/* Burhani Hotel Section */}
                     {activeHotelFilter === 'Burhani' && (
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between bg-[#124E39]/10 border border-[#124E39]/30 px-3 py-2 rounded-lg">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#124E39]/10 border border-[#124E39]/30 px-3 py-2 rounded-lg">
                           <div className="flex items-center gap-2 font-bold text-sm text-[#124E39]">
                             <Building2 className="w-4 h-4 text-[#124E39]" />
                             <span>BURHANI HOTEL — DAILY ROSTER ({selectedDate})</span>
                           </div>
-                          <span className="text-xs font-semibold text-[#124E39]">
-                            {burhaniArrivals.length} Arrivals • {burhaniDepartures.length} Departures
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
+                              title={`Download separate PDF for Burhani Hotel Arrivals on ${selectedDate}`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download Burhani Arrivals PDF</span>
+                            </button>
+                            <span className="text-xs font-semibold text-[#124E39]">
+                              {burhaniArrivals.length} Arrivals • {burhaniDepartures.length} Departures
+                            </span>
+                          </div>
                         </div>
 
                         {/* Burhani Arrivals */}
