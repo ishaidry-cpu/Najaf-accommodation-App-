@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   X, 
   Users, 
@@ -30,7 +30,7 @@ export interface TourIndividualRow {
   age: string;
   gender: 'Male' | 'Female';
   category: string;
-  building: 'Saifee' | 'Burhani';
+  building: string;
   roomNumber: string;
   jamaat?: string;
   hofId?: string;
@@ -84,14 +84,21 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const [departureTime, setDepartureTime] = useState('01:00 AM');
   const [groupLeadName, setGroupLeadName] = useState('');
   const [defaultCategory, setDefaultCategory] = useState(categories[0] || 'Mumineen');
-  const [defaultBuilding, setDefaultBuilding] = useState<'Saifee' | 'Burhani'>('Saifee');
+
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
+    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
+  }, [rooms]);
+
+  const [defaultBuilding, setDefaultBuilding] = useState<string>('Saifee');
 
   // Individuals Rows (Can have DIFFERENT family IDs)
   const [rows, setRows] = useState<TourIndividualRow[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Initial template rows
-  const createNewRow = (familyVal: string = '1', buildingVal: 'Saifee' | 'Burhani' = defaultBuilding): TourIndividualRow => ({
+  const createNewRow = (familyVal: string = '1', buildingVal: string = defaultBuilding): TourIndividualRow => ({
     id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     family: familyVal,
     itsId: '',
@@ -180,16 +187,23 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
     }
   };
 
+  // Vacant rooms helper for any building
+  const getVacantRoomsForBuilding = useCallback(
+    (bldg: string) => {
+      if (!arrivalDate || !departureDate) return [];
+      return getVacantRoomsForDuration(bldg, arrivalDate, departureDate, rooms, existingReservations);
+    },
+    [arrivalDate, departureDate, rooms, existingReservations]
+  );
+
   // Vacant rooms for Saifee and Burhani for the shared duration
   const vacantSaifeeRooms = useMemo(() => {
-    if (!arrivalDate || !departureDate) return [];
-    return getVacantRoomsForDuration('Saifee', arrivalDate, departureDate, rooms, existingReservations);
-  }, [arrivalDate, departureDate, rooms, existingReservations]);
+    return getVacantRoomsForBuilding('Saifee');
+  }, [getVacantRoomsForBuilding]);
 
   const vacantBurhaniRooms = useMemo(() => {
-    if (!arrivalDate || !departureDate) return [];
-    return getVacantRoomsForDuration('Burhani', arrivalDate, departureDate, rooms, existingReservations);
-  }, [arrivalDate, departureDate, rooms, existingReservations]);
+    return getVacantRoomsForBuilding('Burhani');
+  }, [getVacantRoomsForBuilding]);
 
   // Individual row field update
   const handleUpdateRow = (rowId: string, field: keyof TourIndividualRow, value: any) => {
@@ -649,20 +663,32 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <label className="block font-semibold text-stone-700 mb-1">Default Building</label>
                 <select
                   value={defaultBuilding}
-                  onChange={(e) => setDefaultBuilding(e.target.value as 'Saifee' | 'Burhani')}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-[#124E39] focus:outline-none"
+                  onChange={(e) => setDefaultBuilding(e.target.value)}
+                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-[#124E39] focus:outline-none cursor-pointer"
                 >
-                  <option value="Saifee">Saifee Hotel (70 Rooms)</option>
-                  <option value="Burhani">Burhani Hotel (44 Rooms)</option>
+                  {distinctBuildings.map((bldg) => {
+                    const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                    return (
+                      <option key={bldg} value={bldg}>
+                        {bldg} Hotel ({count} Rooms)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
               {/* Vacant Rooms Summary */}
               <div className="flex flex-col justify-end">
-                <div className="p-2 rounded-lg bg-stone-100 border border-stone-200 text-[11px] text-stone-700">
+                <div className="p-2 rounded-lg bg-stone-100 border border-stone-200 text-[11px] text-stone-700 flex flex-wrap items-center gap-1.5">
                   <span className="font-bold text-[#124E39]">Vacant this stay:</span>{' '}
-                  <span className="font-semibold">{vacantSaifeeRooms.length} Saifee</span> •{' '}
-                  <span className="font-semibold">{vacantBurhaniRooms.length} Burhani</span>
+                  {distinctBuildings.map((bldg, idx) => {
+                    const vCount = getVacantRoomsForBuilding(bldg).length;
+                    return (
+                      <span key={bldg} className="font-semibold">
+                        {vCount} {bldg}{idx < distinctBuildings.length - 1 ? ' • ' : ''}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -749,7 +775,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <tbody className="divide-y divide-stone-200">
                   {rows.map((row, idx) => {
                     const hasDupWarning = duplicateWarnings[row.id];
-                    const activeVacantRooms = row.building === 'Saifee' ? vacantSaifeeRooms : vacantBurhaniRooms;
+                    const activeVacantRooms = getVacantRoomsForBuilding(row.building);
 
                     return (
                       <tr
@@ -834,11 +860,12 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                           <div className="flex items-center gap-1">
                             <select
                               value={row.building}
-                              onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value as 'Saifee' | 'Burhani')}
-                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-[#124E39] focus:ring-1 focus:ring-[#124E39]"
+                              onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value)}
+                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-[#124E39] focus:ring-1 focus:ring-[#124E39] cursor-pointer"
                             >
-                              <option value="Saifee">Saifee</option>
-                              <option value="Burhani">Burhani</option>
+                              {distinctBuildings.map((bldg) => (
+                                <option key={bldg} value={bldg}>{bldg}</option>
+                              ))}
                             </select>
 
                             <select

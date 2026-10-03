@@ -53,6 +53,7 @@ interface DashboardProps {
   onOpenGoogleSheet?: () => void;
   onQuickSync?: () => void;
   isLiveBackendConnected?: boolean;
+  onOpenAddBuildingRooms?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -75,6 +76,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenGoogleSheet,
   onQuickSync,
   isLiveBackendConnected = true,
+  onOpenAddBuildingRooms,
 }) => {
   // Rooms View Mode: 'timeline' (Top Dates & Horizontal Rooms) vs 'buttons' (Compact Matrix)
   const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>('timeline');
@@ -84,8 +86,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Hotel selector: 'ALL' | 'Saifee' | 'Burhani'
-  const [selectedHotel, setSelectedHotel] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
+    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
+  }, [rooms]);
+
+  // Hotel selector: 'ALL' | building name
+  const [selectedHotel, setSelectedHotel] = useState<string>('ALL');
   // Filter for room buttons: 'all' | 'available' | 'occupied' | 'blocked'
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied' | 'blocked'>('all');
 
@@ -285,7 +293,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 Accommodation Operations
               </span>
               <span className="text-xs text-stone-500 hidden sm:inline">
-                Saifee & Burhani Hotels (114 Rooms)
+                {distinctBuildings.join(' & ')} Hotels ({rooms.length} Rooms)
               </span>
             </div>
             <p className="text-xs text-stone-600 mt-1 max-w-xl">
@@ -296,6 +304,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenAddBuildingRooms && (
+            <button
+              onClick={onOpenAddBuildingRooms}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
+              title="Add Hotel Building & Rooms manually or sync from Google Sheet"
+            >
+              <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <span>+ Add Building & Rooms</span>
+            </button>
+          )}
+
           {onOpenAddZaer && (
             <button
               onClick={onOpenAddZaer}
@@ -1018,37 +1037,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Hotel Tabs */}
-            <div className="flex items-center bg-stone-100 p-1 rounded-lg font-semibold">
+            <div className="flex items-center bg-stone-100 p-1 rounded-lg font-semibold flex-wrap gap-1">
               <button
+                type="button"
                 onClick={() => setSelectedHotel('ALL')}
-                className={`px-2.5 py-1 rounded-md transition text-xs ${
+                className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
                   selectedHotel === 'ALL'
                     ? 'bg-[#124E39] text-white shadow-xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                All (114)
+                All ({rooms.length})
               </button>
-              <button
-                onClick={() => setSelectedHotel('Burhani')}
-                className={`px-2.5 py-1 rounded-md transition text-xs ${
-                  selectedHotel === 'Burhani'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Burhani ({rooms.filter(r => r.building.toLowerCase() === 'burhani').length})
-              </button>
-              <button
-                onClick={() => setSelectedHotel('Saifee')}
-                className={`px-2.5 py-1 rounded-md transition text-xs ${
-                  selectedHotel === 'Saifee'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Saifee ({rooms.filter(r => r.building.toLowerCase() === 'saifee').length})
-              </button>
+              {distinctBuildings.map((bldg) => {
+                const bldgCount = rooms.filter(r => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                return (
+                  <button
+                    key={bldg}
+                    type="button"
+                    onClick={() => setSelectedHotel(bldg)}
+                    className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
+                      selectedHotel.toLowerCase() === bldg.toLowerCase()
+                        ? 'bg-[#124E39] text-white shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    {bldg} ({bldgCount})
+                  </button>
+                );
+              })}
             </div>
 
             {/* Status Quick Filter */}
@@ -1239,6 +1256,90 @@ export const Dashboard: React.FC<DashboardProps> = ({
               })}
             </div>
           )}
+
+          {/* DYNAMIC ADDITIONAL BUILDINGS (e.g. Al-Rawda, Najaf Grand, etc.) */}
+          {distinctBuildings
+            .filter((bldg) => !['burhani', 'saifee'].includes(bldg.toLowerCase()))
+            .filter((bldg) => selectedHotel === 'ALL' || selectedHotel.toLowerCase() === bldg.toLowerCase())
+            .map((bldg) => {
+              const bldgRooms = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase());
+              if (bldgRooms.length === 0) return null;
+
+              // Group by floor
+              const floorMap = new Map<string, Room[]>();
+              bldgRooms.forEach((r) => {
+                const flKey = r.floorLabel || `Floor ${r.floor}`;
+                if (!floorMap.has(flKey)) floorMap.set(flKey, []);
+                floorMap.get(flKey)!.push(r);
+              });
+
+              const vacantInBldg = bldgRooms.filter(
+                (r) => getRoomStatusOnDate(r, selectedDate, reservations) === 'available'
+              ).length;
+
+              return (
+                <div key={bldg} className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
+                      <Building2 className="w-4 h-4 text-[#124E39]" />
+                      <span>{bldg.toUpperCase()} HOTEL ({bldgRooms.length} Rooms)</span>
+                    </div>
+                    <span className="text-[11px] text-stone-500 font-semibold">
+                      {vacantInBldg} Vacant / {bldgRooms.length} Total
+                    </span>
+                  </div>
+
+                  {Array.from(floorMap.entries()).map(([flLabel, flRooms]) => {
+                    const sortedRooms = [...flRooms].sort((a, b) => {
+                      const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
+                      const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
+                      return numA - numB;
+                    });
+
+                    return (
+                      <div key={flLabel} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
+                          {flLabel}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 flex-1">
+                          {sortedRooms.map((room) => {
+                            const status = getRoomStatusOnDate(room, selectedDate, reservations);
+                            if (statusFilter !== 'all' && status !== statusFilter) return null;
+
+                            const booking = getRoomBookingOnDate(room, selectedDate, reservations);
+
+                            let btnBg = 'bg-emerald-700 hover:bg-emerald-800 text-white';
+                            if (status === 'occupied') {
+                              btnBg = 'bg-amber-600 hover:bg-amber-700 text-white';
+                            } else if (status === 'blocked') {
+                              btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400';
+                            }
+
+                            return (
+                              <button
+                                key={room.id}
+                                type="button"
+                                onClick={() => setInspectedRoom(room)}
+                                title={`Room ${room.roomNumber} (${room.building})\nPax: ${room.capacity}${room.buffer ? ` (+${room.buffer} Buffer)` : ''}\nToilet: ${room.toiletType}\nBed: ${room.bedType}\nStatus: ${status.toUpperCase()}\n${booking ? `Guest: ${booking.applicantName} (${booking.family})\nTour: ${booking.tourRefNo}` : ''}`}
+                                className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
+                                  inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
+                                }`}
+                              >
+                                <span>{room.roomNumber}</span>
+                                {status === 'blocked' && (
+                                  <Lock className="w-2 h-2 text-stone-700 absolute bottom-0.5 right-0.5" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
         </div>
 
         {/* Selected Room Inspection Panel */}

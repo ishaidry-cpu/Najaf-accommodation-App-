@@ -40,6 +40,8 @@ interface NavbarProps {
   isLoggingIn: boolean;
   onQuickSync: () => void;
   isLiveBackendConnected?: boolean;
+  roomsCount?: number;
+  onOpenAddBuildingRooms?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -59,6 +61,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLoggingIn,
   onQuickSync,
   isLiveBackendConnected = true,
+  roomsCount,
+  onOpenAddBuildingRooms,
 }) => {
   const isReceptionist = userRole === 'receptionist';
   const hasLinkedSheet = Boolean(sheetsConfig.spreadsheetId);
@@ -123,7 +127,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <BedDouble className="w-3.5 h-3.5" />
-              <span>114 Hotel Rooms</span>
+              <span>{roomsCount ? `${roomsCount} Hotel Rooms` : '114 Hotel Rooms'}</span>
             </button>
           </nav>
 
@@ -166,6 +170,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </>
               )}
             </button>
+
+            {/* Add Building & Rooms Button */}
+            {!isReceptionist && onOpenAddBuildingRooms && (
+              <button
+                type="button"
+                onClick={onOpenAddBuildingRooms}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer"
+                title="Add Hotel Building & Rooms manually or sync from Google Sheet"
+              >
+                <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span className="hidden xl:inline">+ Add Building / Rooms</span>
+                <span className="xl:hidden">+ Building/Rooms</span>
+              </button>
+            )}
 
             {/* Upload Excel Quick Button (Only for Admin) */}
             {!isReceptionist && (

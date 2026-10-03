@@ -20,7 +20,8 @@ import {
   Maximize2,
   Minimize2,
   RefreshCw,
-  Info
+  Info,
+  Plus
 } from 'lucide-react';
 import { Room, Reservation, UserRole } from '../types';
 import { 
@@ -38,6 +39,7 @@ interface RoomTimelineViewProps {
   userRole?: UserRole;
   onOpenReceptionSlip?: () => void;
   onOpenQuickAllotModal?: (res: Reservation) => void;
+  onOpenAddBuildingRooms?: () => void;
 }
 
 export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
@@ -48,6 +50,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   userRole = 'admin',
   onOpenReceptionSlip,
   onOpenQuickAllotModal,
+  onOpenAddBuildingRooms,
 }) => {
   const isReadOnly = userRole === 'receptionist';
 
@@ -58,8 +61,14 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Number of days to display in the top row: 7, 14, 21, or 30 days
   const [dayRange, setDayRange] = useState<number>(14);
 
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
+    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
+  }, [rooms]);
+
   // Filters
-  const [hotelFilter, setHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
+  const [hotelFilter, setHotelFilter] = useState<string>('ALL');
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'vacant' | 'departing' | 'occupied'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -463,41 +472,48 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
           {/* Filters: Building & Floor */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {/* Building tabs */}
-            <div className="flex items-center bg-stone-100 p-1 rounded-xl font-semibold">
+            <div className="flex items-center bg-stone-100 p-1 rounded-xl font-semibold flex-wrap gap-1">
               <button
                 type="button"
                 onClick={() => setHotelFilter('ALL')}
-                className={`px-2.5 py-1 rounded-lg transition ${
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                   hotelFilter === 'ALL'
                     ? 'bg-[#124E39] text-white shadow-2xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                All (114)
+                All ({rooms.length})
               </button>
-              <button
-                type="button"
-                onClick={() => setHotelFilter('Burhani')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  hotelFilter === 'Burhani'
-                    ? 'bg-[#124E39] text-white shadow-2xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Burhani (44)
-              </button>
-              <button
-                type="button"
-                onClick={() => setHotelFilter('Saifee')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  hotelFilter === 'Saifee'
-                    ? 'bg-[#124E39] text-white shadow-2xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Saifee (70)
-              </button>
+              {distinctBuildings.map((bldg) => {
+                const bCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                return (
+                  <button
+                    key={bldg}
+                    type="button"
+                    onClick={() => setHotelFilter(bldg)}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      hotelFilter.toLowerCase() === bldg.toLowerCase()
+                        ? 'bg-[#124E39] text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    {bldg} ({bCount})
+                  </button>
+                );
+              })}
             </div>
+
+            {onOpenAddBuildingRooms && !isReadOnly && (
+              <button
+                type="button"
+                onClick={onOpenAddBuildingRooms}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer"
+                title="Add Hotel Building & Rooms manually or sync from Google Sheet"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>+ Add Rooms</span>
+              </button>
+            )}
 
             {/* Floor filter */}
             <select

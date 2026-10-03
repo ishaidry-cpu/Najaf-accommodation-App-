@@ -83,6 +83,7 @@ import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
 import { AddZaerModal } from './components/AddZaerModal';
 import { AddTourGroupModal } from './components/AddTourGroupModal';
+import { AddBuildingAndRoomsModal } from './components/AddBuildingAndRoomsModal';
 import { 
   checkBackendHealth,
   fetchBackendReservations,
@@ -132,6 +133,8 @@ export default function App() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isAddZaerOpen, setIsAddZaerOpen] = useState(false);
   const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
+  const [isAddBuildingRoomsOpen, setIsAddBuildingRoomsOpen] = useState(false);
+  const [addBuildingRoomsInitialTab, setAddBuildingRoomsInitialTab] = useState<'manual' | 'sheet'>('manual');
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -794,6 +797,45 @@ export default function App() {
     }
   };
 
+  // Add or sync rooms / buildings
+  const handleAddRooms = (newRoomsToAdd: Room[], replaceExisting: boolean = false) => {
+    let finalRooms: Room[];
+    if (replaceExisting) {
+      finalRooms = newRoomsToAdd;
+    } else {
+      // Merge by building + roomNumber
+      const roomMap = new Map<string, Room>();
+      rooms.forEach((r) => {
+        const key = `${(r.building || '').toLowerCase()}_${(r.roomNumber || '').toLowerCase()}`;
+        roomMap.set(key, r);
+      });
+      newRoomsToAdd.forEach((nr) => {
+        const key = `${(nr.building || '').toLowerCase()}_${(nr.roomNumber || '').toLowerCase()}`;
+        roomMap.set(key, nr);
+      });
+      finalRooms = Array.from(roomMap.values());
+    }
+
+    setRooms(finalRooms);
+    saveRooms(finalRooms);
+    saveBackendRooms(finalRooms);
+    triggerAutoSync(reservations, finalRooms);
+
+    const distinctNewBuildings = Array.from(new Set(newRoomsToAdd.map((r) => r.building)));
+    showToast(
+      `Saved ${newRoomsToAdd.length} room(s) across building(s): ${distinctNewBuildings.join(', ')}!`
+    );
+  };
+
+  const handleDeleteRoom = (roomId: string) => {
+    const updated = rooms.filter((r) => r.id !== roomId);
+    setRooms(updated);
+    saveRooms(updated);
+    saveBackendRooms(updated);
+    triggerAutoSync(reservations, updated);
+    showToast('Room removed from inventory.');
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#1A2E26] font-sans selection:bg-[#124E39] selection:text-[#EBD59E]">
       {/* Top Navbar */}
@@ -814,6 +856,11 @@ export default function App() {
         isLoggingIn={isLoggingIn}
         onQuickSync={handleQuickSync}
         isLiveBackendConnected={isLiveBackendConnected}
+        roomsCount={rooms.length}
+        onOpenAddBuildingRooms={() => {
+          setAddBuildingRoomsInitialTab('manual');
+          setIsAddBuildingRoomsOpen(true);
+        }}
       />
 
       {/* Main Container - Full Screen Width for complete visibility */}
@@ -844,6 +891,10 @@ export default function App() {
             onOpenGoogleSheet={handleOpenGoogleSheet}
             onQuickSync={handleQuickSync}
             isLiveBackendConnected={isLiveBackendConnected}
+            onOpenAddBuildingRooms={() => {
+              setAddBuildingRoomsInitialTab('manual');
+              setIsAddBuildingRoomsOpen(true);
+            }}
           />
         )}
 
@@ -887,6 +938,10 @@ export default function App() {
             onUpdateRoomStatus={handleUpdateRoomStatus}
             onUpdateRoomDetails={handleUpdateRoomDetails}
             onResetRoomsToSaifeeBurhani={handleResetToSaifeeBurhaniRooms}
+            onAddRooms={handleAddRooms}
+            onDeleteRoom={handleDeleteRoom}
+            accessToken={accessToken}
+            sheetsConfig={sheetsConfig}
           />
         )}
       </main>
@@ -983,6 +1038,21 @@ export default function App() {
           saveStoredCategories(newCats);
           showToast(`Synchronized ${newCats.length} categories from Google Sheet!`);
         }}
+        onOpenAddBuildingRoomsModal={() => {
+          setAddBuildingRoomsInitialTab('sheet');
+          setIsAddBuildingRoomsOpen(true);
+        }}
+      />
+
+      {/* Add Hotel Buildings & Rooms Modal (Manual Entry & Google Sheet Sync) */}
+      <AddBuildingAndRoomsModal
+        isOpen={isAddBuildingRoomsOpen}
+        onClose={() => setIsAddBuildingRoomsOpen(false)}
+        existingRooms={rooms}
+        onAddRooms={handleAddRooms}
+        accessToken={accessToken}
+        sheetsConfig={sheetsConfig}
+        initialTab={addBuildingRoomsInitialTab}
       />
 
       {/* Administrative PDF Export Modal */}

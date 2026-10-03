@@ -70,7 +70,14 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   const [arrivalTime, setArrivalTime] = useState('11:00 AM');
   const [departureDate, setDepartureDate] = useState(defaultDepartureStr);
   const [departureTime, setDepartureTime] = useState('01:00 AM');
-  const [building, setBuilding] = useState<'Saifee' | 'Burhani'>('Saifee');
+  
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
+    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
+  }, [rooms]);
+
+  const [building, setBuilding] = useState<string>('Saifee');
   const [roomNumber, setRoomNumber] = useState('');
   const [shiftToCategoryA, setShiftToCategoryA] = useState(false);
   const [moneyGiven, setMoneyGiven] = useState<MoneyGivenStatus>('No');
@@ -624,13 +631,19 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <select
                   value={building}
                   onChange={(e) => {
-                    setBuilding(e.target.value as 'Saifee' | 'Burhani');
+                    setBuilding(e.target.value);
                     setRoomNumber('');
                   }}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39] cursor-pointer"
                 >
-                  <option value="Saifee">Saifee Hotel (70 Rooms)</option>
-                  <option value="Burhani">Burhani Hotel (44 Rooms)</option>
+                  {distinctBuildings.map((bldg) => {
+                    const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                    return (
+                      <option key={bldg} value={bldg}>
+                        {bldg} Hotel ({count} Rooms)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

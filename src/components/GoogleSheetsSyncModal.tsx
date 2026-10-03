@@ -13,7 +13,8 @@ import {
   UploadCloud, 
   X,
   Tag,
-  Layers
+  Layers,
+  Building2
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { GoogleSheetsConfig, Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES } from '../types';
@@ -41,6 +42,7 @@ interface GoogleSheetsSyncModalProps {
   onRoomsFetched?: (newRooms: Room[]) => void;
   onReservationsFetched?: (newReservations: Reservation[]) => void;
   onCategoriesFetched?: (newCategories: string[]) => void;
+  onOpenAddBuildingRoomsModal?: () => void;
 }
 
 export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
@@ -57,6 +59,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   onRoomsFetched,
   onReservationsFetched,
   onCategoriesFetched,
+  onOpenAddBuildingRoomsModal,
 }) => {
   if (!isOpen) return null;
 
@@ -532,6 +535,36 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                   In your Google Sheet, create a tab named <strong>Categories</strong> (column A with category names like Mumineen, Muntasbeen, Qasreali, Baitezainy), or the app will extract them from your Zaereen Category column.
                 </p>
               </div>
+
+              {/* Hotel Buildings & Rooms Section */}
+              {onOpenAddBuildingRoomsModal && (
+                <div className="pt-3 border-t border-stone-200">
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-[#124E39] shrink-0" />
+                      <div>
+                        <div className="font-bold text-[#124E39] text-xs">
+                          Hotel Buildings & Rooms Inventory ({rooms.length} Rooms)
+                        </div>
+                        <div className="text-[11px] text-stone-600">
+                          Add new hotel buildings, room numbers, floors, or sync inventory directly with Google Sheets.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenAddBuildingRoomsModal();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#124E39] text-[#EBD59E] hover:bg-[#0E3C2C] text-xs font-bold transition flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Manage / Sync Rooms</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (

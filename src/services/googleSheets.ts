@@ -1475,3 +1475,227 @@ export async function fetchCategoriesFromGoogleSheetUrl(
   );
 }
 
+/**
+ * Parses Rooms and Buildings from CSV text
+ */
+export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = []): Room[] {
+  if (!csvText || !csvText.trim()) return [];
+
+  const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const rawRows: string[][] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cells: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        inQuotes = !inQuotes;
+      } else if (c === ',' && !inQuotes) {
+        cells.push(cur.trim().replace(/^["']|["']$/g, ''));
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    cells.push(cur.trim().replace(/^["']|["']$/g, ''));
+    if (cells.some((cell) => cell.length > 0)) {
+      rawRows.push(cells);
+    }
+  }
+
+  if (rawRows.length <= 1) return [];
+
+  const headerRow = rawRows[0].map((h) => String(h || '').trim().toLowerCase());
+  let bIdx = headerRow.findIndex((h) => h.includes('building') || h.includes('hotel'));
+  let rIdx = headerRow.findIndex((h) => h === 'room' || h.includes('room') || h.includes('number') || h === 'roomno');
+  let fIdx = headerRow.findIndex((h) => h.includes('floor'));
+  let cIdx = headerRow.findIndex((h) => h.includes('capacity') || h.includes('bed') || h.includes('pax'));
+  let bufIdx = headerRow.findIndex((h) => h.includes('buffer'));
+  let toiletIdx = headerRow.findIndex((h) => h.includes('toilet') || h.includes('wc') || h.includes('bath'));
+  let bedIdx = headerRow.findIndex((h) => h.includes('bed type') || h.includes('bedding'));
+  let catIdx = headerRow.findIndex((h) => h.includes('category') || h.includes('type'));
+  let sIdx = headerRow.findIndex((h) => h.includes('status'));
+  let brIdx = headerRow.findIndex((h) => h.includes('blocked') || h.includes('reason'));
+  let nIdx = headerRow.findIndex((h) => h.includes('note'));
+
+  if (bIdx === -1) bIdx = 0;
+  if (rIdx === -1) rIdx = 1;
+  if (fIdx === -1) fIdx = 2;
+  if (cIdx === -1) cIdx = 3;
+
+  const parsedRooms: Room[] = [];
+
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.length === 0) continue;
+
+    const building = String(row[bIdx] || '').trim();
+    let roomNumber = String(row[rIdx] || '').trim().replace(/^room\s+/i, '');
+
+    if (!building || !roomNumber) continue;
+    if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
+
+    let floor = parseInt(String(row[fIdx] || '1'), 10);
+    if (isNaN(floor)) {
+      const m = roomNumber.match(/^(\d)/);
+      floor = m ? parseInt(m[1], 10) : 1;
+    }
+    const capacity = parseInt(String(row[cIdx] || '3'), 10) || 3;
+    const buffer = bufIdx >= 0 ? parseInt(String(row[bufIdx] || '0'), 10) || 0 : 0;
+
+    const rawToilet = toiletIdx >= 0 ? String(row[toiletIdx] || '').toLowerCase() : '';
+    const toiletType = rawToilet.includes('indian') ? 'Indian Toilet' : 'Western Toilet';
+
+    const rawBed = bedIdx >= 0 ? String(row[bedIdx] || '').toLowerCase() : '';
+    let bedType = 'Single Beds';
+    if (rawBed.includes('double') && rawBed.includes('single')) {
+      bedType = 'Double & Single Bed';
+    } else if (rawBed.includes('double')) {
+      bedType = 'Double Bed';
+    } else if (rawBed.includes('suite')) {
+      bedType = 'Suite Beds';
+    }
+
+    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '').toLowerCase() : '';
+    let category: Room['category'] = 'Category B (Standard)';
+    if (rawCategory.includes('a') || rawCategory.includes('nizaam')) {
+      category = 'Category A (Nizaam)';
+    } else if (rawCategory.includes('suite') || rawCategory.includes('exec')) {
+      category = 'Executive Suite';
+    }
+
+    const rawStatus = sIdx >= 0 ? String(row[sIdx] || '').toLowerCase() : '';
+    let status: Room['status'] = 'available';
+    if (rawStatus.includes('block')) {
+      status = 'blocked';
+    } else if (rawStatus.includes('occup')) {
+      status = 'occupied';
+    } else if (rawStatus.includes('clean')) {
+      status = 'cleaning';
+    }
+
+    const blockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : undefined;
+    const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : undefined;
+
+    const existing = existingRooms.find(
+      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
+    );
+
+    const id = existing
+      ? existing.id
+      : `rm-${building.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+    parsedRooms.push({
+      id,
+      roomNumber,
+      building,
+      floor,
+      floorLabel: `Floor ${floor}`,
+      capacity,
+      pax: capacity,
+      buffer,
+      category,
+      status,
+      toiletType,
+      bedType,
+      blockedReason: blockedReason || (status === 'blocked' ? 'Maintenance hold' : undefined),
+      notes,
+      amenities: ['Air Conditioning', 'WiFi', 'Clean Linens'],
+    });
+  }
+
+  return parsedRooms;
+}
+
+/**
+ * Fetch and parse Rooms & Buildings from Google Sheet URL or ID (public link OR OAuth)
+ */
+export async function fetchRoomsAndBuildingsFromGoogleSheetUrl(
+  sheetUrlOrId: string,
+  accessToken?: string | null,
+  existingRooms: Room[] = []
+): Promise<Room[]> {
+  const sheetId = extractSpreadsheetId(sheetUrlOrId);
+  if (!sheetId) {
+    throw new Error('Please enter a valid Google Sheet URL or ID.');
+  }
+
+  // Extract gid if available in URL
+  const gidMatch = sheetUrlOrId.match(/[#&?]gid=([0-9]+)/);
+  const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+
+  // 1. Try public Google visualization CSV export
+  try {
+    const gvizRes = await fetch(
+      `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidParam}`,
+      { cache: 'no-store' }
+    );
+    if (gvizRes.ok) {
+      const text = await gvizRes.text();
+      if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
+        const rooms = parseRoomsFromCsvText(text, existingRooms);
+        if (rooms.length > 0) {
+          return rooms;
+        }
+      }
+    }
+
+    // If default sheet yielded no rooms, try candidate tab names (e.g. Rooms_Inventory, Rooms, Inventory)
+    if (!gidParam) {
+      const candidateTabs = ['Rooms_Inventory', 'Rooms', 'Room Inventory', 'Hotel Rooms', 'Inventory', 'Buildings', 'Sheet2'];
+      for (const tab of candidateTabs) {
+        try {
+          const tabRes = await fetch(
+            `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`,
+            { cache: 'no-store' }
+          );
+          if (tabRes.ok) {
+            const text = await tabRes.text();
+            if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
+              const rooms = parseRoomsFromCsvText(text, existingRooms);
+              if (rooms.length > 0) {
+                return rooms;
+              }
+            }
+          }
+        } catch {
+          // continue checking other tabs
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('gviz room CSV export failed:', err);
+  }
+
+  // 2. Try export?format=csv
+  try {
+    const exportRes = await fetch(
+      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidParam}`,
+      { cache: 'no-store' }
+    );
+    if (exportRes.ok) {
+      const text = await exportRes.text();
+      if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
+        const rooms = parseRoomsFromCsvText(text, existingRooms);
+        if (rooms.length > 0) {
+          return rooms;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('export?format=csv room failed:', err);
+  }
+
+  // 3. If access token available, use official Google Sheets v4 API
+  if (accessToken) {
+    return await fetchRoomsFromGoogleSheet(accessToken, sheetId, existingRooms);
+  }
+
+  throw new Error(
+    'Unable to fetch rooms from the Google Sheet. Please ensure your Google Sheet is shared with "Anyone with the link can view", or sign in with your Google account.'
+  );
+}
+

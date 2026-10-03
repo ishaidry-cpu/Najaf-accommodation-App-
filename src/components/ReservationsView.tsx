@@ -120,6 +120,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     return Array.from(new Set(reservations.map((r) => r.tourRefNo).filter(Boolean))).sort();
   }, [reservations]);
 
+  // Distinct buildings from rooms and reservations
+  const distinctBuildings = useMemo(() => {
+    const set = new Set<string>();
+    rooms.forEach((r) => { if (r.building) set.add(r.building); });
+    reservations.forEach((r) => { if (r.building) set.add(r.building); });
+    return Array.from(set).length > 0 ? Array.from(set).sort() : ['Saifee', 'Burhani'];
+  }, [rooms, reservations]);
+
   // Distinct families for selected batch Tour ID
   const familiesInBatchTour = useMemo(() => {
     const list = batchTourId
@@ -649,11 +657,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <select
             value={buildingFilter}
             onChange={(e) => setBuildingFilter(e.target.value)}
-            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
           >
             <option value="ALL">All Hotels</option>
-            <option value="Saifee">Saifee Hotel</option>
-            <option value="Burhani">Burhani Hotel</option>
+            {distinctBuildings.map((bldg) => (
+              <option key={bldg} value={bldg}>{bldg} Hotel</option>
+            ))}
             <option value="Unallotted">Unallotted Rooms</option>
           </select>
 
@@ -847,8 +856,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               }}
               className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-[#124E39] shadow-2xs cursor-pointer"
             >
-              <option value="Saifee">Saifee</option>
-              <option value="Burhani">Burhani</option>
+              {distinctBuildings.map((bldg) => (
+                <option key={bldg} value={bldg}>{bldg}</option>
+              ))}
             </select>
 
             {/* Room select */}
@@ -1310,8 +1320,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
                           className="bg-white border border-stone-200 rounded px-2 py-1 text-xs md:text-sm font-bold text-[#124E39] cursor-pointer shadow-2xs"
                         >
-                          <option value="Saifee">Saifee</option>
-                          <option value="Burhani">Burhani</option>
+                          {distinctBuildings.map((bldg) => (
+                            <option key={bldg} value={bldg}>{bldg}</option>
+                          ))}
                         </select>
                       </td>
 
