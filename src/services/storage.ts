@@ -692,15 +692,32 @@ export function saveStoredCategories(categories: string[]): void {
 /**
  * Checks whether two date ranges [arr1, dep1] and [arr2, dep2] overlap.
  * Format expected: YYYY-MM-DD or ISO string.
+ * Same-day departure and arrival (d1 === a2 or d2 === a1) is turnover day and NOT an overlap.
  */
-export function doDatesOverlap(arr1: string, dep1: string, arr2: string, dep2: string): boolean {
+export function doDatesOverlap(arr1?: string, dep1?: string, arr2?: string, dep2?: string): boolean {
   if (!arr1 || !dep1 || !arr2 || !dep2) return false;
   const a1 = arr1.slice(0, 10);
   const d1 = dep1.slice(0, 10);
   const a2 = arr2.slice(0, 10);
   const d2 = dep2.slice(0, 10);
-  // An overlap exists if arrival1 <= departure2 AND departure1 >= arrival2
-  return a1 <= d2 && d1 >= a2;
+
+  // If both are single-day bookings on the exact same date:
+  if (a1 === d1 && a2 === d2) {
+    return a1 === a2;
+  }
+  // If reservation 1 is a single-day booking:
+  if (a1 === d1) {
+    return a1 >= a2 && a1 < d2;
+  }
+  // If reservation 2 is a single-day booking:
+  if (a2 === d2) {
+    return a2 >= a1 && a2 < d1;
+  }
+
+  // Same-day departure and arrival (e.g. d1 === a2 or d2 === a1) is turnover day (morning checkout ➔ afternoon checkin).
+  // Standard hotel night occupancy: guest 1 occupies nights [a1, d1-1], guest 2 occupies nights [a2, d2-1].
+  // An overlap of nights occurs only when arrival of one is strictly before departure of the other:
+  return a1 < d2 && d1 > a2;
 }
 
 /**
@@ -831,7 +848,8 @@ export function checkRoomAllotmentAvailability(
   rooms: Room[],
   reservations: Reservation[],
   requestedPax: number = 1,
-  excludeReservationId?: string
+  excludeReservationId?: string,
+  forceAllocate: boolean = false
 ): RoomAllotmentCheck {
   const bNorm = (building || '').trim().toLowerCase();
   const rNorm = (roomNumber || '').trim().toLowerCase();
@@ -851,7 +869,7 @@ export function checkRoomAllotmentAvailability(
     };
   }
 
-  if (targetRoom.status === 'blocked') {
+  if (targetRoom.status === 'blocked' && !forceAllocate) {
     return {
       allowed: false,
       reason: `Room ${roomNumber} is currently blocked: ${targetRoom.blockedReason || 'Maintenance hold'}.`,
@@ -881,9 +899,20 @@ export function checkRoomAllotmentAvailability(
 
   if (currentOccupancy + requestedPax > maxCapacity) {
     const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family})`).join(', ');
+    if (forceAllocate) {
+      return {
+        allowed: true,
+        reason: `Force Allocated (Quota/Capacity Overridden): ${currentOccupancy + requestedPax}/${maxCapacity} Pax.`,
+        room: targetRoom,
+        maxCapacity,
+        currentOccupancy,
+        remainingSlots: 0,
+        occupants: overlappingReservations,
+      };
+    }
     return {
       allowed: false,
-      reason: `Room ${roomNumber} (${building}) max capacity with buffer reached (${currentOccupancy}/${maxCapacity} Pax). Base: ${baseCapacity}, Buffer: ${bufferCapacity}. Already booked by: ${occupantNames}. Cannot allot ${requestedPax} more guest(s).`,
+      reason: `Room ${roomNumber} (${building}) max capacity with buffer reached (${currentOccupancy}/${maxCapacity} Pax). Base: ${baseCapacity}, Buffer: ${bufferCapacity}. Already booked by: ${occupantNames || 'Other guests'}. Allotting ${requestedPax} more guest(s) exceeds quota.`,
       room: targetRoom,
       maxCapacity,
       currentOccupancy,

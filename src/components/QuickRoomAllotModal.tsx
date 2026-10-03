@@ -568,10 +568,19 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            disabled
-                            className="w-full py-1.5 rounded-lg text-xs font-semibold bg-stone-200 text-stone-500 cursor-not-allowed text-center"
+                            onClick={() => {
+                              const confirmForce = window.confirm(
+                                `Room ${room.roomNumber} (${room.building}) current occupancy is ${currentOccupancy}/${maxCap} Pax.\n\nDo you want to FORCE ALLOCATE ${requestedPax} guest(s) to this room anyway (override quota / capacity)?`
+                              );
+                              if (confirmForce) {
+                                handleSelectRoom(room.building, room.roomNumber);
+                              }
+                            }}
+                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                            title="Click to force allocate this room even though capacity is full"
                           >
-                            Capacity Full ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} &lt; {requestedPax} needed)
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
+                            <span>Force Allot ({currentOccupancy}/{maxCap} Pax)</span>
                           </button>
                         )}
                       </div>

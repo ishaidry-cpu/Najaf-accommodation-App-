@@ -1340,14 +1340,32 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                     Room {res.roomNumber} ({res.building}) ✓
                                   </option>
                                 )}
-                                {/* List vacant rooms for this duration */}
-                                {vacantRoomsForRes
-                                  .filter((rm) => rm.roomNumber !== res.roomNumber)
-                                  .map((rm) => (
-                                    <option key={rm.id} value={rm.roomNumber}>
-                                      Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
-                                    </option>
-                                  ))}
+                                {/* Available rooms (with turnover/vacant) */}
+                                <optgroup label="Available Rooms (Vacant / Turnover Ready)">
+                                  {vacantRoomsForRes
+                                    .filter((rm) => rm.roomNumber !== res.roomNumber)
+                                    .map((rm) => (
+                                      <option key={rm.id} value={rm.roomNumber}>
+                                        Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
+                                      </option>
+                                    ))}
+                                </optgroup>
+                                {/* All other rooms in building for Force Allocation if quota exceeds */}
+                                <optgroup label="All Hotel Rooms (Force Allocate / Quota Override)">
+                                  {rooms
+                                    .filter(
+                                      (rm) =>
+                                        (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
+                                        rm.roomNumber !== res.roomNumber &&
+                                        !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
+                                        rm.status !== 'blocked'
+                                    )
+                                    .map((rm) => (
+                                      <option key={rm.id} value={rm.roomNumber}>
+                                        Rm {rm.roomNumber} [FORCE ALLOCATE • Over Quota]
+                                      </option>
+                                    ))}
+                                </optgroup>
                               </select>
 
                               {/* Quick Allot Modal Trigger */}

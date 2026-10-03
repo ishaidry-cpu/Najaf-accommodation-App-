@@ -584,7 +584,7 @@ export default function App() {
     );
   };
 
-  // Allot Room to Zaer (Capacity aware with Buffer!)
+  // Allot Room to Zaer (Capacity aware with Buffer & Force Allotment option)
   const handleAllotRoom = (reservationId: string, building: string, roomNumber: string) => {
     const target = reservations.find((r) => r.id === reservationId);
     if (!target) return;
@@ -602,8 +602,10 @@ export default function App() {
       );
 
       if (!check.allowed) {
-        alert(`Room Allotment Conflict: ${check.reason}`);
-        return;
+        const force = window.confirm(
+          `Room Capacity / Quota Notice:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this room anyway (override quota / capacity)?`
+        );
+        if (!force) return;
       }
     }
 
@@ -622,7 +624,7 @@ export default function App() {
     );
   };
 
-  // Batch Allot Room to entire Family on a Tour ID (or whole family in one go, with buffer support)
+  // Batch Allot Room to entire Family on a Tour ID (or whole family in one go, with buffer support & force allotment option)
   const handleBatchAllotFamily = (
     tourRefNo: string,
     family: string,
@@ -654,8 +656,10 @@ export default function App() {
         matches.length
       );
       if (!check.allowed) {
-        alert(`Cannot allot family to Room ${roomNumber}: ${check.reason}`);
-        return;
+        const force = window.confirm(
+          `Room Capacity / Quota Notice:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this entire family (${matches.length} guests) to Room ${roomNumber} anyway (override quota / capacity)?`
+        );
+        if (!force) return;
       }
     }
 
@@ -679,6 +683,42 @@ export default function App() {
       roomNumber
         ? `Allotted ${building} Room ${roomNumber} to all ${matches.length} members of Family "${family}" (${tourRefNo || 'all tours'}) in one go!`
         : `Cleared room allotment for Family "${family}" (${matches.length} members)`
+    );
+  };
+
+  // Batch shift selected zaereen or entire Tour ID to Category A (Nizaam)
+  const handleBatchShiftToCategoryA = (
+    reservationIds: string[],
+    moneyGiven: MoneyGivenStatus = 'Yes',
+    notes?: string
+  ) => {
+    const slipDate = new Date().toISOString().slice(0, 10);
+    const idSet = new Set(reservationIds);
+    const updated = reservations.map((r) => {
+      if (idSet.has(r.id)) {
+        const slipNo = r.requestSlipNo || `SLIP-${r.tourRefNo?.slice(-4) || 'TOUR'}-${r.family || 'FAM'}-${Date.now().toString().slice(-4)}`;
+        return {
+          ...r,
+          category: 'B to A',
+          shiftToCategoryA: true,
+          accommodationCategory: 'Category A (Nizaam)' as const,
+          moneyGiven,
+          moneyGivenDate: moneyGiven === 'Yes' ? slipDate : undefined,
+          moneyNotes: notes !== undefined ? notes : r.moneyNotes,
+          requestSlipNo: slipNo,
+          requestSlipDate: slipDate,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+
+    setReservations(updated);
+    saveReservations(updated);
+    saveBackendReservations(updated);
+    triggerAutoSync(updated, rooms);
+    showToast(
+      `Shifted ${reservationIds.length} pilgrim(s) to Category A (Payment / Money Given: ${moneyGiven})`
     );
   };
 
@@ -898,8 +938,10 @@ export default function App() {
       {/* Category B to A Accounts Request Slip Modal */}
       <AccountsRequestSlipModal
         reservation={activeAccountsSlipReservation}
+        allReservations={reservations}
         onClose={() => setActiveAccountsSlipReservation(null)}
         onToggleMoneyGiven={handleToggleMoneyGiven}
+        onBatchShiftToCategoryA={handleBatchShiftToCategoryA}
       />
 
       {/* Google Sheets Categories Modal */}
