@@ -57,6 +57,7 @@ interface ReservationsViewProps {
   onOpenCategoriesModal?: () => void;
   onNavigateToShifts?: () => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
+  onAllotRoom?: (reservationId: string, building: string, roomNumber: string) => void;
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
 }
@@ -79,6 +80,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onOpenCategoriesModal,
   onNavigateToShifts,
   onBatchAllotFamily,
+  onAllotRoom,
   userRole = 'admin',
   onOpenQuickAllotModal,
 }) => {
@@ -1337,7 +1339,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             <>
                               <select
                                 value={res.roomNumber || ''}
-                                onChange={(e) => handleFieldChange(res.id, 'roomNumber', e.target.value)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (onAllotRoom) {
+                                    onAllotRoom(res.id, res.building || 'Saifee', val);
+                                  } else {
+                                    handleFieldChange(res.id, 'roomNumber', val);
+                                  }
+                                }}
                                 className={`w-full text-xs md:text-sm font-bold rounded-lg px-2.5 py-1 border transition cursor-pointer shadow-2xs ${
                                   isAllotted
                                     ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
@@ -1362,7 +1371,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                     ))}
                                 </optgroup>
                                 {/* All other rooms in building for Force Allocation if quota exceeds */}
-                                <optgroup label="All Hotel Rooms (Force Allocate / Quota Override)">
+                                <optgroup label="All Hotel Rooms (Force Allocate / Warning Required)">
                                   {rooms
                                     .filter(
                                       (rm) =>
@@ -1373,7 +1382,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                     )
                                     .map((rm) => (
                                       <option key={rm.id} value={rm.roomNumber}>
-                                        Rm {rm.roomNumber} [FORCE ALLOCATE • Over Quota]
+                                        Rm {rm.roomNumber} [FORCE ALLOCATE • Check Turnover/Capacity]
                                       </option>
                                     ))}
                                 </optgroup>
@@ -1439,7 +1448,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         />
                       </td>
 
-                      {/* 11. Arrival Date */}
+                      {/* 11. Arrival Date & Time */}
                       <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
                         <input
                           type="date"
@@ -1447,14 +1456,20 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           onChange={(e) => handleFieldChange(res.id, 'arrivalDate', e.target.value)}
                           className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
                         />
-                        {res.rawArrivalStr && (
-                          <div className="text-[10px] text-stone-400 truncate" title={res.rawArrivalStr}>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200">
+                            <Clock className="w-2.5 h-2.5 text-indigo-600" />
+                            <span>{res.arrivalTime || '11:00 AM'}</span>
+                          </span>
+                        </div>
+                        {res.rawArrivalStr && res.rawArrivalStr !== res.arrivalTime && (
+                          <div className="text-[10px] text-stone-400 truncate mt-0.5" title={res.rawArrivalStr}>
                             {res.rawArrivalStr}
                           </div>
                         )}
                       </td>
 
-                      {/* 12. Departure Date */}
+                      {/* 12. Departure Date & Time */}
                       <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
                         <input
                           type="date"
@@ -1462,8 +1477,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           onChange={(e) => handleFieldChange(res.id, 'departureDate', e.target.value)}
                           className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
                         />
-                        {res.rawDepartureStr && (
-                          <div className="text-[10px] text-stone-400 truncate" title={res.rawDepartureStr}>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200">
+                            <Clock className="w-2.5 h-2.5 text-amber-600" />
+                            <span>{res.departureTime || '01:00 AM'}</span>
+                          </span>
+                        </div>
+                        {res.rawDepartureStr && res.rawDepartureStr !== res.departureTime && (
+                          <div className="text-[10px] text-stone-400 truncate mt-0.5" title={res.rawDepartureStr}>
                             {res.rawDepartureStr}
                           </div>
                         )}

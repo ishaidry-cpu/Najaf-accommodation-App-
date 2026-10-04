@@ -10,7 +10,8 @@ import {
   ArrowRight,
   RefreshCw,
   FileCheck,
-  Sparkles
+  Sparkles,
+  Clock
 } from 'lucide-react';
 import { 
   parseZaereenExcelFile, 
@@ -273,8 +274,8 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
                     <th className="py-2 px-2.5">Family</th>
                     <th className="py-2 px-2.5">Tour Ref</th>
                     <th className="py-2 px-2.5">Office</th>
-                    <th className="py-2 px-2.5">Arrival</th>
-                    <th className="py-2 px-2.5">Departure</th>
+                    <th className="py-2 px-2.5">Arrival (Date & Time)</th>
+                    <th className="py-2 px-2.5">Departure (Date & Time)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -297,8 +298,24 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
                       <td className="py-1.5 px-2.5 font-mono text-stone-700">{row.family}</td>
                       <td className="py-1.5 px-2.5 text-stone-700">{row.tourRefNo}</td>
                       <td className="py-1.5 px-2.5 text-stone-600">{row.officeName}</td>
-                      <td className="py-1.5 px-2.5 text-stone-600">{row.arrivalDate}</td>
-                      <td className="py-1.5 px-2.5 text-stone-600">{row.departureDate}</td>
+                      <td className="py-1.5 px-2.5 text-stone-700">
+                        <div className="font-semibold text-stone-900">{row.arrivalDate}</div>
+                        {row.arrivalTime && (
+                          <div className="inline-flex items-center gap-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1 rounded border border-indigo-200 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 text-indigo-600" />
+                            <span>{row.arrivalTime}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2.5 text-stone-700">
+                        <div className="font-semibold text-stone-900">{row.departureDate}</div>
+                        {row.departureTime && (
+                          <div className="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 px-1 rounded border border-amber-200 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 text-amber-700" />
+                            <span>{row.departureTime}</span>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

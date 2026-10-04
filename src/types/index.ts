@@ -43,6 +43,15 @@ export interface RoomAllotmentCheck {
   currentOccupancy: number;
   remainingSlots: number;
   occupants: Reservation[];
+  // Turnover timing conflict fields (When departure and arrival on same date and dep time is later than arr time)
+  hasTimingConflict?: boolean;
+  isSevereConflict?: boolean;
+  canForceAllocate?: boolean; // false if departure is later than arrival by > 15 hours
+  timingConflictDiffHours?: number;
+  timingConflictMessage?: string;
+  depTime?: string;
+  arrTime?: string;
+  conflictingGuestName?: string;
 }
 
 export interface Room {

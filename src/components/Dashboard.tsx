@@ -1635,8 +1635,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <div>
                     <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="text-[10px] text-stone-500 font-mono">
-                      {res.family} • {res.tourRefNo} • {res.officeName}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
+                        <Clock className="w-2.5 h-2.5 text-indigo-600" />
+                        <span>{res.arrivalTime || '11:00 AM'}</span>
+                      </span>
+                      <span className="text-[10px] text-stone-500 font-mono">
+                        {res.family} • {res.tourRefNo}
+                      </span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1679,8 +1685,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <div>
                     <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="text-[10px] text-stone-500 font-mono">
-                      {res.family} • {res.tourRefNo} • {res.officeName}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                        <Clock className="w-2.5 h-2.5 text-amber-600" />
+                        <span>{res.departureTime || '01:00 AM'}</span>
+                      </span>
+                      <span className="text-[10px] text-stone-500 font-mono">
+                        {res.family} • {res.tourRefNo}
+                      </span>
                     </div>
                   </div>
                   <div className="text-right">

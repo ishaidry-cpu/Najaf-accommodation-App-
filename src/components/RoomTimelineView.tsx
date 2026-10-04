@@ -30,6 +30,7 @@ import {
   getRoomStatusOnDate,
   checkRoomAllotmentAvailability
 } from '../services/storage';
+import { checkTurnoverTimingConflict } from '../utils/turnoverTiming';
 
 interface RoomTimelineViewProps {
   rooms: Room[];
@@ -921,25 +922,57 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       if (isTurnoverDay) {
                         const dep = departingGuests[0];
                         const arr = arrivingGuests[0];
+                        const timing = checkTurnoverTimingConflict(
+                          dep.departureDate,
+                          dep.departureTime || dep.rawDepartureStr,
+                          arr.arrivalDate,
+                          arr.arrivalTime || arr.rawArrivalStr,
+                          dep.applicantName,
+                          arr.applicantName
+                        );
+
+                        const isLate = timing.isDepLaterThanArr;
+                        const isSevere = timing.isSevereConflict;
+
                         return (
                           <td
                             key={dateStr}
                             className={`p-1 border-r border-stone-200 text-center select-none ${
-                              isToday ? 'bg-purple-50 border-l-2 border-r-2 border-purple-500' : 'bg-purple-50/40'
+                              isSevere
+                                ? 'bg-rose-50 border-l-2 border-r-2 border-rose-500'
+                                : isLate
+                                ? 'bg-amber-50 border-l-2 border-r-2 border-amber-500'
+                                : isToday
+                                ? 'bg-purple-50 border-l-2 border-r-2 border-purple-500'
+                                : 'bg-purple-50/40'
                             }`}
                           >
                             <div
-                              className="p-1 rounded bg-purple-100 border border-purple-300 text-purple-900 text-[9px] cursor-pointer hover:shadow-xs transition"
-                              title={`Same-Day Turnover: ${dep.applicantName} checking out -> Room cleaning -> ${arr.applicantName} checking in!`}
+                              className={`p-1 rounded border text-[9px] cursor-pointer hover:shadow-xs transition ${
+                                isSevere
+                                  ? 'bg-rose-100 border-rose-300 text-rose-950 font-bold'
+                                  : isLate
+                                  ? 'bg-amber-100 border-amber-300 text-amber-950 font-semibold'
+                                  : 'bg-purple-100 border-purple-300 text-purple-900'
+                              }`}
+                              title={
+                                isLate
+                                  ? timing.message
+                                  : `Same-Day Turnover: ${dep.applicantName} checking out (${timing.depTimeFormatted}) -> Room cleaning -> ${arr.applicantName} checking in (${timing.arrTimeFormatted})!`
+                              }
                               onClick={() => setHoveredReservation(arr)}
                             >
-                              <div className="flex items-center justify-between font-bold text-[9px]">
-                                <span className="text-amber-800">↗ Dep</span>
-                                <RefreshCw className="w-2.5 h-2.5 text-purple-700 animate-spin" />
-                                <span className="text-indigo-800">↘ Arr</span>
+                              <div className="flex items-center justify-between font-bold text-[8px]">
+                                <span className={isSevere ? 'text-rose-800' : isLate ? 'text-amber-800' : 'text-amber-800'}>
+                                  {isSevere ? '⛔' : isLate ? '⚠️' : '↗'} {timing.depTimeFormatted}
+                                </span>
+                                <span className="text-stone-400">➔</span>
+                                <span className="text-indigo-800">
+                                  {timing.arrTimeFormatted}
+                                </span>
                               </div>
                               <div className="truncate font-semibold text-[8px] mt-0.5">
-                                {arr.applicantName.split(' ')[0]}
+                                {dep.applicantName.split(' ')[0]} ➔ {arr.applicantName.split(' ')[0]}
                               </div>
                             </div>
                           </td>

@@ -1,5 +1,10 @@
 import * as XLSX from 'xlsx';
 import { Reservation, DEFAULT_ZAEREEN_CATEGORIES } from '../types';
+import { 
+  extractCleanTime, 
+  formatMinutesToTime12, 
+  parseTimeToMinutes 
+} from '../utils/turnoverTiming';
 
 export interface ParsedZaerRow {
   itsId: string;
@@ -19,6 +24,8 @@ export interface ParsedZaerRow {
   groupLeadName: string;
   arrivalDate: string;
   departureDate: string;
+  arrivalTime?: string;
+  departureTime?: string;
   rawArrivalStr?: string;
   rawDepartureStr?: string;
   // Optional pre-filled fields if present:
@@ -26,6 +33,31 @@ export interface ParsedZaerRow {
   building?: string;
   roomNumber?: string;
   isUploadedToPortal?: boolean;
+}
+
+/**
+ * Extracts a formatted time string from an Excel cell value (number, Date, or text).
+ */
+export function extractTimeFromExcelValue(val: any, defaultFallback: string = ''): string {
+  if (val === undefined || val === null || val === '') return defaultFallback;
+
+  if (typeof val === 'number') {
+    // If it's an Excel fractional day (e.g. 0.45833 for 11:00 AM) or serial date with fraction
+    const frac = val - Math.floor(val);
+    if (frac > 0.0001 && frac < 0.9999) {
+      return formatMinutesToTime12(frac * 1440);
+    }
+  }
+
+  if (val instanceof Date) {
+    const h = val.getHours();
+    const m = val.getMinutes();
+    if (h !== 0 || m !== 0) {
+      return formatMinutesToTime12(h * 60 + m);
+    }
+  }
+
+  return extractCleanTime(val, undefined, undefined, defaultFallback);
 }
 
 /**
@@ -283,6 +315,8 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
   let leadIdx = findCol(['group lead name', 'group lead', 'group leader', 'lead name', 'leader']);
   let arrIdx = findCol(['arrival date', 'arrival', 'arr date']);
   let depIdx = findCol(['departure date', 'departure', 'dep date']);
+  let arrTimeIdx = findCol(['arrival time', 'arr time', 'flight arrival time', 'arrival flight time', 'check-in time', 'checkin time', 'time of arrival', 'arrival_time']);
+  let depTimeIdx = findCol(['departure time', 'dep time', 'flight departure time', 'departure flight time', 'check-out time', 'checkout time', 'time of departure', 'departure_time']);
   let moneyIdx = findCol(['money given', 'money', 'paid']);
   let bldgIdx = findCol(['building', 'hotel']);
   let roomIdx = findCol(['room number', 'room no', 'room']);
@@ -349,10 +383,42 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     const officeName = officeIdx >= 0 && row[officeIdx] ? String(row[officeIdx]).trim() : 'Fayz E Husayni Trust Mumbai';
     const groupLeadName = leadIdx >= 0 && row[leadIdx] ? String(row[leadIdx]).trim() : (applicantName || 'Group Leader');
     
-    const rawArr = arrIdx >= 0 && row[arrIdx] ? String(row[arrIdx]).trim() : '';
-    const rawDep = depIdx >= 0 && row[depIdx] ? String(row[depIdx]).trim() : '';
-    const arrivalDate = normalizeDate(rawArr) || '2026-10-01';
-    const departureDate = normalizeDate(rawDep) || '2026-10-06';
+    const rawArrCell = arrIdx >= 0 ? row[arrIdx] : '';
+    const rawDepCell = depIdx >= 0 ? row[depIdx] : '';
+    const rawArr = rawArrCell !== undefined && rawArrCell !== null ? String(rawArrCell).trim() : '';
+    const rawDep = rawDepCell !== undefined && rawDepCell !== null ? String(rawDepCell).trim() : '';
+
+    const arrivalDate = normalizeDate(rawArrCell || rawArr) || '2026-10-01';
+    const departureDate = normalizeDate(rawDepCell || rawDep) || '2026-10-06';
+
+    // Extract exact time from specific time column or date cell
+    let arrivalTime = '';
+    if (arrTimeIdx >= 0 && row[arrTimeIdx] !== undefined && row[arrTimeIdx] !== null && String(row[arrTimeIdx]).trim() !== '') {
+      arrivalTime = extractTimeFromExcelValue(row[arrTimeIdx]);
+    }
+    if (!arrivalTime && rawArrCell !== undefined && rawArrCell !== null) {
+      arrivalTime = extractTimeFromExcelValue(rawArrCell);
+    }
+    if (!arrivalTime && rawArr) {
+      arrivalTime = extractTimeFromExcelValue(rawArr);
+    }
+    if (!arrivalTime) {
+      arrivalTime = '11:00 AM';
+    }
+
+    let departureTime = '';
+    if (depTimeIdx >= 0 && row[depTimeIdx] !== undefined && row[depTimeIdx] !== null && String(row[depTimeIdx]).trim() !== '') {
+      departureTime = extractTimeFromExcelValue(row[depTimeIdx]);
+    }
+    if (!departureTime && rawDepCell !== undefined && rawDepCell !== null) {
+      departureTime = extractTimeFromExcelValue(rawDepCell);
+    }
+    if (!departureTime && rawDep) {
+      departureTime = extractTimeFromExcelValue(rawDep);
+    }
+    if (!departureTime) {
+      departureTime = '01:00 AM';
+    }
 
     let moneyGiven: 'Yes' | 'No' = 'No';
     if (moneyIdx >= 0 && row[moneyIdx]) {
@@ -390,6 +456,8 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
       groupLeadName,
       arrivalDate,
       departureDate,
+      arrivalTime,
+      departureTime,
       rawArrivalStr: rawArr,
       rawDepartureStr: rawDep,
       moneyGiven,
@@ -581,6 +649,8 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       groupLeadName: 'Husain Shaikh Asgar Arsiwala',
       arrivalDate: '2026-10-01',
       departureDate: '2026-10-06',
+      arrivalTime: '11:00 AM',
+      departureTime: '01:00 AM',
       rawArrivalStr: "'01-10-2026 11:00 AM",
       rawDepartureStr: "'06-10-2026 01:00 AM",
       moneyGiven: 'Yes',
@@ -606,6 +676,8 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       groupLeadName: 'Husain Shaikh Asgar Arsiwala',
       arrivalDate: '2026-10-01',
       departureDate: '2026-10-06',
+      arrivalTime: '11:00 AM',
+      departureTime: '01:00 AM',
       rawArrivalStr: "'01-10-2026 11:00 AM",
       rawDepartureStr: "'06-10-2026 01:00 AM",
       moneyGiven: 'No',
@@ -631,6 +703,8 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       groupLeadName: 'Husain Shaikh Asgar Arsiwala',
       arrivalDate: '2026-10-01',
       departureDate: '2026-10-06',
+      arrivalTime: '11:00 AM',
+      departureTime: '01:00 AM',
       rawArrivalStr: "'01-10-2026 11:00 AM",
       rawDepartureStr: "'06-10-2026 01:00 AM",
       moneyGiven: 'Yes',
@@ -656,6 +730,8 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       groupLeadName: 'Mustafa Bhai Ebrahim',
       arrivalDate: '2026-10-02',
       departureDate: '2026-10-08',
+      arrivalTime: '02:00 PM',
+      departureTime: '10:00 AM',
       rawArrivalStr: "'02-10-2026 02:00 PM",
       rawDepartureStr: "'08-10-2026 10:00 AM",
       moneyGiven: 'No',
@@ -681,6 +757,8 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       groupLeadName: 'Taher Bhai Hakimuddin',
       arrivalDate: '2026-10-03',
       departureDate: '2026-10-09',
+      arrivalTime: '12:00 PM',
+      departureTime: '08:00 AM',
       rawArrivalStr: "'03-10-2026 12:00 PM",
       rawDepartureStr: "'09-10-2026 08:00 AM",
       moneyGiven: 'No',
@@ -705,6 +783,17 @@ export function convertRowsToReservations(
     const isShifted = !!row.moneyGiven && row.moneyGiven === 'Yes';
     const slipNo = `REQ-ACT-${row.family}-${Date.now().toString().slice(-4)}`;
 
+    const arrTime = row.arrivalTime || extractTimeFromExcelValue(row.rawArrivalStr, '11:00 AM');
+    const depTime = row.departureTime || extractTimeFromExcelValue(row.rawDepartureStr, '01:00 AM');
+
+    const arrMinutes = parseTimeToMinutes(arrTime, 660);
+    const depMinutes = parseTimeToMinutes(depTime, 60);
+
+    const arrH = String(Math.floor(arrMinutes / 60)).padStart(2, '0');
+    const arrM = String(arrMinutes % 60).padStart(2, '0');
+    const depH = String(Math.floor(depMinutes / 60)).padStart(2, '0');
+    const depM = String(depMinutes % 60).padStart(2, '0');
+
     return {
       id: reservationId,
       itsId: row.itsId,
@@ -724,6 +813,8 @@ export function convertRowsToReservations(
       groupLeadName: row.groupLeadName,
       arrivalDate: row.arrivalDate,
       departureDate: row.departureDate,
+      arrivalTime: arrTime,
+      departureTime: depTime,
       rawArrivalStr: row.rawArrivalStr,
       rawDepartureStr: row.rawDepartureStr,
 
@@ -745,8 +836,8 @@ export function convertRowsToReservations(
       paxCount: 1,
       pax: 1,
       totalGuests: 1,
-      arrivalDateTime: `${row.arrivalDate}T14:00`,
-      departureDateTime: `${row.departureDate}T10:00`,
+      arrivalDateTime: `${row.arrivalDate}T${arrH}:${arrM}`,
+      departureDateTime: `${row.departureDate}T${depH}:${depM}`,
       guestLeaderName: row.groupLeadName,
       isUpgradedFromBToA: isShifted,
       assignedCategory: isShifted ? 'Category A (Nizaam)' : 'Category B (Standard)',

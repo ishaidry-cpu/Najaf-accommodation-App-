@@ -13,7 +13,8 @@ import {
   Filter,
   ArrowRight,
   ShieldCheck,
-  Calendar
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { Room, Reservation } from '../types';
 import { 
@@ -106,9 +107,30 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         (targetReservation.building || '').toLowerCase() === room.building.toLowerCase() &&
         (targetReservation.roomNumber || '').trim().toLowerCase() === room.roomNumber.trim().toLowerCase();
 
-      const canFit = remainingSlots >= requestedPax;
+      // Check allotment availability including turnover timing rules:
+      const check = checkRoomAllotmentAvailability(
+        room.building,
+        room.roomNumber,
+        arrivalDate,
+        departureDate,
+        rooms,
+        reservations,
+        requestedPax,
+        allotMode === 'single' ? targetReservation.id : undefined,
+        false,
+        targetReservation.arrivalTime,
+        targetReservation.departureTime,
+        targetReservation.applicantName
+      );
+
+      const canFit = check.allowed;
       const isFull = currentOccupancy >= maxCap;
       const isBlocked = room.status === 'blocked';
+      const hasTimingConflict = !!check.hasTimingConflict;
+      const isSevereConflict = !!check.isSevereConflict;
+      const canForceAllocate = check.canForceAllocate !== false;
+      const timingDiffHours = check.timingConflictDiffHours;
+      const conflictReason = check.reason || '';
 
       return {
         room,
@@ -123,6 +145,12 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         canFit,
         isFull,
         isBlocked,
+        check,
+        hasTimingConflict,
+        isSevereConflict,
+        canForceAllocate,
+        timingDiffHours,
+        conflictReason,
       };
     });
   }, [rooms, reservations, targetReservation, arrivalDate, departureDate, requestedPax, allotMode]);
@@ -251,9 +279,23 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 <span className="text-stone-400">Family: </span>
                 <strong className="text-white">{targetReservation.family}</strong> ({familyMembers.length} member{familyMembers.length > 1 ? 's' : ''})
               </div>
-              <div className="flex items-center gap-1 text-[11px] bg-white/10 px-2 py-0.5 rounded">
-                <Calendar className="w-3 h-3 text-[#EBD59E]" />
-                <span>{arrivalDate} ➔ {departureDate}</span>
+              <div className="flex items-center gap-1.5 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 flex-wrap">
+                <Calendar className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span className="font-semibold text-white">Arr: {arrivalDate}</span>
+                {targetReservation.arrivalTime && (
+                  <span className="inline-flex items-center gap-1 bg-[#124E39] text-[#EBD59E] px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#C5A059]/40">
+                    <Clock className="w-2.5 h-2.5" />
+                    {targetReservation.arrivalTime}
+                  </span>
+                )}
+                <span className="text-stone-400 mx-1">➔</span>
+                <span className="font-semibold text-white">Dep: {departureDate}</span>
+                {targetReservation.departureTime && (
+                  <span className="inline-flex items-center gap-1 bg-[#124E39] text-[#EBD59E] px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#C5A059]/40">
+                    <Clock className="w-2.5 h-2.5" />
+                    {targetReservation.departureTime}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -443,6 +485,11 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                   canFit,
                   isFull,
                   isBlocked,
+                  hasTimingConflict,
+                  isSevereConflict,
+                  canForceAllocate,
+                  timingDiffHours,
+                  conflictReason,
                 }) => {
                   return (
                     <div
@@ -518,6 +565,31 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           </div>
                         )}
 
+                        {/* Same-day Turnover Timing Warning Banner */}
+                        {hasTimingConflict && (
+                          <div
+                            className={`mb-2 p-2 rounded-lg text-[10px] flex items-start gap-1.5 leading-snug ${
+                              isSevereConflict
+                                ? 'bg-rose-50 text-rose-900 border border-rose-300 font-bold'
+                                : 'bg-amber-50 text-amber-900 border border-amber-300 font-medium'
+                            }`}
+                          >
+                            <AlertCircle
+                              className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
+                                isSevereConflict ? 'text-rose-600' : 'text-amber-600'
+                              }`}
+                            />
+                            <div>
+                              <div className="font-bold">
+                                {isSevereConflict
+                                  ? `⛔ Critical Conflict: Dep > Arr by ${timingDiffHours}h (>15h)`
+                                  : `⚠️ Turnover Warning: Dep > Arr by ${timingDiffHours}h`}
+                              </div>
+                              <div className="text-[9px] text-stone-600 mt-0.5">{conflictReason}</div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Current Roommates preview */}
                         {occupants.length > 0 && (
                           <div className="mb-2 text-[10px] text-stone-600 bg-stone-50 p-1.5 rounded border border-stone-200">
@@ -555,6 +627,33 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                             className="w-full py-1.5 rounded-lg text-xs font-bold bg-stone-200 text-stone-500 cursor-not-allowed text-center"
                           >
                             Room Blocked
+                          </button>
+                        ) : isSevereConflict ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 cursor-not-allowed text-center flex items-center justify-center gap-1.5"
+                            title={conflictReason}
+                          >
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Blocked: &gt;15h Conflict (No Force Allot)</span>
+                          </button>
+                        ) : hasTimingConflict && !canFit ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const confirmForce = window.confirm(
+                                `⚠️ Turnover Timing Warning:\n\n${conflictReason}\n\nDo you want to FORCE ALLOCATE this room anyway?`
+                              );
+                              if (confirmForce) {
+                                handleSelectRoom(room.building, room.roomNumber);
+                              }
+                            }}
+                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                            title={conflictReason}
+                          >
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
+                            <span>Force Allot (Timing Warning: {timingDiffHours}h late)</span>
                           </button>
                         ) : canFit ? (
                           <button

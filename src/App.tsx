@@ -601,12 +601,25 @@ export default function App() {
         rooms,
         reservations,
         1,
-        target.id
+        target.id,
+        false,
+        target.arrivalTime,
+        target.departureTime,
+        target.applicantName
       );
 
       if (!check.allowed) {
+        // If departure is later than arrival by > 15 hours, force allocation is completely prohibited!
+        if (check.canForceAllocate === false) {
+          alert(
+            `❌ ALLOTMENT BLOCKED (CRITICAL TIMING CONFLICT):\n\n${check.reason}\n\nForce allocation is NOT allowed when departure is late than arrival with a difference of more than 15 hours.`
+          );
+          showToast(`Allotment blocked: ${check.reason}`, 'error');
+          return;
+        }
+
         const force = window.confirm(
-          `Room Capacity / Quota Notice:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this room anyway (override quota / capacity)?`
+          `⚠️ Allotment Warning & Confirmation:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE Room ${roomNumber} anyway?`
         );
         if (!force) return;
       }
@@ -656,11 +669,25 @@ export default function App() {
         first.departureDate,
         rooms,
         reservations.filter((r) => !matchIds.has(r.id)),
-        matches.length
+        matches.length,
+        undefined,
+        false,
+        first.arrivalTime,
+        first.departureTime,
+        first.applicantName
       );
+
       if (!check.allowed) {
+        if (check.canForceAllocate === false) {
+          alert(
+            `❌ ALLOTMENT BLOCKED (CRITICAL TIMING CONFLICT):\n\n${check.reason}\n\nForce allocation is NOT allowed when departure is late than arrival with a difference of more than 15 hours.`
+          );
+          showToast(`Family allotment blocked: ${check.reason}`, 'error');
+          return;
+        }
+
         const force = window.confirm(
-          `Room Capacity / Quota Notice:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this entire family (${matches.length} guests) to Room ${roomNumber} anyway (override quota / capacity)?`
+          `⚠️ Allotment Warning & Confirmation:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this entire family (${matches.length} guests) to Room ${roomNumber} anyway?`
         );
         if (!force) return;
       }
@@ -917,6 +944,7 @@ export default function App() {
             onOpenCategoriesModal={() => setIsCategoriesModalOpen(true)}
             onNavigateToShifts={() => setActiveTab('upgrades')}
             onBatchAllotFamily={handleBatchAllotFamily}
+            onAllotRoom={handleAllotRoom}
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
           />
