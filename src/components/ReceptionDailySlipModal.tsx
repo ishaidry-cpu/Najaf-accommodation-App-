@@ -256,6 +256,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   }, [activeDatesSummary, todayStr]);
 
   const [selectedDate, setSelectedDate] = useState<string>(initialDate);
+
+  // Active dates for quick jump bar, guaranteeing selectedDate is included even if chosen manually
+  const displayDates = useMemo(() => {
+    const dates = [...activeDatesSummary.sortedDates];
+    if (selectedDate && !dates.includes(selectedDate)) {
+      dates.push(selectedDate);
+      dates.sort();
+    }
+    return dates;
+  }, [activeDatesSummary.sortedDates, selectedDate]);
   const [activeHotelFilter, setActiveHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
   const [activeTab, setActiveTab] = useState<'turnover' | 'roster' | 'worker_summary' | 'portal_upload'>('turnover');
   const [showOnlyActiveRooms, setShowOnlyActiveRooms] = useState<boolean>(true);
@@ -488,7 +498,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const groupAndSortByTour = (list: Reservation[], isArrival: boolean) => {
     const map = new Map<string, Reservation[]>();
     list.forEach((r) => {
-      const tour = (r.tourRefNo || 'Unassigned Tour').trim();
+      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
       const existing = map.get(tour) || [];
       existing.push(r);
       map.set(tour, existing);
@@ -754,7 +764,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   // Grouped Tour data for Assistant Portal Upload (Requirement 4)
   const portalUploadData = useMemo(() => {
     const list = safeReservations.filter((r) => {
-      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
       if (portalFilterScope === 'date') {
         if (!dateTourIds.has(tour)) return false;
       }
@@ -773,7 +783,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     // Group by Tour ID
     const map = new Map<string, Reservation[]>();
     list.forEach((r) => {
-      const t = (r.tourRefNo || 'Unassigned Tour').trim();
+      const t = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
       const existing = map.get(t) || [];
       existing.push(r);
       map.set(t, existing);
@@ -1570,7 +1580,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     const dateTours = new Set<string>();
     const checkAndAdd = (r: Reservation) => {
-      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
       dateTours.add(tour);
     };
     arrivalsOnDate.forEach(checkAndAdd);
@@ -1586,7 +1596,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.text(hotelTitle, 30, startAtY + 16);
 
       const portalReservations = safeReservations.filter((r) => {
-        const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+        const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
         const matchesScope = portalFilterScope === 'all' ? true : dateTours.has(tour);
         if (!matchesScope) return false;
         if (buildingName !== 'ALL') {
@@ -1600,7 +1610,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       const tourMap = new Map<string, Reservation[]>();
       portalReservations.forEach((r) => {
-        const t = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+        const t = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
         const existing = tourMap.get(t) || [];
         existing.push(r);
         tourMap.set(t, existing);
@@ -1991,7 +2001,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {/* Quick Jump to Active Dates */}
               <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-0.5">
                 <span className="text-[11px] font-bold text-stone-500 mr-1 hidden sm:inline">Active Dates:</span>
-                {activeDatesSummary.sortedDates.map((dateStr) => {
+                {displayDates.map((dateStr) => {
                   const stat = activeDatesSummary.datesMap.get(dateStr);
                   const isSelected = dateStr === selectedDate;
                   const dateLabel = formatSafeDateLabel(dateStr, { day: '2-digit', month: 'short' });
