@@ -52,6 +52,7 @@ export interface RoomAllotmentCheck {
   depTime?: string;
   arrTime?: string;
   conflictingGuestName?: string;
+  isOverPaxLimit?: boolean;
 }
 
 export interface Room {

@@ -609,10 +609,10 @@ export default function App() {
       );
 
       if (!check.allowed) {
-        // If departure is later than arrival by > 15 hours, force allocation is completely prohibited!
+        // If canForceAllocate is false, force allocation is completely prohibited!
         if (check.canForceAllocate === false) {
           alert(
-            `❌ ALLOTMENT BLOCKED (CRITICAL TIMING CONFLICT):\n\n${check.reason}\n\nForce allocation is NOT allowed when departure is late than arrival with a difference of more than 15 hours.`
+            `❌ ALLOTMENT BLOCKED:\n\n${check.reason}\n\nForce allocation is NOT allowed because the room is not vacant or not departing in less than 15 hours of the arrival of the new pax and exceeds the pax limit.`
           );
           showToast(`Allotment blocked: ${check.reason}`, 'error');
           return;
@@ -680,7 +680,7 @@ export default function App() {
       if (!check.allowed) {
         if (check.canForceAllocate === false) {
           alert(
-            `❌ ALLOTMENT BLOCKED (CRITICAL TIMING CONFLICT):\n\n${check.reason}\n\nForce allocation is NOT allowed when departure is late than arrival with a difference of more than 15 hours.`
+            `❌ FAMILY ALLOTMENT BLOCKED:\n\n${check.reason}\n\nForce allocation is NOT allowed because the room is not vacant or not departing in less than 15 hours of the arrival of the new pax and exceeds the pax limit.`
           );
           showToast(`Family allotment blocked: ${check.reason}`, 'error');
           return;

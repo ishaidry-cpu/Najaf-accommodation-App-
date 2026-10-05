@@ -1030,32 +1030,18 @@ export function checkRoomAllotmentAvailability(
 
   if (currentOccupancy + requestedPax > maxCapacity) {
     const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family})`).join(', ');
-    if (forceAllocate) {
-      return {
-        allowed: true,
-        reason: worstTimingConflict
-          ? `Force Allocated (Timing warning overridden & Capacity exceeded): ${currentOccupancy + requestedPax}/${maxCapacity} Pax.`
-          : `Force Allocated (Quota/Capacity Overridden): ${currentOccupancy + requestedPax}/${maxCapacity} Pax.`,
-        room: targetRoom,
-        maxCapacity,
-        currentOccupancy,
-        remainingSlots: 0,
-        occupants: overlappingReservations,
-        canForceAllocate: true,
-        hasTimingConflict: !!worstTimingConflict,
-        timingConflictDiffHours: worstTimingConflict?.diffHours,
-        timingConflictMessage: worstTimingConflict?.message,
-      };
-    }
+    const reason = `Allocation blocked: Room ${roomNumber} (${building}) exceeds maximum capacity (${currentOccupancy}/${maxCapacity} Pax with buffer). Occupants (${occupantNames || 'Other guests'}) are staying overnight and not departing within 15 hours of arrival. Force allocation is not allowed when pax limit is exceeded.`;
     return {
       allowed: false,
-      reason: `Room ${roomNumber} (${building}) max capacity with buffer reached (${currentOccupancy}/${maxCapacity} Pax). Base: ${baseCapacity}, Buffer: ${bufferCapacity}. Already booked by: ${occupantNames || 'Other guests'}. Allotting ${requestedPax} more guest(s) exceeds quota.`,
+      reason,
       room: targetRoom,
       maxCapacity,
       currentOccupancy,
       remainingSlots,
       occupants: overlappingReservations,
-      canForceAllocate: true,
+      canForceAllocate: false,
+      isSevereConflict: true,
+      isOverPaxLimit: true,
       hasTimingConflict: !!worstTimingConflict,
       timingConflictDiffHours: worstTimingConflict?.diffHours,
       timingConflictMessage: worstTimingConflict?.message,

@@ -34,7 +34,8 @@ import {
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
   isRoomBookedForDuration, 
-  getVacantRoomsForDuration 
+  getVacantRoomsForDuration,
+  checkRoomAllotmentAvailability
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
@@ -1208,7 +1209,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     res.departureDate,
                     rooms,
                     reservations,
-                    res.id
+                    res.id,
+                    res.pax || res.paxCount || 1,
+                    res.arrivalTime,
+                    res.departureTime,
+                    res.applicantName
                   );
 
                   // Count how many members share this family and tour
@@ -1370,22 +1375,43 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                       </option>
                                     ))}
                                 </optgroup>
-                                {/* All other rooms in building for Force Allocation if quota exceeds */}
-                                <optgroup label="All Hotel Rooms (Force Allocate / Warning Required)">
-                                  {rooms
-                                    .filter(
-                                      (rm) =>
-                                        (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
-                                        rm.roomNumber !== res.roomNumber &&
-                                        !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
-                                        rm.status !== 'blocked'
-                                    )
-                                    .map((rm) => (
-                                      <option key={rm.id} value={rm.roomNumber}>
-                                        Rm {rm.roomNumber} [FORCE ALLOCATE • Check Turnover/Capacity]
+                                {/* Other Hotel Rooms: Turnover warning if <15h vs Blocked if exceeds pax limit */}
+                                {rooms
+                                  .filter(
+                                    (rm) =>
+                                      (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
+                                      rm.roomNumber !== res.roomNumber &&
+                                      !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
+                                      rm.status !== 'blocked'
+                                  )
+                                  .map((rm) => {
+                                    const chk = checkRoomAllotmentAvailability(
+                                      res.building || 'Saifee',
+                                      rm.roomNumber,
+                                      res.arrivalDate,
+                                      res.departureDate,
+                                      rooms,
+                                      reservations,
+                                      res.pax || res.paxCount || 1,
+                                      res.id,
+                                      false,
+                                      res.arrivalTime,
+                                      res.departureTime,
+                                      res.applicantName
+                                    );
+                                    if (chk.canForceAllocate && chk.hasTimingConflict) {
+                                      return (
+                                        <option key={rm.id} value={rm.roomNumber}>
+                                          Rm {rm.roomNumber} [Turnover Warning: Dep {chk.depTime} &gt; Arr {chk.arrTime} • Force Allot]
+                                        </option>
+                                      );
+                                    }
+                                    return (
+                                      <option key={rm.id} value={rm.roomNumber} disabled className="text-stone-400 bg-stone-100">
+                                        Rm {rm.roomNumber} [BLOCKED • Occupied / Exceeds Pax Limit]
                                       </option>
-                                    ))}
-                                </optgroup>
+                                    );
+                                  })}
                               </select>
 
                               {/* Quick Allot Modal Trigger */}
