@@ -252,8 +252,39 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const [activeTab, setActiveTab] = useState<'turnover' | 'roster' | 'worker_summary' | 'portal_upload'>('turnover');
   const [showOnlyActiveRooms, setShowOnlyActiveRooms] = useState<boolean>(true);
   const [rosterGroupByTour, setRosterGroupByTour] = useState<boolean>(true);
-  const [workerCompletedTasks, setWorkerCompletedTasks] = useState<Record<string, boolean>>({});
-  const [portalUploadedMap, setPortalUploadedMap] = useState<Record<string, boolean>>({});
+  const [workerViewMode, setWorkerViewMode] = useState<'grouped' | 'room_numeric'>('grouped');
+
+  // Persistent worker checklists and portal upload state across reloads/reopens
+  const [workerCompletedTasks, setWorkerCompletedTasks] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('faiz_worker_completed_tasks');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [portalUploadedMap, setPortalUploadedMap] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('faiz_portal_uploaded_map');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('faiz_worker_completed_tasks', JSON.stringify(workerCompletedTasks));
+    } catch {}
+  }, [workerCompletedTasks]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('faiz_portal_uploaded_map', JSON.stringify(portalUploadedMap));
+    } catch {}
+  }, [portalUploadedMap]);
+
   const [portalFilterScope, setPortalFilterScope] = useState<'date' | 'all'>('date');
   const [portalSearchQuery, setPortalSearchQuery] = useState<string>('');
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
@@ -524,10 +555,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     actionNotes: string;
   }
 
-  const workerRoomSummary = useMemo(() => {
+  // Reusable builder for Worker Operations Summary (used both for screen and clean PDF generation)
+  const buildWorkerSummary = (prepList: typeof roomPrepSchedule) => {
     const rawItems: WorkerRoomItem[] = [];
 
-    filteredRoomPrep.forEach((item) => {
+    prepList.forEach((item) => {
       const r = item.room;
       const isDep = item.deps.length > 0;
       const isArr = item.arrs.length > 0;
@@ -675,22 +707,41 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     });
 
     result.sort((a, b) => (a.officeName || '').localeCompare(b.officeName || ''));
-    return result;
-  }, [filteredRoomPrep]);
+
+    // Also prepare room list sorted by Room Number (base organized by Room Number)
+    const numericRooms = [...rawItems].sort((a, b) =>
+      (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true })
+    );
+
+    return {
+      groupedByOffice: result,
+      numericRooms,
+      rawItems,
+    };
+  };
+
+  const { groupedByOffice: workerRoomSummary, numericRooms: workerNumericRoomList } = useMemo(
+    () => buildWorkerSummary(filteredRoomPrep),
+    [filteredRoomPrep]
+  );
 
   // Active tours on selected date for Assistant Portal Upload (Requirement 4)
   const dateTourIds = useMemo(() => {
-    return new Set([
-      ...arrivalsOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-      ...departuresOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-      ...inHouseOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-    ]);
+    const tourIds = new Set<string>();
+    const checkAndAdd = (r: Reservation) => {
+      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      tourIds.add(tour);
+    };
+    arrivalsOnDate.forEach(checkAndAdd);
+    departuresOnDate.forEach(checkAndAdd);
+    inHouseOnDate.forEach(checkAndAdd);
+    return tourIds;
   }, [arrivalsOnDate, departuresOnDate, inHouseOnDate]);
 
   // Grouped Tour data for Assistant Portal Upload (Requirement 4)
   const portalUploadData = useMemo(() => {
     const list = safeReservations.filter((r) => {
-      const tour = (r.tourRefNo || 'Unassigned Tour').trim();
+      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
       if (portalFilterScope === 'date') {
         if (!dateTourIds.has(tour)) return false;
       }
@@ -874,8 +925,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     let currentY = 75;
 
-    const saifeePrep = filteredRoomPrep.filter((p) => (p.room.building || '').toLowerCase().includes('saifee'));
-    const burhaniPrep = filteredRoomPrep.filter((p) => (p.room.building || '').toLowerCase().includes('burhani'));
+    const prepPool = showOnlyActiveRooms ? roomPrepSchedule.filter((p) => p.hasActivity) : roomPrepSchedule;
+    const saifeePrep = prepPool.filter((p) => (p.room.building || '').toLowerCase().includes('saifee'));
+    const burhaniPrep = prepPool.filter((p) => (p.room.building || '').toLowerCase().includes('burhani'));
 
     if (targetHotel === 'Saifee') {
       renderHeader('FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) TURNOVER SLIP', `ROOM TURNOVER & PREPARATION RECEPTION SLIP • DATE: ${selectedDate} • SEPARATE PRINT`);
@@ -1254,6 +1306,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       renderHeader('FAIZ-E-HUSAINI — DAILY TOUR ROSTER (PART 2: BURHANI HOTEL)', `OPERATIONAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS)`);
       currentY = 75;
       renderRosterTables('PART 2: BURHANI HOTEL', burhaniArrivalsGroupedByTour, burhaniArrivals, burhaniDeparturesGroupedByTour, burhaniDepartures, currentY);
+
+      if (unallottedArrivals.length > 0 || unallottedDepartures.length > 0) {
+        doc.addPage();
+        renderHeader('FAIZ-E-HUSAINI — DAILY TOUR ROSTER (PART 3: UNALLOTTED ZAEREEN)', `OPERATIONAL DATE: ${selectedDate} • PENDING ROOM ALLOTMENTS`);
+        currentY = 75;
+        renderRosterTables('PART 3: UNALLOTTED ZAEREEN', unallottedArrivalsGroupedByTour, unallottedArrivals, unallottedDeparturesGroupedByTour, unallottedDepartures, currentY);
+      }
     }
 
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
@@ -1321,13 +1380,19 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(235, 213, 158);
       doc.text(hotelTitle, 30, startAtY + 16);
 
+      const sectionPrep = roomPrepSchedule.filter((p) => {
+        if (!p.hasActivity) return false;
+        if (buildingName !== 'ALL') {
+          return (p.room.building || '').toLowerCase().includes(buildingName.toLowerCase());
+        }
+        return true;
+      });
+      const sectionSummary = buildWorkerSummary(sectionPrep).groupedByOffice;
+
       const tableRows: string[][] = [];
-      workerRoomSummary.forEach((officeGroup) => {
+      sectionSummary.forEach((officeGroup) => {
         officeGroup.tours.forEach((tourGroup) => {
           tourGroup.items.forEach((item) => {
-            if (buildingName !== 'ALL' && !item.building.toLowerCase().includes(buildingName.toLowerCase())) {
-              return;
-            }
             const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
             const officeTourCell = `Office:\n${officeGroup.officeName}\n\nTour ID:\n${tourGroup.tourRefNo}`;
             const timingCell = `${item.actionType}\n${item.timeLabel}`;
@@ -1444,11 +1509,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
     };
 
-    const dateTours = new Set([
-      ...arrivalsOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-      ...departuresOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-      ...inHouseOnDate.map((r) => (r.tourRefNo || '').trim()).filter(Boolean),
-    ]);
+    const dateTours = new Set<string>();
+    const checkAndAdd = (r: Reservation) => {
+      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      dateTours.add(tour);
+    };
+    arrivalsOnDate.forEach(checkAndAdd);
+    departuresOnDate.forEach(checkAndAdd);
+    inHouseOnDate.forEach(checkAndAdd);
 
     const renderPortalSection = (hotelTitle: string, buildingName: string, startAtY: number) => {
       doc.setFillColor(18, 78, 57);
@@ -1459,7 +1527,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.text(hotelTitle, 30, startAtY + 16);
 
       const portalReservations = reservations.filter((r) => {
-        const tour = (r.tourRefNo || '').trim();
+        const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
         const matchesScope = portalFilterScope === 'all' ? true : dateTours.has(tour);
         if (!matchesScope) return false;
         if (buildingName !== 'ALL') {
@@ -1470,7 +1538,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       const tourMap = new Map<string, Reservation[]>();
       portalReservations.forEach((r) => {
-        const t = (r.tourRefNo || 'Unassigned Tour').trim();
+        const t = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
         const existing = tourMap.get(t) || [];
         existing.push(r);
         tourMap.set(t, existing);
@@ -1544,14 +1612,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL PORTAL UPLOAD CHECKLIST', `DATE: ${selectedDate} • SEPARATE PRINT • BURHANI (44 ROOMS)`);
       renderPortalSection('BURHANI HOTEL — ASSISTANT PORTAL ALLOTMENT CHECKLIST', 'Burhani', currentY);
     } else {
-      // Joined & Bifurcated
-      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (JOINED & BIFURCATED)', `TOUR & FAMILY ALLOTMENT VERIFICATION • DATE: ${selectedDate}`);
-      renderPortalSection('PART 1: SAIFEE HOTEL (70 ROOMS) — PORTAL ALLOTMENT CHECKLIST', 'Saifee', currentY);
-
-      doc.addPage();
-      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (PART 2: BURHANI HOTEL)', `TOUR & FAMILY ALLOTMENT VERIFICATION • DATE: ${selectedDate}`);
-      currentY = 75;
-      renderPortalSection('PART 2: BURHANI HOTEL (44 ROOMS) — PORTAL ALLOTMENT CHECKLIST', 'Burhani', currentY);
+      // Complete Master Tour Verification (All Hotels & Unallotted)
+      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (MASTER TOUR VERIFICATION)', `TOUR & FAMILY ALLOTMENT VERIFICATION • OPERATIONAL DATE: ${selectedDate}`);
+      renderPortalSection('ALL TOURS & HOTELS — ASSISTANT PORTAL ALLOTMENT VERIFICATION', 'ALL', currentY);
     }
 
     currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
@@ -2897,9 +2960,35 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* View Mode Switcher */}
+                  <div className="flex items-center bg-amber-100 p-0.5 rounded-lg border border-amber-300 text-xs font-bold text-amber-950">
+                    <button
+                      type="button"
+                      onClick={() => setWorkerViewMode('grouped')}
+                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                        workerViewMode === 'grouped'
+                          ? 'bg-amber-800 text-white shadow-2xs font-extrabold'
+                          : 'text-amber-900 hover:bg-amber-200/60'
+                      }`}
+                    >
+                      Grouped by Office & Tour
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkerViewMode('room_numeric')}
+                      className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                        workerViewMode === 'room_numeric'
+                          ? 'bg-amber-800 text-white shadow-2xs font-extrabold'
+                          : 'text-amber-900 hover:bg-amber-200/60'
+                      }`}
+                    >
+                      Room Number Order (Base)
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={handleDownloadWorkerPdf}
+                    onClick={() => handleDownloadWorkerPdf(activeHotelFilter)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
@@ -2909,176 +2998,300 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               </div>
 
               {/* Worker Task Summary Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-2.5 rounded-lg bg-white border border-stone-200 shadow-2xs">
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Rooms Scheduled</span>
-                  <span className="text-base font-extrabold text-stone-900">
-                    {workerRoomSummary.reduce((sum, o) => sum + o.tours.reduce((ts, t) => ts + t.totalRooms, 0), 0)} Rooms
-                  </span>
-                  <span className="text-[10px] text-stone-500">Across {workerRoomSummary.length} Offices</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200 shadow-2xs">
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Priority Turnovers</span>
-                  <span className="text-base font-extrabold text-purple-900">{activeTurnoversCount} Rooms</span>
-                  <span className="text-[10px] text-stone-500">Fast turn before arrivals</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 shadow-2xs">
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Checkout Cleans</span>
-                  <span className="text-base font-extrabold text-amber-900">{checkoutCleansCount} Rooms</span>
-                  <span className="text-[10px] text-stone-500">Freeing up inventory</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 shadow-2xs">
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrival Preps</span>
-                  <span className="text-base font-extrabold text-emerald-900">{newArrivalsPrepCount} Rooms</span>
-                  <span className="text-[10px] text-stone-500">Linens & wajba ready</span>
-                </div>
-              </div>
-
-              {/* Office & Tour ID Groupings */}
-              {workerRoomSummary.length > 0 ? (
-                workerRoomSummary.map((officeGroup) => (
-                  <div key={officeGroup.officeName} className="border-2 border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
-                    {/* Office Banner */}
-                    <div className="bg-[#124E39] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-[#EBD59E]" />
-                        <span className="font-bold text-sm tracking-wide">
-                          OFFICE: {officeGroup.officeName}
-                        </span>
-                        <span className="text-xs text-[#EBD59E] font-medium">
-                          ({officeGroup.tours.length} Tours under this office)
-                        </span>
-                      </div>
-                      <div className="text-xs font-bold bg-[#0E3C2C] border border-[#EBD59E]/40 text-[#EBD59E] px-2.5 py-0.5 rounded-full">
-                        {officeGroup.tours.reduce((sum, t) => sum + t.totalRooms, 0)} Rooms • {officeGroup.tours.reduce((sum, t) => sum + t.totalPax, 0)} Pax
-                      </div>
+              {(() => {
+                const turnCount = filteredRoomPrep.filter((r) => r.actionType === 'turnover').length;
+                const arrCount = filteredRoomPrep.filter((r) => r.actionType === 'new_arrival').length;
+                const depCount = filteredRoomPrep.filter((r) => r.actionType === 'departure_clean').length;
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-2.5 rounded-lg bg-white border border-stone-200 shadow-2xs">
+                      <span className="text-stone-500 text-[10px] uppercase font-bold block">Rooms Scheduled</span>
+                      <span className="text-base font-extrabold text-stone-900">
+                        {workerNumericRoomList.length} Rooms
+                      </span>
+                      <span className="text-[10px] text-stone-500">
+                        {workerViewMode === 'grouped' ? `Across ${workerRoomSummary.length} Offices` : 'In Numeric Room Sequence'}
+                      </span>
                     </div>
-
-                    <div className="p-4 space-y-5 bg-stone-50/50">
-                      {officeGroup.tours.map((tourGroup) => (
-                        <div key={tourGroup.tourRefNo} className="border border-stone-200 rounded-xl bg-white shadow-2xs overflow-hidden">
-                          {/* Tour ID Banner */}
-                          <div className="bg-stone-100 border-b border-stone-200 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-black text-sm text-stone-900 bg-white border border-stone-300 px-2 py-0.5 rounded-md shadow-2xs">
-                                Tour ID: {tourGroup.tourRefNo}
-                              </span>
-                              <span className="text-xs text-stone-600 font-semibold">
-                                (Office: {officeGroup.officeName})
-                              </span>
-                              <span className="text-[11px] font-bold text-[#124E39] bg-[#124E39]/10 border border-[#124E39]/30 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-[#124E39]" />
-                                Timing Sequence Sorted
-                              </span>
-                            </div>
-                            <div className="text-xs font-bold text-stone-700">
-                              {tourGroup.totalRooms} Rooms to service • {tourGroup.totalPax} Zaereen
-                            </div>
-                          </div>
-
-                          {/* Table: Base is Room Number, then Departure/Arrival Time, Family #, Lead Guest, Sign-off */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead className="bg-stone-800 text-white uppercase text-[10px] font-bold">
-                                <tr>
-                                  <th className="py-2.5 px-3 w-[18%]">Room # & Hotel (Base)</th>
-                                  <th className="py-2.5 px-3 w-[26%] bg-stone-900">Event & Timing Sequence</th>
-                                  <th className="py-2.5 px-3 w-[18%]">Family # & Room Pax</th>
-                                  <th className="py-2.5 px-3 w-[20%]">Lead Guest & ITS</th>
-                                  <th className="py-2.5 px-3 w-[18%]">Worker Checklist & Action</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-stone-200">
-                                {tourGroup.items.map((roomItem) => {
-                                  const isDone = !!workerCompletedTasks[roomItem.id];
-                                  return (
-                                    <tr key={roomItem.id} className={`transition ${isDone ? 'bg-emerald-50/70' : 'hover:bg-stone-50'}`}>
-                                      {/* 1. Base: Room Number */}
-                                      <td className="py-3 px-3 align-top font-bold">
-                                        <div className="inline-block bg-[#124E39] text-[#EBD59E] font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
-                                          Room {roomItem.roomNumber}
-                                        </div>
-                                        <div className="text-[11px] font-semibold text-stone-700 mt-1">
-                                          {roomItem.building} Hotel • Fl {roomItem.floor}
-                                        </div>
-                                      </td>
-
-                                      {/* 2. Timing Sequence & Event */}
-                                      <td className="py-3 px-3 align-top">
-                                        <div className="flex items-center gap-1 font-mono font-extrabold text-xs text-stone-900">
-                                          <Clock className="w-3.5 h-3.5 text-[#124E39] shrink-0" />
-                                          <span>{roomItem.timeLabel}</span>
-                                        </div>
-                                        <div className="mt-1">
-                                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border inline-block ${
-                                            roomItem.actionType === 'TURNOVER'
-                                              ? 'bg-purple-100 text-purple-900 border-purple-300'
-                                              : roomItem.actionType === 'CHECKOUT'
-                                              ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                          }`}>
-                                            {roomItem.actionType === 'TURNOVER' ? 'PRIORITY TURNOVER' : roomItem.actionType === 'CHECKOUT' ? 'CHECKOUT CLEANING' : 'NEW ARRIVAL PREP'}
-                                          </span>
-                                        </div>
-                                        <div className="text-[10px] text-stone-500 mt-1 leading-tight">
-                                          {roomItem.actionNotes}
-                                        </div>
-                                      </td>
-
-                                      {/* 3. Family Number & Pax */}
-                                      <td className="py-3 px-3 align-top">
-                                        <div className="font-mono font-bold text-stone-950">
-                                          Family #{roomItem.familyNumbers}
-                                        </div>
-                                        <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/30">
-                                          <Users className="w-3 h-3" />
-                                          {roomItem.totalPaxInRoom} Pax in Room
-                                        </div>
-                                      </td>
-
-                                      {/* 4. Lead Guest & ITS */}
-                                      <td className="py-3 px-3 align-top">
-                                        <div className="font-bold text-stone-900 leading-tight">
-                                          {roomItem.leadGuestName}
-                                        </div>
-                                        <div className="font-mono text-[11px] text-stone-600 mt-0.5">
-                                          ITS: {roomItem.leadGuestIts}
-                                        </div>
-                                      </td>
-
-                                      {/* 5. Worker Checklist & Action */}
-                                      <td className="py-3 px-3 align-top">
-                                        <button
-                                          type="button"
-                                          onClick={() => setWorkerCompletedTasks(prev => ({ ...prev, [roomItem.id]: !prev[roomItem.id] }))}
-                                          className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
-                                            isDone
-                                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                              : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
-                                          }`}
-                                        >
-                                          <CheckSquare className="w-3.5 h-3.5" />
-                                          <span>{isDone ? 'Cleaned / Ready ✓' : 'Mark Room Ready'}</span>
-                                        </button>
-                                        <div className="text-[10px] text-stone-400 mt-1 text-center">
-                                          Initial: ___________
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200 shadow-2xs">
+                      <span className="text-stone-500 text-[10px] uppercase font-bold block">Priority Turnovers</span>
+                      <span className="text-base font-extrabold text-purple-900">{turnCount} Rooms</span>
+                      <span className="text-[10px] text-stone-500">Fast turn before arrivals</span>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 shadow-2xs">
+                      <span className="text-stone-500 text-[10px] uppercase font-bold block">Checkout Cleans</span>
+                      <span className="text-base font-extrabold text-amber-900">{depCount} Rooms</span>
+                      <span className="text-[10px] text-stone-500">Freeing up inventory</span>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 shadow-2xs">
+                      <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrival Preps</span>
+                      <span className="text-base font-extrabold text-emerald-900">{arrCount} Rooms</span>
+                      <span className="text-[10px] text-stone-500">Linens & wajba ready</span>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="py-12 text-center text-stone-500 font-semibold text-xs bg-stone-50 rounded-xl border border-dashed border-stone-300">
-                  No worker room operations or turnovers scheduled for {selectedDate}.
+                );
+              })()}
+
+              {/* View 1: Room Number Numeric Order (Base organized by Room Number) */}
+              {workerViewMode === 'room_numeric' && (
+                <div className="border border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
+                  <div className="bg-stone-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <DoorClosed className="w-4 h-4 text-[#EBD59E]" />
+                      <span className="font-bold text-sm tracking-wide">
+                        ROOM NUMBER SEQUENCE (BASE ROOM # ➔ ARRIVAL & DEPARTURE TIMINGS)
+                      </span>
+                    </div>
+                    <div className="text-xs font-bold bg-stone-900 text-[#EBD59E] border border-[#EBD59E]/30 px-2.5 py-0.5 rounded-md">
+                      {workerNumericRoomList.length} Rooms • Sequenced by Room #
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold">
+                        <tr>
+                          <th className="py-2.5 px-3 w-[16%]">Room # & Hotel (Base)</th>
+                          <th className="py-2.5 px-3 w-[26%] bg-[#0E3C2C]">Event & Timing Sequence</th>
+                          <th className="py-2.5 px-3 w-[20%]">Office & Tour ID</th>
+                          <th className="py-2.5 px-3 w-[18%]">Family # & Room Pax</th>
+                          <th className="py-2.5 px-3 w-[20%]">Worker Sign-off</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {workerNumericRoomList.length > 0 ? (
+                          workerNumericRoomList.map((roomItem) => {
+                            const isDone = !!workerCompletedTasks[roomItem.id];
+                            return (
+                              <tr key={roomItem.id} className={`transition ${isDone ? 'bg-emerald-50/70' : 'hover:bg-stone-50'}`}>
+                                <td className="py-3 px-3 align-top font-bold">
+                                  <div className="inline-block bg-[#124E39] text-[#EBD59E] font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
+                                    Room {roomItem.roomNumber}
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-stone-700 mt-1">
+                                    {roomItem.building} Hotel • Fl {roomItem.floor}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 align-top">
+                                  <div className="flex items-center gap-1 font-mono font-extrabold text-xs text-stone-900">
+                                    <Clock className="w-3.5 h-3.5 text-[#124E39] shrink-0" />
+                                    <span>{roomItem.timeLabel}</span>
+                                  </div>
+                                  <div className="mt-1">
+                                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border inline-block ${
+                                      roomItem.actionType === 'TURNOVER'
+                                        ? 'bg-purple-100 text-purple-900 border-purple-300'
+                                        : roomItem.actionType === 'CHECKOUT'
+                                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                        : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    }`}>
+                                      {roomItem.actionType === 'TURNOVER' ? 'PRIORITY TURNOVER' : roomItem.actionType === 'CHECKOUT' ? 'CHECKOUT CLEANING' : 'NEW ARRIVAL PREP'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-stone-500 mt-1 leading-tight">
+                                    {roomItem.actionNotes}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 align-top">
+                                  <div className="font-mono font-bold text-stone-900">
+                                    Tour: {roomItem.tourRefNo}
+                                  </div>
+                                  <div className="text-[11px] text-stone-600 mt-0.5">
+                                    Office: {roomItem.officeName}
+                                  </div>
+                                  <div className="font-semibold text-stone-800 text-[11px] mt-1">
+                                    Guest: {roomItem.leadGuestName}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 align-top">
+                                  <div className="font-mono font-bold text-stone-950">
+                                    Family #{roomItem.familyNumbers}
+                                  </div>
+                                  <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/30">
+                                    <Users className="w-3 h-3" />
+                                    {roomItem.totalPaxInRoom} Pax in Room
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 align-top">
+                                  <button
+                                    type="button"
+                                    onClick={() => setWorkerCompletedTasks(prev => ({ ...prev, [roomItem.id]: !prev[roomItem.id] }))}
+                                    className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
+                                      isDone
+                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                        : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
+                                    }`}
+                                  >
+                                    <CheckSquare className="w-3.5 h-3.5" />
+                                    <span>{isDone ? 'Cleaned / Ready ✓' : 'Mark Room Ready'}</span>
+                                  </button>
+                                  <div className="text-[10px] text-stone-400 mt-1 text-center">
+                                    Sign: ___________
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-stone-500">
+                              No worker operations scheduled for this section.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+              )}
+
+              {/* View 2: Office & Tour ID Groupings (Grouped by Office Name and Tour ID in timing sequence) */}
+              {workerViewMode === 'grouped' && (
+                workerRoomSummary.length > 0 ? (
+                  workerRoomSummary.map((officeGroup) => (
+                    <div key={officeGroup.officeName} className="border-2 border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
+                      {/* Office Banner */}
+                      <div className="bg-[#124E39] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-[#EBD59E]" />
+                          <span className="font-bold text-sm tracking-wide">
+                            OFFICE: {officeGroup.officeName}
+                          </span>
+                          <span className="text-xs text-[#EBD59E] font-medium">
+                            ({officeGroup.tours.length} Tours under this office)
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold bg-[#0E3C2C] border border-[#EBD59E]/40 text-[#EBD59E] px-2.5 py-0.5 rounded-full">
+                          {officeGroup.tours.reduce((sum, t) => sum + t.totalRooms, 0)} Rooms • {officeGroup.tours.reduce((sum, t) => sum + t.totalPax, 0)} Pax
+                        </div>
+                      </div>
+
+                      <div className="p-4 space-y-5 bg-stone-50/50">
+                        {officeGroup.tours.map((tourGroup) => (
+                          <div key={tourGroup.tourRefNo} className="border border-stone-200 rounded-xl bg-white shadow-2xs overflow-hidden">
+                            {/* Tour ID Banner */}
+                            <div className="bg-stone-100 border-b border-stone-200 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-black text-sm text-stone-900 bg-white border border-stone-300 px-2 py-0.5 rounded-md shadow-2xs">
+                                  Tour ID: {tourGroup.tourRefNo}
+                                </span>
+                                <span className="text-xs text-stone-600 font-semibold">
+                                  (Office: {officeGroup.officeName})
+                                </span>
+                                <span className="text-[11px] font-bold text-[#124E39] bg-[#124E39]/10 border border-[#124E39]/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-[#124E39]" />
+                                  Timing Sequence Sorted
+                                </span>
+                              </div>
+                              <div className="text-xs font-bold text-stone-700">
+                                {tourGroup.totalRooms} Rooms to service • {tourGroup.totalPax} Zaereen
+                              </div>
+                            </div>
+
+                            {/* Table: Base is Room Number, then Departure/Arrival Time, Family #, Lead Guest, Sign-off */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead className="bg-stone-800 text-white uppercase text-[10px] font-bold">
+                                  <tr>
+                                    <th className="py-2.5 px-3 w-[18%]">Room # & Hotel (Base)</th>
+                                    <th className="py-2.5 px-3 w-[26%] bg-stone-900">Event & Timing Sequence</th>
+                                    <th className="py-2.5 px-3 w-[18%]">Family # & Room Pax</th>
+                                    <th className="py-2.5 px-3 w-[20%]">Lead Guest & ITS</th>
+                                    <th className="py-2.5 px-3 w-[18%]">Worker Checklist & Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-stone-200">
+                                  {tourGroup.items.map((roomItem) => {
+                                    const isDone = !!workerCompletedTasks[roomItem.id];
+                                    return (
+                                      <tr key={roomItem.id} className={`transition ${isDone ? 'bg-emerald-50/70' : 'hover:bg-stone-50'}`}>
+                                        {/* 1. Base: Room Number */}
+                                        <td className="py-3 px-3 align-top font-bold">
+                                          <div className="inline-block bg-[#124E39] text-[#EBD59E] font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
+                                            Room {roomItem.roomNumber}
+                                          </div>
+                                          <div className="text-[11px] font-semibold text-stone-700 mt-1">
+                                            {roomItem.building} Hotel • Fl {roomItem.floor}
+                                          </div>
+                                        </td>
+
+                                        {/* 2. Timing Sequence & Event */}
+                                        <td className="py-3 px-3 align-top">
+                                          <div className="flex items-center gap-1 font-mono font-extrabold text-xs text-stone-900">
+                                            <Clock className="w-3.5 h-3.5 text-[#124E39] shrink-0" />
+                                            <span>{roomItem.timeLabel}</span>
+                                          </div>
+                                          <div className="mt-1">
+                                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border inline-block ${
+                                              roomItem.actionType === 'TURNOVER'
+                                                ? 'bg-purple-100 text-purple-900 border-purple-300'
+                                                : roomItem.actionType === 'CHECKOUT'
+                                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                                : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                            }`}>
+                                              {roomItem.actionType === 'TURNOVER' ? 'PRIORITY TURNOVER' : roomItem.actionType === 'CHECKOUT' ? 'CHECKOUT CLEANING' : 'NEW ARRIVAL PREP'}
+                                            </span>
+                                          </div>
+                                          <div className="text-[10px] text-stone-500 mt-1 leading-tight">
+                                            {roomItem.actionNotes}
+                                          </div>
+                                        </td>
+
+                                        {/* 3. Family Number & Pax */}
+                                        <td className="py-3 px-3 align-top">
+                                          <div className="font-mono font-bold text-stone-950">
+                                            Family #{roomItem.familyNumbers}
+                                          </div>
+                                          <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/30">
+                                            <Users className="w-3 h-3" />
+                                            {roomItem.totalPaxInRoom} Pax in Room
+                                          </div>
+                                        </td>
+
+                                        {/* 4. Lead Guest & ITS */}
+                                        <td className="py-3 px-3 align-top">
+                                          <div className="font-bold text-stone-900 leading-tight">
+                                            {roomItem.leadGuestName}
+                                          </div>
+                                          <div className="font-mono text-[11px] text-stone-600 mt-0.5">
+                                            ITS: {roomItem.leadGuestIts}
+                                          </div>
+                                        </td>
+
+                                        {/* 5. Worker Checklist & Action */}
+                                        <td className="py-3 px-3 align-top">
+                                          <button
+                                            type="button"
+                                            onClick={() => setWorkerCompletedTasks(prev => ({ ...prev, [roomItem.id]: !prev[roomItem.id] }))}
+                                            className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
+                                              isDone
+                                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                                : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
+                                            }`}
+                                          >
+                                            <CheckSquare className="w-3.5 h-3.5" />
+                                            <span>{isDone ? 'Cleaned / Ready ✓' : 'Mark Room Ready'}</span>
+                                          </button>
+                                          <div className="text-[10px] text-stone-400 mt-1 text-center">
+                                            Initial: ___________
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-12 text-center text-stone-500 font-semibold text-xs bg-stone-50 rounded-xl border border-dashed border-stone-300">
+                    No worker room operations or turnovers scheduled for {selectedDate}.
+                  </div>
+                )
               )}
             </div>
           )}
@@ -3199,13 +3412,36 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <div key={tourGroup.tourRefNo} className="border border-stone-200 rounded-xl bg-white shadow-xs overflow-hidden">
                       {/* Tour ID Banner */}
                       <div className="bg-stone-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 flex-wrap">
                           <span className="font-mono font-black text-sm text-[#EBD59E] bg-stone-900 border border-[#EBD59E]/30 px-2.5 py-0.5 rounded-md">
                             Tour ID: {tourGroup.tourRefNo}
                           </span>
                           <span className="text-xs text-stone-300">
                             Office: <strong className="text-white">{tourGroup.officeName}</strong>
                           </span>
+                          {/* Tour Timings with Clock Badges */}
+                          {(() => {
+                            const arrTimes = tourGroup.reservations.map(r => getReservationArrivalTime(r, '11:00 AM')).filter(Boolean);
+                            const depTimes = tourGroup.reservations.map(r => getReservationDepartureTime(r, '01:00 AM')).filter(Boolean);
+                            const earliestArr = arrTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
+                            const earliestDep = depTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
+                            return (
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                                {earliestArr && (
+                                  <span className="bg-emerald-950/80 text-emerald-200 border border-emerald-700/60 px-2 py-0.5 rounded flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-emerald-400" />
+                                    Arr: {earliestArr}
+                                  </span>
+                                )}
+                                {earliestDep && (
+                                  <span className="bg-amber-950/80 text-amber-200 border border-amber-700/60 px-2 py-0.5 rounded flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-400" />
+                                    Dep: {earliestDep}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-2 text-xs flex-wrap">
                           <span className="bg-stone-700 px-2 py-0.5 rounded font-semibold text-stone-200">

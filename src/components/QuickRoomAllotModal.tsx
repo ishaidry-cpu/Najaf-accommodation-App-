@@ -187,15 +187,14 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   }, [evaluatedRooms, hotelFilter, floorFilter, amenityFilter, searchQuery]);
 
   // Sort: Recommended rooms (where family is or vacant with high capacity) first
+  // Note: Do not prioritize current room as top recommendation to avoid confusion
   const sortedRooms = useMemo(() => {
     return [...filteredRooms].sort((a, b) => {
-      // Current room at top
-      if (a.isCurrent && !b.isCurrent) return -1;
-      if (!a.isCurrent && b.isCurrent) return 1;
-
-      // Rooms where family members are already allotted
-      if (a.familyInRoom.length > 0 && b.familyInRoom.length === 0) return -1;
-      if (a.familyInRoom.length === 0 && b.familyInRoom.length > 0) return 1;
+      // Rooms where other family members are already allotted (exclude current room)
+      const aFam = a.familyInRoom.length > 0 && !a.isCurrent;
+      const bFam = b.familyInRoom.length > 0 && !b.isCurrent;
+      if (aFam && !bFam) return -1;
+      if (!aFam && bFam) return 1;
 
       // Available rooms before full/blocked
       if (a.canFit && !b.canFit) return -1;
@@ -222,24 +221,24 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     onClose();
   };
 
-  // Auto-recommend best available room
+  // Auto-recommend best available room (excluding current room to avoid confusion)
   const handleAutoRecommend = () => {
-    // 1. Check if room with existing family has capacity
-    const familyRoom = sortedRooms.find((r) => r.familyInRoom.length > 0 && r.canFit && !r.isBlocked);
+    // 1. Check if room with existing family has capacity (exclude current room)
+    const familyRoom = sortedRooms.find((r) => r.familyInRoom.length > 0 && r.canFit && !r.isBlocked && !r.isCurrent);
     if (familyRoom) {
       handleSelectRoom(familyRoom.room.building, familyRoom.room.roomNumber);
       return;
     }
 
-    // 2. Find best available vacant room with capacity
-    const bestVacant = sortedRooms.find((r) => r.canFit && !r.isBlocked && r.currentOccupancy === 0);
+    // 2. Find best available vacant room with capacity (exclude current room)
+    const bestVacant = sortedRooms.find((r) => r.canFit && !r.isBlocked && r.currentOccupancy === 0 && !r.isCurrent);
     if (bestVacant) {
       handleSelectRoom(bestVacant.room.building, bestVacant.room.roomNumber);
       return;
     }
 
-    // 3. Find any partially filled room with buffer/slots
-    const anyAvailable = sortedRooms.find((r) => r.canFit && !r.isBlocked);
+    // 3. Find any partially filled room with buffer/slots (exclude current room)
+    const anyAvailable = sortedRooms.find((r) => r.canFit && !r.isBlocked && !r.isCurrent);
     if (anyAvailable) {
       handleSelectRoom(anyAvailable.room.building, anyAvailable.room.roomNumber);
       return;
