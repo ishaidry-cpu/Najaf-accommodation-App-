@@ -625,17 +625,33 @@ export default function App() {
       }
     }
 
+    const hadPreviousRoom = !!target.roomNumber && target.roomNumber.trim() !== '';
+    const isChanged = hadPreviousRoom && target.roomNumber !== roomNumber && roomNumber !== '';
+    const newHistory = target.roomChangeHistory ? [...target.roomChangeHistory] : [];
+    if (isChanged) {
+      newHistory.push({
+        fromRoom: target.roomNumber,
+        fromBuilding: target.building,
+        toRoom: roomNumber,
+        toBuilding: building,
+        changedAt: new Date().toISOString(),
+        reason: 'Room changed via Room Allotment',
+      });
+    }
+
     const updatedRes: Reservation = {
       ...target,
       building,
       roomNumber,
+      isRoomChanged: target.isRoomChanged || isChanged,
+      roomChangeHistory: newHistory,
       updatedAt: new Date().toISOString(),
     };
 
     handleUpdateReservation(updatedRes);
     showToast(
       roomNumber
-        ? `Allotted ${building} Hotel Room ${roomNumber} to ${target.applicantName} (${target.arrivalDate} to ${target.departureDate})`
+        ? `${isChanged ? `Changed room from ${target.roomNumber} to ${roomNumber}` : `Allotted ${building} Hotel Room ${roomNumber}`} for ${target.applicantName}`
         : `Removed room allotment for ${target.applicantName}`
     );
   };
@@ -693,13 +709,30 @@ export default function App() {
       }
     }
 
+    const now = new Date().toISOString();
     const updated = reservations.map((r) => {
       if (matchIds.has(r.id)) {
+        const hadPreviousRoom = !!r.roomNumber && r.roomNumber.trim() !== '';
+        const isChanged = hadPreviousRoom && r.roomNumber !== roomNumber && roomNumber !== '';
+        const newHistory = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
+        if (isChanged) {
+          newHistory.push({
+            fromRoom: r.roomNumber,
+            fromBuilding: r.building,
+            toRoom: roomNumber,
+            toBuilding: building,
+            changedAt: now,
+            reason: `Family ${family} batch reallocation`,
+          });
+        }
+
         return {
           ...r,
           building,
           roomNumber,
-          updatedAt: new Date().toISOString(),
+          isRoomChanged: r.isRoomChanged || isChanged,
+          roomChangeHistory: newHistory,
+          updatedAt: now,
         };
       }
       return r;

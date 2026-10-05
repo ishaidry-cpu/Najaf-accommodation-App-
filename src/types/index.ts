@@ -23,6 +23,16 @@ export interface UserRoleSettings {
   allowReceptionistPrinting: boolean;
 }
 
+export interface RoomChangeRecord {
+  fromRoom: string;
+  fromBuilding?: string;
+  toRoom: string;
+  toBuilding?: string;
+  changedAt: string;
+  changedBy?: string;
+  reason?: string;
+}
+
 export interface RoomOccupancyDetail {
   room: Room;
   currentOccupancy: number;
@@ -125,6 +135,10 @@ export interface Reservation {
   building: string;         // 'Saifee' or 'Burhani'
   roomNumber: string;       // e.g. '101'
   roomId?: string;
+
+  // Room Change History (User requirement: mark changed rooms with color & history bubble on tour hover)
+  isRoomChanged?: boolean;
+  roomChangeHistory?: RoomChangeRecord[];
 
   // Tick button in the end to note if room allocation is uploaded on main portal:
   isUploadedToPortal: boolean; // true = uploaded / ticked, false = pending

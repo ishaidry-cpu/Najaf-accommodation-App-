@@ -26,7 +26,9 @@ import {
   ArrowUpRight,
   RefreshCw,
   Search,
-  Plus
+  Plus,
+  ArrowRightLeft,
+  History
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -110,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [tourSearchQuery, setTourSearchQuery] = useState<string>('');
   const [tourArrivalDateFilter, setTourArrivalDateFilter] = useState<string>('');
 
-  // Rich summaries for each tour (Zaereen count, families count, arrival dates)
+  // Rich summaries for each tour (Zaereen count, families count, arrival dates, room change tracking)
   const tourSummaries = useMemo(() => {
     const map = new Map<string, {
       tourId: string;
@@ -119,6 +121,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       arrivalDatesSet: Set<string>;
       earliestArrival: string;
       latestArrival: string;
+      hasRoomChange: boolean;
+      roomChanges: {
+        guestName: string;
+        family: string;
+        fromRoom: string;
+        fromBuilding?: string;
+        toRoom: string;
+        toBuilding?: string;
+        changedAt: string;
+        reason?: string;
+      }[];
     }>();
 
     reservations.forEach((r) => {
@@ -133,6 +146,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           arrivalDatesSet: new Set(),
           earliestArrival: '',
           latestArrival: '',
+          hasRoomChange: false,
+          roomChanges: [],
         });
       }
 
@@ -149,6 +164,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           item.latestArrival = arr;
         }
       }
+
+      if (r.isRoomChanged || (r.roomChangeHistory && r.roomChangeHistory.length > 0)) {
+        item.hasRoomChange = true;
+        (r.roomChangeHistory || []).forEach((ch) => {
+          item.roomChanges.push({
+            guestName: r.applicantName,
+            family: r.family || '—',
+            fromRoom: ch.fromRoom,
+            fromBuilding: ch.fromBuilding,
+            toRoom: ch.toRoom,
+            toBuilding: ch.toBuilding,
+            changedAt: ch.changedAt,
+            reason: ch.reason,
+          });
+        });
+      }
     });
 
     return Array.from(map.values())
@@ -158,6 +189,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         familiesCount: item.familiesSet.size,
         arrivalDates: Array.from(item.arrivalDatesSet).sort(),
         primaryArrivalDate: item.earliestArrival,
+        hasRoomChange: item.hasRoomChange,
+        roomChanges: item.roomChanges,
       }))
       .sort((a, b) => a.tourId.localeCompare(b.tourId));
   }, [reservations]);
@@ -236,6 +269,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return Object.entries(famMap).map(([fam, members]) => {
       const allottedCount = members.filter((m) => m.roomNumber && m.roomNumber.trim() !== '').length;
+      const familyChanges = members.flatMap((m) =>
+        (m.roomChangeHistory || []).map((ch) => ({
+          ...ch,
+          guestName: m.applicantName,
+          itsId: m.itsId,
+        }))
+      );
+      const hasRoomChange = members.some((m) => m.isRoomChanged) || familyChanges.length > 0;
+
       return {
         family: fam,
         members,
@@ -246,6 +288,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         departureDate: members[0]?.departureDate || todayStr,
         commonBuilding: members[0]?.building || 'Saifee',
         commonRoom: members[0]?.roomNumber || '',
+        hasRoomChange,
+        familyChanges,
       };
     });
   }, [reservations, currentTourId, todayStr]);
@@ -680,6 +724,76 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
 
+        {/* Selected Tour Summary & Room Change History Header */}
+        {currentTourId && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-stone-200 shadow-2xs">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-mono font-black text-sm text-[#124E39] bg-[#124E39]/10 px-2.5 py-1 rounded-lg border border-[#124E39]/20">
+                Tour ID: {currentTourId}
+              </span>
+              {(() => {
+                const tourSum = tourSummaries.find((t) => t.tourId === currentTourId);
+                const tourChanges = tourSum?.roomChanges || [];
+                return (
+                  <>
+                    {tourSum && (
+                      <span className="text-xs text-stone-600 font-medium">
+                        {tourSum.totalZaereen} Zaereen • {tourSum.familiesCount} Families
+                        {tourSum.primaryArrivalDate ? ` • Arr: ${tourSum.primaryArrivalDate}` : ''}
+                      </span>
+                    )}
+
+                    {/* Room Change Indicator with Interactive Hover Bubble (User requirement: mark changed room with color & hover bubble) */}
+                    {tourSum?.hasRoomChange && (
+                      <div className="relative group">
+                        <span className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-950 border border-amber-400 font-extrabold text-xs flex items-center gap-1.5 shadow-2xs cursor-help hover:bg-amber-200 transition">
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-amber-800" />
+                          <span>Room Changed ({tourChanges.length})</span>
+                        </span>
+
+                        {/* Floating Bubble on Hover */}
+                        <div className="absolute left-0 top-full mt-1.5 z-40 hidden group-hover:block w-84 sm:w-96 p-3.5 bg-stone-900 text-white rounded-xl shadow-2xl border-2 border-amber-400 text-xs animate-in fade-in">
+                          <div className="flex items-center justify-between pb-2 border-b border-stone-700">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                              <History className="w-4 h-4 text-amber-400" />
+                              <span>Room Change History for Tour {currentTourId}</span>
+                            </div>
+                            <span className="text-[10px] bg-amber-950 text-amber-200 border border-amber-800 px-1.5 py-0.5 rounded font-mono">
+                              {tourChanges.length} Change{tourChanges.length > 1 ? 's' : ''}
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5 space-y-2 max-h-60 overflow-y-auto pr-1">
+                            {tourChanges.map((ch, idx) => (
+                              <div key={idx} className="bg-stone-800/95 p-2 rounded-lg border border-stone-700 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-stone-100">{ch.guestName}</span>
+                                  <span className="text-[11px] font-mono text-stone-300 bg-stone-700 px-1.5 py-0.2 rounded">
+                                    Fam #{ch.family}
+                                  </span>
+                                </div>
+                                <div className="text-amber-300 font-extrabold flex items-center gap-1.5 text-xs bg-amber-950/40 p-1.5 rounded border border-amber-800/50">
+                                  <span className="line-through text-stone-400 font-mono">Room {ch.fromRoom}</span>
+                                  <ArrowRight className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span className="text-emerald-300 font-mono font-black">Room {ch.toRoom} ({ch.toBuilding || 'Hotel'})</span>
+                                </div>
+                                <div className="text-[10px] text-stone-400 flex items-center justify-between pt-0.5">
+                                  <span>{ch.reason || 'Room reallocated'}</span>
+                                  <span>{new Date(ch.changedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Families list for the selected Tour ID */}
         {familiesInTour.length > 0 ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -706,14 +820,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   key={famItem.family}
                   className={`p-4 rounded-xl border transition shadow-2xs ${
                     famItem.isFullyAllotted
-                      ? 'bg-[#FAF7F2]/60 border-emerald-300'
+                      ? famItem.hasRoomChange
+                        ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300'
+                        : 'bg-[#FAF7F2]/60 border-emerald-300'
                       : 'bg-white border-amber-300/80 ring-1 ring-amber-200'
                   }`}
                 >
                   {/* Family Header */}
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-black text-sm text-[#124E39]">
                           Family {famItem.family}
                         </span>
@@ -729,6 +845,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold">
                             {famItem.allottedCount}/{famItem.totalCount} Allotted
                           </span>
+                        )}
+
+                        {/* Room Change badge on Family Header */}
+                        {famItem.hasRoomChange && (
+                          <div className="relative group">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-400 font-extrabold flex items-center gap-1 cursor-help shadow-2xs">
+                              <ArrowRightLeft className="w-3 h-3 text-amber-800" />
+                              <span>Room Changed</span>
+                            </span>
+
+                            {/* Hover Bubble for Family */}
+                            <div className="absolute left-0 top-full mt-1 z-30 hidden group-hover:block w-72 p-2.5 bg-stone-900 text-white rounded-lg shadow-xl border border-amber-400 text-xs animate-in fade-in">
+                              <div className="font-bold text-amber-300 flex items-center gap-1 pb-1 border-b border-stone-700 text-[11px]">
+                                <History className="w-3 h-3 text-amber-400" />
+                                <span>Family {famItem.family} Room Change History</span>
+                              </div>
+                              <div className="mt-1.5 space-y-1.5 max-h-40 overflow-y-auto">
+                                {famItem.familyChanges.map((ch, cIdx) => (
+                                  <div key={cIdx} className="bg-stone-800 p-1.5 rounded text-[11px]">
+                                    <div className="font-semibold text-stone-200">{ch.guestName}</div>
+                                    <div className="text-amber-300 font-bold flex items-center gap-1 font-mono text-[10px]">
+                                      <span className="line-through text-stone-400">Rm {ch.fromRoom}</span>
+                                      <ArrowRight className="w-2.5 h-2.5 text-amber-400" />
+                                      <span className="text-emerald-300">Rm {ch.toRoom} ({ch.toBuilding || 'Hotel'})</span>
+                                    </div>
+                                    <div className="text-[9px] text-stone-400 mt-0.5">
+                                      {new Date(ch.changedAt).toLocaleString()}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
                       <div className="text-[11px] text-stone-500 mt-1">

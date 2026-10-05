@@ -236,14 +236,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   }, [safeReservations]);
 
   // Determine smart default date:
-  // If today has activity, use today.
-  // Otherwise pick the closest upcoming date (or first active date).
+  // 1. If today has activity, use today.
+  // 2. Otherwise pick the upcoming date with activity.
+  // 3. Otherwise pick the date with the highest activity across all system records.
   const initialDate = useMemo(() => {
     const { sortedDates, datesMap } = activeDatesSummary;
-    if (datesMap.has(todayStr)) return todayStr;
-    const future = sortedDates.filter((d) => d >= todayStr);
+    if (datesMap.has(todayStr) && (datesMap.get(todayStr)?.total || 0) > 0) return todayStr;
+    const future = sortedDates.filter((d) => d >= todayStr && (datesMap.get(d)?.total || 0) > 0);
     if (future.length > 0) return future[0];
-    if (sortedDates.length > 0) return sortedDates[0];
+    if (sortedDates.length > 0) {
+      const sortedByActivity = [...sortedDates].sort((a, b) => {
+        const actA = datesMap.get(a)?.total || 0;
+        const actB = datesMap.get(b)?.total || 0;
+        return actB - actA;
+      });
+      return sortedByActivity[0];
+    }
     return todayStr;
   }, [activeDatesSummary, todayStr]);
 
@@ -290,16 +298,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
 
-  // Set smart default date when modal is opened
+  // Set smart default date when modal is opened or when activeDatesSummary updates
   useEffect(() => {
     if (isOpen) {
       if (activeDatesSummary.sortedDates.length > 0) {
-        if (!selectedDate || !activeDatesSummary.datesMap.has(selectedDate)) {
+        if (!selectedDate || !activeDatesSummary.datesMap.has(selectedDate) || (activeDatesSummary.datesMap.get(selectedDate)?.total || 0) === 0) {
           setSelectedDate(initialDate);
         }
       }
     }
-  }, [isOpen]);
+  }, [isOpen, initialDate, activeDatesSummary]);
 
   // Filter arrivals on selected date using robust normalization
   const arrivalsOnDate = safeReservations.filter((r) => {
@@ -417,7 +425,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   // Filtered room prep by hotel and active status
   const filteredRoomPrep = roomPrepSchedule.filter((item) => {
     const itemBldg = (item.room?.building || '').trim().toLowerCase();
-    if (activeHotelFilter !== 'ALL' && itemBldg !== activeHotelFilter.toLowerCase()) {
+    if (activeHotelFilter !== 'ALL' && !itemBldg.includes(activeHotelFilter.toLowerCase())) {
       return false;
     }
     if (showOnlyActiveRooms && !item.hasActivity) {
@@ -569,7 +577,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const depTime = getReservationDepartureTime(item.deps[0], '01:00 AM');
         const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
         const office = item.arrs[0]?.officeName || item.deps[0]?.officeName || 'Main Office';
-        const tour = item.arrs[0]?.tourRefNo || item.deps[0]?.tourRefNo || 'Unassigned Tour';
+        const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set([...item.deps, ...item.arrs].map((x) => x.family).filter(Boolean))).join(', ');
 
         rawItems.push({
@@ -592,9 +600,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       } else if (isDep) {
         // Checkout Cleaning
         const depTime = getReservationDepartureTime(item.deps[0], '01:00 AM');
+        const arrTime = getReservationArrivalTime(item.deps[0], '11:00 AM');
         const office = item.deps[0]?.officeName || 'Main Office';
-        const tour = item.deps[0]?.tourRefNo || 'Unassigned Tour';
+        const tour = (item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set(item.deps.map((x) => x.family).filter(Boolean))).join(', ');
+        const arrDate = item.deps[0]?.arrivalDate || '—';
 
         rawItems.push({
           id: `checkout-${r.id || r.roomNumber}`,
@@ -603,7 +613,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           floor: r.floor,
           floorLabel: r.floorLabel,
           actionType: 'CHECKOUT',
-          timeLabel: `Checkout Time: ${depTime}`,
+          timeLabel: `Dep: ${depTime} (Arr was: ${arrDate} ${arrTime})`,
           timeMinutes: timeStringToMinutes(depTime, 720),
           officeName: office,
           tourRefNo: tour,
@@ -616,9 +626,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       } else if (isArr) {
         // New Arrival Prep
         const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
+        const depTime = getReservationDepartureTime(item.arrs[0], '01:00 AM');
         const office = item.arrs[0]?.officeName || 'Main Office';
-        const tour = item.arrs[0]?.tourRefNo || 'Unassigned Tour';
+        const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set(item.arrs.map((x) => x.family).filter(Boolean))).join(', ');
+        const depDate = item.arrs[0]?.departureDate || '—';
 
         rawItems.push({
           id: `arrival-${r.id || r.roomNumber}`,
@@ -627,7 +639,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           floor: r.floor,
           floorLabel: r.floorLabel,
           actionType: 'ARRIVAL',
-          timeLabel: `Arrival Time: ${arrTime}`,
+          timeLabel: `Arr: ${arrTime} (Dep: ${depDate} ${depTime})`,
           timeMinutes: timeStringToMinutes(arrTime, 660),
           officeName: office,
           tourRefNo: tour,
@@ -728,15 +740,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   // Active tours on selected date for Assistant Portal Upload (Requirement 4)
   const dateTourIds = useMemo(() => {
     const tourIds = new Set<string>();
-    const checkAndAdd = (r: Reservation) => {
-      const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
-      tourIds.add(tour);
-    };
-    arrivalsOnDate.forEach(checkAndAdd);
-    departuresOnDate.forEach(checkAndAdd);
-    inHouseOnDate.forEach(checkAndAdd);
+    safeReservations.forEach((r) => {
+      const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+      const dep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
+      if ((arr && dep && arr <= selectedDate && dep >= selectedDate) || arr === selectedDate || dep === selectedDate) {
+        const tour = (r.tourRefNo || r.tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
+        tourIds.add(tour);
+      }
+    });
     return tourIds;
-  }, [arrivalsOnDate, departuresOnDate, inHouseOnDate]);
+  }, [safeReservations, selectedDate]);
 
   // Grouped Tour data for Assistant Portal Upload (Requirement 4)
   const portalUploadData = useMemo(() => {
@@ -1021,33 +1034,46 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
-      doc.text(`Total Arrivals in Section: ${arrivalsList.length} Zaereen • ${tourGroups.length} Tours`, pageWidth - 260, startAtY + 16);
+      doc.text(`Total Arrivals: ${arrivalsList.length} Zaereen • Sorted As Per Room Numbers`, pageWidth - 290, startAtY + 16);
+
+      // Sort as per rooms (Requirement: "the arrival slip should be sorted as per rooms with all the details told prior")
+      const sortedByRooms = [...arrivalsList].sort((a, b) => {
+        const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
+        const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
+        if (hasA && !hasB) return -1;
+        if (!hasA && hasB) return 1;
+        const numA = parseInt(a.roomNumber || '', 10) || 9999;
+        const numB = parseInt(b.roomNumber || '', 10) || 9999;
+        if (numA !== numB) return numA - numB;
+        const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
+        if (famA !== 0) return famA;
+        return (a.applicantName || '').localeCompare(b.applicantName || '');
+      });
 
       const rows: string[][] = [];
       let counter = 1;
-      tourGroups.forEach((group) => {
-        group.reservations.forEach((r) => {
-          const paxInfo = getRoomPaxInfo(r);
-          const arrTime = getReservationArrivalTime(r, '11:00 AM');
-          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Assign Rm]';
-          rows.push([
-            String(counter++),
-            `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
-            roomStr,
-            `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
-            `${r.applicantName}\nITS: ${r.itsId || '—'}`,
-            `Time: ${arrTime}`,
-            `Dep: ${r.departureDate || '—'}`,
-            r.category || 'Mumineen',
-            r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
-            '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
-          ]);
-        });
+      sortedByRooms.forEach((r) => {
+        const paxInfo = getRoomPaxInfo(r);
+        const arrTime = getReservationArrivalTime(r, '11:00 AM');
+        const depTime = getReservationDepartureTime(r, '01:00 AM');
+        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Assign Rm]';
+        rows.push([
+          String(counter++),
+          roomStr,
+          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
+          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+          `Time: ${arrTime}`,
+          `Dep: ${r.departureDate || '—'}\n(${depTime})`,
+          `Tour: ${r.tourRefNo || '—'}\nOffice: ${r.officeName || '—'}`,
+          r.category || 'Mumineen',
+          r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
+          '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
+        ]);
       });
 
       safeAutoTable(doc, {
         startY: startAtY + 28,
-        head: [['#', 'Tour ID & Office', 'Room # & Hotel', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Payment / Cat', 'Reception Sign-off']],
+        head: [['#', 'Room # & Hotel (Base)', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date & Time', 'Tour ID & Office', 'Category', 'Payment / Cat', 'Reception Sign-off']],
         body: rows.length > 0 ? rows : [[`No arrivals scheduled for this section on ${selectedDate}`, '', '', '', '', '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
@@ -1055,13 +1081,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
         columnStyles: {
           0: { cellWidth: 25, halign: 'center' },
-          1: { fontStyle: 'bold', fontSize: 8, cellWidth: 105 },
-          2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 80, halign: 'center' },
-          3: { fontSize: 8, cellWidth: 80 },
-          4: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
-          5: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
-          6: { fontSize: 8, cellWidth: 65, halign: 'center' },
-          7: { fontSize: 7.5, cellWidth: 60, halign: 'center' },
+          1: { fontStyle: 'bold', fontSize: 9, cellWidth: 85, halign: 'center' },
+          2: { fontSize: 8, cellWidth: 80 },
+          3: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
+          4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
+          5: { fontSize: 8, cellWidth: 75, halign: 'center' },
+          6: { fontSize: 7.5, cellWidth: 95 },
+          7: { fontSize: 7.5, cellWidth: 55, halign: 'center' },
           8: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
           9: { fontSize: 7, cellWidth: 90 },
         },
@@ -1199,6 +1225,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
           const arrTime = getReservationArrivalTime(r, '11:00 AM');
+          const depTime = getReservationDepartureTime(r, '01:00 AM');
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED';
           arrivalRows.push([
             `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
@@ -1206,7 +1233,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax)`,
             `${r.applicantName}\nITS: ${r.itsId || '—'}`,
             `Arr: ${arrTime}`,
-            r.departureDate || '—',
+            `Dep: ${r.departureDate || '—'}\n(${depTime})`,
             r.category || 'Mumineen',
             r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
           ]);
@@ -1215,7 +1242,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       safeAutoTable(doc, {
         startY: y + 26,
-        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date', 'Category', 'Money (B➔A)']],
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date & Time', 'Category', 'Money (B➔A)']],
         body: arrivalRows.length > 0 ? arrivalRows : [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
@@ -1254,6 +1281,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
           const depTime = getReservationDepartureTime(r, '01:00 AM');
+          const arrTime = getReservationArrivalTime(r, '11:00 AM');
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : '—';
           departureRows.push([
             `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
@@ -1261,7 +1289,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax)`,
             `${r.applicantName}\nITS: ${r.itsId || '—'}`,
             `Dep: ${depTime}`,
-            r.arrivalDate || '—',
+            `Arr: ${r.arrivalDate || '—'}\n(${arrTime})`,
             'Clear key cards & prepare for cleaning',
           ]);
         });
@@ -1269,7 +1297,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       safeAutoTable(doc, {
         startY: y + 26,
-        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date', 'Turnover / Check-out Notes']],
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date & Time', 'Turnover / Check-out Notes']],
         body: departureRows.length > 0 ? departureRows : [['No departures scheduled for this section on this date', '', '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
@@ -1344,11 +1372,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   };
 
   // Download Worker Room Operations Summary Sheet (Requirement 3) - bifurcated as per hotels
-  const handleDownloadWorkerPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+  const handleDownloadWorkerPdf = (
+    targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown,
+    modeInput?: 'grouped' | 'room_numeric'
+  ) => {
     const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
       targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
         ? targetHotelInput
         : activeHotelFilter;
+    const mode = modeInput || workerViewMode;
 
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -1387,46 +1419,73 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         }
         return true;
       });
-      const sectionSummary = buildWorkerSummary(sectionPrep).groupedByOffice;
+      const summaryResult = buildWorkerSummary(sectionPrep);
+      const sectionSummary = summaryResult.groupedByOffice;
+      const sectionNumeric = summaryResult.numericRooms;
 
       const tableRows: string[][] = [];
-      sectionSummary.forEach((officeGroup) => {
-        officeGroup.tours.forEach((tourGroup) => {
-          tourGroup.items.forEach((item) => {
-            const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
-            const officeTourCell = `Office:\n${officeGroup.officeName}\n\nTour ID:\n${tourGroup.tourRefNo}`;
-            const timingCell = `${item.actionType}\n${item.timeLabel}`;
-            const famPaxCell = `Family #${item.familyNumbers}\n\n[Total: ${item.totalPaxInRoom} Pax in Room]`;
-            const guestCell = `${item.leadGuestName}\nITS: ${item.leadGuestIts}`;
-            const checklistCell = `[ ] Bed Sheets & Linens Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Key Cards Ready\n[ ] Worker Sign: ___________`;
 
-            tableRows.push([
-              roomCell,
-              officeTourCell,
-              timingCell,
-              famPaxCell,
-              guestCell,
-              checklistCell,
-            ]);
+      if (mode === 'room_numeric') {
+        // Mode 1: Base organized strictly by Room Number
+        sectionNumeric.forEach((item) => {
+          const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
+          const timingCell = `${item.actionType}\n${item.timeLabel}`;
+          const officeTourCell = `Office:\n${item.officeName}\n\nTour ID:\n${item.tourRefNo}`;
+          const famPaxCell = `Family #${item.familyNumbers}\n\n[Total: ${item.totalPaxInRoom} Pax in Room]`;
+          const guestCell = `${item.leadGuestName}\nITS: ${item.leadGuestIts}`;
+          const checklistCell = `[ ] Bed Sheets & Linens Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Key Cards Ready\n[ ] Worker Sign: ___________`;
+
+          tableRows.push([
+            roomCell,
+            timingCell,
+            officeTourCell,
+            famPaxCell,
+            guestCell,
+            checklistCell,
+          ]);
+        });
+      } else {
+        // Mode 2: Grouped by Office Name and Tour ID in timing sequence (Base Room # followed by Timings)
+        sectionSummary.forEach((officeGroup) => {
+          officeGroup.tours.forEach((tourGroup) => {
+            tourGroup.items.forEach((item) => {
+              const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
+              const timingCell = `${item.actionType}\n${item.timeLabel}`;
+              const officeTourCell = `Office:\n${officeGroup.officeName}\n\nTour ID:\n${tourGroup.tourRefNo}`;
+              const famPaxCell = `Family #${item.familyNumbers}\n\n[Total: ${item.totalPaxInRoom} Pax in Room]`;
+              const guestCell = `${item.leadGuestName}\nITS: ${item.leadGuestIts}`;
+              const checklistCell = `[ ] Bed Sheets & Linens Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Key Cards Ready\n[ ] Worker Sign: ___________`;
+
+              tableRows.push([
+                roomCell,
+                timingCell,
+                officeTourCell,
+                famPaxCell,
+                guestCell,
+                checklistCell,
+              ]);
+            });
           });
         });
-      });
+      }
+
+      const tableHead = [['Room # & Hotel (Base)', 'Event & Arrival/Departure Timings', 'Office Name & Tour ID', 'Family # & Room Pax', 'Guest Details & ITS', 'Worker Checklist & Sign-off']];
 
       safeAutoTable(doc, {
         startY: startAtY + 28,
-        head: [['Room # & Hotel (Base)', 'Office & Tour ID', 'Event & Timing Sequence', 'Family # & Room Pax', 'Guest Details', 'Worker Checklist & Sign-off']],
+        head: tableHead,
         body: tableRows.length > 0 ? tableRows : [[`No room operations scheduled for workers in this hotel on selected date`, '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
         styles: { fontSize: 8.5, cellPadding: 5, textColor: [30, 30, 30] },
         headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
         columnStyles: {
-          0: { fontStyle: 'bold', fontSize: 9.5, cellWidth: 95, halign: 'center' },
-          1: { fontSize: 8, cellWidth: 125 },
-          2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 120 },
-          3: { fontSize: 8.5, cellWidth: 100 },
-          4: { fontSize: 8, cellWidth: 110 },
-          5: { fontSize: 7.5, cellWidth: 140 },
+          0: { fontStyle: 'bold', fontSize: 9.5, cellWidth: 105, halign: 'center' },
+          1: { fontSize: 8, cellWidth: 135 },
+          2: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 145 },
+          3: { fontSize: 8.5, cellWidth: 110 },
+          4: { fontSize: 8, cellWidth: 125 },
+          5: { fontSize: 7.5, cellWidth: 170 },
         },
       });
 
@@ -1526,12 +1585,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(235, 213, 158);
       doc.text(hotelTitle, 30, startAtY + 16);
 
-      const portalReservations = reservations.filter((r) => {
+      const portalReservations = safeReservations.filter((r) => {
         const tour = (r.tourRefNo || 'Unassigned Tour').trim() || 'Unassigned Tour';
         const matchesScope = portalFilterScope === 'all' ? true : dateTours.has(tour);
         if (!matchesScope) return false;
         if (buildingName !== 'ALL') {
-          return (r.building || '').toLowerCase().includes(buildingName.toLowerCase());
+          const rBldg = (r.building || '').toLowerCase();
+          const matchesBldg = rBldg.includes(buildingName.toLowerCase());
+          const isUnallotted = !r.roomNumber || r.roomNumber.trim() === '';
+          if (!matchesBldg && !isUnallotted) return false;
         }
         return true;
       });
@@ -1653,25 +1715,67 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       {/* Print-specific style to guarantee pristine paper print without scroll cutoffs */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
+          @page {
+            size: A4 landscape;
+            margin: 8mm;
+          }
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           body * {
             visibility: hidden;
           }
           #reception-slip-printable-area, #reception-slip-printable-area * {
             visibility: visible;
           }
+          .fixed.inset-0 {
+            position: static !important;
+            display: block !important;
+            padding: 0 !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+          }
+          .max-h-\\[94vh\\] {
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+          }
           #reception-slip-printable-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 15px;
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            max-height: none !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 6px !important;
             background: white !important;
             box-shadow: none !important;
             border: none !important;
           }
           .print-hidden-element {
             display: none !important;
+          }
+          table {
+            width: 100% !important;
+            page-break-inside: auto !important;
+            border-collapse: collapse !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          thead {
+            display: table-header-group !important;
           }
         }
       `}} />
@@ -2055,15 +2159,32 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           )}
 
           {activeTab === 'roster' && (
-            <label className="flex items-center gap-1.5 text-xs font-bold text-[#124E39] cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-stone-300 shadow-2xs">
-              <input
-                type="checkbox"
-                checked={rosterGroupByTour}
-                onChange={(e) => setRosterGroupByTour(e.target.checked)}
-                className="rounded text-[#124E39] focus:ring-[#124E39]"
-              />
-              <span>Group by Tour ID & Sort by Time (Req 2)</span>
-            </label>
+            <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setRosterGroupByTour(true)}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  rosterGroupByTour
+                    ? 'bg-[#124E39] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Group by Tour ID & Time (Req 2)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRosterGroupByTour(false)}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                  !rosterGroupByTour
+                    ? 'bg-[#124E39] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-900'
+                }`}
+              >
+                <DoorClosed className="w-3.5 h-3.5" />
+                <span>Sorted as Per Rooms (Arrival Slip)</span>
+              </button>
+            </div>
           )}
 
           {activeTab === 'worker_summary' && (
@@ -2494,7 +2615,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <th className="py-2.5 px-3">Applicant / Guest</th>
                                 <th className="py-2.5 px-3">ITS ID</th>
                                 <th className="py-2.5 px-3">Arrival Time</th>
-                                <th className="py-2.5 px-3">Dep Date</th>
+                                <th className="py-2.5 px-3">Dep Date & Time</th>
                                 <th className="py-2.5 px-3">Tour Ref</th>
                                 <th className="py-2.5 px-3">Office</th>
                                 <th className="py-2.5 px-3">Category</th>
@@ -2505,6 +2626,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               {tourGroup.reservations.map((r, i) => {
                                 const paxInfo = getRoomPaxInfo(r);
                                 const arrTime = getReservationArrivalTime(r, '11:00 AM');
+                                const depTime = getReservationDepartureTime(r, '01:00 AM');
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
                                     <td className="py-2.5 px-3 font-mono font-black text-sm text-[#124E39]">
@@ -2524,7 +2646,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                         {arrTime}
                                       </span>
                                     </td>
-                                    <td className="py-2 px-3 text-stone-700">{r.departureDate}</td>
+                                    <td className="py-2.5 px-3">
+                                      <div className="font-semibold text-stone-800">{r.departureDate || '—'}</div>
+                                      <div className="mt-0.5">
+                                        <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] text-amber-950 font-bold">
+                                          <Clock className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                                          {depTime}
+                                        </span>
+                                      </div>
+                                    </td>
                                     <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
                                     <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
                                     <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
@@ -2549,17 +2679,32 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               }
 
+              const sortedArrivalsList = useMemo(() => {
+                return [...flatList].sort((a, b) => {
+                  const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
+                  const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
+                  if (hasA && !hasB) return -1;
+                  if (!hasA && hasB) return 1;
+                  const numA = parseInt(a.roomNumber || '', 10) || 9999;
+                  const numB = parseInt(b.roomNumber || '', 10) || 9999;
+                  if (numA !== numB) return numA - numB;
+                  const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
+                  if (famA !== 0) return famA;
+                  return (a.applicantName || '').localeCompare(b.applicantName || '');
+                });
+              }, [flatList]);
+
               return (
                 <div className="overflow-x-auto border border-stone-200 rounded-lg">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold">
                       <tr>
-                        <th className="py-2.5 px-3">Room #</th>
+                        <th className="py-2.5 px-3">Room # & Hotel (Base)</th>
                         <th className="py-2.5 px-3">Family # & Room Pax</th>
                         <th className="py-2.5 px-3">Applicant / Guest</th>
                         <th className="py-2.5 px-3">ITS ID</th>
                         <th className="py-2.5 px-3">Arrival Time</th>
-                        <th className="py-2.5 px-3">Dep Date</th>
+                        <th className="py-2.5 px-3">Dep Date & Time</th>
                         <th className="py-2.5 px-3">Tour Ref</th>
                         <th className="py-2.5 px-3">Office</th>
                         <th className="py-2.5 px-3">Category</th>
@@ -2567,14 +2712,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-200">
-                      {flatList.length > 0 ? (
-                        flatList.map((r, i) => {
+                      {sortedArrivalsList.length > 0 ? (
+                        sortedArrivalsList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
                           const arrTime = getReservationArrivalTime(r, '11:00 AM');
+                          const depTime = getReservationDepartureTime(r, '01:00 AM');
                           return (
                             <tr key={i} className="hover:bg-stone-50">
                               <td className="py-2.5 px-3 font-mono font-black text-sm text-[#124E39]">
-                                {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
+                                {r.roomNumber ? `Room ${r.roomNumber} (${r.building || ''})` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
                               </td>
                               <td className="py-2.5 px-3">
                                 <div className="font-mono font-bold text-stone-950">Family #{r.family}</div>
@@ -2590,7 +2736,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   {arrTime}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-stone-700">{r.departureDate}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-semibold text-stone-800">{r.departureDate || '—'}</div>
+                                <div className="mt-0.5">
+                                  <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] text-amber-950 font-bold">
+                                    <Clock className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                                    {depTime}
+                                  </span>
+                                </div>
+                              </td>
                               <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
                               <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
                               <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
@@ -2660,6 +2814,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <th className="py-2 px-3">Applicant / Guest</th>
                                 <th className="py-2 px-3">ITS ID</th>
                                 <th className="py-2 px-3">Departure Time</th>
+                                <th className="py-2 px-3">Arrival Date & Time</th>
                                 <th className="py-2 px-3">Tour Ref</th>
                                 <th className="py-2 px-3">Office</th>
                                 <th className="py-2 px-3">Check-out Notes</th>
@@ -2669,6 +2824,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               {tourGroup.reservations.map((r, i) => {
                                 const paxInfo = getRoomPaxInfo(r);
                                 const depTime = getReservationDepartureTime(r, '12:00 PM');
+                                const arrTime = getReservationArrivalTime(r, '11:00 AM');
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
                                     <td className="py-2.5 px-3 font-mono font-black text-sm text-stone-900">
@@ -2687,6 +2843,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                         <Clock className="w-3 h-3 text-amber-700 shrink-0" />
                                         {depTime}
                                       </span>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <div className="font-semibold text-stone-800">{r.arrivalDate || '—'}</div>
+                                      <div className="mt-0.5">
+                                        <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded text-[10px] text-emerald-950 font-bold">
+                                          <Clock className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                                          {arrTime}
+                                        </span>
+                                      </div>
                                     </td>
                                     <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
                                     <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
@@ -2713,6 +2878,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         <th className="py-2.5 px-3">Applicant / Guest</th>
                         <th className="py-2.5 px-3">ITS ID</th>
                         <th className="py-2.5 px-3">Departure Time</th>
+                        <th className="py-2.5 px-3">Arrival Date & Time</th>
                         <th className="py-2.5 px-3">Tour Ref</th>
                         <th className="py-2.5 px-3">Office</th>
                         <th className="py-2.5 px-3">Check-out Notes</th>
@@ -2723,6 +2889,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         flatList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
                           const depTime = getReservationDepartureTime(r, '12:00 PM');
+                          const arrTime = getReservationArrivalTime(r, '11:00 AM');
                           return (
                             <tr key={i} className="hover:bg-stone-50">
                               <td className="py-2.5 px-3 font-mono font-black text-sm text-stone-900">
@@ -2741,6 +2908,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   <Clock className="w-3 h-3 text-amber-700 shrink-0" />
                                   {depTime}
                                 </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-semibold text-stone-800">{r.arrivalDate || '—'}</div>
+                                <div className="mt-0.5">
+                                  <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded text-[10px] text-emerald-950 font-bold">
+                                    <Clock className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                                    {arrTime}
+                                  </span>
+                                </div>
                               </td>
                               <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.tourRefNo}</td>
                               <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
