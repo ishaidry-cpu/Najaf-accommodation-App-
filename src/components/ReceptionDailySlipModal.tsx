@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Printer, 
   Download, 
@@ -17,6 +17,7 @@ import {
   BedDouble, 
   DoorClosed, 
   CheckSquare,
+  Square,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
@@ -185,6 +186,17 @@ export function formatSafeDateLabel(dateStr?: string, options?: Intl.DateTimeFor
   return dateStr;
 }
 
+/**
+ * Normalizes hotel building string to canonical 'Saifee' or 'Burhani'
+ */
+export function normalizeHotelBuilding(b?: string): 'Saifee' | 'Burhani' | string {
+  if (!b) return '';
+  const s = b.trim().toLowerCase();
+  if (s.includes('saifee')) return 'Saifee';
+  if (s.includes('burhani')) return 'Burhani';
+  return b.trim();
+}
+
 interface ReceptionDailySlipModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -291,6 +303,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     }
   });
 
+  const [workerSubtasks, setWorkerSubtasks] = useState<Record<string, { linen?: boolean; toilet?: boolean; cards?: boolean }>>(() => {
+    try {
+      const saved = localStorage.getItem('faiz_worker_subtasks');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem('faiz_worker_completed_tasks', JSON.stringify(workerCompletedTasks));
@@ -303,21 +324,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     } catch {}
   }, [portalUploadedMap]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('faiz_worker_subtasks', JSON.stringify(workerSubtasks));
+    } catch {}
+  }, [workerSubtasks]);
+
   const [portalFilterScope, setPortalFilterScope] = useState<'date' | 'all'>('date');
   const [portalSearchQuery, setPortalSearchQuery] = useState<string>('');
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
 
-  // Set smart default date when modal is opened or when activeDatesSummary updates
+  // Set smart default date only when modal is initially opened
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
-      if (activeDatesSummary.sortedDates.length > 0) {
-        if (!selectedDate || !activeDatesSummary.datesMap.has(selectedDate) || (activeDatesSummary.datesMap.get(selectedDate)?.total || 0) === 0) {
-          setSelectedDate(initialDate);
-        }
+    if (isOpen && !prevIsOpenRef.current) {
+      if (initialDate) {
+        setSelectedDate(initialDate);
       }
     }
-  }, [isOpen, initialDate, activeDatesSummary]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, initialDate]);
 
   // Filter arrivals on selected date using robust normalization
   const arrivalsOnDate = safeReservations.filter((r) => {
@@ -340,27 +367,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   // Unallotted arrivals & departures today (need immediate room assignment)
   const unallottedArrivals = arrivalsOnDate.filter(
-    (r) => !r.building || (!r.building.toLowerCase().includes('saifee') && !r.building.toLowerCase().includes('burhani')) || !r.roomNumber || r.roomNumber.trim() === ''
+    (r) => !r.building || (normalizeHotelBuilding(r.building) !== 'Saifee' && normalizeHotelBuilding(r.building) !== 'Burhani') || !r.roomNumber || r.roomNumber.trim() === ''
   );
   const unallottedDepartures = departuresOnDate.filter(
-    (r) => !r.building || (!r.building.toLowerCase().includes('saifee') && !r.building.toLowerCase().includes('burhani')) || !r.roomNumber || r.roomNumber.trim() === ''
+    (r) => !r.building || (normalizeHotelBuilding(r.building) !== 'Saifee' && normalizeHotelBuilding(r.building) !== 'Burhani') || !r.roomNumber || r.roomNumber.trim() === ''
   );
 
   // Bifurcated by Hotel: Saifee & Burhani
-  const saifeeArrivals = arrivalsOnDate.filter((r) => (r.building || '').toLowerCase().includes('saifee'));
-  const saifeeDepartures = departuresOnDate.filter((r) => (r.building || '').toLowerCase().includes('saifee'));
+  const saifeeArrivals = arrivalsOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Saifee');
+  const saifeeDepartures = departuresOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Saifee');
 
-  const burhaniArrivals = arrivalsOnDate.filter((r) => (r.building || '').toLowerCase().includes('burhani'));
-  const burhaniDepartures = departuresOnDate.filter((r) => (r.building || '').toLowerCase().includes('burhani'));
+  const burhaniArrivals = arrivalsOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
+  const burhaniDepartures = departuresOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
 
   // Room Preparation Schedule: Room-by-Room Departure & Arrival Turnover matrix
   const roomPrepSchedule = safeRooms.map((room) => {
-    const rBldg = (room.building || '').trim().toLowerCase();
+    const rBldgNorm = normalizeHotelBuilding(room.building);
     const rNum = (room.roomNumber || '').trim().toLowerCase();
 
     // Departures from this room on selectedDate
     const deps = safeReservations.filter((r) => {
-      const bMatch = (r.building || '').trim().toLowerCase() === rBldg;
+      const bMatch = normalizeHotelBuilding(r.building) === rBldgNorm;
       const nMatch = (r.roomNumber || '').trim().toLowerCase() === rNum;
       const depDate = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
       return bMatch && nMatch && depDate === selectedDate;
@@ -368,7 +395,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     // Arrivals into this room on selectedDate
     const arrs = safeReservations.filter((r) => {
-      const bMatch = (r.building || '').trim().toLowerCase() === rBldg;
+      const bMatch = normalizeHotelBuilding(r.building) === rBldgNorm;
       const nMatch = (r.roomNumber || '').trim().toLowerCase() === rNum;
       const arrDate = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
       return bMatch && nMatch && arrDate === selectedDate;
@@ -376,7 +403,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     // In-house stayers (continuing over this date)
     const inHouse = safeReservations.filter((r) => {
-      const bMatch = (r.building || '').trim().toLowerCase() === rBldg;
+      const bMatch = normalizeHotelBuilding(r.building) === rBldgNorm;
       const nMatch = (r.roomNumber || '').trim().toLowerCase() === rNum;
       const aDate = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
       const dDate = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
@@ -434,8 +461,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   // Filtered room prep by hotel and active status
   const filteredRoomPrep = roomPrepSchedule.filter((item) => {
-    const itemBldg = (item.room?.building || '').trim().toLowerCase();
-    if (activeHotelFilter !== 'ALL' && !itemBldg.includes(activeHotelFilter.toLowerCase())) {
+    const itemBldg = normalizeHotelBuilding(item.room?.building);
+    if (activeHotelFilter !== 'ALL' && itemBldg !== activeHotelFilter) {
       return false;
     }
     if (showOnlyActiveRooms && !item.hasActivity) {
@@ -574,7 +601,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   }
 
   // Reusable builder for Worker Operations Summary (used both for screen and clean PDF generation)
-  const buildWorkerSummary = (prepList: typeof roomPrepSchedule) => {
+  const buildWorkerSummary = (prepList: typeof roomPrepSchedule, dateKey: string = selectedDate) => {
     const rawItems: WorkerRoomItem[] = [];
 
     prepList.forEach((item) => {
@@ -591,7 +618,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const fams = Array.from(new Set([...item.deps, ...item.arrs].map((x) => x.family).filter(Boolean))).join(', ');
 
         rawItems.push({
-          id: `turnover-${r.id || r.roomNumber}`,
+          id: `${dateKey}-${r.building}-${r.roomNumber}-turnover`,
           roomNumber: r.roomNumber,
           building: r.building,
           floor: r.floor,
@@ -617,7 +644,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const arrDate = item.deps[0]?.arrivalDate || '—';
 
         rawItems.push({
-          id: `checkout-${r.id || r.roomNumber}`,
+          id: `${dateKey}-${r.building}-${r.roomNumber}-checkout`,
           roomNumber: r.roomNumber,
           building: r.building,
           floor: r.floor,
@@ -643,7 +670,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const depDate = item.arrs[0]?.departureDate || '—';
 
         rawItems.push({
-          id: `arrival-${r.id || r.roomNumber}`,
+          id: `${dateKey}-${r.building}-${r.roomNumber}-arrival`,
           roomNumber: r.roomNumber,
           building: r.building,
           floor: r.floor,
@@ -743,8 +770,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   };
 
   const { groupedByOffice: workerRoomSummary, numericRooms: workerNumericRoomList } = useMemo(
-    () => buildWorkerSummary(filteredRoomPrep),
-    [filteredRoomPrep]
+    () => buildWorkerSummary(filteredRoomPrep, selectedDate),
+    [filteredRoomPrep, selectedDate]
   );
 
   // Active tours on selected date for Assistant Portal Upload (Requirement 4)
@@ -754,12 +781,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
       const dep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
       if ((arr && dep && arr <= selectedDate && dep >= selectedDate) || arr === selectedDate || dep === selectedDate) {
-        const tour = (r.tourRefNo || r.tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
+        const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
         tourIds.add(tour);
       }
     });
     return tourIds;
   }, [safeReservations, selectedDate]);
+
+  // All distinct tours across system
+  const allSystemTourIds = useMemo(() => {
+    const tourIds = new Set<string>();
+    safeReservations.forEach((r) => {
+      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      tourIds.add(tour);
+    });
+    return tourIds;
+  }, [safeReservations]);
 
   // Grouped Tour data for Assistant Portal Upload (Requirement 4)
   const portalUploadData = useMemo(() => {
@@ -768,6 +805,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       if (portalFilterScope === 'date') {
         if (!dateTourIds.has(tour)) return false;
       }
+      if (activeHotelFilter !== 'ALL') {
+        const normB = normalizeHotelBuilding(r.building);
+        const matchesB = normB === activeHotelFilter;
+        const isUnallotted = !r.roomNumber || r.roomNumber.trim() === '';
+        if (!matchesB && !isUnallotted) return false;
+      }
       if (portalSearchQuery.trim()) {
         const q = portalSearchQuery.toLowerCase();
         const mTour = tour.toLowerCase().includes(q);
@@ -775,7 +818,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const mName = (r.applicantName || '').toLowerCase().includes(q);
         const mIts = (r.itsId || '').toLowerCase().includes(q);
         const mRoom = (r.roomNumber || '').toLowerCase().includes(q);
-        if (!mTour && !mFam && !mName && !mIts && !mRoom) return false;
+        const mOffice = (r.officeName || '').toLowerCase().includes(q);
+        const mBldg = (r.building || '').toLowerCase().includes(q);
+        if (!mTour && !mFam && !mName && !mIts && !mRoom && !mOffice && !mBldg) return false;
       }
       return true;
     });
@@ -826,7 +871,73 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     groups.sort((a, b) => (a.tourRefNo || '').localeCompare(b.tourRefNo || '', undefined, { numeric: true }));
     return groups;
-  }, [safeReservations, portalFilterScope, dateTourIds, portalSearchQuery]);
+  }, [safeReservations, portalFilterScope, dateTourIds, portalSearchQuery, activeHotelFilter]);
+
+  // Worker task checklist toggle handlers
+  const toggleWorkerSubtask = (itemId: string, taskKey: 'linen' | 'toilet' | 'cards') => {
+    setWorkerSubtasks((prev) => {
+      const current = prev[itemId] || {};
+      const updated = { ...current, [taskKey]: !current[taskKey] };
+      const allDone = !!(updated.linen && updated.toilet && updated.cards);
+      if (allDone) {
+        setWorkerCompletedTasks((c) => ({ ...c, [itemId]: true }));
+      }
+      return { ...prev, [itemId]: updated };
+    });
+  };
+
+  const toggleRoomMasterSignoff = (itemId: string) => {
+    const current = !!workerCompletedTasks[itemId];
+    const newStatus = !current;
+    setWorkerCompletedTasks((prev) => ({ ...prev, [itemId]: newStatus }));
+    setWorkerSubtasks((prev) => ({
+      ...prev,
+      [itemId]: { linen: newStatus, toilet: newStatus, cards: newStatus },
+    }));
+  };
+
+  const handleMarkAllWorkersReady = () => {
+    const nextCompleted: Record<string, boolean> = {};
+    const nextSubtasks: Record<string, { linen: boolean; toilet: boolean; cards: boolean }> = {};
+    workerNumericRoomList.forEach((item) => {
+      nextCompleted[item.id] = true;
+      nextSubtasks[item.id] = { linen: true, toilet: true, cards: true };
+    });
+    setWorkerCompletedTasks(nextCompleted);
+    setWorkerSubtasks(nextSubtasks);
+  };
+
+  const handleResetAllWorkerTasks = () => {
+    setWorkerCompletedTasks({});
+    setWorkerSubtasks({});
+  };
+
+  // Assistant Portal batch toggle handlers
+  const handleMarkAllPortalUploaded = () => {
+    const nextMap = { ...portalUploadedMap };
+    const allResToUpdate: Reservation[] = [];
+    portalUploadData.forEach((tourGroup) => {
+      tourGroup.reservations.forEach((r) => {
+        nextMap[r.id] = true;
+        allResToUpdate.push({ ...r, isUploadedToPortal: true });
+      });
+    });
+    setPortalUploadedMap(nextMap);
+    allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+  };
+
+  const handleUnmarkAllPortalUploaded = () => {
+    const nextMap = { ...portalUploadedMap };
+    const allResToUpdate: Reservation[] = [];
+    portalUploadData.forEach((tourGroup) => {
+      tourGroup.reservations.forEach((r) => {
+        nextMap[r.id] = false;
+        allResToUpdate.push({ ...r, isUploadedToPortal: false });
+      });
+    });
+    setPortalUploadedMap(nextMap);
+    allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+  };
 
   // Shift to next or previous active date
   const handleNavigateActiveDate = (direction: 'prev' | 'next') => {
@@ -1425,15 +1536,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       const sectionPrep = roomPrepSchedule.filter((p) => {
         if (!p.hasActivity) return false;
         if (buildingName !== 'ALL') {
-          return (p.room.building || '').toLowerCase().includes(buildingName.toLowerCase());
+          return normalizeHotelBuilding(p.room.building) === buildingName;
         }
         return true;
       });
-      const summaryResult = buildWorkerSummary(sectionPrep);
+      const summaryResult = buildWorkerSummary(sectionPrep, selectedDate);
       const sectionSummary = summaryResult.groupedByOffice;
       const sectionNumeric = summaryResult.numericRooms;
 
-      const tableRows: string[][] = [];
+      const tableRows: any[][] = [];
 
       if (mode === 'room_numeric') {
         // Mode 1: Base organized strictly by Room Number
@@ -1458,6 +1569,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         // Mode 2: Grouped by Office Name and Tour ID in timing sequence (Base Room # followed by Timings)
         sectionSummary.forEach((officeGroup) => {
           officeGroup.tours.forEach((tourGroup) => {
+            tableRows.push([
+              {
+                content: `OFFICE: ${officeGroup.officeName.toUpperCase()}   •   TOUR ID: ${tourGroup.tourRefNo}   (${tourGroup.totalRooms} Rooms to service • ${tourGroup.totalPax} Zaereen • Timing Sequence Sorted)`,
+                colSpan: 6,
+                styles: { fillColor: [18, 78, 57], textColor: [235, 213, 158], fontStyle: 'bold', fontSize: 8.5 }
+              },
+              '', '', '', '', ''
+            ]);
+
             tourGroup.items.forEach((item) => {
               const roomCell = `Room ${item.roomNumber}\n${item.building} Hotel • Fl ${item.floor}`;
               const timingCell = `${item.actionType}\n${item.timeLabel}`;
@@ -1600,8 +1720,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         const matchesScope = portalFilterScope === 'all' ? true : dateTours.has(tour);
         if (!matchesScope) return false;
         if (buildingName !== 'ALL') {
-          const rBldg = (r.building || '').toLowerCase();
-          const matchesBldg = rBldg.includes(buildingName.toLowerCase());
+          const rBldg = normalizeHotelBuilding(r.building);
+          const matchesBldg = rBldg === buildingName;
           const isUnallotted = !r.roomNumber || r.roomNumber.trim() === '';
           if (!matchesBldg && !isUnallotted) return false;
         }
@@ -2462,6 +2582,30 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     );
                                   })}
                                 </div>
+                              ) : item.inHouse.length > 0 && item.arrs.length === 0 ? (
+                                <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-950 text-xs space-y-1.5 shadow-2xs">
+                                  <div className="font-bold flex items-center justify-between text-[11px] text-blue-900">
+                                    <span className="flex items-center gap-1">
+                                      <Users className="w-3.5 h-3.5 text-blue-700" />
+                                      <span>Continuing In-House Stay</span>
+                                    </span>
+                                    <span className="text-[10px] bg-blue-100 text-blue-900 px-1.5 py-0.2 rounded font-semibold border border-blue-200">
+                                      No Departure Today
+                                    </span>
+                                  </div>
+                                  {item.inHouse.map((ih, ihIdx) => {
+                                    const depTime = getReservationDepartureTime(ih, '12:00 PM');
+                                    return (
+                                      <div key={ihIdx} className="text-[10px] text-stone-800 bg-white p-1.5 rounded-lg border border-blue-100 flex items-center justify-between gap-2">
+                                        <span className="font-semibold truncate">{ih.applicantName}</span>
+                                        <span className="inline-flex items-center gap-1 font-mono text-[10px] text-amber-900 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 shrink-0">
+                                          <Clock className="w-2.5 h-2.5 text-amber-700" />
+                                          Dep: {ih.departureDate || '—'} ({depTime})
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               ) : (
                                 <span className="text-stone-400 italic text-[11px]">
                                   No departures today
@@ -2503,6 +2647,30 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           </span>
                                           <span className="text-[10px] text-stone-600 truncate">{a.officeName}</span>
                                         </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : item.inHouse.length > 0 && item.deps.length === 0 ? (
+                                <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-950 text-xs space-y-1.5 shadow-2xs">
+                                  <div className="font-bold flex items-center justify-between text-[11px] text-blue-900">
+                                    <span className="flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-700" />
+                                      <span>Occupied by In-House Guests</span>
+                                    </span>
+                                    <span className="text-[10px] bg-blue-100 text-blue-900 px-1.5 py-0.2 rounded font-semibold border border-blue-200">
+                                      Stay Active
+                                    </span>
+                                  </div>
+                                  {item.inHouse.map((ih, ihIdx) => {
+                                    const arrTime = getReservationArrivalTime(ih, '11:00 AM');
+                                    return (
+                                      <div key={ihIdx} className="text-[10px] text-stone-800 bg-white p-1.5 rounded-lg border border-blue-100 flex items-center justify-between gap-2">
+                                        <span className="font-semibold truncate">{ih.applicantName}</span>
+                                        <span className="inline-flex items-center gap-1 font-mono text-[10px] text-emerald-900 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                                          <Clock className="w-2.5 h-2.5 text-emerald-700" />
+                                          Arr was: {ih.arrivalDate || '—'} ({arrTime})
+                                        </span>
                                       </div>
                                     );
                                   })}
@@ -2689,20 +2857,18 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               }
 
-              const sortedArrivalsList = useMemo(() => {
-                return [...flatList].sort((a, b) => {
-                  const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
-                  const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
-                  if (hasA && !hasB) return -1;
-                  if (!hasA && hasB) return 1;
-                  const numA = parseInt(a.roomNumber || '', 10) || 9999;
-                  const numB = parseInt(b.roomNumber || '', 10) || 9999;
-                  if (numA !== numB) return numA - numB;
-                  const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
-                  if (famA !== 0) return famA;
-                  return (a.applicantName || '').localeCompare(b.applicantName || '');
-                });
-              }, [flatList]);
+              const sortedArrivalsList = [...flatList].sort((a, b) => {
+                const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
+                const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                const numA = parseInt(a.roomNumber || '', 10) || 9999;
+                const numB = parseInt(b.roomNumber || '', 10) || 9999;
+                if (numA !== numB) return numA - numB;
+                const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
+                if (famA !== 0) return famA;
+                return (a.applicantName || '').localeCompare(b.applicantName || '');
+              });
 
               return (
                 <div className="overflow-x-auto border border-stone-200 rounded-lg">
@@ -2878,6 +3044,19 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               }
 
+              const sortedDeparturesList = [...flatList].sort((a, b) => {
+                const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
+                const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                const numA = parseInt(a.roomNumber || '', 10) || 9999;
+                const numB = parseInt(b.roomNumber || '', 10) || 9999;
+                if (numA !== numB) return numA - numB;
+                const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
+                if (famA !== 0) return famA;
+                return (a.applicantName || '').localeCompare(b.applicantName || '');
+              });
+
               return (
                 <div className="overflow-x-auto border border-stone-200 rounded-lg">
                   <table className="w-full text-left text-xs">
@@ -2895,8 +3074,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-200">
-                      {flatList.length > 0 ? (
-                        flatList.map((r, i) => {
+                      {sortedDeparturesList.length > 0 ? (
+                        sortedDeparturesList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
                           const depTime = getReservationDepartureTime(r, '12:00 PM');
                           const arrTime = getReservationArrivalTime(r, '11:00 AM');
@@ -2936,7 +3115,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         })
                       ) : (
                         <tr>
-                          <td colSpan={8} className="py-3 text-center text-stone-400 italic">
+                          <td colSpan={9} className="py-3 text-center text-stone-400 italic">
                             No departures scheduled for {hotelName} Hotel on {selectedDate}
                           </td>
                         </tr>
@@ -3218,6 +3397,48 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               })()}
 
+              {/* Real-time Housekeeping Progress Tracking Bar & Quick Actions */}
+              {(() => {
+                const readyCount = workerNumericRoomList.filter((r) => !!workerCompletedTasks[r.id]).length;
+                const totalCount = workerNumericRoomList.length;
+                const readyPercent = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
+                return (
+                  <div className="bg-amber-50/80 border border-amber-300 p-3 rounded-xl shadow-2xs space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                      <span className="text-amber-950 flex items-center gap-1.5">
+                        <HardHat className="w-4 h-4 text-amber-700" />
+                        <span>Housekeeping Room Turnover & Preparation Progress:</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-100 text-amber-950 border border-amber-300 px-2.5 py-0.5 rounded-full font-mono text-xs font-extrabold">
+                          {readyCount} of {totalCount} Rooms Ready ({readyPercent}%)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleMarkAllWorkersReady}
+                          className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-2xs transition cursor-pointer"
+                        >
+                          Mark All Ready
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleResetAllWorkerTasks}
+                          className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white text-stone-700 border border-stone-300 hover:bg-stone-100 transition cursor-pointer"
+                        >
+                          Reset Checklist
+                        </button>
+                      </div>
+                    </div>
+                    <div className="w-full h-2.5 bg-amber-200/50 rounded-full overflow-hidden border border-amber-300">
+                      <div
+                        className="h-full bg-amber-600 transition-all duration-300 rounded-full"
+                        style={{ width: `${readyPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* View 1: Room Number Numeric Order (Base organized by Room Number) */}
               {workerViewMode === 'room_numeric' && (
                 <div className="border border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
@@ -3237,11 +3458,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left text-xs border-collapse">
                       <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold">
                         <tr>
-                          <th className="py-2.5 px-3 w-[16%]">Room # & Hotel (Base)</th>
-                          <th className="py-2.5 px-3 w-[26%] bg-[#0E3C2C]">Event & Timing Sequence</th>
-                          <th className="py-2.5 px-3 w-[20%]">Office & Tour ID</th>
+                          <th className="py-2.5 px-3 w-[15%]">Room # & Hotel (Base)</th>
+                          <th className="py-2.5 px-3 w-[25%] bg-[#0E3C2C]">Event & Timing Sequence</th>
+                          <th className="py-2.5 px-3 w-[18%]">Office & Tour ID</th>
                           <th className="py-2.5 px-3 w-[18%]">Family # & Room Pax</th>
-                          <th className="py-2.5 px-3 w-[20%]">Worker Sign-off</th>
+                          <th className="py-2.5 px-3 w-[24%]">Worker Checklist & Sign-off</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200">
@@ -3299,20 +3520,51 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   </div>
                                 </td>
                                 <td className="py-3 px-3 align-top">
-                                  <button
-                                    type="button"
-                                    onClick={() => setWorkerCompletedTasks(prev => ({ ...prev, [roomItem.id]: !prev[roomItem.id] }))}
-                                    className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
-                                      isDone
-                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                        : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
-                                    }`}
-                                  >
-                                    <CheckSquare className="w-3.5 h-3.5" />
-                                    <span>{isDone ? 'Cleaned / Ready ✓' : 'Mark Room Ready'}</span>
-                                  </button>
-                                  <div className="text-[10px] text-stone-400 mt-1 text-center">
-                                    Sign: ___________
+                                  <div className="space-y-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRoomMasterSignoff(roomItem.id)}
+                                      className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${
+                                        isDone
+                                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                          : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
+                                      }`}
+                                    >
+                                      <CheckSquare className="w-3.5 h-3.5" />
+                                      <span>{isDone ? 'Cleaned & Ready ✓' : 'Mark Room Ready'}</span>
+                                    </button>
+                                    <div className="bg-stone-50 border border-stone-200 rounded-lg p-1.5 space-y-1 text-[10px]">
+                                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!workerSubtasks[roomItem.id]?.linen || isDone}
+                                          onChange={() => toggleWorkerSubtask(roomItem.id, 'linen')}
+                                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                        />
+                                        <span>Linen & Beds Fresh</span>
+                                      </label>
+                                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!workerSubtasks[roomItem.id]?.toilet || isDone}
+                                          onChange={() => toggleWorkerSubtask(roomItem.id, 'toilet')}
+                                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                        />
+                                        <span>Toilet Sanitized</span>
+                                      </label>
+                                      <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!workerSubtasks[roomItem.id]?.cards || isDone}
+                                          onChange={() => toggleWorkerSubtask(roomItem.id, 'cards')}
+                                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                        />
+                                        <span>Wajba & Cards Ready</span>
+                                      </label>
+                                    </div>
+                                    <div className="text-[10px] text-stone-400 text-center font-mono">
+                                      Sign: ____________
+                                    </div>
                                   </div>
                                 </td>
                               </tr>
@@ -3446,20 +3698,51 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
                                         {/* 5. Worker Checklist & Action */}
                                         <td className="py-3 px-3 align-top">
-                                          <button
-                                            type="button"
-                                            onClick={() => setWorkerCompletedTasks(prev => ({ ...prev, [roomItem.id]: !prev[roomItem.id] }))}
-                                            className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1 cursor-pointer ${
-                                              isDone
-                                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                                : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
-                                            }`}
-                                          >
-                                            <CheckSquare className="w-3.5 h-3.5" />
-                                            <span>{isDone ? 'Cleaned / Ready ✓' : 'Mark Room Ready'}</span>
-                                          </button>
-                                          <div className="text-[10px] text-stone-400 mt-1 text-center">
-                                            Initial: ___________
+                                          <div className="space-y-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleRoomMasterSignoff(roomItem.id)}
+                                              className={`w-full py-1.5 px-2 rounded-lg text-[11px] font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${
+                                                isDone
+                                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                                  : 'bg-stone-100 text-stone-700 hover:bg-emerald-50 hover:text-emerald-800 border-stone-300'
+                                              }`}
+                                            >
+                                              <CheckSquare className="w-3.5 h-3.5" />
+                                              <span>{isDone ? 'Cleaned & Ready ✓' : 'Mark Room Ready'}</span>
+                                            </button>
+                                            <div className="bg-stone-50 border border-stone-200 rounded-lg p-1.5 space-y-1 text-[10px]">
+                                              <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={!!workerSubtasks[roomItem.id]?.linen || isDone}
+                                                  onChange={() => toggleWorkerSubtask(roomItem.id, 'linen')}
+                                                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                                />
+                                                <span>Linen & Beds Fresh</span>
+                                              </label>
+                                              <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={!!workerSubtasks[roomItem.id]?.toilet || isDone}
+                                                  onChange={() => toggleWorkerSubtask(roomItem.id, 'toilet')}
+                                                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                                />
+                                                <span>Toilet Sanitized</span>
+                                              </label>
+                                              <label className="flex items-center gap-1.5 cursor-pointer select-none text-stone-700 hover:text-stone-950 font-medium">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={!!workerSubtasks[roomItem.id]?.cards || isDone}
+                                                  onChange={() => toggleWorkerSubtask(roomItem.id, 'cards')}
+                                                  className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-stone-300 cursor-pointer"
+                                                />
+                                                <span>Wajba & Cards Ready</span>
+                                              </label>
+                                            </div>
+                                            <div className="text-[10px] text-stone-400 text-center font-mono">
+                                              Initial: ___________
+                                            </div>
                                           </div>
                                         </td>
                                       </tr>
@@ -3539,7 +3822,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               })()}
 
-              {/* Search & Scope Filters */}
+              {/* Search, Scope Filters & Batch Actions */}
               <div className="flex flex-wrap items-center justify-between gap-2.5 bg-stone-100 p-2.5 rounded-xl border border-stone-200 text-xs">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-stone-700">Scope:</span>
@@ -3563,12 +3846,29 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
-                    All System Tours
+                    All System Tours ({allSystemTourIds.size} Tours)
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 flex-1 max-w-xs">
-                  <div className="relative w-full">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleMarkAllPortalUploaded}
+                    className="px-2.5 py-1 rounded-lg font-bold bg-blue-700 hover:bg-blue-800 text-white shadow-2xs transition cursor-pointer"
+                    title="Mark all currently visible zaereen as Uploaded to Portal"
+                  >
+                    Mark All Displayed Uploaded
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUnmarkAllPortalUploaded}
+                    className="px-2.5 py-1 rounded-lg font-bold bg-white text-stone-700 border border-stone-300 hover:bg-stone-100 transition cursor-pointer"
+                    title="Unmark all currently visible zaereen"
+                  >
+                    Unmark All
+                  </button>
+
+                  <div className="relative min-w-[200px]">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-stone-400" />
                     <input
                       type="text"
@@ -3737,22 +4037,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     </div>
                                   </td>
                                   <td className="py-2.5 px-3 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newStatus = !isUploaded;
-                                        setPortalUploadedMap(prev => ({ ...prev, [r.id]: newStatus }));
-                                        onUpdateReservation?.({ ...r, isUploadedToPortal: newStatus });
-                                      }}
-                                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition cursor-pointer inline-flex items-center gap-1 ${
-                                        isUploaded
-                                          ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
-                                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200 border-stone-300'
-                                      }`}
-                                    >
-                                      <CheckCircle2 className="w-3 h-3" />
-                                      <span>{isUploaded ? 'Uploaded ✓' : 'Mark Uploaded'}</span>
-                                    </button>
+                                    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none group">
+                                      <input
+                                        type="checkbox"
+                                        checked={isUploaded}
+                                        onChange={() => {
+                                          const newStatus = !isUploaded;
+                                          setPortalUploadedMap((prev) => ({ ...prev, [r.id]: newStatus }));
+                                          onUpdateReservation?.({ ...r, isUploadedToPortal: newStatus });
+                                        }}
+                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-stone-300 cursor-pointer transition"
+                                      />
+                                      <span
+                                        className={`px-2 py-0.5 rounded text-[11px] font-bold border transition ${
+                                          isUploaded
+                                            ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                                            : 'bg-stone-100 text-stone-600 group-hover:bg-blue-50 group-hover:text-blue-800 border-stone-300'
+                                        }`}
+                                      >
+                                        {isUploaded ? 'Uploaded ✓' : 'Pending'}
+                                      </span>
+                                    </label>
                                   </td>
                                 </tr>
                               );

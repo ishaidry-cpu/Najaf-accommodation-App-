@@ -10,6 +10,7 @@ import {
   AlertCircle, 
   Trash2, 
   ChevronDown, 
+  User,
   Users, 
   ArrowUpRight,
   Printer, 
@@ -46,6 +47,7 @@ interface ReservationsViewProps {
   categories?: string[];
   onAddReservation: (newReservation: Reservation) => void;
   onUpdateReservation: (updatedReservation: Reservation) => void;
+  onBatchUpdateReservations?: (updatedReservations: Reservation[]) => void;
   onDeleteReservation: (id: string) => void;
   onBatchDeleteReservations?: (ids: string[]) => void;
   onOpenUploadExcel: () => void;
@@ -69,6 +71,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   categories = DEFAULT_ZAEREEN_CATEGORIES,
   onAddReservation,
   onUpdateReservation,
+  onBatchUpdateReservations,
   onDeleteReservation,
   onBatchDeleteReservations,
   onOpenUploadExcel,
@@ -90,6 +93,27 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Tour date/time batch change confirmation modal state
+  const [pendingTourDateChange, setPendingTourDateChange] = useState<{
+    reservation: Reservation;
+    field: 'arrivalDate' | 'departureDate' | 'arrivalTime' | 'departureTime';
+    oldValue: string;
+    newValue: string;
+    tourId: string;
+    otherZaereenCount: number;
+    allTourZaereen: Reservation[];
+  } | null>(null);
+
+  // User feedback toast
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+
+  // Auto-dismiss feedback toast after 4 seconds
+  React.useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 4000);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -416,8 +440,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     onAddReservation(newRes);
   };
 
-  // In-place field editor handler
-  const handleFieldChange = (id: string, field: keyof Reservation, value: any) => {
+  // Apply single field change directly to a single reservation
+  const applySingleFieldChange = (id: string, field: keyof Reservation, value: any) => {
     const target = reservations.find((r) => r.id === id);
     if (!target) return;
 
@@ -445,6 +469,134 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     }
 
     onUpdateReservation(updated);
+  };
+
+  // In-place field editor handler with Tour-wide date/time prompt
+  const handleFieldChange = (id: string, field: keyof Reservation, value: any) => {
+    const target = reservations.find((r) => r.id === id);
+    if (!target) return;
+
+    // Intercept arrival/departure date & time changes
+    if (
+      field === 'arrivalDate' ||
+      field === 'departureDate' ||
+      field === 'arrivalTime' ||
+      field === 'departureTime'
+    ) {
+      const currentVal = String(target[field] || '').trim();
+      const newVal = String(value || '').trim();
+
+      // If value hasn't actually changed, return
+      if (currentVal === newVal) return;
+
+      const tourId = (target.tourRefNo || (target as any).tourId || '').trim();
+      if (tourId) {
+        const tourMembers = reservations.filter(
+          (r) => (r.tourRefNo || (r as any).tourId || '').trim().toLowerCase() === tourId.toLowerCase()
+        );
+
+        // If there are multiple zaereen in this tour group, ask the user!
+        if (tourMembers.length > 1) {
+          setPendingTourDateChange({
+            reservation: target,
+            field,
+            oldValue: currentVal,
+            newValue: newVal,
+            tourId,
+            otherZaereenCount: tourMembers.length - 1,
+            allTourZaereen: tourMembers,
+          });
+          return;
+        }
+      }
+    }
+
+    // Default: update single field directly
+    applySingleFieldChange(id, field, value);
+  };
+
+  // Confirm: Apply new date/time to all zaereen of the same Tour ID
+  const handleConfirmApplyToAllTour = () => {
+    if (!pendingTourDateChange) return;
+    const { field, newValue, tourId, allTourZaereen, reservation } = pendingTourDateChange;
+
+    const updatedTourMembers = allTourZaereen.map((r) => {
+      const updated: Reservation = {
+        ...r,
+        [field]: newValue,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Check room validity if dates changed
+      if (field === 'arrivalDate' || field === 'departureDate') {
+        if (updated.roomNumber) {
+          const isOccupied = isRoomBookedForDuration(
+            updated.building || 'Saifee',
+            updated.roomNumber,
+            updated.arrivalDate,
+            updated.departureDate,
+            reservations,
+            updated.id
+          );
+          if (isOccupied) {
+            updated.roomNumber = '';
+          }
+        }
+      }
+
+      return updated;
+    });
+
+    if (onBatchUpdateReservations) {
+      onBatchUpdateReservations(updatedTourMembers);
+    } else {
+      updatedTourMembers.forEach((r) => onUpdateReservation(r));
+    }
+
+    const fieldLabel =
+      field === 'arrivalDate'
+        ? 'Arrival Date'
+        : field === 'departureDate'
+        ? 'Departure Date'
+        : field === 'arrivalTime'
+        ? 'Arrival Time'
+        : 'Departure Time';
+
+    setToastMessage({
+      text: `✓ Updated ${fieldLabel} to "${newValue}" for all ${updatedTourMembers.length} zaereen in Tour ${tourId}.`,
+      type: 'success',
+    });
+
+    setPendingTourDateChange(null);
+  };
+
+  // Confirm: Apply new date/time for this single zaer only
+  const handleConfirmApplyToSingle = () => {
+    if (!pendingTourDateChange) return;
+    const { reservation, field, newValue } = pendingTourDateChange;
+
+    applySingleFieldChange(reservation.id, field, newValue);
+
+    const fieldLabel =
+      field === 'arrivalDate'
+        ? 'Arrival Date'
+        : field === 'departureDate'
+        ? 'Departure Date'
+        : field === 'arrivalTime'
+        ? 'Arrival Time'
+        : 'Departure Time';
+
+    setToastMessage({
+      text: `Updated ${fieldLabel} to "${newValue}" for ${reservation.applicantName} only.`,
+      type: 'info',
+    });
+
+    setPendingTourDateChange(null);
+  };
+
+  // Cancel tour date change dialog
+  const handleCancelTourDateChange = () => {
+    setPendingTourDateChange(null);
   };
 
   // Render sort header icon
@@ -1478,14 +1630,25 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
                         <input
                           type="date"
-                          value={res.arrivalDate.slice(0, 10)}
+                          value={res.arrivalDate ? res.arrivalDate.slice(0, 10) : ''}
                           onChange={(e) => handleFieldChange(res.id, 'arrivalDate', e.target.value)}
                           className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
                         />
                         <div className="flex items-center gap-1 mt-1">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200">
-                            <Clock className="w-2.5 h-2.5 text-indigo-600" />
-                            <span>{res.arrivalTime || '11:00 AM'}</span>
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200 shadow-2xs hover:border-indigo-400 transition"
+                            title="Edit Arrival Time (select or type e.g. 11:00 AM)"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                            <input
+                              type="text"
+                              list="common-arrival-times"
+                              value={res.arrivalTime || '11:00 AM'}
+                              onChange={(e) => handleFieldChange(res.id, 'arrivalTime', e.target.value)}
+                              className="bg-transparent text-indigo-950 font-bold text-[10px] w-20 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-400 rounded px-0.5 cursor-pointer"
+                              placeholder="11:00 AM"
+                              title="Edit Arrival Time"
+                            />
                           </span>
                         </div>
                         {res.rawArrivalStr && res.rawArrivalStr !== res.arrivalTime && (
@@ -1499,14 +1662,25 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
                         <input
                           type="date"
-                          value={res.departureDate.slice(0, 10)}
+                          value={res.departureDate ? res.departureDate.slice(0, 10) : ''}
                           onChange={(e) => handleFieldChange(res.id, 'departureDate', e.target.value)}
                           className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
                         />
                         <div className="flex items-center gap-1 mt-1">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200">
-                            <Clock className="w-2.5 h-2.5 text-amber-600" />
-                            <span>{res.departureTime || '01:00 AM'}</span>
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200 shadow-2xs hover:border-amber-400 transition"
+                            title="Edit Departure Time (select or type e.g. 01:00 AM)"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                            <input
+                              type="text"
+                              list="common-departure-times"
+                              value={res.departureTime || '01:00 AM'}
+                              onChange={(e) => handleFieldChange(res.id, 'departureTime', e.target.value)}
+                              className="bg-transparent text-amber-950 font-bold text-[10px] w-20 focus:outline-none focus:bg-white focus:ring-1 focus:ring-amber-400 rounded px-0.5 cursor-pointer"
+                              placeholder="01:00 AM"
+                              title="Edit Departure Time"
+                            />
                           </span>
                         </div>
                         {res.rawDepartureStr && res.rawDepartureStr !== res.departureTime && (
@@ -1782,6 +1956,195 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <span>Delete All {selectedIds.size} Records</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Common Timings Datalists for 1-Click Autocomplete */}
+      <datalist id="common-arrival-times">
+        <option value="11:00 AM" />
+        <option value="11:30 AM" />
+        <option value="12:00 PM" />
+        <option value="01:00 PM" />
+        <option value="01:15 PM" />
+        <option value="01:30 PM" />
+        <option value="02:00 PM" />
+        <option value="03:00 PM" />
+        <option value="04:00 PM" />
+        <option value="06:00 PM" />
+        <option value="08:00 PM" />
+        <option value="10:00 PM" />
+        <option value="10:45 AM" />
+        <option value="08:00 AM" />
+        <option value="09:00 AM" />
+        <option value="10:00 AM" />
+      </datalist>
+
+      <datalist id="common-departure-times">
+        <option value="01:00 AM" />
+        <option value="02:00 AM" />
+        <option value="08:00 AM" />
+        <option value="08:30 AM" />
+        <option value="09:00 AM" />
+        <option value="09:15 AM" />
+        <option value="09:30 AM" />
+        <option value="10:00 AM" />
+        <option value="11:00 AM" />
+        <option value="12:00 PM" />
+        <option value="01:00 PM" />
+        <option value="02:00 PM" />
+      </datalist>
+
+      {/* Tour Date/Time Batch Change Prompt Modal */}
+      {pendingTourDateChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-[#124E39]">
+                <Calendar className="w-5 h-5 text-[#124E39]" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-stone-900">
+                  Update Tour Schedule for All Zaereen?
+                </h3>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="font-mono text-xs font-black text-[#124E39] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    Tour: {pendingTourDateChange.tourId}
+                  </span>
+                  <span className="text-xs text-stone-500 font-semibold">
+                    • {pendingTourDateChange.allTourZaereen.length} Zaereen Total
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelTourDateChange}
+                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer rounded-lg"
+                title="Cancel changes"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Change Detail Card */}
+            <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between pb-1.5 border-b border-stone-200">
+                <span className="font-bold text-stone-700">
+                  {pendingTourDateChange.field === 'arrivalDate'
+                    ? 'Arrival Date'
+                    : pendingTourDateChange.field === 'departureDate'
+                    ? 'Departure Date'
+                    : pendingTourDateChange.field === 'arrivalTime'
+                    ? 'Arrival Time'
+                    : 'Departure Time'}{' '}
+                  Changed:
+                </span>
+                <span className="font-bold text-stone-900 truncate max-w-[220px]" title={pendingTourDateChange.reservation.applicantName}>
+                  {pendingTourDateChange.reservation.applicantName} (ITS: {pendingTourDateChange.reservation.itsId})
+                </span>
+              </div>
+
+              <div className="flex items-center justify-center gap-3 py-1 font-mono text-xs">
+                <div className="px-2.5 py-1 rounded-md bg-stone-100 text-stone-600 border border-stone-200 text-center min-w-[100px]">
+                  <span className="text-[10px] block text-stone-400 font-sans uppercase font-bold">Current</span>
+                  <span className="font-bold">{pendingTourDateChange.oldValue || '—'}</span>
+                </div>
+                <span className="text-stone-400 font-bold text-sm">➔</span>
+                <div className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 border border-emerald-300 font-bold text-center min-w-[100px]">
+                  <span className="text-[10px] block text-emerald-700 font-sans uppercase font-bold">New Value</span>
+                  <span>{pendingTourDateChange.newValue}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-stone-600 pt-1 leading-relaxed">
+                There are <strong>{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in Tour{' '}
+                <strong className="font-mono text-[#124E39]">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
+              </p>
+            </div>
+
+            {/* List preview of all zaereen in this tour */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-stone-500 font-semibold px-1">
+                <span>Zaereen in Tour ({pendingTourDateChange.allTourZaereen.length}):</span>
+                <span>Family & Room</span>
+              </div>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-2 max-h-36 overflow-y-auto space-y-1 text-xs">
+                {pendingTourDateChange.allTourZaereen.map((m) => {
+                  const isCurrent = m.id === pendingTourDateChange.reservation.id;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex items-center justify-between py-1 px-2 rounded ${
+                        isCurrent ? 'bg-emerald-50 border border-emerald-200 font-bold text-emerald-950' : 'bg-white border border-stone-100 text-stone-800'
+                      }`}
+                    >
+                      <div className="truncate max-w-[240px]">
+                        <span>{m.applicantName}</span>
+                        {isCurrent && <span className="text-[10px] text-emerald-700 ml-1 font-semibold">(Selected)</span>}
+                        <span className="font-mono text-stone-400 ml-1 text-[11px]">({m.itsId || '—'})</span>
+                      </div>
+                      <div className="font-mono text-[11px] text-stone-600 shrink-0">
+                        Fam #{m.family || '—'} • {m.roomNumber ? `${m.building} Rm ${m.roomNumber}` : 'Unallotted'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelTourDateChange}
+                className="w-full sm:w-auto px-3.5 py-2 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApplyToSingle}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                title={`Apply ${pendingTourDateChange.newValue} only to ${pendingTourDateChange.reservation.applicantName}`}
+              >
+                <User className="w-3.5 h-3.5 text-stone-600" />
+                <span>Change for This Zaer Only</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApplyToAllTour}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in Tour ${pendingTourDateChange.tourId}`}
+              >
+                <Users className="w-4 h-4 text-[#EBD59E]" />
+                <span>Update All ({pendingTourDateChange.allTourZaereen.length}) in Tour</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Feedback Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold ${
+              toastMessage.type === 'success'
+                ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                : 'bg-stone-800 text-white border-stone-700'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
+            <span>{toastMessage.text}</span>
+            <button
+              type="button"
+              onClick={() => setToastMessage(null)}
+              className="ml-2 text-stone-300 hover:text-white cursor-pointer"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}

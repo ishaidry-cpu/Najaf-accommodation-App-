@@ -522,6 +522,17 @@ export default function App() {
     triggerAutoSync(updated, rooms);
   };
 
+  // Batch Update Reservations
+  const handleBatchUpdateReservations = (updatedList: Reservation[]) => {
+    if (!updatedList || updatedList.length === 0) return;
+    const map = new Map(updatedList.map((r) => [r.id, r]));
+    const updated = reservations.map((r) => map.get(r.id) || r);
+    setReservations(updated);
+    saveReservations(updated);
+    updatedList.forEach((r) => upsertBackendReservation(r));
+    triggerAutoSync(updated, rooms);
+  };
+
   // Delete Reservation (Single)
   const handleDeleteReservation = (id: string) => {
     const target = reservations.find((r) => r.id === id);
@@ -965,6 +976,7 @@ export default function App() {
             categories={categories}
             onAddReservation={handleAddReservation}
             onUpdateReservation={handleUpdateReservation}
+            onBatchUpdateReservations={handleBatchUpdateReservations}
             onDeleteReservation={handleDeleteReservation}
             onBatchDeleteReservations={handleBatchDeleteReservations}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
