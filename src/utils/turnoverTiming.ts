@@ -207,8 +207,8 @@ export function checkTurnoverTimingConflict(
       diffHours: gapHours,
       isSevereConflict: false,
       canForceAllocate: true,
-      warningLevel: 'none',
-      message: `Same-day Turnover on ${dDate}: Departing pax ${depName} leaves at ${depFormatted} and arriving pax ${arrName} comes at ${arrFormatted} (${gapText} hour difference).`,
+      warningLevel: 'warning',
+      message: `Same-Day Turnover Notice on ${dDate}: Departing pax ${depName} leaves at ${depFormatted} and arriving pax ${arrName} arrives at ${arrFormatted} (${gapText} hour difference). Click Okay to allow allocation.`,
     };
   }
 
@@ -239,3 +239,45 @@ export function checkTurnoverTimingConflict(
     message,
   };
 }
+
+/**
+ * Checks whether a person is an infant (under three years old, e.g. age < 3).
+ * According to allocation rules:
+ * "do not allocate infant (under three years) when allocating a room. If room max capacity is 5
+ * and there are 6 pax out of which one is 2 years old he/she should be not counted and pax should be counted as 5"
+ */
+export function isInfant(item?: { age?: number | string } | null): boolean {
+  if (!item || item.age === undefined || item.age === null) return false;
+  const ageStr = String(item.age).trim().toLowerCase();
+  if (ageStr === '' || ageStr === '—' || ageStr === '-') return false;
+  if (ageStr.includes('infant') || ageStr.includes('baby') || ageStr.includes('month') || ageStr.includes('mo')) {
+    return true;
+  }
+  const num = parseFloat(ageStr);
+  if (!isNaN(num) && num < 3) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns the effective room capacity pax count for a reservation (infants under 3 count as 0 pax).
+ */
+export function getReservationEffectivePax(
+  r?: { age?: number | string; pax?: number; paxCount?: number } | null
+): number {
+  if (!r) return 0;
+  if (isInfant(r)) return 0;
+  return (r as any).pax || (r as any).paxCount || 1;
+}
+
+/**
+ * Calculates total effective pax count across a list of reservations, excluding infants under 3 years old.
+ */
+export function countEffectivePax(
+  reservations: ({ age?: number | string; pax?: number; paxCount?: number } | null | undefined)[]
+): number {
+  if (!Array.isArray(reservations)) return 0;
+  return reservations.reduce((sum, r) => sum + (r ? getReservationEffectivePax(r) : 0), 0);
+}
+

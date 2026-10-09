@@ -47,7 +47,9 @@ import {
   saveStoredUserRole,
   getStoredAdminPin,
   saveStoredAdminPin,
-  checkRoomAllotmentAvailability
+  checkRoomAllotmentAvailability,
+  isInfant,
+  countEffectivePax
 } from './services/storage';
 import { 
   initAuth, 
@@ -542,11 +544,13 @@ export default function App() {
   const handleBatchUpdateReservations = (updatedList: Reservation[]) => {
     if (!updatedList || updatedList.length === 0) return;
     const map = new Map(updatedList.map((r) => [r.id, r]));
-    const updated = reservations.map((r) => map.get(r.id) || r);
-    setReservations(updated);
-    saveReservations(updated);
+    setReservations((prev) => {
+      const updated = prev.map((r) => map.get(r.id) || r);
+      saveReservations(updated);
+      triggerAutoSync(updated, rooms);
+      return updated;
+    });
     updatedList.forEach((r) => upsertBackendReservation(r));
-    triggerAutoSync(updated, rooms);
   };
 
   // Delete Reservation (Single)
@@ -671,6 +675,7 @@ export default function App() {
     }
 
     if (!forceConfirmed) {
+      const requestedPax = isInfant(target) ? 0 : 1;
       const check = checkRoomAllotmentAvailability(
         building,
         roomNumber,
@@ -678,12 +683,14 @@ export default function App() {
         target.departureDate,
         rooms,
         reservations,
-        1,
+        requestedPax,
         target.id,
         false,
         target.arrivalTime,
         target.departureTime,
-        target.applicantName
+        target.applicantName,
+        target.family,
+        target.tourRefNo
       );
 
       if (!check.allowed) {
@@ -784,6 +791,8 @@ export default function App() {
 
     if (roomNumber && !forceConfirmed) {
       const first = matches[0];
+      const effectivePax = countEffectivePax(matches);
+      const infantCount = matches.length - effectivePax;
       const check = checkRoomAllotmentAvailability(
         building,
         roomNumber,
@@ -791,12 +800,14 @@ export default function App() {
         first.departureDate,
         rooms,
         reservations.filter((r) => !matchIds.has(r.id)),
-        matches.length,
+        effectivePax,
         undefined,
         false,
         first.arrivalTime,
         first.departureTime,
-        first.applicantName
+        first.applicantName,
+        family,
+        tourRefNo
       );
 
       if (!check.allowed) {
@@ -806,15 +817,19 @@ export default function App() {
           ? `Same-Day Turnover Notice (${diffText ? `${diffText}h Difference` : 'Timing Notice'})`
           : `Room Not Vacant Notice (${building} Hotel Room ${roomNumber})`;
 
+        const paxSummary = infantCount > 0
+          ? `${matches.length} zaereen (${effectivePax} bed pax, ${infantCount} infant <3y not counted in room pax)`
+          : `${matches.length} pax`;
+
         setAllocationNotice({
           title: noticeTitle,
-          message: check.reason || `Room ${roomNumber} is not vacant. Do you want to allow allocation for family "${family}" (${matches.length} pax)?`,
+          message: check.reason || `Room ${roomNumber} is not vacant. Do you want to allow allocation for family "${family}" (${paxSummary})?`,
           diffHoursText: diffText,
           isSameDayTurnover: isTurnover,
           isRoomNotVacant: !isTurnover,
           roomNumber,
           building,
-          guestName: `Family #${family} (${matches.length} zaereen)`,
+          guestName: `Family #${family} (${paxSummary})`,
           onConfirm: () => {
             setAllocationNotice(null);
             executeBatchFamilyAllot(tourRefNo, family, building, roomNumber, matches, matchIds, check.reason);

@@ -36,7 +36,9 @@ import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../type
 import { 
   isRoomBookedForDuration, 
   getVacantRoomsForDuration,
-  checkRoomAllotmentAvailability
+  checkRoomAllotmentAvailability,
+  isInfant,
+  countEffectivePax
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
@@ -1396,7 +1398,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   const isShiftedToA = !!res.shiftToCategoryA;
                   const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
 
-                  // Vacant rooms for this single zaer
+                  // Vacant rooms for this single zaer (infants under 3 do not consume room capacity)
+                  const resEffectivePax = isInfant(res) ? 0 : (res.pax || res.paxCount || 1);
                   const vacantRoomsForRes = getVacantRoomsForDuration(
                     res.building || 'Saifee',
                     res.arrivalDate,
@@ -1404,10 +1407,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     rooms,
                     reservations,
                     res.id,
-                    res.pax || res.paxCount || 1,
+                    resEffectivePax,
                     res.arrivalTime,
                     res.departureTime,
-                    res.applicantName
+                    res.applicantName,
+                    res.family,
+                    res.tourRefNo
                   );
 
                   // Count how many members share this family and tour
@@ -1586,24 +1591,26 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                       res.departureDate,
                                       rooms,
                                       reservations,
-                                      res.pax || res.paxCount || 1,
+                                      resEffectivePax,
                                       res.id,
                                       false,
                                       res.arrivalTime,
                                       res.departureTime,
-                                      res.applicantName
+                                      res.applicantName,
+                                      res.family,
+                                      res.tourRefNo
                                     );
                                     if (chk.hasTimingConflict) {
                                       const diff = chk.timingConflictDiffHours !== undefined ? `${chk.timingConflictDiffHours}h diff` : 'Notice';
                                       return (
                                         <option key={rm.id} value={rm.roomNumber} className="text-amber-900 bg-amber-50 font-bold">
-                                          Rm {rm.roomNumber} [Turnover Notice: {diff} (Dep {chk.depTime} &gt; Arr {chk.arrTime}) • Force Allot]
+                                          Rm {rm.roomNumber} [Turnover Notice: {diff} (Dep {chk.depTime} &gt; Arr {chk.arrTime}) • Click to Allot]
                                         </option>
                                       );
                                     }
                                     return (
                                       <option key={rm.id} value={rm.roomNumber} className="text-rose-900 bg-rose-50 font-medium">
-                                        Rm {rm.roomNumber} [Not Vacant: {chk.currentOccupancy}/{chk.maxCapacity} Pax • Force Allot]
+                                        Rm {rm.roomNumber} [Not Vacant: {chk.currentOccupancy}/{chk.maxCapacity} Pax • Click to Allot]
                                       </option>
                                     );
                                   })}

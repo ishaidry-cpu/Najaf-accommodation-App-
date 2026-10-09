@@ -9,11 +9,83 @@
 }
 
 @media print {
-  body {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  html, body {
     background: #FFFFFF !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  header, nav, .print\:hidden {
+
+  /* Hide app shell and background views so zero blank pages precede modal */
+  header, nav, main, footer, .print-hidden, .print-hidden-element, .print\:hidden {
     display: none !important;
   }
+
+  body > #root > div > *:not(.reception-slip-modal-backdrop) {
+    display: none !important;
+  }
+
+  .reception-slip-modal-backdrop {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .reception-slip-modal-card {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #reception-slip-printable-area {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    page-break-inside: auto !important;
+    border-collapse: collapse !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
 }
+

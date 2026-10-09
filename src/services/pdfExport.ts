@@ -563,13 +563,6 @@ export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResu
         } catch (e) {}
       }, 2000);
 
-      // Secondary doc.save fallback
-      try {
-        doc.save(fileName);
-      } catch (e) {
-        // Ignore if doc.save restricted in iframe
-      }
-
       return { fileName, blobUrl, success: true };
     } else {
       return { fileName, blobUrl: '', success: true };

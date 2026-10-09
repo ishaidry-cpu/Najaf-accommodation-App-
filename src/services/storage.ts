@@ -4,8 +4,13 @@ import {
   TurnoverTimingResult, 
   extractCleanTime, 
   formatMinutesToTime12, 
-  parseTimeToMinutes 
+  parseTimeToMinutes,
+  isInfant,
+  getReservationEffectivePax,
+  countEffectivePax
 } from '../utils/turnoverTiming';
+
+export { isInfant, getReservationEffectivePax, countEffectivePax };
 
 const ROOMS_STORAGE_KEY = 'zaereen_accommodation_rooms_saifee_burhani_v6';
 const RESERVATIONS_STORAGE_KEY = 'zaereen_accommodation_reservations_saifee_burhani_v7';
@@ -1097,7 +1102,7 @@ export function getRoomOccupancyDetailOnDate(
   reservations: Reservation[]
 ): RoomOccupancyDetail {
   const occupants = getRoomBookingsOnDate(room, dateStr, reservations);
-  const currentOccupancy = occupants.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
+  const currentOccupancy = countEffectivePax(occupants);
   const baseCapacity = room.capacity || room.pax || 2;
   const bufferCapacity = room.buffer || 0;
   const maxCapacity = baseCapacity + bufferCapacity;
@@ -1128,7 +1133,7 @@ export function getRoomStatusOnDate(
     return 'blocked';
   }
   const occupants = getRoomBookingsOnDate(room, dateStr, reservations);
-  const currentOccupancy = occupants.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
+  const currentOccupancy = countEffectivePax(occupants);
   const maxCapacity = getRoomMaxCapacity(room);
 
   if (currentOccupancy >= maxCapacity && maxCapacity > 0) {
@@ -1186,7 +1191,9 @@ export function checkRoomAllotmentAvailability(
   forceAllocate: boolean = false,
   arrivalTime?: string,
   departureTime?: string,
-  applicantName?: string
+  applicantName?: string,
+  candidateFamily?: string,
+  candidateTour?: string
 ): RoomAllotmentCheck {
   const bNorm = (building || '').trim().toLowerCase();
   const rNorm = (roomNumber || '').trim().toLowerCase();
@@ -1259,8 +1266,8 @@ export function checkRoomAllotmentAvailability(
         existingRes.applicantName,
         applicantName || 'New Guest'
       );
-      if (conflict.isDepLaterThanArr) {
-        if (!worstTimingConflict || conflict.diffHours > worstTimingConflict.diffHours) {
+      if (conflict.isSameDateTurnover) {
+        if (!worstTimingConflict || conflict.isDepLaterThanArr || conflict.diffHours > worstTimingConflict.diffHours) {
           worstTimingConflict = conflict;
           conflictingReservation = existingRes;
         }
@@ -1278,8 +1285,8 @@ export function checkRoomAllotmentAvailability(
         applicantName || 'New Guest',
         existingRes.applicantName
       );
-      if (conflict.isDepLaterThanArr) {
-        if (!worstTimingConflict || conflict.diffHours > worstTimingConflict.diffHours) {
+      if (conflict.isSameDateTurnover) {
+        if (!worstTimingConflict || conflict.isDepLaterThanArr || conflict.diffHours > worstTimingConflict.diffHours) {
           worstTimingConflict = conflict;
           conflictingReservation = existingRes;
         }
@@ -1322,31 +1329,41 @@ export function checkRoomAllotmentAvailability(
     excludeReservationId
   );
 
-  const currentOccupancy = overlappingReservations.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
+  const currentOccupancy = countEffectivePax(overlappingReservations);
   const remainingSlots = Math.max(0, maxCapacity - currentOccupancy);
 
-  // If room is not vacant (exceeds capacity or has overlapping guests):
-  if (currentOccupancy + requestedPax > maxCapacity || overlappingReservations.length > 0) {
-    const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family || 'Fam'})`).join(', ');
-    
-    if (!forceAllocate) {
-      const reason = `Notice: Room ${roomNumber} (${building} Hotel) is not vacant (${currentOccupancy}/${maxCapacity} Pax). Current occupants: ${occupantNames || 'Other guests'}. Click Okay to allow force allocation.`;
-      return {
-        allowed: false,
-        reason,
-        room: targetRoom,
-        maxCapacity,
-        currentOccupancy,
-        remainingSlots,
-        occupants: overlappingReservations,
-        canForceAllocate: true, // Always allow force allocation with notice!
-        isSevereConflict: false,
-        isOverPaxLimit: currentOccupancy + requestedPax > maxCapacity,
-        hasTimingConflict: !!worstTimingConflict,
-        timingConflictDiffHours: worstTimingConflict?.diffHours,
-        timingConflictMessage: worstTimingConflict?.message,
-      };
-    }
+  const candidateRes = excludeReservationId ? reservations.find((r) => r.id === excludeReservationId) : null;
+  const candFamily = (candidateFamily || candidateRes?.family || '').trim().toLowerCase();
+
+  // Check if existing occupants are from a different family or if party exceeds max capacity
+  const hasDifferentFamilyOccupants = overlappingReservations.some(
+    (occ) => !candFamily || (occ.family || '').trim().toLowerCase() !== candFamily
+  );
+
+  const isOverPaxLimit = currentOccupancy + requestedPax > maxCapacity;
+  const isNotVacant = isOverPaxLimit || hasDifferentFamilyOccupants;
+
+  if (isNotVacant && !forceAllocate) {
+    const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (Fam #${r.family || '—'})`).join(', ');
+    const reason = isOverPaxLimit
+      ? `Notice: Room ${roomNumber} (${building} Hotel) capacity limit reached (${currentOccupancy}/${maxCapacity} Pax occupied by ${occupantNames || 'guests'}). Adding ${requestedPax} pax exceeds max capacity. Click Okay to allow force allocation.`
+      : `Notice: Room ${roomNumber} (${building} Hotel) is not vacant (${currentOccupancy}/${maxCapacity} Pax). Current occupants: ${occupantNames || 'Other guests'}. Click Okay to allow force allocation.`;
+
+    return {
+      allowed: false,
+      reason,
+      room: targetRoom,
+      maxCapacity,
+      currentOccupancy,
+      remainingSlots,
+      occupants: overlappingReservations,
+      canForceAllocate: true, // Always allow force allocation with notice!
+      isSevereConflict: false,
+      isOverPaxLimit,
+      hasTimingConflict: !!worstTimingConflict,
+      timingConflictDiffHours: worstTimingConflict?.diffHours,
+      timingConflictMessage: worstTimingConflict?.message,
+    };
   }
 
   // If force allocated after notice / warning:
@@ -1436,7 +1453,9 @@ export function getVacantRoomsForDuration(
   requestedPax: number = 1,
   arrivalTime?: string,
   departureTime?: string,
-  applicantName?: string
+  applicantName?: string,
+  candidateFamily?: string,
+  candidateTour?: string
 ): Room[] {
   const bNorm = building.trim().toLowerCase();
   return rooms.filter((room) => {
@@ -1455,7 +1474,9 @@ export function getVacantRoomsForDuration(
       false,
       arrivalTime,
       departureTime,
-      applicantName
+      applicantName,
+      candidateFamily,
+      candidateTour
     );
     return check.allowed;
   });

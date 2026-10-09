@@ -34,7 +34,7 @@ import { Reservation, Room } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { normalizeDate } from '../services/excelService';
 import { saveOrDownloadPdf, PdfDownloadResult } from '../services/pdfExport';
-import { parseTimeToMinutes } from '../utils/turnoverTiming';
+import { parseTimeToMinutes, isInfant, countEffectivePax, getReservationEffectivePax } from '../utils/turnoverTiming';
 
 // Safe invocation of jspdf-autotable to prevent runtime errors across bundler environments
 function safeAutoTable(doc: jsPDF, options: any) {
@@ -333,6 +333,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   }, [workerSubtasks]);
 
   const [portalFilterScope, setPortalFilterScope] = useState<'date' | 'all'>('date');
+  const [portalHotelFilter, setPortalHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani' | 'unallotted'>('ALL');
   const [portalSearchQuery, setPortalSearchQuery] = useState<string>('');
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
@@ -477,14 +478,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const newArrivalsPrepCount = roomPrepSchedule.filter((r) => r.actionType === 'new_arrival').length;
   const checkoutCleansCount = roomPrepSchedule.filter((r) => r.actionType === 'departure_clean').length;
 
-  // Helper to compute pax in specific room along with family number for roster views
+  // Helper to compute pax in specific room along with family number for roster views (excluding infants under 3 from bed capacity)
   const getRoomPaxInfo = (res: Reservation) => {
-    if (!res.roomNumber) return { famPaxInRoom: 1, totalRoomPax: 1 };
+    if (!res.roomNumber) {
+      const famInfant = isInfant(res);
+      return { 
+        famPaxInRoom: famInfant ? 0 : 1, 
+        totalRoomPax: famInfant ? 0 : 1,
+        actualCount: 1,
+        infantCount: famInfant ? 1 : 0
+      };
+    }
     const bldg = (res.building || '').trim().toLowerCase();
     const room = (res.roomNumber || '').trim().toLowerCase();
     const fam = (res.family || '').trim().toLowerCase();
 
-    const sameRoomList = reservations.filter((other) => {
+    const sameRoomList = safeReservations.filter((other) => {
       if ((other.building || '').trim().toLowerCase() !== bldg) return false;
       if ((other.roomNumber || '').trim().toLowerCase() !== room) return false;
       const arr = normalizeDate(other.arrivalDate || other.arrivalDateTime || other.rawArrivalStr);
@@ -492,12 +501,19 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       return (arr && dep && arr <= selectedDate && dep >= selectedDate) || arr === selectedDate || dep === selectedDate;
     });
 
-    const totalRoomPax = sameRoomList.length > 0 ? sameRoomList.length : 1;
-    const famPaxInRoom = sameRoomList.filter(x => (x.family || '').trim().toLowerCase() === fam).length || 1;
+    const totalRoomPax = countEffectivePax(sameRoomList);
+    const famRoomList = sameRoomList.filter(x => (x.family || '').trim().toLowerCase() === fam);
+    const famPaxInRoom = countEffectivePax(famRoomList);
+    const totalInfants = sameRoomList.filter(isInfant).length;
+    const famInfants = famRoomList.filter(isInfant).length;
 
     return {
-      famPaxInRoom,
-      totalRoomPax,
+      famPaxInRoom: famPaxInRoom || (famRoomList.length > 0 ? 0 : 1),
+      totalRoomPax: totalRoomPax || (sameRoomList.length > 0 ? 0 : 1),
+      actualCount: sameRoomList.length,
+      famActualCount: famRoomList.length,
+      infantCount: totalInfants,
+      famInfants,
     };
   };
 
@@ -807,11 +823,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       if (portalFilterScope === 'date') {
         if (!dateTourIds.has(tour)) return false;
       }
-      if (activeHotelFilter !== 'ALL') {
+      if (portalHotelFilter !== 'ALL') {
         const normB = normalizeHotelBuilding(r.building);
-        const matchesB = normB === activeHotelFilter;
-        const isUnallotted = !r.roomNumber || r.roomNumber.trim() === '';
-        if (!matchesB && !isUnallotted) return false;
+        if (portalHotelFilter === 'unallotted') {
+          if (r.roomNumber && r.roomNumber.trim() !== '') return false;
+        } else {
+          if (normB !== portalHotelFilter) return false;
+        }
       }
       if (portalSearchQuery.trim()) {
         const q = portalSearchQuery.toLowerCase();
@@ -873,7 +891,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     groups.sort((a, b) => (a.tourRefNo || '').localeCompare(b.tourRefNo || '', undefined, { numeric: true }));
     return groups;
-  }, [safeReservations, portalFilterScope, dateTourIds, portalSearchQuery, activeHotelFilter]);
+  }, [safeReservations, portalFilterScope, dateTourIds, portalSearchQuery, portalHotelFilter]);
 
   // Worker task checklist toggle handlers
   const toggleWorkerSubtask = (itemId: string, taskKey: 'linen' | 'toilet' | 'cards') => {
@@ -1584,8 +1602,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 content: `OFFICE: ${officeGroup.officeName.toUpperCase()}   •   TOUR ID: ${tourGroup.tourRefNo}   (${tourGroup.totalRooms} Rooms to service • ${tourGroup.totalPax} Zaereen • Timing Sequence Sorted)`,
                 colSpan: 6,
                 styles: { fillColor: [18, 78, 57], textColor: [235, 213, 158], fontStyle: 'bold', fontSize: 8.5 }
-              },
-              '', '', '', '', ''
+              }
             ]);
 
             tourGroup.items.forEach((item) => {
@@ -1850,7 +1867,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200 reception-slip-modal-backdrop">
       
       {/* Print-specific style to guarantee pristine paper print without scroll cutoffs */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -1866,20 +1883,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          body * {
-            visibility: hidden;
-          }
-          #reception-slip-printable-area, #reception-slip-printable-area * {
-            visibility: visible;
-          }
-          .fixed.inset-0 {
+          .reception-slip-modal-backdrop {
             position: static !important;
+            inset: auto !important;
             display: block !important;
             padding: 0 !important;
             background: transparent !important;
             backdrop-filter: none !important;
+            width: 100% !important;
           }
-          .max-h-\\[94vh\\] {
+          .reception-slip-modal-card {
             max-height: none !important;
             height: auto !important;
             overflow: visible !important;
@@ -1889,15 +1902,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             padding: 0 !important;
             margin: 0 !important;
             max-width: 100% !important;
+            width: 100% !important;
           }
           #reception-slip-printable-area {
             position: static !important;
             display: block !important;
             width: 100% !important;
             max-height: none !important;
+            height: auto !important;
             overflow: visible !important;
             margin: 0 !important;
-            padding: 6px !important;
+            padding: 4px !important;
             background: white !important;
             box-shadow: none !important;
             border: none !important;
@@ -1920,7 +1935,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         }
       `}} />
 
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
+      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh] reception-slip-modal-card">
         
         {/* Close Button */}
         <button
@@ -3176,14 +3191,34 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={handleDownloadRosterPdf}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-                          <span>Download Tour Roster (PDF)</span>
-                        </button>
+                        <div className="flex items-center rounded-xl bg-[#124E39] p-0.5 border border-[#C5A059]/40 shadow-xs">
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadRosterPdf(activeHotelFilter)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer"
+                            title={`Download Tour Roster PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
+                          >
+                            <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                            <span>Download Roster PDF ({activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})</span>
+                          </button>
+                          <div className="h-3.5 w-px bg-[#C5A059]/40 my-auto" />
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadRosterPdf('Saifee')}
+                            className="px-2.5 py-1 text-xs font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                            title="Print Saifee Hotel Roster PDF Separately"
+                          >
+                            Saifee
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadRosterPdf('Burhani')}
+                            className="px-2.5 py-1 text-xs font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
+                            title="Print Burhani Hotel Roster PDF Separately"
+                          >
+                            Burhani
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -3385,14 +3420,34 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadWorkerPdf(activeHotelFilter)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-                    <span>Download Worker Sheet (PDF)</span>
-                  </button>
+                  <div className="flex items-center rounded-xl bg-amber-800 p-0.5 border border-amber-600 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadWorkerPdf(activeHotelFilter)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:bg-amber-900 transition cursor-pointer"
+                      title={`Download Worker Room Operations PDF (${activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})`}
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                      <span>Download Worker PDF ({activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})</span>
+                    </button>
+                    <div className="h-3.5 w-px bg-amber-600 my-auto" />
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadWorkerPdf('Saifee')}
+                      className="px-2.5 py-1 text-xs font-semibold text-amber-100 hover:text-white hover:bg-amber-900 rounded-md transition cursor-pointer"
+                      title="Print Saifee Hotel Worker Sheet PDF Separately"
+                    >
+                      Saifee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadWorkerPdf('Burhani')}
+                      className="px-2.5 py-1 text-xs font-semibold text-amber-100 hover:text-white hover:bg-amber-900 rounded-md transition cursor-pointer"
+                      title="Print Burhani Hotel Worker Sheet PDF Separately"
+                    >
+                      Burhani
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3816,14 +3871,42 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handleDownloadPortalUploadPdf}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white shadow-xs transition cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-blue-200" />
-                    <span>Download Portal Upload PDF</span>
-                  </button>
+                  <div className="flex items-center rounded-xl bg-blue-800 p-0.5 border border-blue-600 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPortalUploadPdf(portalHotelFilter === 'unallotted' ? 'ALL' : portalHotelFilter)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:bg-blue-900 transition cursor-pointer"
+                      title="Download Portal Allotment Verification PDF for selected hotel scope"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-200" />
+                      <span>Download Portal PDF ({portalHotelFilter})</span>
+                    </button>
+                    <div className="h-3.5 w-px bg-blue-600 my-auto" />
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPortalUploadPdf('ALL')}
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      title="Download Master Tour Verification PDF (All Hotels)"
+                    >
+                      All (114)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPortalUploadPdf('Saifee')}
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      title="Download Saifee Hotel Portal Upload PDF"
+                    >
+                      Saifee
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPortalUploadPdf('Burhani')}
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      title="Download Burhani Hotel Portal Upload PDF"
+                    >
+                      Burhani
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3856,7 +3939,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 );
               })()}
 
-              {/* Search, Scope Filters & Batch Actions */}
+              {/* Search, Scope & Building Filters & Batch Actions */}
               <div className="flex flex-wrap items-center justify-between gap-2.5 bg-stone-100 p-2.5 rounded-xl border border-stone-200 text-xs">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-stone-700">Scope:</span>
@@ -3881,6 +3964,54 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     }`}
                   >
                     All System Tours ({allSystemTourIds.size} Tours)
+                  </button>
+
+                  <div className="h-4 w-px bg-stone-300 mx-1 hidden sm:block" />
+
+                  <span className="font-bold text-stone-700">Building:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPortalHotelFilter('ALL')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      portalHotelFilter === 'ALL'
+                        ? 'bg-[#124E39] text-white shadow-2xs'
+                        : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    All (114)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPortalHotelFilter('Saifee')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      portalHotelFilter === 'Saifee'
+                        ? 'bg-[#124E39] text-white shadow-2xs'
+                        : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    Saifee (70)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPortalHotelFilter('Burhani')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      portalHotelFilter === 'Burhani'
+                        ? 'bg-[#124E39] text-white shadow-2xs'
+                        : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    Burhani (44)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPortalHotelFilter('unallotted')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      portalHotelFilter === 'unallotted'
+                        ? 'bg-amber-700 text-white shadow-2xs'
+                        : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50'
+                    }`}
+                  >
+                    Unallotted
                   </button>
                 </div>
 
@@ -3990,9 +4121,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 });
                                 return next;
                               });
-                              tourGroup.reservations.forEach((r) => {
-                                onUpdateReservation?.({ ...r, isUploadedToPortal: newStatus });
-                              });
+                              const updatedResList = tourGroup.reservations.map((r) => ({ ...r, isUploadedToPortal: newStatus }));
+                              if (onBatchUpdateReservations) {
+                                onBatchUpdateReservations(updatedResList);
+                              } else {
+                                updatedResList.forEach((r) => {
+                                  onUpdateReservation?.(r);
+                                });
+                              }
                             }}
                             className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-stone-700 hover:bg-stone-600 text-stone-200 border border-stone-600 transition cursor-pointer"
                           >

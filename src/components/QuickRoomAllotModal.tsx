@@ -20,7 +20,9 @@ import { Room, Reservation } from '../types';
 import { 
   getRoomMaxCapacity, 
   checkRoomAllotmentAvailability, 
-  getRoomBookingsForDuration 
+  getRoomBookingsForDuration,
+  isInfant,
+  countEffectivePax
 } from '../services/storage';
 
 interface QuickRoomAllotModalProps {
@@ -62,7 +64,12 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   );
 
   const isFamily = familyMembers.length > 1;
-  const requestedPax = allotMode === 'family' && isFamily ? familyMembers.length : 1;
+  const requestedPax =
+    allotMode === 'family' && isFamily
+      ? countEffectivePax(familyMembers)
+      : isInfant(targetReservation)
+      ? 0
+      : 1;
 
   // Available floors for current building filter
   const floorOptions = useMemo(() => {
@@ -82,17 +89,22 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
       const bufCap = room.buffer || 0;
       const maxCap = baseCap + bufCap;
 
-      // Occupants during target reservation dates (excluding current target zaer)
+      const familyMemberIds = new Set(familyMembers.map((m) => m.id));
+      const poolReservations = allotMode === 'family'
+        ? reservations.filter((r) => !familyMemberIds.has(r.id))
+        : reservations;
+
+      // Occupants during target reservation dates (excluding current target zaer or family)
       const occupants = getRoomBookingsForDuration(
         room.building,
         room.roomNumber,
         arrivalDate,
         departureDate,
-        reservations,
+        poolReservations,
         allotMode === 'single' ? targetReservation.id : undefined
       );
 
-      const currentOccupancy = occupants.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
+      const currentOccupancy = countEffectivePax(occupants);
       const remainingSlots = Math.max(0, maxCap - currentOccupancy);
 
       // Check if family members are already in this room
@@ -114,13 +126,15 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         arrivalDate,
         departureDate,
         rooms,
-        reservations,
+        poolReservations,
         requestedPax,
         allotMode === 'single' ? targetReservation.id : undefined,
         false,
         targetReservation.arrivalTime,
         targetReservation.departureTime,
-        targetReservation.applicantName
+        targetReservation.applicantName,
+        targetReservation.family,
+        targetReservation.tourRefNo
       );
 
       const canFit = check.allowed;
@@ -594,9 +608,9 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           <div className="mb-2 p-2 rounded-lg text-[10px] flex items-start gap-1.5 leading-snug bg-rose-50 text-rose-900 border border-rose-300 font-bold">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-600" />
                             <div>
-                              <div className="font-bold">⛔ Pax Limit Exceeded ({currentOccupancy + requestedPax}/{maxCap} Pax)</div>
+                              <div className="font-bold">⚠️ Room Not Vacant / Pax Limit Notice ({currentOccupancy + requestedPax}/{maxCap} Pax)</div>
                               <div className="text-[9px] text-stone-600 mt-0.5">
-                                Room is not vacant or not departing in less than 15 hours. Allocation is strictly blocked.
+                                Room is currently occupied or exceeds max capacity. Force allocation is allowed upon acknowledging the notice.
                               </div>
                             </div>
                           </div>
