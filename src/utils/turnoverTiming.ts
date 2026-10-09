@@ -188,8 +188,13 @@ export function checkTurnoverTimingConflict(
   const depFormatted = formatMinutesToTime12(depMinutes);
   const arrFormatted = formatMinutesToTime12(arrMinutes);
 
-  // If departure is earlier than or equal to arrival, standard turnover is fine
+  // If departure is earlier than or equal to arrival, standard same-day turnover
   if (depMinutes <= arrMinutes) {
+    const gapMinutes = Math.max(0, arrMinutes - depMinutes);
+    const gapHours = Math.round((gapMinutes / 60) * 10) / 10;
+    const gapText = Number.isInteger(gapHours) ? `${gapHours}` : gapHours.toFixed(1);
+    const depName = depGuestName ? `"${depGuestName}"` : 'Departing guest';
+    const arrName = arrGuestName ? `"${arrGuestName}"` : 'Arriving guest';
     return {
       isSameDateTurnover: true,
       date: dDate,
@@ -198,12 +203,12 @@ export function checkTurnoverTimingConflict(
       depMinutes,
       arrMinutes,
       isDepLaterThanArr: false,
-      diffMinutes: 0,
-      diffHours: 0,
+      diffMinutes: gapMinutes,
+      diffHours: gapHours,
       isSevereConflict: false,
       canForceAllocate: true,
       warningLevel: 'none',
-      message: `Standard Turnover on ${dDate}: Checkout (${depFormatted}) ➔ Checkin (${arrFormatted}).`,
+      message: `Same-day Turnover on ${dDate}: Departing pax ${depName} leaves at ${depFormatted} and arriving pax ${arrName} comes at ${arrFormatted} (${gapText} hour difference).`,
     };
   }
 
@@ -216,28 +221,8 @@ export function checkTurnoverTimingConflict(
   const depName = depGuestName ? `"${depGuestName}"` : 'Departing guest';
   const arrName = arrGuestName ? `"${arrGuestName}"` : 'Arriving guest';
 
-  // Rule: When difference is > 15 hours, DO NOT allow force allocation!
-  if (rawDiffHours > 15) {
-    const message = `CRITICAL TIMING CONFLICT on ${dDate}: Departure time (${depFormatted} for ${depName}) is ${diffHoursText} hours later than arrival time (${arrFormatted} for ${arrName}). Because departure is late than arrival with a difference of MORE THAN 15 hours, force allocation is strictly BLOCKED.`;
-    return {
-      isSameDateTurnover: true,
-      date: dDate,
-      depTimeFormatted: depFormatted,
-      arrTimeFormatted: arrFormatted,
-      depMinutes,
-      arrMinutes,
-      isDepLaterThanArr: true,
-      diffMinutes,
-      diffHours,
-      isSevereConflict: true,
-      canForceAllocate: false,
-      warningLevel: 'severe',
-      message,
-    };
-  }
-
-  // Rule: When difference is <= 15 hours, issue warning notification and give option to force allocate!
-  const message = `TIMING OVERLAP WARNING on ${dDate}: Departure time (${depFormatted} for ${depName}) is ${diffHoursText} hours later than arrival time (${arrFormatted} for ${arrName}). ${depName} will still be occupying the room when ${arrName} arrives. Force allocation requires operational confirmation.`;
+  // Always allow allocation with notice mentioning hour difference
+  const message = `Same-Day Turnover Notice on ${dDate}: Departing pax ${depName} departs at ${depFormatted} and arriving pax ${arrName} arrives at ${arrFormatted} (${diffHoursText} hour difference, departure is ${diffHoursText}h later than arrival). Click Okay to allow allocation.`;
   return {
     isSameDateTurnover: true,
     date: dDate,

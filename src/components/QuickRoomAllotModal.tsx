@@ -640,38 +640,27 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           >
                             Room Blocked
                           </button>
-                        ) : isSevereConflict || !canForceAllocate ? (
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 cursor-not-allowed text-center flex items-center justify-center gap-1.5"
-                            title={conflictReason}
-                          >
-                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                            <span>
-                              {currentOccupancy + requestedPax > maxCap
-                                ? `Blocked: Exceeds Pax Limit (${currentOccupancy}/${maxCap})`
-                                : 'Blocked: >15h Conflict (No Force Allot)'}
-                            </span>
-                          </button>
                         ) : hasTimingConflict && !canFit ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              const confirmForce = window.confirm(
-                                `⚠️ Turnover Timing Warning:\n\n${conflictReason}\n\nDo you want to FORCE ALLOCATE this room anyway?`
-                              );
-                              if (confirmForce) {
-                                handleSelectRoom(room.building, room.roomNumber);
-                              }
-                            }}
+                            onClick={() => handleSelectRoom(room.building, room.roomNumber)}
                             className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                             title={conflictReason}
                           >
                             <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
-                            <span>Force Allot (Timing Warning: {timingDiffHours}h late)</span>
+                            <span>Same-Day Turnover ({timingDiffHours !== undefined ? `${timingDiffHours}h diff` : 'Notice'}) ➔ Allot</span>
                           </button>
-                        ) : canFit ? (
+                        ) : !canFit ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSelectRoom(room.building, room.roomNumber)}
+                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                            title={conflictReason}
+                          >
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
+                            <span>Force Allot ({currentOccupancy}/${maxCap} Pax • Not Vacant)</span>
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => handleSelectRoom(room.building, room.roomNumber)}
@@ -679,16 +668,6 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           >
                             <span>Allot Room {room.roomNumber}</span>
                             <ArrowRight className="w-3.5 h-3.5 text-[#EBD59E]" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-stone-200 text-stone-500 border border-stone-300 cursor-not-allowed text-center flex items-center justify-center gap-1.5"
-                            title={conflictReason || 'Room is not vacant or exceeds pax limit. Allocation blocked.'}
-                          >
-                            <DoorClosed className="w-3.5 h-3.5 text-stone-400" />
-                            <span>Blocked: Exceeds Pax Limit ({currentOccupancy}/${maxCap})</span>
                           </button>
                         )}
                       </div>

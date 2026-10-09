@@ -262,6 +262,8 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     groupLeadName: 'Husain Shaikh Asgar Arsiwala',
     arrivalDate: '2026-10-01',
     departureDate: '2026-10-06',
+    arrivalTime: '11:00 AM',
+    departureTime: '01:00 AM',
     rawArrivalStr: "'01-10-2026 11:00 AM",
     rawDepartureStr: "'06-10-2026 01:00 AM",
     // Accommodation shift
@@ -307,6 +309,8 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     groupLeadName: 'Husain Shaikh Asgar Arsiwala',
     arrivalDate: '2026-10-01',
     departureDate: '2026-10-06',
+    arrivalTime: '11:00 AM',
+    departureTime: '01:00 AM',
     rawArrivalStr: "'01-10-2026 11:00 AM",
     rawDepartureStr: "'06-10-2026 01:00 AM",
     shiftToCategoryA: false,
@@ -348,6 +352,8 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     groupLeadName: 'Husain Shaikh Asgar Arsiwala',
     arrivalDate: '2026-10-01',
     departureDate: '2026-10-06',
+    arrivalTime: '11:00 AM',
+    departureTime: '01:00 AM',
     rawArrivalStr: "'01-10-2026 11:00 AM",
     rawDepartureStr: "'06-10-2026 01:00 AM",
     shiftToCategoryA: true,
@@ -1281,52 +1287,31 @@ export function checkRoomAllotmentAvailability(
     }
   }
 
-  // 1. Severe Timing Conflict (> 15 hours difference):
-  // User Prompt: "When departure and arrival has more than 15 hours difference means departure is late than arrival with a difference of 15 hours dont allow force allocation too"
-  if (worstTimingConflict && worstTimingConflict.isSevereConflict) {
-    return {
-      allowed: false,
-      reason: worstTimingConflict.message,
-      room: targetRoom,
-      maxCapacity,
-      currentOccupancy: 0,
-      remainingSlots: 0,
-      occupants: conflictingReservation ? [conflictingReservation] : [],
-      hasTimingConflict: true,
-      isSevereConflict: true,
-      canForceAllocate: false,
-      timingConflictDiffHours: worstTimingConflict.diffHours,
-      timingConflictMessage: worstTimingConflict.message,
-      depTime: worstTimingConflict.depTimeFormatted,
-      arrTime: worstTimingConflict.arrTimeFormatted,
-      conflictingGuestName: conflictingReservation?.applicantName,
-    };
-  }
-
-  // 2. Timing Warning (<= 15 hours difference):
-  // User Prompt: "give a notification. and give an option to force allocate after giving a warning."
-  if (worstTimingConflict && worstTimingConflict.isDepLaterThanArr && !forceAllocate) {
-    return {
-      allowed: false,
-      reason: worstTimingConflict.message,
-      room: targetRoom,
-      maxCapacity,
-      currentOccupancy: 0,
-      remainingSlots: 0,
-      occupants: conflictingReservation ? [conflictingReservation] : [],
-      hasTimingConflict: true,
-      isSevereConflict: false,
-      canForceAllocate: true,
-      timingConflictDiffHours: worstTimingConflict.diffHours,
-      timingConflictMessage: worstTimingConflict.message,
-      depTime: worstTimingConflict.depTimeFormatted,
-      arrTime: worstTimingConflict.arrTimeFormatted,
-      conflictingGuestName: conflictingReservation?.applicantName,
-    };
+  // 1. Same-Day Turnover Notice (Hour difference mentioned, allow allocation on okay/force)
+  if (worstTimingConflict && worstTimingConflict.isSameDateTurnover) {
+    if (!forceAllocate) {
+      return {
+        allowed: false,
+        reason: worstTimingConflict.message,
+        room: targetRoom,
+        maxCapacity,
+        currentOccupancy: 0,
+        remainingSlots: 0,
+        occupants: conflictingReservation ? [conflictingReservation] : [],
+        hasTimingConflict: true,
+        isSevereConflict: false,
+        canForceAllocate: true,
+        timingConflictDiffHours: worstTimingConflict.diffHours,
+        timingConflictMessage: worstTimingConflict.message,
+        depTime: worstTimingConflict.depTimeFormatted,
+        arrTime: worstTimingConflict.arrTimeFormatted,
+        conflictingGuestName: conflictingReservation?.applicantName,
+      };
+    }
   }
 
   // =========================================================================
-  // NIGHT OVERLAP & CAPACITY/BUFFER CHECK
+  // NIGHT OVERLAP & CAPACITY/BUFFER CHECK (Room Not Vacant)
   // =========================================================================
   const overlappingReservations = getRoomBookingsForDuration(
     building,
@@ -1340,41 +1325,48 @@ export function checkRoomAllotmentAvailability(
   const currentOccupancy = overlappingReservations.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
   const remainingSlots = Math.max(0, maxCapacity - currentOccupancy);
 
-  if (currentOccupancy + requestedPax > maxCapacity) {
-    const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family})`).join(', ');
-    const reason = `Allocation blocked: Room ${roomNumber} (${building}) exceeds maximum capacity (${currentOccupancy}/${maxCapacity} Pax with buffer). Occupants (${occupantNames || 'Other guests'}) are staying overnight and not departing within 15 hours of arrival. Force allocation is not allowed when pax limit is exceeded.`;
-    return {
-      allowed: false,
-      reason,
-      room: targetRoom,
-      maxCapacity,
-      currentOccupancy,
-      remainingSlots,
-      occupants: overlappingReservations,
-      canForceAllocate: false,
-      isSevereConflict: true,
-      isOverPaxLimit: true,
-      hasTimingConflict: !!worstTimingConflict,
-      timingConflictDiffHours: worstTimingConflict?.diffHours,
-      timingConflictMessage: worstTimingConflict?.message,
-    };
+  // If room is not vacant (exceeds capacity or has overlapping guests):
+  if (currentOccupancy + requestedPax > maxCapacity || overlappingReservations.length > 0) {
+    const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family || 'Fam'})`).join(', ');
+    
+    if (!forceAllocate) {
+      const reason = `Notice: Room ${roomNumber} (${building} Hotel) is not vacant (${currentOccupancy}/${maxCapacity} Pax). Current occupants: ${occupantNames || 'Other guests'}. Click Okay to allow force allocation.`;
+      return {
+        allowed: false,
+        reason,
+        room: targetRoom,
+        maxCapacity,
+        currentOccupancy,
+        remainingSlots,
+        occupants: overlappingReservations,
+        canForceAllocate: true, // Always allow force allocation with notice!
+        isSevereConflict: false,
+        isOverPaxLimit: currentOccupancy + requestedPax > maxCapacity,
+        hasTimingConflict: !!worstTimingConflict,
+        timingConflictDiffHours: worstTimingConflict?.diffHours,
+        timingConflictMessage: worstTimingConflict?.message,
+      };
+    }
   }
 
-  // If force allocated after timing warning:
-  if (worstTimingConflict && forceAllocate) {
+  // If force allocated after notice / warning:
+  if (forceAllocate) {
+    const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family || 'Fam'})`).join(', ');
     return {
       allowed: true,
-      reason: `Force Allocated (Timing Warning Overridden): ${worstTimingConflict.message}`,
+      reason: worstTimingConflict
+        ? `Force Allocated (Turnover Notice Acknowledged): ${worstTimingConflict.message}`
+        : `Force Allocated: Room ${roomNumber} (${building}) occupied by ${occupantNames || 'other guests'}.`,
       room: targetRoom,
       maxCapacity,
       currentOccupancy,
       remainingSlots,
       occupants: overlappingReservations,
       canForceAllocate: true,
-      hasTimingConflict: true,
+      hasTimingConflict: !!worstTimingConflict,
       isSevereConflict: false,
-      timingConflictDiffHours: worstTimingConflict.diffHours,
-      timingConflictMessage: worstTimingConflict.message,
+      timingConflictDiffHours: worstTimingConflict?.diffHours,
+      timingConflictMessage: worstTimingConflict?.message,
     };
   }
 
@@ -1538,6 +1530,8 @@ export function getStoredReservations(): Reservation[] {
       groupLeadName: item.groupLeadName || item.guestLeaderName || item.applicantName || 'Group Lead',
       arrivalDate: item.arrivalDate || (item.arrivalDateTime ? item.arrivalDateTime.slice(0, 10) : '2026-10-01'),
       departureDate: item.departureDate || (item.departureDateTime ? item.departureDateTime.slice(0, 10) : '2026-10-06'),
+      arrivalTime: item.arrivalTime || extractCleanTime(undefined, item.rawArrivalStr, item.arrivalDateTime, '11:00 AM'),
+      departureTime: item.departureTime || extractCleanTime(undefined, item.rawDepartureStr, item.departureDateTime, '01:00 AM'),
       shiftToCategoryA: item.shiftToCategoryA ?? false,
       accommodationCategory: item.accommodationCategory || (item.shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
       moneyGiven: item.moneyGiven || 'No',

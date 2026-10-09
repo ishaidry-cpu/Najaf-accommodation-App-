@@ -203,6 +203,7 @@ interface ReceptionDailySlipModalProps {
   reservations: Reservation[];
   rooms: Room[];
   onUpdateReservation?: (updated: Reservation) => void;
+  onBatchUpdateReservations?: (updatedList: Reservation[]) => void;
 }
 
 export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = ({
@@ -211,6 +212,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   reservations = [],
   rooms = [],
   onUpdateReservation,
+  onBatchUpdateReservations,
 }) => {
   const safeReservations = useMemo(() => (Array.isArray(reservations) ? reservations : []), [reservations]);
   const safeRooms = useMemo(() => (Array.isArray(rooms) ? rooms : []), [rooms]);
@@ -923,7 +925,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       });
     });
     setPortalUploadedMap(nextMap);
-    allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+    if (onBatchUpdateReservations) {
+      onBatchUpdateReservations(allResToUpdate);
+    } else {
+      allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+    }
   };
 
   const handleUnmarkAllPortalUploaded = () => {
@@ -936,7 +942,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       });
     });
     setPortalUploadedMap(nextMap);
-    allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+    if (onBatchUpdateReservations) {
+      onBatchUpdateReservations(allResToUpdate);
+    } else {
+      allResToUpdate.forEach((r) => onUpdateReservation?.(r));
+    }
   };
 
   // Shift to next or previous active date
@@ -2153,31 +2163,55 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 })}
               </div>
 
-              {/* 1-Click Download PDF for chosen arrival date */}
+              {/* Dynamic 1-Click Download PDF for current tab & chosen date */}
               <div className="flex items-center rounded-xl bg-[#124E39] p-0.5 border border-[#C5A059]/50 shadow-xs">
                 <button
                   type="button"
-                  onClick={() => handleDownloadArrivalsPdf('ALL')}
+                  onClick={() => {
+                    if (activeTab === 'roster') handleDownloadRosterPdf(activeHotelFilter);
+                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf(activeHotelFilter);
+                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(activeHotelFilter);
+                    else handleDownloadPdf(activeHotelFilter);
+                  }}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer whitespace-nowrap"
-                  title={`Download PDF with Saifee & Burhani bifurcated on separate pages for ${selectedDate}`}
+                  title={`Download dedicated PDF for ${activeTab === 'roster' ? 'Tour Roster' : activeTab === 'worker_summary' ? 'Worker Sheet' : activeTab === 'portal_upload' ? 'Portal Upload' : 'Turnover Slip'} (${selectedDate})`}
                 >
                   <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>Download PDF ({selectedDate})</span>
+                  <span>
+                    {activeTab === 'roster'
+                      ? 'Download Roster PDF'
+                      : activeTab === 'worker_summary'
+                      ? 'Download Worker PDF'
+                      : activeTab === 'portal_upload'
+                      ? 'Download Portal PDF'
+                      : 'Download Turnover PDF'}{' '}
+                    ({selectedDate})
+                  </span>
                 </button>
                 <div className="h-3.5 w-px bg-[#C5A059]/40 my-auto" />
                 <button
                   type="button"
-                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                  onClick={() => {
+                    if (activeTab === 'roster') handleDownloadRosterPdf('Saifee');
+                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Saifee');
+                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Saifee');
+                    else handleDownloadPdf('Saifee');
+                  }}
                   className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Print Saifee Hotel Arrivals Separately for ${selectedDate}`}
+                  title={`Download Saifee Hotel ${activeTab} PDF separately for ${selectedDate}`}
                 >
                   Saifee
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                  onClick={() => {
+                    if (activeTab === 'roster') handleDownloadRosterPdf('Burhani');
+                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Burhani');
+                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Burhani');
+                    else handleDownloadPdf('Burhani');
+                  }}
                   className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Print Burhani Hotel Arrivals Separately for ${selectedDate}`}
+                  title={`Download Burhani Hotel ${activeTab} PDF separately for ${selectedDate}`}
                 >
                   Burhani
                 </button>
@@ -3167,26 +3201,26 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <div className="flex items-center rounded-lg bg-emerald-800 p-0.5 border border-emerald-700">
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadArrivalsPdf('ALL')}
+                                  onClick={() => handleDownloadRosterPdf('ALL')}
                                   className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#EBD59E] hover:bg-[#dfc488] text-[#124E39] shadow-2xs transition cursor-pointer"
-                                  title={`Download PDF with Saifee and Burhani bifurcated on separate pages for ${selectedDate}`}
+                                  title={`Download Tour Roster PDF with Saifee and Burhani bifurcated on separate pages for ${selectedDate}`}
                                 >
                                   <Download className="w-3.5 h-3.5" />
-                                  <span>Download Joined PDF (Both Hotels)</span>
+                                  <span>Download Joined Roster PDF</span>
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                                  onClick={() => handleDownloadRosterPdf('Saifee')}
                                   className="px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 rounded transition cursor-pointer"
-                                  title="Print Saifee Hotel Arrivals Separately"
+                                  title="Print Saifee Hotel Roster Separately"
                                 >
                                   Saifee ({saifeeArrivals.length})
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                                  onClick={() => handleDownloadRosterPdf('Burhani')}
                                   className="px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 rounded transition cursor-pointer"
-                                  title="Print Burhani Hotel Arrivals Separately"
+                                  title="Print Burhani Hotel Roster Separately"
                                 >
                                   Burhani ({burhaniArrivals.length})
                                 </button>
@@ -3226,12 +3260,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => handleDownloadArrivalsPdf('Saifee')}
+                              onClick={() => handleDownloadRosterPdf('Saifee')}
                               className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
-                              title={`Download separate PDF for Saifee Hotel Arrivals on ${selectedDate}`}
+                              title={`Download separate PDF for Saifee Hotel Roster on ${selectedDate}`}
                             >
                               <Download className="w-3.5 h-3.5" />
-                              <span>Download Saifee Arrivals PDF</span>
+                              <span>Download Saifee Roster PDF</span>
                             </button>
                             <span className="text-xs font-semibold text-[#124E39]">
                               {saifeeArrivals.length} Arrivals • {saifeeDepartures.length} Departures
@@ -3270,12 +3304,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => handleDownloadArrivalsPdf('Burhani')}
+                              onClick={() => handleDownloadRosterPdf('Burhani')}
                               className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
-                              title={`Download separate PDF for Burhani Hotel Arrivals on ${selectedDate}`}
+                              title={`Download separate PDF for Burhani Hotel Roster on ${selectedDate}`}
                             >
                               <Download className="w-3.5 h-3.5" />
-                              <span>Download Burhani Arrivals PDF</span>
+                              <span>Download Burhani Roster PDF</span>
                             </button>
                             <span className="text-xs font-semibold text-[#124E39]">
                               {burhaniArrivals.length} Arrivals • {burhaniDepartures.length} Departures
@@ -4069,8 +4103,46 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   );
                 })
               ) : (
-                <div className="py-12 text-center text-stone-500 font-semibold text-xs bg-stone-50 rounded-xl border border-dashed border-stone-300">
-                  No tours or reservations match the current filter.
+                <div className="py-12 text-center text-stone-600 font-semibold text-xs bg-stone-50 rounded-xl border border-dashed border-stone-300 space-y-3">
+                  <ClipboardList className="w-8 h-8 text-stone-400 mx-auto" />
+                  <div>
+                    No active tours match the current filter {portalFilterScope === 'date' ? `on date ${selectedDate}` : ''}.
+                  </div>
+                  {portalFilterScope === 'date' && (
+                    <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setPortalFilterScope('all')}
+                        className="px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                      >
+                        Switch to All System Tours ({allSystemTourIds.size} Tours)
+                      </button>
+                      {activeDatesSummary.sortedDates.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-stone-500 text-xs">
+                          <span>Or jump to date with tours:</span>
+                          {activeDatesSummary.sortedDates.slice(0, 4).map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setSelectedDate(d)}
+                              className="px-2 py-0.5 rounded bg-[#124E39] text-[#EBD59E] font-bold text-[11px] shadow-2xs hover:bg-[#0E3C2C]"
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {portalSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setPortalSearchQuery('')}
+                      className="text-xs text-blue-700 underline font-bold cursor-pointer"
+                    >
+                      Clear search filter
+                    </button>
+                  )}
                 </div>
               )}
             </div>

@@ -18,7 +18,8 @@ import {
   X,
   Upload,
   Printer,
-  Download
+  Download,
+  Clock
 } from 'lucide-react';
 
 import { 
@@ -135,6 +136,19 @@ export default function App() {
   const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
   const [isAddBuildingRoomsOpen, setIsAddBuildingRoomsOpen] = useState(false);
   const [addBuildingRoomsInitialTab, setAddBuildingRoomsInitialTab] = useState<'manual' | 'sheet'>('manual');
+
+  // Notice dialog for allocation confirmation (Same-day turnover hour difference & Room not vacant force allocation)
+  const [allocationNotice, setAllocationNotice] = useState<{
+    title: string;
+    message: string;
+    diffHoursText?: string;
+    isSameDayTurnover?: boolean;
+    isRoomNotVacant?: boolean;
+    roomNumber: string;
+    building: string;
+    guestName: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -513,13 +527,15 @@ export default function App() {
 
   // Update Reservation
   const handleUpdateReservation = (updatedReservation: Reservation) => {
-    const updated = reservations.map((r) =>
-      r.id === updatedReservation.id ? updatedReservation : r
-    );
-    setReservations(updated);
-    saveReservations(updated);
+    setReservations((prev) => {
+      const updated = prev.map((r) =>
+        r.id === updatedReservation.id ? updatedReservation : r
+      );
+      saveReservations(updated);
+      triggerAutoSync(updated, rooms);
+      return updated;
+    });
     upsertBackendReservation(updatedReservation);
-    triggerAutoSync(updated, rooms);
   };
 
   // Batch Update Reservations
@@ -598,43 +614,15 @@ export default function App() {
     );
   };
 
-  // Allot Room to Zaer (Capacity aware with Buffer & Force Allotment option)
-  const handleAllotRoom = (reservationId: string, building: string, roomNumber: string) => {
+  // Direct allotment executor
+  const executeDirectAllot = (
+    reservationId: string,
+    building: string,
+    roomNumber: string,
+    forceReason?: string
+  ) => {
     const target = reservations.find((r) => r.id === reservationId);
     if (!target) return;
-
-    if (roomNumber) {
-      const check = checkRoomAllotmentAvailability(
-        building,
-        roomNumber,
-        target.arrivalDate,
-        target.departureDate,
-        rooms,
-        reservations,
-        1,
-        target.id,
-        false,
-        target.arrivalTime,
-        target.departureTime,
-        target.applicantName
-      );
-
-      if (!check.allowed) {
-        // If canForceAllocate is false, force allocation is completely prohibited!
-        if (check.canForceAllocate === false) {
-          alert(
-            `❌ ALLOTMENT BLOCKED:\n\n${check.reason}\n\nForce allocation is NOT allowed because the room is not vacant or not departing in less than 15 hours of the arrival of the new pax and exceeds the pax limit.`
-          );
-          showToast(`Allotment blocked: ${check.reason}`, 'error');
-          return;
-        }
-
-        const force = window.confirm(
-          `⚠️ Allotment Warning & Confirmation:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE Room ${roomNumber} anyway?`
-        );
-        if (!force) return;
-      }
-    }
 
     const hadPreviousRoom = !!target.roomNumber && target.roomNumber.trim() !== '';
     const isChanged = hadPreviousRoom && target.roomNumber !== roomNumber && roomNumber !== '';
@@ -646,7 +634,7 @@ export default function App() {
         toRoom: roomNumber,
         toBuilding: building,
         changedAt: new Date().toISOString(),
-        reason: 'Room changed via Room Allotment',
+        reason: forceReason || 'Room changed via Room Allotment',
       });
     }
 
@@ -667,12 +655,119 @@ export default function App() {
     );
   };
 
+  // Allot Room to Zaer (Capacity aware with Buffer & Force Allotment option)
+  const handleAllotRoom = (
+    reservationId: string,
+    building: string,
+    roomNumber: string,
+    forceConfirmed: boolean = false
+  ) => {
+    const target = reservations.find((r) => r.id === reservationId);
+    if (!target) return;
+
+    if (!roomNumber) {
+      executeDirectAllot(reservationId, building, '', 'Room allotment cleared');
+      return;
+    }
+
+    if (!forceConfirmed) {
+      const check = checkRoomAllotmentAvailability(
+        building,
+        roomNumber,
+        target.arrivalDate,
+        target.departureDate,
+        rooms,
+        reservations,
+        1,
+        target.id,
+        false,
+        target.arrivalTime,
+        target.departureTime,
+        target.applicantName
+      );
+
+      if (!check.allowed) {
+        const isTurnover = !!check.hasTimingConflict;
+        const diffText = check.timingConflictDiffHours !== undefined ? `${check.timingConflictDiffHours}` : undefined;
+        const noticeTitle = isTurnover
+          ? `Same-Day Turnover Notice (${diffText ? `${diffText}h Difference` : 'Timing Notice'})`
+          : `Room Not Vacant Notice (${building} Hotel Room ${roomNumber})`;
+
+        setAllocationNotice({
+          title: noticeTitle,
+          message: check.reason || `Room ${roomNumber} is not vacant. Do you want to allow allocation?`,
+          diffHoursText: diffText,
+          isSameDayTurnover: isTurnover,
+          isRoomNotVacant: !isTurnover,
+          roomNumber,
+          building,
+          guestName: target.applicantName,
+          onConfirm: () => {
+            setAllocationNotice(null);
+            executeDirectAllot(reservationId, building, roomNumber, check.reason);
+          },
+        });
+        return;
+      }
+    }
+
+    executeDirectAllot(reservationId, building, roomNumber);
+  };
+
+  // Direct batch allotment executor for family
+  const executeBatchFamilyAllot = (
+    tourRefNo: string,
+    family: string,
+    building: string,
+    roomNumber: string,
+    matches: Reservation[],
+    matchIds: Set<string>,
+    forceReason?: string
+  ) => {
+    const now = new Date().toISOString();
+    const updated = reservations.map((r) => {
+      if (matchIds.has(r.id)) {
+        const hadPreviousRoom = !!r.roomNumber && r.roomNumber.trim() !== '';
+        const isChanged = hadPreviousRoom && r.roomNumber !== roomNumber && roomNumber !== '';
+        const newHistory = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
+        if (isChanged) {
+          newHistory.push({
+            fromRoom: r.roomNumber,
+            fromBuilding: r.building,
+            toRoom: roomNumber,
+            toBuilding: building,
+            changedAt: now,
+            reason: forceReason || `Family ${family} batch reallocation`,
+          });
+        }
+
+        return {
+          ...r,
+          building,
+          roomNumber,
+          isRoomChanged: r.isRoomChanged || isChanged,
+          roomChangeHistory: newHistory,
+          updatedAt: now,
+        };
+      }
+      return r;
+    });
+
+    handleBatchUpdateReservations(updated);
+    showToast(
+      roomNumber
+        ? `Allotted ${building} Room ${roomNumber} to all ${matches.length} members of Family "${family}" (${tourRefNo || 'all tours'})!`
+        : `Cleared room allotment for Family "${family}" (${matches.length} members)`
+    );
+  };
+
   // Batch Allot Room to entire Family on a Tour ID (or whole family in one go, with buffer support & force allotment option)
   const handleBatchAllotFamily = (
     tourRefNo: string,
     family: string,
     building: string,
-    roomNumber: string
+    roomNumber: string,
+    forceConfirmed: boolean = false
   ) => {
     const matches = reservations.filter((r) => {
       const matchFamily = (r.family || '').trim().toLowerCase() === family.trim().toLowerCase();
@@ -685,9 +780,9 @@ export default function App() {
       return;
     }
 
-    // Check conflict against any reservations outside this family group with buffer
     const matchIds = new Set(matches.map((m) => m.id));
-    if (roomNumber) {
+
+    if (roomNumber && !forceConfirmed) {
       const first = matches[0];
       const check = checkRoomAllotmentAvailability(
         building,
@@ -705,59 +800,31 @@ export default function App() {
       );
 
       if (!check.allowed) {
-        if (check.canForceAllocate === false) {
-          alert(
-            `❌ FAMILY ALLOTMENT BLOCKED:\n\n${check.reason}\n\nForce allocation is NOT allowed because the room is not vacant or not departing in less than 15 hours of the arrival of the new pax and exceeds the pax limit.`
-          );
-          showToast(`Family allotment blocked: ${check.reason}`, 'error');
-          return;
-        }
+        const isTurnover = !!check.hasTimingConflict;
+        const diffText = check.timingConflictDiffHours !== undefined ? `${check.timingConflictDiffHours}` : undefined;
+        const noticeTitle = isTurnover
+          ? `Same-Day Turnover Notice (${diffText ? `${diffText}h Difference` : 'Timing Notice'})`
+          : `Room Not Vacant Notice (${building} Hotel Room ${roomNumber})`;
 
-        const force = window.confirm(
-          `⚠️ Allotment Warning & Confirmation:\n\n${check.reason}\n\nDo you want to FORCE ALLOCATE this entire family (${matches.length} guests) to Room ${roomNumber} anyway?`
-        );
-        if (!force) return;
+        setAllocationNotice({
+          title: noticeTitle,
+          message: check.reason || `Room ${roomNumber} is not vacant. Do you want to allow allocation for family "${family}" (${matches.length} pax)?`,
+          diffHoursText: diffText,
+          isSameDayTurnover: isTurnover,
+          isRoomNotVacant: !isTurnover,
+          roomNumber,
+          building,
+          guestName: `Family #${family} (${matches.length} zaereen)`,
+          onConfirm: () => {
+            setAllocationNotice(null);
+            executeBatchFamilyAllot(tourRefNo, family, building, roomNumber, matches, matchIds, check.reason);
+          },
+        });
+        return;
       }
     }
 
-    const now = new Date().toISOString();
-    const updated = reservations.map((r) => {
-      if (matchIds.has(r.id)) {
-        const hadPreviousRoom = !!r.roomNumber && r.roomNumber.trim() !== '';
-        const isChanged = hadPreviousRoom && r.roomNumber !== roomNumber && roomNumber !== '';
-        const newHistory = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
-        if (isChanged) {
-          newHistory.push({
-            fromRoom: r.roomNumber,
-            fromBuilding: r.building,
-            toRoom: roomNumber,
-            toBuilding: building,
-            changedAt: now,
-            reason: `Family ${family} batch reallocation`,
-          });
-        }
-
-        return {
-          ...r,
-          building,
-          roomNumber,
-          isRoomChanged: r.isRoomChanged || isChanged,
-          roomChangeHistory: newHistory,
-          updatedAt: now,
-        };
-      }
-      return r;
-    });
-
-    setReservations(updated);
-    saveReservations(updated);
-    saveBackendReservations(updated);
-    triggerAutoSync(updated, rooms);
-    showToast(
-      roomNumber
-        ? `Allotted ${building} Room ${roomNumber} to all ${matches.length} members of Family "${family}" (${tourRefNo || 'all tours'}) in one go!`
-        : `Cleared room allotment for Family "${family}" (${matches.length} members)`
-    );
+    executeBatchFamilyAllot(tourRefNo, family, building, roomNumber, matches, matchIds);
   };
 
   // Batch shift selected zaereen or entire Tour ID to Category A (Nizaam)
@@ -1060,6 +1127,7 @@ export default function App() {
           reservations={reservations}
           rooms={rooms}
           onUpdateReservation={handleUpdateReservation}
+          onBatchUpdateReservations={handleBatchUpdateReservations}
         />
       )}
 
@@ -1155,6 +1223,79 @@ export default function App() {
         onAllotRoom={handleAllotRoom}
         onBatchAllotFamily={handleBatchAllotFamily}
       />
+
+      {/* Allocation Notice Confirmation Modal (Same-day turnover hour difference & Room not vacant force allocation notice) */}
+      {allocationNotice && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl ${allocationNotice.isSameDayTurnover ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                  {allocationNotice.isSameDayTurnover ? (
+                    <Clock className="w-5 h-5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base leading-tight">
+                    {allocationNotice.title}
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Room {allocationNotice.roomNumber} • {allocationNotice.building} Hotel • For {allocationNotice.guestName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAllocationNotice(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className={`p-3.5 rounded-xl text-xs space-y-2 border ${
+              allocationNotice.isSameDayTurnover
+                ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+                : 'bg-rose-50/80 border-rose-200 text-rose-950'
+            }`}>
+              <div className="font-semibold text-sm leading-snug">
+                {allocationNotice.message}
+              </div>
+              {allocationNotice.diffHoursText && (
+                <div className="flex items-center gap-2 pt-1 font-mono text-xs">
+                  <span className="bg-amber-200/80 border border-amber-300 px-2 py-0.5 rounded font-bold">
+                    ⏱ Hour Difference: {allocationNotice.diffHoursText} Hours
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-stone-500">
+              Operational confirmation: Clicking <strong>Okay — Allow Allocation</strong> will confirm this room allotment and update the hotel lodging grid.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setAllocationNotice(null)}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={allocationNotice.onConfirm}
+                className="px-5 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
+                <span>Okay — Allow Allocation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

@@ -65,6 +65,13 @@ interface ReservationsViewProps {
   onOpenQuickAllotModal?: (res: Reservation) => void;
 }
 
+const STANDARD_TIMES = [
+  '08:00 AM', '09:00 AM', '10:00 AM', '10:45 AM', '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM', '01:00 PM', '01:15 PM', '02:00 PM', '03:00 PM',
+  '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM',
+  '10:00 PM', '11:00 PM', '01:00 AM', '02:00 AM', '03:00 AM', '04:00 AM'
+];
+
 export const ReservationsView: React.FC<ReservationsViewProps> = ({
   reservations,
   rooms,
@@ -451,20 +458,34 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    // If building or dates change, check room validity
-    if (field === 'building' || field === 'arrivalDate' || field === 'departureDate') {
-      if (updated.roomNumber) {
-        const isOccupied = isRoomBookedForDuration(
-          updated.building || 'Saifee',
-          updated.roomNumber,
-          updated.arrivalDate,
-          updated.departureDate,
-          reservations,
-          updated.id
-        );
-        if (isOccupied) {
-          updated.roomNumber = '';
-        }
+    // Synchronize compound date/time and raw string fields
+    if (field === 'arrivalDate') {
+      const cleanDate = String(value || '').slice(0, 10);
+      updated.arrivalDate = cleanDate;
+      const tPart = updated.arrivalTime || '11:00 AM';
+      updated.arrivalDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
+      updated.rawArrivalStr = `${cleanDate} ${tPart}`;
+    } else if (field === 'departureDate') {
+      const cleanDate = String(value || '').slice(0, 10);
+      updated.departureDate = cleanDate;
+      const tPart = updated.departureTime || '01:00 AM';
+      updated.departureDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
+      updated.rawDepartureStr = `${cleanDate} ${tPart}`;
+    } else if (field === 'arrivalTime') {
+      const cleanTime = String(value || '').trim();
+      updated.arrivalTime = cleanTime;
+      const dPart = (updated.arrivalDate || '').slice(0, 10);
+      if (dPart) {
+        updated.arrivalDateTime = `${dPart}T${cleanTime.replace(/\s+/g, '')}`;
+        updated.rawArrivalStr = `${dPart} ${cleanTime}`;
+      }
+    } else if (field === 'departureTime') {
+      const cleanTime = String(value || '').trim();
+      updated.departureTime = cleanTime;
+      const dPart = (updated.departureDate || '').slice(0, 10);
+      if (dPart) {
+        updated.departureDateTime = `${dPart}T${cleanTime.replace(/\s+/g, '')}`;
+        updated.rawDepartureStr = `${dPart} ${cleanTime}`;
       }
     }
 
@@ -483,11 +504,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       field === 'arrivalTime' ||
       field === 'departureTime'
     ) {
-      const currentVal = String(target[field] || '').trim();
-      const newVal = String(value || '').trim();
+      const currentVal =
+        field === 'arrivalDate' || field === 'departureDate'
+          ? String(target[field] || '').slice(0, 10).trim()
+          : (field === 'arrivalTime' ? (target.arrivalTime || '11:00 AM') : (target.departureTime || '01:00 AM')).trim();
+
+      const newVal =
+        field === 'arrivalDate' || field === 'departureDate'
+          ? String(value || '').slice(0, 10).trim()
+          : String(value || '').trim();
 
       // If value hasn't actually changed, return
-      if (currentVal === newVal) return;
+      if (currentVal === newVal || !newVal) return;
 
       const tourId = (target.tourRefNo || (target as any).tourId || '').trim();
       if (tourId) {
@@ -527,20 +555,34 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      // Check room validity if dates changed
-      if (field === 'arrivalDate' || field === 'departureDate') {
-        if (updated.roomNumber) {
-          const isOccupied = isRoomBookedForDuration(
-            updated.building || 'Saifee',
-            updated.roomNumber,
-            updated.arrivalDate,
-            updated.departureDate,
-            reservations,
-            updated.id
-          );
-          if (isOccupied) {
-            updated.roomNumber = '';
-          }
+      // Synchronize compound date/time and raw string fields
+      if (field === 'arrivalDate') {
+        const cleanDate = String(newValue || '').slice(0, 10);
+        updated.arrivalDate = cleanDate;
+        const tPart = updated.arrivalTime || '11:00 AM';
+        updated.arrivalDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
+        updated.rawArrivalStr = `${cleanDate} ${tPart}`;
+      } else if (field === 'departureDate') {
+        const cleanDate = String(newValue || '').slice(0, 10);
+        updated.departureDate = cleanDate;
+        const tPart = updated.departureTime || '01:00 AM';
+        updated.departureDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
+        updated.rawDepartureStr = `${cleanDate} ${tPart}`;
+      } else if (field === 'arrivalTime') {
+        const cleanTime = String(newValue || '').trim();
+        updated.arrivalTime = cleanTime;
+        const dPart = (updated.arrivalDate || '').slice(0, 10);
+        if (dPart) {
+          updated.arrivalDateTime = `${dPart}T${cleanTime.replace(/\s+/g, '')}`;
+          updated.rawArrivalStr = `${dPart} ${cleanTime}`;
+        }
+      } else if (field === 'departureTime') {
+        const cleanTime = String(newValue || '').trim();
+        updated.departureTime = cleanTime;
+        const dPart = (updated.departureDate || '').slice(0, 10);
+        if (dPart) {
+          updated.departureDateTime = `${dPart}T${cleanTime.replace(/\s+/g, '')}`;
+          updated.rawDepartureStr = `${dPart} ${cleanTime}`;
         }
       }
 
@@ -1551,16 +1593,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                       res.departureTime,
                                       res.applicantName
                                     );
-                                    if (chk.canForceAllocate && chk.hasTimingConflict) {
+                                    if (chk.hasTimingConflict) {
+                                      const diff = chk.timingConflictDiffHours !== undefined ? `${chk.timingConflictDiffHours}h diff` : 'Notice';
                                       return (
-                                        <option key={rm.id} value={rm.roomNumber}>
-                                          Rm {rm.roomNumber} [Turnover Warning: Dep {chk.depTime} &gt; Arr {chk.arrTime} • Force Allot]
+                                        <option key={rm.id} value={rm.roomNumber} className="text-amber-900 bg-amber-50 font-bold">
+                                          Rm {rm.roomNumber} [Turnover Notice: {diff} (Dep {chk.depTime} &gt; Arr {chk.arrTime}) • Force Allot]
                                         </option>
                                       );
                                     }
                                     return (
-                                      <option key={rm.id} value={rm.roomNumber} disabled className="text-stone-400 bg-stone-100">
-                                        Rm {rm.roomNumber} [BLOCKED • Occupied / Exceeds Pax Limit]
+                                      <option key={rm.id} value={rm.roomNumber} className="text-rose-900 bg-rose-50 font-medium">
+                                        Rm {rm.roomNumber} [Not Vacant: {chk.currentOccupancy}/{chk.maxCapacity} Pax • Force Allot]
                                       </option>
                                     );
                                   })}
@@ -1637,18 +1680,21 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         <div className="flex items-center gap-1 mt-1">
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200 shadow-2xs hover:border-indigo-400 transition"
-                            title="Edit Arrival Time (select or type e.g. 11:00 AM)"
+                            title="Edit Arrival Time (select time from dropdown)"
                           >
                             <Clock className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                            <input
-                              type="text"
-                              list="common-arrival-times"
+                            <select
                               value={res.arrivalTime || '11:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'arrivalTime', e.target.value)}
-                              className="bg-transparent text-indigo-950 font-bold text-[10px] w-20 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-400 rounded px-0.5 cursor-pointer"
-                              placeholder="11:00 AM"
-                              title="Edit Arrival Time"
-                            />
+                              className="bg-transparent text-indigo-950 font-bold text-[10px] focus:outline-none cursor-pointer"
+                            >
+                              {STANDARD_TIMES.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                              {res.arrivalTime && !STANDARD_TIMES.includes(res.arrivalTime) && (
+                                <option value={res.arrivalTime}>{res.arrivalTime}</option>
+                              )}
+                            </select>
                           </span>
                         </div>
                         {res.rawArrivalStr && res.rawArrivalStr !== res.arrivalTime && (
@@ -1669,18 +1715,21 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         <div className="flex items-center gap-1 mt-1">
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200 shadow-2xs hover:border-amber-400 transition"
-                            title="Edit Departure Time (select or type e.g. 01:00 AM)"
+                            title="Edit Departure Time (select time from dropdown)"
                           >
                             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                            <input
-                              type="text"
-                              list="common-departure-times"
+                            <select
                               value={res.departureTime || '01:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'departureTime', e.target.value)}
-                              className="bg-transparent text-amber-950 font-bold text-[10px] w-20 focus:outline-none focus:bg-white focus:ring-1 focus:ring-amber-400 rounded px-0.5 cursor-pointer"
-                              placeholder="01:00 AM"
-                              title="Edit Departure Time"
-                            />
+                              className="bg-transparent text-amber-950 font-bold text-[10px] focus:outline-none cursor-pointer"
+                            >
+                              {STANDARD_TIMES.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                              {res.departureTime && !STANDARD_TIMES.includes(res.departureTime) && (
+                                <option value={res.departureTime}>{res.departureTime}</option>
+                              )}
+                            </select>
                           </span>
                         </div>
                         {res.rawDepartureStr && res.rawDepartureStr !== res.departureTime && (
