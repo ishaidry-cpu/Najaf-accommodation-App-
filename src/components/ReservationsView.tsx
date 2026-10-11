@@ -30,7 +30,8 @@ import {
   ArrowDown,
   Sparkles,
   MapPin,
-  Tag
+  Tag,
+  LayoutGrid
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
@@ -42,6 +43,7 @@ import {
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
+import { hasDeparturePassed48Hours, getDepartureElapsedHours } from '../utils/turnoverTiming';
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -102,6 +104,31 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // User requirement: "Give a button to delete any records which departure date has passed for 48 hours."
+  const expiredReservations = useMemo(() => {
+    return reservations.filter((r) => hasDeparturePassed48Hours(r));
+  }, [reservations]);
+  const [isPurgeExpiredModalOpen, setIsPurgeExpiredModalOpen] = useState(false);
+
+  // User requirement: "make allcolumns visible to the screen"
+  const [fitColumnsToScreen, setFitColumnsToScreen] = useState(true);
+
+  // User requirement: "make the app light too heavy. Remove any exras."
+  // Lazy-evaluate expensive room availability calculations only for active/focused row
+  const [focusedRoomRowId, setFocusedRoomRowId] = useState<string | null>(null);
+
+  // Precomputed family counts to avoid O(N^2) loops inside rows
+  const familyCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    reservations.forEach((r) => {
+      if (r.family && r.tourRefNo) {
+        const key = `${r.tourRefNo}___${r.family.trim().toLowerCase()}`;
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+    });
+    return map;
+  }, [reservations]);
 
   // Tour date/time batch change confirmation modal state
   const [pendingTourDateChange, setPendingTourDateChange] = useState<{
@@ -408,6 +435,22 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     }
     setSelectedIds(new Set());
     setIsBatchDeleteModalOpen(false);
+  };
+
+  // User requirement: "Give a button to delete any records which departure date has passed for 48 hours."
+  const handlePurgeExpiredRecords = () => {
+    if (expiredReservations.length === 0) return;
+    const ids = expiredReservations.map((r) => r.id);
+    if (onBatchDeleteReservations) {
+      onBatchDeleteReservations(ids);
+    } else {
+      ids.forEach((id) => onDeleteReservation(id));
+    }
+    setIsPurgeExpiredModalOpen(false);
+    setToastMessage({
+      text: `Permanently deleted ${ids.length} expired record${ids.length > 1 ? 's' : ''} (>48 hours past departure).`,
+      type: 'success',
+    });
   };
 
   // Bulk actions
@@ -787,13 +830,34 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </button>
           )}
 
-          {/* Reception Daily Slip */}
+          {/* Purge Records with Departure Passed for 48 Hours */}
           <button
-            onClick={onOpenReceptionSlip}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-[#124E39]/40 shadow-2xs transition"
+            onClick={() => {
+              if (expiredReservations.length === 0) {
+                setToastMessage({
+                  text: 'No records found with departure date passed for 48+ hours.',
+                  type: 'info'
+                });
+                return;
+              }
+              setIsPurgeExpiredModalOpen(true);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer ${
+              expiredReservations.length > 0
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300'
+                : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'
+            }`}
+            title="Delete any records whose departure date has passed for 48 hours"
           >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Reception Slip</span>
+            <Clock className={`w-3.5 h-3.5 ${expiredReservations.length > 0 ? 'text-rose-600' : 'text-stone-400'}`} />
+            <span>Purge Expired (&gt;48h)</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+              expiredReservations.length > 0
+                ? 'bg-rose-600 text-white'
+                : 'bg-stone-200 text-stone-600'
+            }`}>
+              {expiredReservations.length}
+            </span>
           </button>
 
           {/* Add Zair Button */}
@@ -954,19 +1018,35 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           )}
         </div>
 
-        {/* Bulk Portal Actions */}
-        <div className="flex items-center gap-2">
+        {/* Fit to Screen Toggle & Bulk Portal Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFitColumnsToScreen((p) => !p)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer shadow-2xs ${
+              fitColumnsToScreen
+                ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                : 'bg-white hover:bg-stone-50 text-stone-700 border-stone-300'
+            }`}
+            title="Toggle Fit All 16 Columns on Screen without horizontal scroll vs Wide Scrollable view"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>{fitColumnsToScreen ? 'All Columns on Screen ✓' : 'Scroll View'}</span>
+          </button>
+
+          <div className="h-4 w-px bg-stone-300" />
+
           <span className="text-stone-500 text-xs">Bulk Portal:</span>
           <button
             onClick={() => handleBulkMarkPortal(true)}
-            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-xs font-bold"
+            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-xs font-bold cursor-pointer"
             title="Mark all filtered zaereen as Uploaded on Main Portal"
           >
             Tick All Filtered
           </button>
           <button
             onClick={() => handleBulkMarkPortal(false)}
-            className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded text-xs"
+            className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded text-xs cursor-pointer"
           >
             Untick All
           </button>
@@ -1192,18 +1272,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MAIN ZAEREEN FULL-SCREEN GRID TABLE                                       */}
-      {/* SEQUENCE: ITS, NAME, AGE, FAMILY, OFFICE NAME, TOUR ID,                   */}
-      {/* BUILDING, ROOM ALLOTTMENT, then GENDER, GROUP LEAD, DATES, CATEGORY, PORTAL*/}
-      {/* REMOVED IDARA. CATEGORY KEPT AT THE END & COLORED IF NOT MUMINEEN.        */}
+      {/* MAIN ZAEREEN GRID TABLE: ALL 16 COLUMNS VISIBLE ON SCREEN                 */}
       {/* ========================================================================= */}
       <div className="bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden flex flex-col w-full">
-        <div className="overflow-x-auto w-full">
-          <table className="w-full text-left text-sm border-collapse min-w-full">
+        <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
+          <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2000px]'}`}>
             {/* Table Header with interactive sorting on all columns */}
-            <thead className="bg-[#124E39] text-white uppercase text-xs tracking-wider font-bold select-none sticky top-0 z-10">
+            <thead className="bg-[#124E39] text-white uppercase text-[11px] tracking-wider font-bold select-none sticky top-0 z-10">
               <tr>
-                <th className="py-3.5 px-2 text-center w-14">
+                <th className={`py-3 px-1 text-center ${fitColumnsToScreen ? 'w-[36px]' : 'w-14'}`}>
                   <div className="flex items-center justify-center gap-1">
                     <input
                       type="checkbox"
@@ -1222,7 +1299,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 1. ITS ID */}
                 <th
                   onClick={() => handleSort('itsId')}
-                  className="py-3.5 px-3 min-w-[115px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'
+                  }`}
                   title="Click to sort by ITS ID"
                 >
                   <div className="flex items-center">
@@ -1234,7 +1313,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 2. Applicant Name */}
                 <th
                   onClick={() => handleSort('applicantName')}
-                  className="py-3.5 px-3.5 min-w-[200px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'
+                  }`}
                   title="Click to sort by Applicant Name"
                 >
                   <div className="flex items-center">
@@ -1246,7 +1327,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 3. Age */}
                 <th
                   onClick={() => handleSort('age')}
-                  className="py-3.5 px-2.5 text-center min-w-[65px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[42px]' : 'min-w-[65px]'
+                  }`}
                   title="Click to sort by Age"
                 >
                   <div className="flex items-center justify-center">
@@ -1258,11 +1341,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 4. Family */}
                 <th
                   onClick={() => handleSort('family')}
-                  className="py-3.5 px-3 min-w-[95px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[56px]' : 'min-w-[95px]'
+                  }`}
                   title="Click to sort by Family"
                 >
-                  <div className="flex items-center">
-                    <span>FAMILY</span>
+                  <div className="flex items-center justify-center">
+                    <span>FAM</span>
                     {renderSortIndicator('family')}
                   </div>
                 </th>
@@ -1270,20 +1355,24 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 5. Office Name */}
                 <th
                   onClick={() => handleSort('officeName')}
-                  className="py-3.5 px-3.5 min-w-[180px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[105px]' : 'min-w-[180px]'
+                  }`}
                   title="Click to sort by Office Name"
                 >
                   <div className="flex items-center">
-                    <span>OFFICE NAME</span>
+                    <span>OFFICE</span>
                     {renderSortIndicator('officeName')}
                   </div>
                 </th>
 
-                {/* 6. TOUR ID (Bold, wide, wrap text, complete ID visible) */}
+                {/* 6. TOUR ID */}
                 <th
                   onClick={() => handleSort('tourRefNo')}
-                  className="py-3.5 px-3.5 min-w-[230px] max-w-[320px] cursor-pointer hover:bg-[#0E3C2C] transition"
-                  title="Click to sort by Tour ID. Full ID is visible."
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[135px]' : 'min-w-[230px] max-w-[320px]'
+                  }`}
+                  title="Click to sort by Tour ID"
                 >
                   <div className="flex items-center">
                     <span>TOUR ID</span>
@@ -1294,23 +1383,27 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 7. Building */}
                 <th
                   onClick={() => handleSort('building')}
-                  className="py-3.5 px-3 min-w-[110px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'
+                  }`}
                   title="Click to sort by Building (Saifee / Burhani)"
                 >
-                  <div className="flex items-center">
-                    <span>BUILDING</span>
+                  <div className="flex items-center justify-center">
+                    <span>BLDG</span>
                     {renderSortIndicator('building')}
                   </div>
                 </th>
 
-                {/* 8. Room Allottment (with 1-click batch family allotment) */}
+                {/* 8. Room Allottment */}
                 <th
                   onClick={() => handleSort('roomNumber')}
-                  className="py-3.5 px-3.5 min-w-[170px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[115px]' : 'min-w-[170px]'
+                  }`}
                   title="Click to sort by Room Number"
                 >
                   <div className="flex items-center">
-                    <span>ROOM ALLOTTMENT</span>
+                    <span>ROOM</span>
                     {renderSortIndicator('roomNumber')}
                   </div>
                 </th>
@@ -1318,11 +1411,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 9. Gender */}
                 <th
                   onClick={() => handleSort('gender')}
-                  className="py-3.5 px-2.5 text-center min-w-[80px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[48px]' : 'min-w-[80px]'
+                  }`}
                   title="Click to sort by Gender"
                 >
                   <div className="flex items-center justify-center">
-                    <span>GENDER</span>
+                    <span>GEN</span>
                     {renderSortIndicator('gender')}
                   </div>
                 </th>
@@ -1330,11 +1425,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 10. Group Lead */}
                 <th
                   onClick={() => handleSort('groupLeadName')}
-                  className="py-3.5 px-3.5 min-w-[170px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[100px]' : 'min-w-[170px]'
+                  }`}
                   title="Click to sort by Group Lead"
                 >
                   <div className="flex items-center">
-                    <span>GROUP LEAD</span>
+                    <span>LEAD</span>
                     {renderSortIndicator('groupLeadName')}
                   </div>
                 </th>
@@ -1342,10 +1439,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 11. Arrival Date */}
                 <th
                   onClick={() => handleSort('arrivalDate')}
-                  className="py-3.5 px-3 min-w-[130px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
+                  }`}
                   title="Click to sort by Arrival Date"
                 >
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     <span>ARRIVAL</span>
                     {renderSortIndicator('arrivalDate')}
                   </div>
@@ -1354,10 +1453,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 12. Departure Date */}
                 <th
                   onClick={() => handleSort('departureDate')}
-                  className="py-3.5 px-3 min-w-[130px] cursor-pointer hover:bg-[#0E3C2C] transition"
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
+                  }`}
                   title="Click to sort by Departure Date"
                 >
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     <span>DEPARTURE</span>
                     {renderSortIndicator('departureDate')}
                   </div>
@@ -1366,8 +1467,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 13. Category Sort (KEPT AT THE END!) */}
                 <th
                   onClick={() => handleSort('category')}
-                  className="py-3.5 px-3 text-center min-w-[125px] cursor-pointer hover:bg-[#0E3C2C] transition"
-                  title="Click to sort by Category. Mumineen is default/omitted, other categories are colored."
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[85px]' : 'min-w-[125px]'
+                  }`}
+                  title="Click to sort by Category"
                 >
                   <div className="flex items-center justify-center">
                     <span>CATEGORY</span>
@@ -1378,50 +1481,53 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 14. Main Portal Tick Button Sort */}
                 <th
                   onClick={() => handleSort('portal')}
-                  className="py-3.5 px-3.5 text-center min-w-[135px] bg-[#0E3C2C] cursor-pointer hover:bg-[#08281D] transition"
+                  className={`py-3 px-1 text-center bg-[#0E3C2C] cursor-pointer hover:bg-[#08281D] transition ${
+                    fitColumnsToScreen ? 'w-[80px]' : 'min-w-[135px]'
+                  }`}
                   title="Click to sort by Main Portal upload status"
                 >
                   <div className="flex items-center justify-center">
-                    <span>MAIN PORTAL</span>
+                    <span>PORTAL</span>
                     {renderSortIndicator('portal')}
                   </div>
                 </th>
 
-                <th className="py-3.5 px-2 text-center w-12">ACT</th>
+                <th className={`py-3 px-1 text-center ${fitColumnsToScreen ? 'w-[40px]' : 'w-12'}`}>ACT</th>
               </tr>
             </thead>
 
-            {/* Table Body with bigger fonts and text wrapping */}
-            <tbody className="divide-y divide-stone-100 text-stone-900 text-sm md:text-base">
+            {/* Table Body with optimized rendering */}
+            <tbody className="divide-y divide-stone-100 text-stone-900 text-xs">
               {filteredAndSortedReservations.length > 0 ? (
                 filteredAndSortedReservations.map((res, index) => {
                   const isShiftedToA = !!res.shiftToCategoryA;
                   const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
 
-                  // Vacant rooms for this single zaer (infants under 3 do not consume room capacity)
+                  // Effective Pax (infants under 3 do not consume room capacity)
                   const resEffectivePax = isInfant(res) ? 0 : (res.pax || res.paxCount || 1);
-                  const vacantRoomsForRes = getVacantRoomsForDuration(
-                    res.building || 'Saifee',
-                    res.arrivalDate,
-                    res.departureDate,
-                    rooms,
-                    reservations,
-                    res.id,
-                    resEffectivePax,
-                    res.arrivalTime,
-                    res.departureTime,
-                    res.applicantName,
-                    res.family,
-                    res.tourRefNo
-                  );
 
-                  // Count how many members share this family and tour
-                  const sameFamilyMembers = reservations.filter(
-                    (r) =>
-                      r.family &&
-                      (r.family || '').trim().toLowerCase() === (res.family || '').trim().toLowerCase() &&
-                      r.tourRefNo === res.tourRefNo
-                  );
+                  // Precomputed O(1) family member count
+                  const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
+                  const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
+
+                  // High-performance lazy evaluation: only compute vacant rooms when user interacts with this specific row
+                  const isRowFocused = focusedRoomRowId === res.id;
+                  const vacantRoomsForRes = isRowFocused
+                    ? getVacantRoomsForDuration(
+                        res.building || 'Saifee',
+                        res.arrivalDate,
+                        res.departureDate,
+                        rooms,
+                        reservations,
+                        res.id,
+                        resEffectivePax,
+                        res.arrivalTime,
+                        res.departureTime,
+                        res.applicantName,
+                        res.family,
+                        res.tourRefNo
+                      )
+                    : [];
 
                   const isSelected = selectedIds.has(res.id);
 
@@ -1433,8 +1539,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       }`}
                     >
                       {/* Checkbox & Index */}
-                      <td className="py-3 px-2 text-center text-stone-400 font-mono text-xs">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className={`py-2 px-1 text-center text-stone-400 font-mono text-[11px] ${fitColumnsToScreen ? 'w-[36px]' : 'w-14'}`}>
+                        <div className="flex items-center justify-center gap-1">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1442,89 +1548,89 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#124E39]"
                             title="Select record"
                           />
-                          <span className="text-[11px] text-stone-400 font-normal">{index + 1}</span>
+                          <span className="text-[10px] text-stone-400 font-normal">{index + 1}</span>
                         </div>
                       </td>
 
-                      {/* 1. ITS ID (Bold, legible, bigger font) */}
-                      <td className="py-3 px-3 font-mono font-bold text-stone-950 text-sm md:text-base">
+                      {/* 1. ITS ID */}
+                      <td className={`py-2 px-1.5 font-mono font-bold text-stone-950 ${fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'}`}>
                         <input
                           type="text"
                           value={res.itsId}
                           onChange={(e) => handleFieldChange(res.id, 'itsId', e.target.value)}
-                          className="w-full bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-mono font-bold text-stone-950 text-sm md:text-base"
+                          className="w-full bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-mono font-bold text-stone-950 text-xs"
                         />
                       </td>
 
-                      {/* 2. Applicant Name (Bigger font, wrap text, with shifted pill if applicable) */}
-                      <td className="py-3 px-3.5 whitespace-normal break-words">
-                        <div className="flex items-center flex-wrap gap-1">
+                      {/* 2. Applicant Name */}
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'}`}>
+                        <div className="flex items-center gap-1">
                           <input
                             type="text"
                             value={res.applicantName}
                             onChange={(e) => handleFieldChange(res.id, 'applicantName', e.target.value)}
-                            className="w-full bg-transparent font-bold text-stone-950 text-sm md:text-base border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none leading-snug"
+                            title={res.applicantName}
+                            className="w-full bg-transparent font-bold text-stone-950 text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
                           />
                           {isShiftedToA && (
                             <span 
-                              className="inline-block px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 shadow-2xs mt-0.5"
-                              title="Shifted to Category A (Nizaam). Managed in B to A Shifts."
+                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 shadow-2xs"
+                              title="Shifted to Category A (Nizaam)"
                             >
-                              Nizaam (A)
+                              A
                             </span>
                           )}
                         </div>
                       </td>
 
                       {/* 3. Age */}
-                      <td className="py-3 px-2.5 text-center text-stone-800 font-semibold text-sm md:text-base">
+                      <td className={`py-2 px-1 text-center text-stone-800 font-semibold ${fitColumnsToScreen ? 'w-[42px]' : 'min-w-[65px]'}`}>
                         <input
                           type="text"
                           value={res.age}
                           onChange={(e) => handleFieldChange(res.id, 'age', e.target.value)}
-                          className="w-12 text-center bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-semibold text-sm md:text-base"
+                          className="w-full text-center bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-semibold text-xs"
                         />
                       </td>
 
-                      {/* 4. Family (e.g. F-1, F-2) */}
-                      <td className="py-3 px-3 font-mono text-emerald-900 font-extrabold text-sm md:text-base">
+                      {/* 4. Family */}
+                      <td className={`py-2 px-1 text-center font-mono text-emerald-900 font-extrabold ${fitColumnsToScreen ? 'w-[56px]' : 'min-w-[95px]'}`}>
                         <input
                           type="text"
                           value={res.family}
                           onChange={(e) => handleFieldChange(res.id, 'family', e.target.value)}
-                          className="w-full bg-transparent font-mono font-extrabold text-emerald-900 border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none"
+                          className="w-full text-center bg-transparent font-mono font-extrabold text-emerald-900 border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none text-xs"
                         />
                       </td>
 
-                      {/* 5. Office Name (Wrap text) */}
-                      <td className="py-3 px-3.5 whitespace-normal break-words text-stone-800 text-xs md:text-sm font-medium min-w-[180px]">
+                      {/* 5. Office Name */}
+                      <td className={`py-2 px-1.5 text-stone-800 text-xs font-medium ${fitColumnsToScreen ? 'w-[105px]' : 'min-w-[180px]'}`}>
                         <input
                           type="text"
                           value={res.officeName}
                           onChange={(e) => handleFieldChange(res.id, 'officeName', e.target.value)}
-                          className="w-full bg-transparent text-stone-800 text-xs md:text-sm font-medium border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none leading-snug"
+                          title={res.officeName}
+                          className="w-full bg-transparent text-stone-800 text-xs font-medium border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
                         />
                       </td>
 
-                      {/* 6. COMPLETE TOUR ID (Fonts bigger, wrap text, full visibility) */}
-                      <td className="py-3 px-3.5 whitespace-normal break-words break-all min-w-[230px] max-w-[320px]">
-                        <div className="font-mono font-bold text-stone-950 text-sm md:text-base leading-relaxed break-words break-all">
-                          <input
-                            type="text"
-                            value={res.tourRefNo}
-                            onChange={(e) => handleFieldChange(res.id, 'tourRefNo', e.target.value)}
-                            className="w-full bg-transparent font-mono font-bold text-stone-950 text-sm md:text-base border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none leading-relaxed"
-                            title={res.tourRefNo}
-                          />
-                        </div>
+                      {/* 6. TOUR ID */}
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[135px]' : 'min-w-[230px] max-w-[320px]'}`}>
+                        <input
+                          type="text"
+                          value={res.tourRefNo}
+                          onChange={(e) => handleFieldChange(res.id, 'tourRefNo', e.target.value)}
+                          title={res.tourRefNo}
+                          className="w-full bg-transparent font-mono font-bold text-stone-950 text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
+                        />
                       </td>
 
                       {/* 7. Hotel / Building */}
-                      <td className="py-3 px-3 text-stone-900 font-bold text-xs md:text-sm">
+                      <td className={`py-2 px-1 text-center text-stone-900 font-bold ${fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'}`}>
                         <select
                           value={res.building || 'Saifee'}
                           onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
-                          className="bg-white border border-stone-200 rounded px-2 py-1 text-xs md:text-sm font-bold text-[#124E39] cursor-pointer shadow-2xs"
+                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#124E39] cursor-pointer shadow-2xs w-full"
                         >
                           {distinctBuildings.map((bldg) => (
                             <option key={bldg} value={bldg}>{bldg}</option>
@@ -1532,168 +1638,153 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         </select>
                       </td>
 
-                      {/* 8. Room Allotted: Dynamic vacant rooms dropdown + 1-Click Family Allotment button */}
-                      <td className="py-3 px-3.5 min-w-[170px]">
+                      {/* 8. Room Allotted */}
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[115px]' : 'min-w-[170px]'}`}>
                         <div className="flex flex-col gap-1">
                           {isReadOnly ? (
-                            <div className="px-2 py-1 rounded bg-stone-100 border border-stone-200 text-xs font-bold text-stone-700">
+                            <div className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-[11px] font-bold text-stone-700 truncate">
                               {res.roomNumber ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
                             </div>
                           ) : (
                             <>
                               <select
                                 value={res.roomNumber || ''}
+                                onFocus={() => setFocusedRoomRowId(res.id)}
                                 onChange={(e) => {
                                   const val = e.target.value;
+                                  if (val === '__browse__') {
+                                    setFocusedRoomRowId(res.id);
+                                    return;
+                                  }
                                   if (onAllotRoom) {
                                     onAllotRoom(res.id, res.building || 'Saifee', val);
                                   } else {
                                     handleFieldChange(res.id, 'roomNumber', val);
                                   }
                                 }}
-                                className={`w-full text-xs md:text-sm font-bold rounded-lg px-2.5 py-1 border transition cursor-pointer shadow-2xs ${
+                                className={`w-full text-[11px] font-bold rounded px-1.5 py-0.5 border transition cursor-pointer shadow-2xs ${
                                   isAllotted
                                     ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
-                                    : 'bg-amber-100 text-amber-950 border-amber-300 font-bold animate-pulse'
+                                    : 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
                                 }`}
                               >
                                 <option value="">-- Allot Room --</option>
-                                {/* If currently assigned room exists, show it */}
                                 {res.roomNumber && (
                                   <option value={res.roomNumber}>
-                                    Room {res.roomNumber} ({res.building}) ✓
+                                    Rm {res.roomNumber} ({res.building}) ✓
                                   </option>
                                 )}
-                                {/* Available rooms (with turnover/vacant) */}
-                                <optgroup label="Available Rooms (Vacant / Turnover Ready)">
-                                  {vacantRoomsForRes
-                                    .filter((rm) => rm.roomNumber !== res.roomNumber)
-                                    .map((rm) => (
-                                      <option key={rm.id} value={rm.roomNumber}>
-                                        Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
-                                      </option>
-                                    ))}
-                                </optgroup>
-                                {/* Other Hotel Rooms: Turnover warning if <15h vs Blocked if exceeds pax limit */}
-                                {rooms
-                                  .filter(
-                                    (rm) =>
-                                      (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
-                                      rm.roomNumber !== res.roomNumber &&
-                                      !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
-                                      rm.status !== 'blocked'
-                                  )
-                                  .map((rm) => {
-                                    const chk = checkRoomAllotmentAvailability(
-                                      res.building || 'Saifee',
-                                      rm.roomNumber,
-                                      res.arrivalDate,
-                                      res.departureDate,
-                                      rooms,
-                                      reservations,
-                                      resEffectivePax,
-                                      res.id,
-                                      false,
-                                      res.arrivalTime,
-                                      res.departureTime,
-                                      res.applicantName,
-                                      res.family,
-                                      res.tourRefNo
-                                    );
-                                    if (chk.hasTimingConflict) {
-                                      const diff = chk.timingConflictDiffHours !== undefined ? `${chk.timingConflictDiffHours}h diff` : 'Notice';
-                                      return (
-                                        <option key={rm.id} value={rm.roomNumber} className="text-amber-900 bg-amber-50 font-bold">
-                                          Rm {rm.roomNumber} [Turnover Notice: {diff} (Dep {chk.depTime} &gt; Arr {chk.arrTime}) • Click to Allot]
-                                        </option>
-                                      );
-                                    }
-                                    return (
-                                      <option key={rm.id} value={rm.roomNumber} className="text-rose-900 bg-rose-50 font-medium">
-                                        Rm {rm.roomNumber} [Not Vacant: {chk.currentOccupancy}/{chk.maxCapacity} Pax • Click to Allot]
-                                      </option>
-                                    );
-                                  })}
+                                {!isRowFocused ? (
+                                  <option value="__browse__">Browse {res.building || 'Saifee'} rooms...</option>
+                                ) : (
+                                  <>
+                                    <optgroup label="Available Rooms (Vacant / Ready)">
+                                      {vacantRoomsForRes
+                                        .filter((rm) => rm.roomNumber !== res.roomNumber)
+                                        .map((rm) => (
+                                          <option key={rm.id} value={rm.roomNumber}>
+                                            Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer}` : ''})
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="All Hotel Rooms (Notice / Force Allot)">
+                                      {rooms
+                                        .filter(
+                                          (rm) =>
+                                            (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
+                                            rm.roomNumber !== res.roomNumber &&
+                                            !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
+                                            rm.status !== 'blocked'
+                                        )
+                                        .map((rm) => (
+                                          <option key={rm.id} value={rm.roomNumber}>
+                                            Rm {rm.roomNumber} (Cap: {rm.capacity} Pax)
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  </>
+                                )}
                               </select>
 
-                              {/* Quick Allot Modal Trigger */}
+                              {/* Quick Allot Button */}
                               {onOpenQuickAllotModal && (
                                 <button
                                   type="button"
                                   onClick={() => onOpenQuickAllotModal(res)}
-                                  className="flex items-center justify-center gap-1 px-2 py-0.5 rounded bg-stone-100 hover:bg-[#124E39] hover:text-[#EBD59E] text-stone-700 border border-stone-300 text-[10px] font-bold shadow-2xs transition"
-                                  title="Open Quick Room Allotment visual modal"
+                                  className="flex items-center justify-center gap-1 px-1.5 py-0.5 rounded bg-stone-100 hover:bg-[#124E39] hover:text-[#EBD59E] text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition"
+                                  title="Open Quick Room Allotment modal"
                                 >
                                   <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                                  <span>Easy Room Allot</span>
+                                  <span>Allot Modal</span>
                                 </button>
                               )}
                             </>
                           )}
 
                           {/* 1-Click Allot to Family button if family has multiple members */}
-                          {!isReadOnly && sameFamilyMembers.length > 1 && (
+                          {!isReadOnly && sameFamilyCount > 1 && (
                             <button
                               type="button"
                               onClick={() => {
                                 if (!res.roomNumber) {
-                                  alert(`Please select a room first in the dropdown, then click here to allot to all ${sameFamilyMembers.length} members of Family ${res.family}.`);
+                                  alert(`Please select a room first in the dropdown, then click here to allot to all ${sameFamilyCount} members of Family ${res.family}.`);
                                   return;
                                 }
                                 if (onBatchAllotFamily) {
                                   onBatchAllotFamily(res.tourRefNo, res.family, res.building || 'Saifee', res.roomNumber);
                                 }
                               }}
-                              className="flex items-center justify-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-[10px] font-extrabold shadow-2xs transition"
-                              title={`Allot ${res.building || 'Saifee'} Room ${res.roomNumber || '...'} to all ${sameFamilyMembers.length} members of Family ${res.family} (Tour: ${res.tourRefNo}) in one go! Each member remains editable if needed.`}
+                              className="flex items-center justify-center gap-0.5 px-1 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-[9px] font-extrabold shadow-2xs transition truncate"
+                              title={`Allot ${res.building || 'Saifee'} Room ${res.roomNumber || '...'} to all ${sameFamilyCount} members of Family ${res.family}`}
                             >
-                              <Users className="w-3 h-3 text-emerald-800" />
-                              <span>Allot to Family ({sameFamilyMembers.length})</span>
+                              <Users className="w-2.5 h-2.5 text-emerald-800 shrink-0" />
+                              <span>Allot Fam ({sameFamilyCount})</span>
                             </button>
                           )}
                         </div>
                       </td>
 
                       {/* 9. Gender */}
-                      <td className="py-3 px-2.5 text-center text-xs md:text-sm font-medium">
+                      <td className={`py-2 px-1 text-center font-medium ${fitColumnsToScreen ? 'w-[48px]' : 'min-w-[80px]'}`}>
                         <select
                           value={res.gender}
                           onChange={(e) => handleFieldChange(res.id, 'gender', e.target.value)}
-                          className="bg-transparent text-xs md:text-sm font-semibold text-stone-700 cursor-pointer"
+                          className="bg-transparent text-[11px] font-semibold text-stone-700 cursor-pointer"
                         >
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
+                          <option value="Male">M</option>
+                          <option value="Female">F</option>
                         </select>
                       </td>
 
-                      {/* 10. Group Lead Name (Wrap text) */}
-                      <td className="py-3 px-3.5 whitespace-normal break-words text-stone-900 text-xs md:text-sm font-semibold min-w-[170px]">
+                      {/* 10. Group Lead Name */}
+                      <td className={`py-2 px-1.5 text-stone-900 font-semibold ${fitColumnsToScreen ? 'w-[100px]' : 'min-w-[170px]'}`}>
                         <input
                           type="text"
                           value={res.groupLeadName}
                           onChange={(e) => handleFieldChange(res.id, 'groupLeadName', e.target.value)}
-                          className="w-full bg-transparent text-stone-900 text-xs md:text-sm font-semibold border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none leading-snug"
+                          title={res.groupLeadName}
+                          className="w-full bg-transparent text-stone-900 text-xs font-semibold border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
                         />
                       </td>
 
                       {/* 11. Arrival Date & Time */}
-                      <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
+                      <td className={`py-2 px-1 text-center text-stone-900 font-medium ${fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'}`}>
                         <input
                           type="date"
                           value={res.arrivalDate ? res.arrivalDate.slice(0, 10) : ''}
                           onChange={(e) => handleFieldChange(res.id, 'arrivalDate', e.target.value)}
-                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
+                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none text-[11px] w-full"
                         />
-                        <div className="flex items-center gap-1 mt-1">
+                        <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200 shadow-2xs hover:border-indigo-400 transition"
-                            title="Edit Arrival Time (select time from dropdown)"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 font-bold text-[9px] border border-indigo-200"
+                            title="Edit Arrival Time"
                           >
                             <Clock className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
                             <select
                               value={res.arrivalTime || '11:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'arrivalTime', e.target.value)}
-                              className="bg-transparent text-indigo-950 font-bold text-[10px] focus:outline-none cursor-pointer"
+                              className="bg-transparent text-indigo-950 font-bold text-[9px] focus:outline-none cursor-pointer"
                             >
                               {STANDARD_TIMES.map((t) => (
                                 <option key={t} value={t}>{t}</option>
@@ -1704,31 +1795,26 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             </select>
                           </span>
                         </div>
-                        {res.rawArrivalStr && res.rawArrivalStr !== res.arrivalTime && (
-                          <div className="text-[10px] text-stone-400 truncate mt-0.5" title={res.rawArrivalStr}>
-                            {res.rawArrivalStr}
-                          </div>
-                        )}
                       </td>
 
                       {/* 12. Departure Date & Time */}
-                      <td className="py-3 px-3 text-stone-900 text-xs md:text-sm font-medium">
+                      <td className={`py-2 px-1 text-center text-stone-900 font-medium ${fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'}`}>
                         <input
                           type="date"
                           value={res.departureDate ? res.departureDate.slice(0, 10) : ''}
                           onChange={(e) => handleFieldChange(res.id, 'departureDate', e.target.value)}
-                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none"
+                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none text-[11px] w-full"
                         />
-                        <div className="flex items-center gap-1 mt-1">
+                        <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[10px] border border-amber-200 shadow-2xs hover:border-amber-400 transition"
-                            title="Edit Departure Time (select time from dropdown)"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-50 text-amber-800 font-bold text-[9px] border border-amber-200"
+                            title="Edit Departure Time"
                           >
                             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                             <select
                               value={res.departureTime || '01:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'departureTime', e.target.value)}
-                              className="bg-transparent text-amber-950 font-bold text-[10px] focus:outline-none cursor-pointer"
+                              className="bg-transparent text-amber-950 font-bold text-[9px] focus:outline-none cursor-pointer"
                             >
                               {STANDARD_TIMES.map((t) => (
                                 <option key={t} value={t}>{t}</option>
@@ -1739,58 +1825,49 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             </select>
                           </span>
                         </div>
-                        {res.rawDepartureStr && res.rawDepartureStr !== res.departureTime && (
-                          <div className="text-[10px] text-stone-400 truncate mt-0.5" title={res.rawDepartureStr}>
-                            {res.rawDepartureStr}
-                          </div>
-                        )}
                       </td>
 
-                      {/* 13. Category (AT THE END! If other than mumineen color it, otherwise no need to mention) */}
-                      <td className="py-3 px-3 text-center min-w-[125px]">
+                      {/* 13. Category */}
+                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[85px]' : 'min-w-[125px]'}`}>
                         {renderCategoryBadge(res)}
                       </td>
 
-                      {/* 14. Main Portal Upload Status: Tick Button */}
-                      <td className="py-3 px-3.5 text-center bg-stone-50/60">
+                      {/* 14. Main Portal Upload Status */}
+                      <td className={`py-2 px-1 text-center bg-stone-50/60 ${fitColumnsToScreen ? 'w-[80px]' : 'min-w-[135px]'}`}>
                         <button
                           type="button"
                           onClick={() =>
                             handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)
                           }
-                          className={`inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition shadow-2xs ${
+                          className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition shadow-2xs cursor-pointer ${
                             res.isUploadedToPortal
                               ? 'bg-[#124E39] text-[#EBD59E] border border-[#124E39]'
                               : 'bg-white hover:bg-stone-100 text-stone-500 border border-stone-300'
                           }`}
-                          title={
-                            res.isUploadedToPortal
-                              ? 'Allotment is uploaded on the main portal. Click to untick.'
-                              : 'Click to mark room allocation uploaded on main portal'
-                          }
+                          title={res.isUploadedToPortal ? 'Uploaded to portal (Click to untick)' : 'Mark uploaded'}
                         >
                           {res.isUploadedToPortal ? (
                             <>
-                              <CheckSquare className="w-4 h-4 text-[#EBD59E]" />
-                              <span>Uploaded ✓</span>
+                              <CheckSquare className="w-3.5 h-3.5 text-[#EBD59E]" />
+                              <span>Done ✓</span>
                             </>
                           ) : (
                             <>
-                              <Square className="w-4 h-4 text-stone-400" />
-                              <span>Pending</span>
+                              <Square className="w-3.5 h-3.5 text-stone-400" />
+                              <span>Tick</span>
                             </>
                           )}
                         </button>
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-2 text-center">
+                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[40px]' : 'w-12'}`}>
                         <div className="flex items-center justify-center gap-1">
                           {isShiftedToA && (
                             <button
                               type="button"
                               onClick={() => onOpenAccountsSlip(res)}
-                              className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"
+                              className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50 rounded transition cursor-pointer"
                               title="Print Accounts Slip"
                             >
                               <FileText className="w-3.5 h-3.5" />
@@ -1799,8 +1876,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setRecordToDelete(res)}
-                            className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                            title={`Delete zaer record for ${res.applicantName}`}
+                            className="p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                            title={`Delete record for ${res.applicantName}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2176,6 +2253,116 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <Users className="w-4 h-4 text-[#EBD59E]" />
                 <span>Update All ({pendingTourDateChange.allTourZaereen.length}) in Tour</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User requirement: Purge Expired (>48h Departure) Records Modal */}
+      {isPurgeExpiredModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-stone-200 flex flex-col max-h-[90vh]">
+            <div className="flex items-start justify-between pb-4 border-b border-stone-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-stone-900">
+                    Purge Expired Records (&gt;48h Departure)
+                  </h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Permanently delete completed zaereen records whose departure date was 48+ hours ago.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPurgeExpiredModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 flex-1 overflow-y-auto">
+              {expiredReservations.length > 0 ? (
+                <>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>
+                      Found <strong>{expiredReservations.length}</strong> record{expiredReservations.length > 1 ? 's' : ''} whose departure was 48 hours or more in the past.
+                    </span>
+                  </div>
+
+                  <div className="border border-stone-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-stone-100 text-stone-700 uppercase text-[10px] sticky top-0">
+                        <tr>
+                          <th className="py-2 px-3">ITS</th>
+                          <th className="py-2 px-3">Applicant Name</th>
+                          <th className="py-2 px-3">Family & Tour</th>
+                          <th className="py-2 px-3">Room</th>
+                          <th className="py-2 px-3 text-right">Departure & Elapsed</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 font-medium text-stone-800">
+                        {expiredReservations.map((r) => {
+                          const elapsed = getDepartureElapsedHours(r);
+                          return (
+                            <tr key={r.id} className="hover:bg-stone-50">
+                              <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.itsId}</td>
+                              <td className="py-2 px-3 font-semibold">{r.applicantName}</td>
+                              <td className="py-2 px-3 text-[11px] text-stone-600 font-mono">
+                                {r.family} • {r.tourRefNo}
+                              </td>
+                              <td className="py-2 px-3 text-emerald-800 font-bold">
+                                {r.roomNumber ? `${r.building} Rm ${r.roomNumber}` : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <span className="font-semibold text-rose-700">
+                                  {r.departureDate} {r.departureTime || ''}
+                                </span>
+                                <span className="block text-[10px] text-stone-400">
+                                  ({elapsed > 0 ? `${elapsed}h ago` : '48h+ passed'})
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="py-8 text-center text-stone-500 text-sm">
+                  No records currently match the criteria (departure date passed for 48+ hours).
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-3">
+              <span className="text-xs text-stone-500">
+                Action is permanent and cleans up the active database.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPurgeExpiredModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePurgeExpiredRecords}
+                  disabled={expiredReservations.length === 0}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete {expiredReservations.length} Expired Record{expiredReservations.length > 1 ? 's' : ''}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

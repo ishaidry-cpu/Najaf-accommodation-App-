@@ -281,3 +281,92 @@ export function countEffectivePax(
   return reservations.reduce((sum, r) => sum + (r ? getReservationEffectivePax(r) : 0), 0);
 }
 
+/**
+ * Extracts the timestamp (in ms) when the guest departed or scheduled departure ended.
+ */
+export function getDepartureTimestamp(r?: {
+  departureDate?: string;
+  departureTime?: string;
+  departureDateTime?: string;
+  rawDepartureStr?: string;
+} | null): number | null {
+  if (!r) return null;
+  const dateStr = (r.departureDate || r.departureDateTime || r.rawDepartureStr || '').trim();
+  if (!dateStr) return null;
+
+  // Extract YYYY-MM-DD
+  const m = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) {
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed.getTime();
+  }
+
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10) - 1;
+  const day = parseInt(m[3], 10);
+
+  // Parse departure time if provided, e.g. "12:00 PM" or "01:00 AM"
+  let hours = 23;
+  let mins = 59;
+  if (r.departureTime) {
+    const tClean = r.departureTime.trim();
+    const m12 = tClean.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (m12) {
+      let h = parseInt(m12[1], 10);
+      const min = parseInt(m12[2], 10);
+      const meridiem = m12[3].toUpperCase();
+      if (meridiem === 'PM' && h < 12) h += 12;
+      if (meridiem === 'AM' && h === 12) h = 0;
+      hours = h;
+      mins = min;
+    } else {
+      const m24 = tClean.match(/(\d{1,2}):(\d{2})/);
+      if (m24) {
+        hours = parseInt(m24[1], 10);
+        mins = parseInt(m24[2], 10);
+      }
+    }
+  }
+
+  const dt = new Date(year, month, day, hours, mins, 0);
+  return dt.getTime();
+}
+
+/**
+ * Checks whether a reservation's departure date/time has passed by at least 48 hours.
+ * User requirement: "Give a button to delete any records which departure date has passed for 48 hours."
+ */
+export function hasDeparturePassed48Hours(
+  r?: {
+    departureDate?: string;
+    departureTime?: string;
+    departureDateTime?: string;
+    rawDepartureStr?: string;
+  } | null,
+  referenceNowMs: number = Date.now()
+): boolean {
+  const depMs = getDepartureTimestamp(r);
+  if (depMs === null) return false;
+  const diffHours = (referenceNowMs - depMs) / (1000 * 60 * 60);
+  return diffHours >= 48;
+}
+
+/**
+ * Returns elapsed hours since departure (rounded to 1 decimal place).
+ */
+export function getDepartureElapsedHours(
+  r?: {
+    departureDate?: string;
+    departureTime?: string;
+    departureDateTime?: string;
+    rawDepartureStr?: string;
+  } | null,
+  referenceNowMs: number = Date.now()
+): number {
+  const depMs = getDepartureTimestamp(r);
+  if (depMs === null) return 0;
+  return Math.round(((referenceNowMs - depMs) / (1000 * 60 * 60)) * 10) / 10;
+}
+
+
