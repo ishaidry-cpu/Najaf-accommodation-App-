@@ -1294,31 +1294,9 @@ export function checkRoomAllotmentAvailability(
     }
   }
 
-  // 1. Same-Day Turnover Notice (Hour difference mentioned, allow allocation on okay/force)
-  if (worstTimingConflict && worstTimingConflict.isSameDateTurnover) {
-    if (!forceAllocate) {
-      return {
-        allowed: false,
-        reason: worstTimingConflict.message,
-        room: targetRoom,
-        maxCapacity,
-        currentOccupancy: 0,
-        remainingSlots: 0,
-        occupants: conflictingReservation ? [conflictingReservation] : [],
-        hasTimingConflict: true,
-        isSevereConflict: false,
-        canForceAllocate: true,
-        timingConflictDiffHours: worstTimingConflict.diffHours,
-        timingConflictMessage: worstTimingConflict.message,
-        depTime: worstTimingConflict.depTimeFormatted,
-        arrTime: worstTimingConflict.arrTimeFormatted,
-        conflictingGuestName: conflictingReservation?.applicantName,
-      };
-    }
-  }
-
   // =========================================================================
-  // NIGHT OVERLAP & CAPACITY/BUFFER CHECK (Room Not Vacant)
+  // NIGHT OVERLAP & CAPACITY/BUFFER CHECK
+  // User requirement: "show the room in allocation when the capicity not reached"
   // =========================================================================
   const overlappingReservations = getRoomBookingsForDuration(
     building,
@@ -1332,22 +1310,12 @@ export function checkRoomAllotmentAvailability(
   const currentOccupancy = countEffectivePax(overlappingReservations);
   const remainingSlots = Math.max(0, maxCapacity - currentOccupancy);
 
-  const candidateRes = excludeReservationId ? reservations.find((r) => r.id === excludeReservationId) : null;
-  const candFamily = (candidateFamily || candidateRes?.family || '').trim().toLowerCase();
-
-  // Check if existing occupants are from a different family or if party exceeds max capacity
-  const hasDifferentFamilyOccupants = overlappingReservations.some(
-    (occ) => !candFamily || (occ.family || '').trim().toLowerCase() !== candFamily
-  );
-
+  // Check if max capacity is exceeded
   const isOverPaxLimit = currentOccupancy + requestedPax > maxCapacity;
-  const isNotVacant = isOverPaxLimit || hasDifferentFamilyOccupants;
 
-  if (isNotVacant && !forceAllocate) {
+  if (isOverPaxLimit && !forceAllocate) {
     const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (Fam #${r.family || '—'})`).join(', ');
-    const reason = isOverPaxLimit
-      ? `Notice: Room ${roomNumber} (${building} Hotel) capacity limit reached (${currentOccupancy}/${maxCapacity} Pax occupied by ${occupantNames || 'guests'}). Adding ${requestedPax} pax exceeds max capacity. Click Okay to allow force allocation.`
-      : `Notice: Room ${roomNumber} (${building} Hotel) is not vacant (${currentOccupancy}/${maxCapacity} Pax). Current occupants: ${occupantNames || 'Other guests'}. Click Okay to allow force allocation.`;
+    const reason = `Notice: Room ${roomNumber} (${building} Hotel) capacity limit reached (${currentOccupancy}/${maxCapacity} Pax occupied by ${occupantNames || 'guests'}). Adding ${requestedPax} pax exceeds max capacity. Click Okay to allow force allocation.`;
 
     return {
       allowed: false,
@@ -1359,21 +1327,27 @@ export function checkRoomAllotmentAvailability(
       occupants: overlappingReservations,
       canForceAllocate: true, // Always allow force allocation with notice!
       isSevereConflict: false,
-      isOverPaxLimit,
+      isOverPaxLimit: true,
       hasTimingConflict: !!worstTimingConflict,
       timingConflictDiffHours: worstTimingConflict?.diffHours,
       timingConflictMessage: worstTimingConflict?.message,
     };
   }
 
+  // 1. Same-Day Turnover Notice (Hour difference mentioned, allow allocation on okay/force)
+  // Only flags conflict when departure time is LATER than arrival time on the same date!
+  const hasTurnoverNotice = worstTimingConflict && worstTimingConflict.isSameDateTurnover && worstTimingConflict.isDepLaterThanArr;
+
   // If force allocated after notice / warning:
   if (forceAllocate) {
     const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (${r.family || 'Fam'})`).join(', ');
     return {
       allowed: true,
-      reason: worstTimingConflict
-        ? `Force Allocated (Turnover Notice Acknowledged): ${worstTimingConflict.message}`
-        : `Force Allocated: Room ${roomNumber} (${building}) occupied by ${occupantNames || 'other guests'}.`,
+      reason: hasTurnoverNotice
+        ? `Force Allocated (Turnover Notice Acknowledged): ${worstTimingConflict!.message}`
+        : isOverPaxLimit
+        ? `Force Allocated: Room ${roomNumber} (${building}) occupied by ${occupantNames || 'other guests'}.`
+        : 'Allotted with confirmation.',
       room: targetRoom,
       maxCapacity,
       currentOccupancy,
@@ -1382,19 +1356,36 @@ export function checkRoomAllotmentAvailability(
       canForceAllocate: true,
       hasTimingConflict: !!worstTimingConflict,
       isSevereConflict: false,
+      isOverPaxLimit,
       timingConflictDiffHours: worstTimingConflict?.diffHours,
       timingConflictMessage: worstTimingConflict?.message,
     };
   }
 
+  // When capacity is NOT reached -> Room is ALLOWED and available in allocation!
   return {
     allowed: true,
+    reason: hasTurnoverNotice
+      ? worstTimingConflict!.message
+      : overlappingReservations.length > 0
+      ? `Partially occupied (${currentOccupancy}/${maxCapacity} Pax, ${remainingSlots} slots remaining)`
+      : worstTimingConflict
+      ? `Turnover ready (${worstTimingConflict.depTimeFormatted} check-out)`
+      : 'Vacant and ready',
     room: targetRoom,
     maxCapacity,
     currentOccupancy,
     remainingSlots,
     occupants: overlappingReservations,
     canForceAllocate: true,
+    isSevereConflict: false,
+    isOverPaxLimit: false,
+    hasTimingConflict: hasTurnoverNotice ? true : false,
+    timingConflictDiffHours: worstTimingConflict?.diffHours,
+    timingConflictMessage: worstTimingConflict?.message,
+    depTime: worstTimingConflict?.depTimeFormatted,
+    arrTime: worstTimingConflict?.arrTimeFormatted,
+    conflictingGuestName: conflictingReservation?.applicantName,
   };
 }
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User } from 'firebase/auth';
 import { 
   Building2, 
@@ -19,7 +19,8 @@ import {
   Upload,
   Printer,
   Download,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 
 import { 
@@ -138,6 +139,27 @@ export default function App() {
   const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
   const [isAddBuildingRoomsOpen, setIsAddBuildingRoomsOpen] = useState(false);
   const [addBuildingRoomsInitialTab, setAddBuildingRoomsInitialTab] = useState<'manual' | 'sheet'>('manual');
+
+  // User request: "when the app is opened first ask to upload excel and then sync the document"
+  const [isStartupPromptOpen, setIsStartupPromptOpen] = useState<boolean>(() => {
+    try {
+      return !sessionStorage.getItem('faiz_startup_prompt_dismissed');
+    } catch {
+      return true;
+    }
+  });
+
+  // User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again"
+  const [dateFullyAllottedSyncPrompt, setDateFullyAllottedSyncPrompt] = useState<{
+    date: string;
+    totalZaereen: number;
+  } | null>(null);
+  const promptedAllottedDatesRef = useRef<Set<string>>(new Set());
+
+  // Post-Excel upload sync prompt
+  const [afterExcelSyncPrompt, setAfterExcelSyncPrompt] = useState<{
+    count: number;
+  } | null>(null);
 
   // Notice dialog for allocation confirmation (Same-day turnover hour difference & Room not vacant force allocation)
   const [allocationNotice, setAllocationNotice] = useState<{
@@ -258,6 +280,37 @@ export default function App() {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+
+  // User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again"
+  useEffect(() => {
+    if (reservations.length === 0) return;
+    const dateMap = new Map<string, Reservation[]>();
+    reservations.forEach((r) => {
+      const arr = (r.arrivalDate || '').slice(0, 10);
+      if (arr) {
+        const list = dateMap.get(arr) || [];
+        list.push(r);
+        dateMap.set(arr, list);
+      }
+    });
+
+    dateMap.forEach((resList, dateKey) => {
+      if (resList.length > 0) {
+        const allAllotted = resList.every((r) => !!r.roomNumber && r.roomNumber.trim() !== '');
+        if (allAllotted) {
+          if (!promptedAllottedDatesRef.current.has(dateKey)) {
+            promptedAllottedDatesRef.current.add(dateKey);
+            setDateFullyAllottedSyncPrompt({
+              date: dateKey,
+              totalZaereen: resList.length,
+            });
+          }
+        } else {
+          promptedAllottedDatesRef.current.delete(dateKey);
+        }
+      }
+    });
+  }, [reservations]);
 
   // Sync to Google Sheets if configured
   const triggerAutoSync = useCallback(
@@ -693,7 +746,7 @@ export default function App() {
         target.tourRefNo
       );
 
-      if (!check.allowed) {
+      if (!check.allowed || check.hasTimingConflict || check.isOverPaxLimit) {
         const isTurnover = !!check.hasTimingConflict;
         const diffText = check.timingConflictDiffHours !== undefined ? `${check.timingConflictDiffHours}` : undefined;
         const noticeTitle = isTurnover
@@ -920,6 +973,8 @@ export default function App() {
     showToast(feedbackToast);
     triggerAutoSync(finalReservations, rooms);
     setActiveTab('reservations');
+    // Prompt to sync document with Google Sheet after uploading Excel
+    setAfterExcelSyncPrompt({ count: finalReservations.length });
   };
 
   // Room status updater (e.g. block / unblock)
@@ -1306,6 +1361,226 @@ export default function App() {
               >
                 <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
                 <span>Okay — Allow Allocation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User request: "when the app is opened first ask to upload excel and then sync the document" */}
+      {isStartupPromptOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#FAF7F2] rounded-2xl border border-[#C5A059]/40 shadow-2xl max-w-lg w-full overflow-hidden text-stone-800">
+            <div className="bg-[#124E39] text-white p-5 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-white/10 border border-[#C5A059]/40 text-[#EBD59E]">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#EBD59E] tracking-tight">
+                    Welcome to Faiz-e-Husaini Reception Desk
+                  </h3>
+                  <p className="text-xs text-emerald-100">
+                    Daily Accommodation & Lodging Operations
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStartupPromptOpen(false);
+                  try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
+                }}
+                className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                To begin your reception shift with the latest pilgrim data, please follow the initial sequence:
+              </p>
+
+              <div className="space-y-2.5">
+                {/* Step 1: Upload Excel */}
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-white border border-stone-200 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    1
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-xs text-stone-900">Upload Zaereen Excel Sheet</div>
+                    <div className="text-[11px] text-stone-600">
+                      Import your primary Excel sheet with ITS, Name, Family #, Tour ID, and dates.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsStartupPromptOpen(false);
+                      try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
+                      setIsExcelUploadOpen(true);
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
+                    <span>Upload Excel</span>
+                  </button>
+                </div>
+
+                {/* Step 2: Sync Document */}
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-white border border-stone-200 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-xs text-stone-900">Sync with Google Sheets</div>
+                    <div className="text-[11px] text-stone-600">
+                      Sync and update the document with latest room availability and pilgrim roster.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsStartupPromptOpen(false);
+                      try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
+                      handleQuickSync();
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-emerald-400 shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-[#124E39]" />
+                    <span>Sync Document</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-stone-200 text-xs">
+                <span className="text-[11px] text-stone-500">
+                  {reservations.length} Zaereen loaded • {rooms.length} Rooms available
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsStartupPromptOpen(false);
+                    try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
+                  }}
+                  className="px-3 py-1.5 rounded-lg font-semibold text-stone-700 hover:text-stone-950 hover:bg-stone-200/60 transition cursor-pointer"
+                >
+                  Continue to Lodging Grid
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again" */}
+      {dateFullyAllottedSyncPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base leading-tight">
+                    All Rooms Allotted for {dateFullyAllottedSyncPrompt.date}
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    {dateFullyAllottedSyncPrompt.totalZaereen} Zaereen arriving on this date are 100% allotted
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDateFullyAllottedSyncPrompt(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-700 leading-relaxed">
+              All zaereen for arrival date <strong>{dateFullyAllottedSyncPrompt.date}</strong> now have room allotments confirmed!
+              Would you like to sync now with Google Sheets so that when the app is opened again the list is updated and ready to be synced again?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setDateFullyAllottedSyncPrompt(null)}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFullyAllottedSyncPrompt(null);
+                  handleQuickSync();
+                }}
+                className="px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>Sync with Google Sheet</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-Excel upload follow-up sync prompt */}
+      {afterExcelSyncPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-800">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base leading-tight">
+                    Excel Sheet Imported Successfully
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    {afterExcelSyncPrompt.count} Zaereen records in database
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAfterExcelSyncPrompt(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-700 leading-relaxed">
+              Your Excel file was imported and saved to the backend database.
+              Would you like to sync this document with Google Sheets now so that your changes are backed up and updated?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setAfterExcelSyncPrompt(null)}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
+              >
+                Skip / Later
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAfterExcelSyncPrompt(null);
+                  handleQuickSync();
+                }}
+                className="px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span>Sync with Google Sheet</span>
               </button>
             </div>
           </div>

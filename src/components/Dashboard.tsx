@@ -390,14 +390,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </button>
 
           <button
-            onClick={onOpenReceptionSlip}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-[#124E39]/30 shadow-sm transition"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Reception Daily Slip</span>
-          </button>
-
-          <button
             onClick={onDownloadTemplate}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
             title="Download sample Excel template with required columns"

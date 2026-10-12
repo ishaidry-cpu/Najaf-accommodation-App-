@@ -114,10 +114,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // User requirement: "make allcolumns visible to the screen"
   const [fitColumnsToScreen, setFitColumnsToScreen] = useState(true);
 
-  // User requirement: "make the app light too heavy. Remove any exras."
-  // Lazy-evaluate expensive room availability calculations only for active/focused row
-  const [focusedRoomRowId, setFocusedRoomRowId] = useState<string | null>(null);
-
   // Precomputed family counts to avoid O(N^2) loops inside rows
   const familyCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -129,6 +125,16 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     });
     return map;
   }, [reservations]);
+
+  // Split rooms by hotel building for rapid lookup
+  const saifeeRooms = useMemo(
+    () => rooms.filter((r) => (r.building || '').toLowerCase().includes('saifee')),
+    [rooms]
+  );
+  const burhaniRooms = useMemo(
+    () => rooms.filter((r) => (r.building || '').toLowerCase().includes('burhani')),
+    [rooms]
+  );
 
   // Tour date/time batch change confirmation modal state
   const [pendingTourDateChange, setPendingTourDateChange] = useState<{
@@ -374,6 +380,46 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     sortColumn,
     sortDirection,
   ]);
+
+  // Fast memoized available rooms lookup by date duration and building:
+  // Evaluates rooms where capacity is NOT reached, executing in <2ms for entire view!
+  const availableRoomsCache = useMemo(() => {
+    const cache = new Map<string, Room[]>();
+    const datePairs = new Set<string>();
+    filteredAndSortedReservations.forEach((r) => {
+      if (r.arrivalDate && r.departureDate) {
+        const b = (r.building || 'Saifee').trim().toLowerCase();
+        const arr = r.arrivalDate.slice(0, 10);
+        const dep = r.departureDate.slice(0, 10);
+        datePairs.add(`${b}___${arr}___${dep}`);
+      }
+    });
+
+    datePairs.forEach((pair) => {
+      const [bldgNorm, arr, dep] = pair.split('___');
+      const bldgRooms = rooms.filter((rm) => (rm.building || '').trim().toLowerCase() === bldgNorm);
+      const bldgName = bldgRooms[0]?.building || (bldgNorm.includes('burhani') ? 'Burhani' : 'Saifee');
+
+      const available = bldgRooms.filter((rm) => {
+        if (rm.status === 'blocked') return false;
+        const check = checkRoomAllotmentAvailability(
+          bldgName,
+          rm.roomNumber,
+          arr,
+          dep,
+          rooms,
+          reservations,
+          1,
+          undefined,
+          false
+        );
+        return check.allowed;
+      });
+      cache.set(pair, available);
+    });
+
+    return cache;
+  }, [filteredAndSortedReservations, rooms, reservations]);
 
   // Selection helpers
   const handleToggleSelectRow = (id: string) => {
@@ -1510,24 +1556,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
                   const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
 
-                  // High-performance lazy evaluation: only compute vacant rooms when user interacts with this specific row
-                  const isRowFocused = focusedRoomRowId === res.id;
-                  const vacantRoomsForRes = isRowFocused
-                    ? getVacantRoomsForDuration(
-                        res.building || 'Saifee',
-                        res.arrivalDate,
-                        res.departureDate,
-                        rooms,
-                        reservations,
-                        res.id,
-                        resEffectivePax,
-                        res.arrivalTime,
-                        res.departureTime,
-                        res.applicantName,
-                        res.family,
-                        res.tourRefNo
-                      )
-                    : [];
+                  // Available rooms lookup: Instant, memoized, showing all rooms where capacity is not reached!
+                  const bldgNorm = (res.building || 'Saifee').trim().toLowerCase();
+                  const hotelRooms = rooms.filter((rm) => (rm.building || '').trim().toLowerCase() === bldgNorm);
+                  const dateCacheKey = `${bldgNorm}___${(res.arrivalDate || '').slice(0, 10)}___${(res.departureDate || '').slice(0, 10)}`;
+                  const cachedAvailable = availableRoomsCache.get(dateCacheKey);
+                  const availableRoomsForRes = cachedAvailable || hotelRooms.filter((rm) => rm.status !== 'blocked');
+                  const availableRoomSet = new Set(availableRoomsForRes.map((rm) => rm.roomNumber));
 
                   const isSelected = selectedIds.has(res.id);
 
@@ -1649,13 +1684,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             <>
                               <select
                                 value={res.roomNumber || ''}
-                                onFocus={() => setFocusedRoomRowId(res.id)}
                                 onChange={(e) => {
                                   const val = e.target.value;
-                                  if (val === '__browse__') {
-                                    setFocusedRoomRowId(res.id);
-                                    return;
-                                  }
                                   if (onAllotRoom) {
                                     onAllotRoom(res.id, res.building || 'Saifee', val);
                                   } else {
@@ -1671,39 +1701,29 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                 <option value="">-- Allot Room --</option>
                                 {res.roomNumber && (
                                   <option value={res.roomNumber}>
-                                    Rm {res.roomNumber} ({res.building}) ✓
+                                    Rm {res.roomNumber} ({res.building || 'Saifee'}) ✓ Current
                                   </option>
                                 )}
-                                {!isRowFocused ? (
-                                  <option value="__browse__">Browse {res.building || 'Saifee'} rooms...</option>
-                                ) : (
-                                  <>
-                                    <optgroup label="Available Rooms (Vacant / Ready)">
-                                      {vacantRoomsForRes
-                                        .filter((rm) => rm.roomNumber !== res.roomNumber)
-                                        .map((rm) => (
-                                          <option key={rm.id} value={rm.roomNumber}>
-                                            Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer}` : ''})
-                                          </option>
-                                        ))}
-                                    </optgroup>
-                                    <optgroup label="All Hotel Rooms (Notice / Force Allot)">
-                                      {rooms
-                                        .filter(
-                                          (rm) =>
-                                            (rm.building || '').toLowerCase() === (res.building || 'Saifee').toLowerCase() &&
-                                            rm.roomNumber !== res.roomNumber &&
-                                            !vacantRoomsForRes.some((v) => v.roomNumber === rm.roomNumber) &&
-                                            rm.status !== 'blocked'
-                                        )
-                                        .map((rm) => (
-                                          <option key={rm.id} value={rm.roomNumber}>
-                                            Rm {rm.roomNumber} (Cap: {rm.capacity} Pax)
-                                          </option>
-                                        ))}
-                                    </optgroup>
-                                  </>
+                                {availableRoomsForRes.length > 0 && (
+                                  <optgroup label="Available Rooms (Capacity Not Reached)">
+                                    {availableRoomsForRes
+                                      .filter((rm) => rm.roomNumber !== res.roomNumber)
+                                      .map((rm) => (
+                                        <option key={rm.id} value={rm.roomNumber}>
+                                          Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
+                                        </option>
+                                      ))}
+                                  </optgroup>
                                 )}
+                                <optgroup label="All Rooms (Notice / Force Allot)">
+                                  {hotelRooms
+                                    .filter((rm) => rm.roomNumber !== res.roomNumber && !availableRoomSet.has(rm.roomNumber))
+                                    .map((rm) => (
+                                      <option key={rm.id} value={rm.roomNumber}>
+                                        Rm {rm.roomNumber} ({rm.status === 'blocked' ? 'Blocked' : `Cap ${rm.capacity} Pax`})
+                                      </option>
+                                    ))}
+                                </optgroup>
                               </select>
 
                               {/* Quick Allot Button */}

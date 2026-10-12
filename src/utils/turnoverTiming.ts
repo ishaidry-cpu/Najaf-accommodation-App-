@@ -207,8 +207,8 @@ export function checkTurnoverTimingConflict(
       diffHours: gapHours,
       isSevereConflict: false,
       canForceAllocate: true,
-      warningLevel: 'warning',
-      message: `Same-Day Turnover Notice on ${dDate}: Departing pax ${depName} leaves at ${depFormatted} and arriving pax ${arrName} arrives at ${arrFormatted} (${gapText} hour difference). Click Okay to allow allocation.`,
+      warningLevel: 'none',
+      message: `Same-Day Turnover on ${dDate}: Departing pax ${depName} leaves at ${depFormatted} and arriving pax ${arrName} arrives at ${arrFormatted} (${gapText} hour gap). Ready for normal turnover.`,
     };
   }
 
@@ -294,17 +294,27 @@ export function getDepartureTimestamp(r?: {
   const dateStr = (r.departureDate || r.departureDateTime || r.rawDepartureStr || '').trim();
   if (!dateStr) return null;
 
-  // Extract YYYY-MM-DD
-  const m = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (!m) {
+  // Extract YYYY-MM-DD or DD/MM/YYYY
+  let year: number;
+  let month: number;
+  let day: number;
+
+  const mIso = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  const mDmy = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+
+  if (mIso) {
+    year = parseInt(mIso[1], 10);
+    month = parseInt(mIso[2], 10) - 1;
+    day = parseInt(mIso[3], 10);
+  } else if (mDmy) {
+    day = parseInt(mDmy[1], 10);
+    month = parseInt(mDmy[2], 10) - 1;
+    year = parseInt(mDmy[3], 10);
+  } else {
     const parsed = new Date(dateStr);
     if (isNaN(parsed.getTime())) return null;
     return parsed.getTime();
   }
-
-  const year = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10) - 1;
-  const day = parseInt(m[3], 10);
 
   // Parse departure time if provided, e.g. "12:00 PM" or "01:00 AM"
   let hours = 23;

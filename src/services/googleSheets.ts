@@ -681,6 +681,11 @@ export async function twoWaySyncWithGoogleSheet(
 
     if (match) {
       skippedSheetDuplicatesCount++;
+      // User requirement: "do not delete rooms allottment automatically."
+      // If the incoming sheet row has no room number, preserve the app's existing room allotment!
+      const finalRoomNumber = (sr.roomNumber && sr.roomNumber.trim() !== '') ? sr.roomNumber.trim() : match.roomNumber;
+      const finalBuilding = (sr.building && sr.building.trim() !== '') ? sr.building.trim() : match.building;
+
       const updated: Reservation = {
         ...match,
         applicantName: sr.applicantName || match.applicantName,
@@ -688,8 +693,8 @@ export async function twoWaySyncWithGoogleSheet(
         gender: sr.gender || match.gender,
         officeName: sr.officeName || match.officeName,
         family: sr.family || match.family,
-        roomNumber: sr.roomNumber !== undefined ? sr.roomNumber : match.roomNumber,
-        building: sr.building || match.building,
+        roomNumber: finalRoomNumber,
+        building: finalBuilding,
         paxCount: sr.paxCount || match.paxCount,
         arrivalDate: sr.arrivalDate || match.arrivalDate,
         departureDate: sr.departureDate || match.departureDate,
@@ -716,6 +721,7 @@ export async function twoWaySyncWithGoogleSheet(
   const mergedReservations = deduplicateReservationList(Array.from(mergedResMap.values()));
 
   // 4. Merge rooms
+  // User requirement: "do not change the room capacity automatically."
   const mergedRoomsMap = new Map<string, Room>();
   currentRooms.forEach((rm) => mergedRoomsMap.set(rm.id, rm));
   sheetRooms.forEach((srm) => {
@@ -726,7 +732,9 @@ export async function twoWaySyncWithGoogleSheet(
       mergedRoomsMap.set(match.id, {
         ...match,
         status: srm.status || match.status,
-        capacity: srm.capacity || match.capacity,
+        capacity: match.capacity, // DO NOT change room capacity automatically!
+        pax: match.pax || match.capacity,
+        buffer: match.buffer,
         blockedReason: srm.blockedReason ?? match.blockedReason,
         notes: srm.notes ?? match.notes,
       });
@@ -1592,18 +1600,18 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       id,
       roomNumber,
       building,
-      floor,
-      floorLabel: `Floor ${floor}`,
-      capacity,
-      pax: capacity,
-      buffer,
-      category,
+      floor: existing ? existing.floor : floor,
+      floorLabel: existing ? existing.floorLabel : `Floor ${floor}`,
+      capacity: existing ? existing.capacity : capacity, // Do not change room capacity automatically!
+      pax: existing ? (existing.pax || existing.capacity) : capacity,
+      buffer: existing ? (existing.buffer ?? buffer) : buffer,
+      category: existing ? existing.category : category,
       status,
-      toiletType,
-      bedType,
+      toiletType: existing ? existing.toiletType : toiletType,
+      bedType: existing ? existing.bedType : bedType,
       blockedReason: blockedReason || (status === 'blocked' ? 'Maintenance hold' : undefined),
-      notes,
-      amenities: ['Air Conditioning', 'WiFi', 'Clean Linens'],
+      notes: notes ?? existing?.notes,
+      amenities: existing?.amenities || ['Air Conditioning', 'WiFi', 'Clean Linens'],
     });
   }
 

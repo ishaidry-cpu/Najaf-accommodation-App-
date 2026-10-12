@@ -137,7 +137,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         targetReservation.tourRefNo
       );
 
-      const canFit = check.allowed;
+      const canFit = (check.allowed || remainingSlots >= requestedPax) && room.status !== 'blocked';
       const isFull = currentOccupancy >= maxCap;
       const isBlocked = room.status === 'blocked';
       const hasTimingConflict = !!check.hasTimingConflict;
