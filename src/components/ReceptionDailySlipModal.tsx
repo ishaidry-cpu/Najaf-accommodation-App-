@@ -338,16 +338,25 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
 
-  // Set smart default date only when modal is initially opened
+  // Set smart default date when modal is opened or if currently selected date has 0 activity while records exist
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen && !prevIsOpenRef.current) {
+    if (!isOpen) {
+      prevIsOpenRef.current = false;
+      return;
+    }
+    const currentActivity = activeDatesSummary.datesMap.get(selectedDate)?.total || 0;
+    const initialActivity = activeDatesSummary.datesMap.get(initialDate)?.total || 0;
+
+    if (!prevIsOpenRef.current) {
       if (initialDate) {
         setSelectedDate(initialDate);
       }
+    } else if (currentActivity === 0 && initialActivity > 0 && initialDate !== selectedDate) {
+      setSelectedDate(initialDate);
     }
-    prevIsOpenRef.current = isOpen;
-  }, [isOpen, initialDate]);
+    prevIsOpenRef.current = true;
+  }, [isOpen, initialDate, selectedDate, activeDatesSummary]);
 
   // Filter arrivals on selected date using robust normalization
   const arrivalsOnDate = safeReservations.filter((r) => {
@@ -1136,6 +1145,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Room_Turnover_Prep_Slip_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
+    if (res.blobUrl) {
+      setPdfPreviewBlobUrl(res.blobUrl);
+    }
   };
 
   // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
@@ -1322,6 +1334,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
+    if (res.blobUrl) {
+      setPdfPreviewBlobUrl(res.blobUrl);
+    }
   };
 
   // Download Tour Roster PDF (Requirement 2) - bifurcated as per hotels
@@ -1518,6 +1533,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Tour_Roster_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
+    if (res.blobUrl) {
+      setPdfPreviewBlobUrl(res.blobUrl);
+    }
   };
 
   // Download Worker Room Operations Summary Sheet (Requirement 3) - bifurcated as per hotels
@@ -1694,6 +1712,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Worker_Room_Operations_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
+    if (res.blobUrl) {
+      setPdfPreviewBlobUrl(res.blobUrl);
+    }
   };
 
   // Download Assistant Portal Allotment Checklist PDF (Requirement 4) - bifurcated as per hotels
@@ -1862,6 +1883,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Assistant_Portal_Upload_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
+    if (res.blobUrl) {
+      setPdfPreviewBlobUrl(res.blobUrl);
+    }
   };
 
   if (!isOpen) return null;

@@ -840,6 +840,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <span>Upload Excel</span>
           </button>
 
+          {/* Reception Daily Operational Slip & PDFs */}
+          {onOpenReceptionSlip && (
+            <button
+              onClick={onOpenReceptionSlip}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
+              title="Open Reception Operational Slip & PDFs: Turnover Schedule, Tour Roster, Worker Room Sheet, Assistant Portal"
+            >
+              <Printer className="w-4 h-4 text-[#EBD59E]" />
+              <span>Reception Slip & PDFs</span>
+            </button>
+          )}
+
           {/* Download Template */}
           <button
             onClick={onDownloadTemplate}

@@ -832,3 +832,264 @@ export function generateArrivalsPdfForDate(
   const fileName = `Faiz_Husaini_Arrivals_Manifest_${arrivalDate}${hotelSuffix}.pdf`;
   return saveOrDownloadPdf(doc, fileName);
 }
+
+/**
+ * Standalone PDF Export: Faiz-e-Husaini Daily Room Turnover & Preparation Reception Slip
+ */
+export function exportDailyReceptionSlipPdf(
+  reservations: Reservation[],
+  rooms: Room[],
+  operationalDate: string,
+  buildingFilter: 'ALL' | 'Saifee' | 'Burhani' = 'ALL'
+): PdfDownloadResult {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4',
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(18, 78, 57);
+  doc.rect(0, 0, pageWidth, 55, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('FAIZ-E-HUSAINI — ROOM TURNOVER & PREPARATION RECEPTION SLIP', pageWidth / 2, 24, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(235, 213, 158);
+  doc.text(`OPERATIONAL DATE: ${operationalDate} • SCOPE: ${buildingFilter === 'ALL' ? 'JOINED & BIFURCATED (SAIFEE 70 & BURHANI 44)' : `${buildingFilter.toUpperCase()} HOTEL`}`, pageWidth / 2, 42, { align: 'center' });
+
+  const activeRes = reservations.filter((r) => {
+    const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+    const dep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
+    return arr === operationalDate || dep === operationalDate;
+  });
+
+  const rows = activeRes.map((r, idx) => {
+    const isArr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr) === operationalDate;
+    const isDep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr) === operationalDate;
+    const event = isArr && isDep ? 'SAME-DAY TURNOVER' : isArr ? 'NEW ARRIVAL' : 'DEPARTURE';
+    const roomStr = r.roomNumber ? `Room ${r.roomNumber} (${r.building || ''})` : 'UNALLOTTED';
+    const arrTime = (r.arrivalTime || '11:00 AM').trim();
+    const depTime = (r.departureTime || '01:00 AM').trim();
+    return [
+      String(idx + 1),
+      roomStr,
+      `Fam #${r.family || '—'}`,
+      `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+      event,
+      `Arr: ${arrTime}`,
+      `Dep: ${depTime}`,
+      `Tour: ${r.tourRefNo || '—'}\nOffice: ${r.officeName || '—'}`,
+      r.category || 'Mumineen',
+      '[ ] Cleaned  [ ] Linen  [ ] Key',
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 75,
+    head: [['#', 'Room # & Hotel', 'Family #', 'Guest & ITS', 'Turnover Event', 'Arrival Time', 'Departure Time', 'Tour & Office', 'Category', 'Sign-off']],
+    body: rows.length > 0 ? rows : [[`No turnover activity recorded on ${operationalDate}`, '', '', '', '', '', '', '', '', '']],
+    margin: { left: 20, right: 20 },
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+    headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+  });
+
+  const hotelSuffix = buildingFilter !== 'ALL' ? `_${buildingFilter}_Hotel` : '_Joined_Bifurcated_Hotels';
+  const fileName = `Faiz_Husaini_Room_Turnover_Prep_Slip_${operationalDate}${hotelSuffix}.pdf`;
+  return saveOrDownloadPdf(doc, fileName);
+}
+
+/**
+ * Standalone PDF Export: Tour Roster PDF Grouped by Tour ID & Chronologically Sorted
+ */
+export function exportTourRosterPdf(
+  reservations: Reservation[],
+  rooms: Room[],
+  operationalDate: string,
+  buildingFilter: 'ALL' | 'Saifee' | 'Burhani' = 'ALL'
+): PdfDownloadResult {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4',
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(18, 78, 57);
+  doc.rect(0, 0, pageWidth, 55, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('FAIZ-E-HUSAINI — DAILY TOUR ROSTER', pageWidth / 2, 24, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(235, 213, 158);
+  doc.text(`OPERATIONAL DATE: ${operationalDate} • GROUPED BY TOUR ID & SORTED BY TIMING`, pageWidth / 2, 42, { align: 'center' });
+
+  const activeRes = reservations.filter((r) => {
+    const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+    const dep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
+    return arr === operationalDate || dep === operationalDate;
+  });
+
+  const rows = activeRes.map((r, idx) => {
+    const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED';
+    return [
+      String(idx + 1),
+      r.tourRefNo || 'Unassigned Tour',
+      r.officeName || '—',
+      roomStr,
+      `Fam #${r.family || '—'}`,
+      `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+      `Arr: ${r.arrivalDate || '—'} (${r.arrivalTime || '11:00 AM'})`,
+      `Dep: ${r.departureDate || '—'} (${r.departureTime || '01:00 AM'})`,
+      r.category || 'Mumineen',
+      r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 75,
+    head: [['#', 'Tour ID', 'Office', 'Room & Hotel', 'Family #', 'Guest & ITS', 'Arrival Date & Time', 'Departure Date & Time', 'Category', 'Money (B➔A)']],
+    body: rows.length > 0 ? rows : [[`No tours scheduled on ${operationalDate}`, '', '', '', '', '', '', '', '', '']],
+    margin: { left: 20, right: 20 },
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+    headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+  });
+
+  const hotelSuffix = buildingFilter !== 'ALL' ? `_${buildingFilter}_Hotel` : '_Joined_Bifurcated_Hotels';
+  const fileName = `Faiz_Husaini_Tour_Roster_${operationalDate}${hotelSuffix}.pdf`;
+  return saveOrDownloadPdf(doc, fileName);
+}
+
+/**
+ * Standalone PDF Export: Worker Room Operations & Timing Sheet
+ */
+export function exportWorkerSheetPdf(
+  reservations: Reservation[],
+  rooms: Room[],
+  operationalDate: string,
+  buildingFilter: 'ALL' | 'Saifee' | 'Burhani' = 'ALL'
+): PdfDownloadResult {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4',
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(18, 78, 57);
+  doc.rect(0, 0, pageWidth, 55, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('FAIZ-E-HUSAINI — WORKER ROOM OPERATIONS & TIMING SHEET', pageWidth / 2, 24, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(235, 213, 158);
+  doc.text(`HOUSEKEEPING & ROOM ATTENDANTS EXECUTION SHEET • DATE: ${operationalDate}`, pageWidth / 2, 42, { align: 'center' });
+
+  const activeRes = reservations.filter((r) => {
+    const arr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+    const dep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
+    return arr === operationalDate || dep === operationalDate;
+  });
+
+  const rows = activeRes.map((r) => {
+    const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED';
+    const isArr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr) === operationalDate;
+    const isDep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr) === operationalDate;
+    const event = isArr && isDep ? 'TURNOVER' : isArr ? 'ARRIVAL' : 'CHECKOUT';
+    const timing = isArr && isDep
+      ? `Dep: ${r.departureTime || '01:00 AM'} ➔ Arr: ${r.arrivalTime || '11:00 AM'}`
+      : isArr ? `Arr: ${r.arrivalTime || '11:00 AM'}` : `Dep: ${r.departureTime || '01:00 AM'}`;
+    return [
+      roomStr,
+      `${event}\n${timing}`,
+      `Office: ${r.officeName || '—'}\nTour: ${r.tourRefNo || '—'}`,
+      `Fam #${r.family || '—'}`,
+      `${r.applicantName}\nITS: ${r.itsId || '—'}`,
+      '[ ] Linen Fresh\n[ ] Toilet Sanitized\n[ ] Wajba & Cards Ready\nSign: ___________',
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 75,
+    head: [['Room # & Hotel (Base)', 'Event & Timings', 'Office Name & Tour ID', 'Family #', 'Guest & ITS', 'Worker Checklist & Sign-off']],
+    body: rows.length > 0 ? rows : [[`No room operations scheduled for workers on ${operationalDate}`, '', '', '', '', '']],
+    margin: { left: 20, right: 20 },
+    theme: 'grid',
+    styles: { fontSize: 8.5, cellPadding: 5, textColor: [30, 30, 30] },
+    headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+  });
+
+  const hotelSuffix = buildingFilter !== 'ALL' ? `_${buildingFilter}_Hotel` : '_Joined_Bifurcated_Hotels';
+  const fileName = `Faiz_Husaini_Worker_Room_Operations_${operationalDate}${hotelSuffix}.pdf`;
+  return saveOrDownloadPdf(doc, fileName);
+}
+
+/**
+ * Standalone PDF Export: Assistant Portal Upload Sheet
+ */
+export function exportPortalUploadPdf(
+  reservations: Reservation[],
+  rooms: Room[],
+  operationalDate: string,
+  buildingFilter: 'ALL' | 'Saifee' | 'Burhani' = 'ALL'
+): PdfDownloadResult {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'pt',
+    format: 'a4',
+  });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(18, 78, 57);
+  doc.rect(0, 0, pageWidth, 55, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST', pageWidth / 2, 24, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(235, 213, 158);
+  doc.text(`TOUR & FAMILY ALLOTMENT VERIFICATION • OPERATIONAL DATE: ${operationalDate}`, pageWidth / 2, 42, { align: 'center' });
+
+  const rows = reservations.map((r, idx) => {
+    const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Needs Room]';
+    const isUploaded = r.isUploadedToPortal ? '[✓] Uploaded' : '[  ] Pending';
+    const arrTime = r.arrivalTime || '11:00 AM';
+    const depTime = r.departureTime || '01:00 AM';
+    return [
+      String(idx + 1),
+      r.tourRefNo || 'Unassigned Tour',
+      `Fam #${r.family || '—'}`,
+      roomStr,
+      `${r.applicantName}\n(Office: ${r.officeName || '—'})`,
+      r.itsId || '—',
+      `${r.age || '—'} / ${r.gender || '—'}`,
+      r.category || 'Mumineen',
+      `Arr: ${r.arrivalDate || '—'} (${arrTime})\nDep: ${r.departureDate || '—'} (${depTime})`,
+      isUploaded,
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 75,
+    head: [['#', 'Tour ID', 'Family #', 'Allotted Room & Building', 'Applicant / Member Name', 'ITS ID', 'Age / Sex', 'Category', 'Arrival ➔ Departure', 'Portal Status']],
+    body: rows.length > 0 ? rows : [[`No zaereen found for portal verification`, '', '', '', '', '', '', '', '', '']],
+    margin: { left: 20, right: 20 },
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
+    headStyles: { fillColor: [18, 78, 57], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+  });
+
+  const hotelSuffix = buildingFilter !== 'ALL' ? `_${buildingFilter}_Hotel` : '_Joined_Bifurcated_Hotels';
+  const fileName = `Faiz_Husaini_Assistant_Portal_Upload_${operationalDate}${hotelSuffix}.pdf`;
+  return saveOrDownloadPdf(doc, fileName);
+}
