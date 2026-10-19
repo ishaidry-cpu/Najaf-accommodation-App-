@@ -397,8 +397,6 @@ export function generateAdministrativePdf(
         (res.departureDate || res.departureDateTime || '').replace('T', ' '),
         res.exitPort || 'Najaf (NJF)',
         `${res.building || 'Unallotted'}\nRm ${res.roomNumber || '—'}`,
-        res.category || (res.shiftToCategoryA ? 'B ➔ A (NIZAAM)' : 'Category A'),
-        res.moneyGiven === 'Yes' ? 'YES (Given)' : 'NO (Pending)',
       ]);
 
       autoTable(doc, {
@@ -414,11 +412,9 @@ export function generateAdministrativePdf(
             'Departure Date & Time',
             'Exit Port',
             'Building & Room',
-            'Shift Status',
-            'Money Given?',
           ],
         ],
-        body: tableBody.length > 0 ? tableBody : [['No zaereen records found for this hotel section', '', '', '', '', '', '', '', '', '', '']],
+        body: tableBody.length > 0 ? tableBody : [['No zaereen records found for this hotel section', '', '', '', '', '', '', '', '']],
         theme: 'grid',
         headStyles: {
           fillColor: [15, 23, 42],
@@ -429,27 +425,6 @@ export function generateAdministrativePdf(
         bodyStyles: {
           fontSize: 8,
           cellPadding: 4,
-        },
-        didParseCell: (data) => {
-          if (data.section === 'body') {
-            if (data.column.index === 9) {
-              data.cell.styles.textColor = [180, 83, 9];
-              data.cell.styles.fontStyle = 'bold';
-              data.cell.styles.fillColor = [254, 243, 199];
-            }
-            if (data.column.index === 10) {
-              const val = data.cell.raw as string;
-              if (val.includes('YES')) {
-                data.cell.styles.textColor = [22, 101, 52];
-                data.cell.styles.fontStyle = 'bold';
-                data.cell.styles.fillColor = [240, 253, 244];
-              } else {
-                data.cell.styles.textColor = [185, 28, 28];
-                data.cell.styles.fontStyle = 'bold';
-                data.cell.styles.fillColor = [254, 242, 242];
-              }
-            }
-          }
         },
         margin: { left: 30, right: 30 },
       });
@@ -543,12 +518,28 @@ export interface PdfDownloadResult {
 }
 
 export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResult {
+  let blobUrl = '';
   try {
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (typeof window !== 'undefined') {
       const blob = doc.output('blob');
-      const blobUrl = URL.createObjectURL(blob);
+      blobUrl = URL.createObjectURL(blob);
+    }
+  } catch (e) {
+    console.warn('Could not create blob URL:', e);
+  }
 
-      // Primary: DOM download link
+  let saved = false;
+  // 1. Primary: jsPDF native save
+  try {
+    doc.save(fileName);
+    saved = true;
+  } catch (err) {
+    console.warn('doc.save failed, trying anchor download fallback:', err);
+  }
+
+  // 2. Secondary fallback / reinforcement: DOM download link
+  if (blobUrl && typeof document !== 'undefined') {
+    try {
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = fileName;
@@ -556,27 +547,18 @@ export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResu
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-
       setTimeout(() => {
         try {
           document.body.removeChild(link);
         } catch (e) {}
-      }, 2000);
-
-      return { fileName, blobUrl, success: true };
-    } else {
-      return { fileName, blobUrl: '', success: true };
-    }
-  } catch (err) {
-    console.error('saveOrDownloadPdf error:', err);
-    try {
-      doc.save(fileName);
-      return { fileName, blobUrl: '', success: true };
+      }, 3000);
+      saved = true;
     } catch (e2) {
-      console.error('doc.save also failed:', e2);
-      return { fileName, blobUrl: '', success: false };
+      console.warn('DOM link click failed:', e2);
     }
   }
+
+  return { fileName, blobUrl, success: saved };
 }
 
 /**

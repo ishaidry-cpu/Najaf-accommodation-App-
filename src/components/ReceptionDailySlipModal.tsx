@@ -35,6 +35,7 @@ import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { normalizeDate } from '../services/excelService';
 import { saveOrDownloadPdf, PdfDownloadResult } from '../services/pdfExport';
 import { parseTimeToMinutes, isInfant, countEffectivePax, getReservationEffectivePax } from '../utils/turnoverTiming';
+import { getStoredRooms, generateSaifeeBurhani114Rooms } from '../services/storage';
 
 // Safe invocation of jspdf-autotable to prevent runtime errors across bundler environments
 function safeAutoTable(doc: jsPDF, options: any) {
@@ -215,7 +216,41 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   onBatchUpdateReservations,
 }) => {
   const safeReservations = useMemo(() => (Array.isArray(reservations) ? reservations : []), [reservations]);
-  const safeRooms = useMemo(() => (Array.isArray(rooms) ? rooms : []), [rooms]);
+  const safeRooms = useMemo(() => {
+    let baseList = Array.isArray(rooms) && rooms.length > 0 ? rooms : getStoredRooms();
+    if (!baseList || baseList.length === 0) {
+      baseList = generateSaifeeBurhani114Rooms();
+    }
+    const existingKeys = new Set(
+      baseList.map((r) => `${normalizeHotelBuilding(r.building)}_${(r.roomNumber || '').trim().toLowerCase()}`)
+    );
+    const extraRooms: Room[] = [];
+    safeReservations.forEach((r) => {
+      if (r.roomNumber && r.roomNumber.trim()) {
+        const bldgNorm = normalizeHotelBuilding(r.building) || 'Saifee';
+        const rKey = `${bldgNorm}_${r.roomNumber.trim().toLowerCase()}`;
+        if (!existingKeys.has(rKey)) {
+          existingKeys.add(rKey);
+          extraRooms.push({
+            id: `extra-room-${bldgNorm}-${r.roomNumber.trim()}`,
+            building: bldgNorm,
+            roomNumber: r.roomNumber.trim(),
+            capacity: 2,
+            pax: 2,
+            buffer: 1,
+            toiletType: 'WESTERN',
+            bedType: 'Single Beds',
+            category: 'Category B (Standard)',
+            floor: 1,
+            floorLabel: 'Floor 1',
+            status: 'available',
+            amenities: ['AC', 'Attached Bath'],
+          });
+        }
+      }
+    });
+    return [...baseList, ...extraRooms];
+  }, [rooms, safeReservations]);
 
   // Today's date in YYYY-MM-DD
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -338,25 +373,20 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
 
-  // Set smart default date when modal is opened or if currently selected date has 0 activity while records exist
+  // Initialize smart default date only when modal is first opened
   const prevIsOpenRef = useRef(false);
   useEffect(() => {
     if (!isOpen) {
       prevIsOpenRef.current = false;
       return;
     }
-    const currentActivity = activeDatesSummary.datesMap.get(selectedDate)?.total || 0;
-    const initialActivity = activeDatesSummary.datesMap.get(initialDate)?.total || 0;
-
     if (!prevIsOpenRef.current) {
       if (initialDate) {
         setSelectedDate(initialDate);
       }
-    } else if (currentActivity === 0 && initialActivity > 0 && initialDate !== selectedDate) {
-      setSelectedDate(initialDate);
+      prevIsOpenRef.current = true;
     }
-    prevIsOpenRef.current = true;
-  }, [isOpen, initialDate, selectedDate, activeDatesSummary]);
+  }, [isOpen, initialDate]);
 
   // Filter arrivals on selected date using robust normalization
   const arrivalsOnDate = safeReservations.filter((r) => {
@@ -638,7 +668,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       if (isDep && isArr) {
         // Priority Turnover
-        const depTime = getReservationDepartureTime(item.deps[0], '01:00 AM');
+        const depTime = getReservationDepartureTime(item.deps[0], '12:00 PM');
         const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
         const office = item.arrs[0]?.officeName || item.deps[0]?.officeName || 'Main Office';
         const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
@@ -663,7 +693,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         });
       } else if (isDep) {
         // Checkout Cleaning
-        const depTime = getReservationDepartureTime(item.deps[0], '01:00 AM');
+        const depTime = getReservationDepartureTime(item.deps[0], '12:00 PM');
         const arrTime = getReservationArrivalTime(item.deps[0], '11:00 AM');
         const office = item.deps[0]?.officeName || 'Main Office';
         const tour = (item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
@@ -690,7 +720,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       } else if (isArr) {
         // New Arrival Prep
         const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
-        const depTime = getReservationDepartureTime(item.arrs[0], '01:00 AM');
+        const depTime = getReservationDepartureTime(item.arrs[0], '12:00 PM');
         const office = item.arrs[0]?.officeName || 'Main Office';
         const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set(item.arrs.map((x) => x.family).filter(Boolean))).join(', ');
@@ -825,6 +855,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     return tourIds;
   }, [safeReservations]);
 
+  // Auto-default Tab 4 scope to 'all' once if selected date has 0 active tours but system has tours
+  const hasAutoSetPortalScopeRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === 'portal_upload' && !hasAutoSetPortalScopeRef.current) {
+      if (dateTourIds.size === 0 && allSystemTourIds.size > 0) {
+        setPortalFilterScope('all');
+      }
+      hasAutoSetPortalScopeRef.current = true;
+    }
+  }, [activeTab, dateTourIds.size, allSystemTourIds.size]);
+
   // Grouped Tour data for Assistant Portal Upload (Requirement 4)
   const portalUploadData = useMemo(() => {
     const list = safeReservations.filter((r) => {
@@ -901,6 +942,19 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     groups.sort((a, b) => (a.tourRefNo || '').localeCompare(b.tourRefNo || '', undefined, { numeric: true }));
     return groups;
   }, [safeReservations, portalFilterScope, dateTourIds, portalSearchQuery, portalHotelFilter]);
+
+  // Dynamic counts for Tab 4 Building filter buttons under current scope
+  const portalScopeCount = useMemo(() => {
+    const pool = safeReservations.filter((r) => {
+      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
+      return portalFilterScope === 'all' ? true : dateTourIds.has(tour);
+    });
+    const all = pool.length;
+    const saifee = pool.filter((r) => normalizeHotelBuilding(r.building) === 'Saifee').length;
+    const burhani = pool.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani').length;
+    const unallotted = pool.filter((r) => !r.roomNumber || r.roomNumber.trim() === '').length;
+    return { all, saifee, burhani, unallotted };
+  }, [safeReservations, portalFilterScope, dateTourIds]);
 
   // Worker task checklist toggle handlers
   const toggleWorkerSubtask = (itemId: string, taskKey: 'linen' | 'toilet' | 'cards') => {
@@ -1036,9 +1090,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
         const depText = item.deps.length > 0
           ? item.deps.map((d) => {
-              const timeStr = getReservationDepartureTime(d, '01:00 AM');
+              const timeStr = getReservationDepartureTime(d, '12:00 PM');
               const famPax = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
               return `• ${d.applicantName} (ITS: ${d.itsId})\n  DEP: ${timeStr} | Fam #${d.family || '—'} (${famPax} Pax) | Tour: ${d.tourRefNo || '—'}`;
+            }).join('\n\n')
+          : item.inHouse.length > 0 && item.arrs.length === 0
+          ? item.inHouse.map((ih) => {
+              const timeStr = getReservationDepartureTime(ih, '12:00 PM');
+              return `• In-House Stay: ${ih.applicantName}\n  Dep: ${ih.departureDate || '—'} (${timeStr})`;
             }).join('\n\n')
           : '— None';
 
@@ -1047,6 +1106,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               const timeStr = getReservationArrivalTime(a, '11:00 AM');
               const famPax = item.arrs.filter(x => (x.family || '').trim() === (a.family || '').trim()).length;
               return `• ${a.applicantName} (ITS: ${a.itsId})\n  ARR: ${timeStr} | Fam #${a.family || '—'} (${famPax} Pax) | Tour: ${a.tourRefNo || '—'}`;
+            }).join('\n\n')
+          : item.inHouse.length > 0 && item.deps.length === 0
+          ? item.inHouse.map((ih) => {
+              const timeStr = getReservationArrivalTime(ih, '11:00 AM');
+              return `• In-House Stay: ${ih.applicantName}\n  Arr was: ${ih.arrivalDate || '—'} (${timeStr})`;
             }).join('\n\n')
           : '— None';
 
@@ -1145,9 +1209,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Room_Turnover_Prep_Slip_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
-    if (res.blobUrl) {
-      setPdfPreviewBlobUrl(res.blobUrl);
-    }
   };
 
   // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
@@ -1216,7 +1277,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       sortedByRooms.forEach((r) => {
         const paxInfo = getRoomPaxInfo(r);
         const arrTime = getReservationArrivalTime(r, '11:00 AM');
-        const depTime = getReservationDepartureTime(r, '01:00 AM');
+        const depTime = getReservationDepartureTime(r, '12:00 PM');
         const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Assign Rm]';
         rows.push([
           String(counter++),
@@ -1334,9 +1395,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
-    if (res.blobUrl) {
-      setPdfPreviewBlobUrl(res.blobUrl);
-    }
   };
 
   // Download Tour Roster PDF (Requirement 2) - bifurcated as per hotels
@@ -1384,13 +1442,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(235, 213, 158);
       doc.text(`${hotelTitle} — ARRIVALS (${arrList.length} Zaereen • ${arrGroups.length} Tours)`, 30, y + 15);
 
-      const arrivalRows: string[][] = [];
+      const arrivalRows: any[] = [];
       arrGroups.forEach((group) => {
+        // Tour ID Group Banner Row with Chronological Timing Window
+        arrivalRows.push([
+          {
+            content: `TOUR ID: ${group.tourRefNo}   •   OFFICE: ${group.officeName}   •   ARRIVAL WINDOW: ${group.earliestTime}${group.latestTime !== group.earliestTime ? ` to ${group.latestTime}` : ''}   (${group.reservations.length} Zaereen • ${group.uniqueFamiliesCount} Families • Chronologically Sequenced)`,
+            colSpan: 8,
+            styles: { fillColor: [18, 78, 57], textColor: [235, 213, 158], fontStyle: 'bold', fontSize: 8.5 }
+          }
+        ]);
+
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
           const arrTime = getReservationArrivalTime(r, '11:00 AM');
-          const depTime = getReservationDepartureTime(r, '01:00 AM');
-          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED';
+          const depTime = getReservationDepartureTime(r, '12:00 PM');
+          const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED\n[Assign Rm]';
           arrivalRows.push([
             `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
             roomStr,
@@ -1399,14 +1466,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             `Arr: ${arrTime}`,
             `Dep: ${r.departureDate || '—'}\n(${depTime})`,
             r.category || 'Mumineen',
-            r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
+            '[ ] ID Verified\n[ ] Keys Handed\n[ ] Wajba Given',
           ]);
         });
       });
 
       safeAutoTable(doc, {
         startY: y + 26,
-        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date & Time', 'Category', 'Money (B➔A)']],
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date & Time', 'Category', 'Reception Sign-off']],
         body: arrivalRows.length > 0 ? arrivalRows : [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
@@ -1420,7 +1487,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
           5: { fontSize: 8, cellWidth: 70, halign: 'center' },
           6: { fontSize: 8, cellWidth: 65, halign: 'center' },
-          7: { fontSize: 8, cellWidth: 65, halign: 'center' },
+          7: { fontSize: 7.5, cellWidth: 85 },
         },
       });
 
@@ -1440,11 +1507,20 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(255, 255, 255);
       doc.text(`${hotelTitle} — DEPARTURES (${depList.length} Zaereen • ${depGroups.length} Tours)`, 30, y + 15);
 
-      const departureRows: string[][] = [];
+      const departureRows: any[] = [];
       depGroups.forEach((group) => {
+        // Tour ID Group Banner Row with Chronological Timing Window
+        departureRows.push([
+          {
+            content: `TOUR ID: ${group.tourRefNo}   •   OFFICE: ${group.officeName}   •   DEPARTURE WINDOW: ${group.earliestTime}${group.latestTime !== group.earliestTime ? ` to ${group.latestTime}` : ''}   (${group.reservations.length} Zaereen • ${group.uniqueFamiliesCount} Families • Chronologically Sequenced)`,
+            colSpan: 7,
+            styles: { fillColor: [50, 60, 70], textColor: [235, 213, 158], fontStyle: 'bold', fontSize: 8.5 }
+          }
+        ]);
+
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
-          const depTime = getReservationDepartureTime(r, '01:00 AM');
+          const depTime = getReservationDepartureTime(r, '12:00 PM');
           const arrTime = getReservationArrivalTime(r, '11:00 AM');
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : '—';
           departureRows.push([
@@ -1454,14 +1530,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             `${r.applicantName}\nITS: ${r.itsId || '—'}`,
             `Dep: ${depTime}`,
             `Arr: ${r.arrivalDate || '—'}\n(${arrTime})`,
-            'Clear key cards & prepare for cleaning',
+            '[ ] Keys Retained\n[ ] Room Vacated\n[ ] Cleaning Notified',
           ]);
         });
       });
 
       safeAutoTable(doc, {
         startY: y + 26,
-        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date & Time', 'Turnover / Check-out Notes']],
+        head: [['Tour ID & Office', 'Room # & Hotel', 'Family # & Pax', 'Applicant / Guest & ITS', 'Departure Time', 'Arrival Date & Time', 'Turnover / Check-out Sign-off']],
         body: departureRows.length > 0 ? departureRows : [['No departures scheduled for this section on this date', '', '', '', '', '', '']],
         margin: { left: 20, right: 20 },
         theme: 'grid',
@@ -1474,7 +1550,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           3: { fontStyle: 'bold', fontSize: 8, cellWidth: 125 },
           4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
           5: { fontSize: 8, cellWidth: 70, halign: 'center' },
-          6: { fontSize: 8, cellWidth: 130 },
+          6: { fontSize: 7.5, cellWidth: 125 },
         },
       });
 
@@ -1533,9 +1609,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Tour_Roster_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
-    if (res.blobUrl) {
-      setPdfPreviewBlobUrl(res.blobUrl);
-    }
   };
 
   // Download Worker Room Operations Summary Sheet (Requirement 3) - bifurcated as per hotels
@@ -1712,17 +1785,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Worker_Room_Operations_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
-    if (res.blobUrl) {
-      setPdfPreviewBlobUrl(res.blobUrl);
-    }
   };
 
-  // Download Assistant Portal Allotment Checklist PDF (Requirement 4) - bifurcated as per hotels
-  const handleDownloadPortalUploadPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
-    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
-      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+  // Download Assistant Portal Allotment Checklist PDF (Requirement 4) - bifurcated as per hotels & unallotted
+  const handleDownloadPortalUploadPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | 'unallotted' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' | 'unallotted' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL' || targetHotelInput === 'unallotted'
         ? targetHotelInput
-        : activeHotelFilter;
+        : portalHotelFilter;
 
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -1746,15 +1816,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
     };
 
-    const dateTours = new Set<string>();
-    const checkAndAdd = (r: Reservation) => {
-      const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
-      dateTours.add(tour);
-    };
-    arrivalsOnDate.forEach(checkAndAdd);
-    departuresOnDate.forEach(checkAndAdd);
-    inHouseOnDate.forEach(checkAndAdd);
-
     const renderPortalSection = (hotelTitle: string, buildingName: string, startAtY: number) => {
       doc.setFillColor(18, 78, 57);
       doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
@@ -1765,14 +1826,29 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       const portalReservations = safeReservations.filter((r) => {
         const tour = (r.tourRefNo || (r as any).tourId || 'Unassigned Tour').trim() || 'Unassigned Tour';
-        const matchesScope = portalFilterScope === 'all' ? true : dateTours.has(tour);
+        const matchesScope = portalFilterScope === 'all' ? true : dateTourIds.has(tour);
         if (!matchesScope) return false;
-        if (buildingName !== 'ALL') {
+
+        if (buildingName === 'unallotted') {
+          if (r.roomNumber && r.roomNumber.trim() !== '') return false;
+        } else if (buildingName !== 'ALL') {
           const rBldg = normalizeHotelBuilding(r.building);
           const matchesBldg = rBldg === buildingName;
-          const isUnallotted = !r.roomNumber || r.roomNumber.trim() === '';
-          if (!matchesBldg && !isUnallotted) return false;
+          if (!matchesBldg) return false;
         }
+
+        if (portalSearchQuery.trim()) {
+          const q = portalSearchQuery.toLowerCase();
+          const mTour = tour.toLowerCase().includes(q);
+          const mFam = (r.family || '').toLowerCase().includes(q);
+          const mName = (r.applicantName || '').toLowerCase().includes(q);
+          const mIts = (r.itsId || '').toLowerCase().includes(q);
+          const mRoom = (r.roomNumber || '').toLowerCase().includes(q);
+          const mOffice = (r.officeName || '').toLowerCase().includes(q);
+          const mBldg = (r.building || '').toLowerCase().includes(q);
+          if (!mTour && !mFam && !mName && !mIts && !mRoom && !mOffice && !mBldg) return false;
+        }
+
         return true;
       });
 
@@ -1785,7 +1861,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       });
 
       const sortedTours = Array.from(tourMap.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      const portalRows: string[][] = [];
+      const portalRows: any[] = [];
       let counter = 1;
 
       sortedTours.forEach((tourId) => {
@@ -1796,11 +1872,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
         });
 
+        const arrTimes = items.map((r) => getReservationArrivalTime(r, '11:00 AM')).filter(Boolean);
+        const depTimes = items.map((r) => getReservationDepartureTime(r, '12:00 PM')).filter(Boolean);
+        const earliestArr = arrTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0] || '—';
+        const earliestDep = depTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0] || '—';
+        const famCount = new Set(items.map((x) => x.family).filter(Boolean)).size;
+        const allotted = items.filter((x) => x.roomNumber && x.roomNumber.trim() !== '').length;
+
+        // Distinct Tour ID Group Banner in PDF
+        portalRows.push([
+          {
+            content: `TOUR ID: ${tourId}   •   OFFICE: ${items[0]?.officeName || '—'}   •   TIMING: Arr ${earliestArr} / Dep ${earliestDep}   (${items.length} Zaereen • ${famCount} Families • ${allotted}/${items.length} Rooms Allotted)`,
+            colSpan: 10,
+            styles: { fillColor: [18, 78, 57], textColor: [235, 213, 158], fontStyle: 'bold', fontSize: 8.5 }
+          }
+        ]);
+
         items.forEach((r) => {
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building} Hotel)` : 'UNALLOTTED\n[Needs Room]';
           const isUploaded = (portalUploadedMap[r.id] ?? r.isUploadedToPortal) ? '[✓] Uploaded' : '[  ] Pending';
           const arrTime = getReservationArrivalTime(r, '11:00 AM');
-          const depTime = getReservationDepartureTime(r, '01:00 AM');
+          const depTime = getReservationDepartureTime(r, '12:00 PM');
           const arrDep = `Arr: ${r.arrivalDate || '—'}${arrTime ? ` (${arrTime})` : ''}\nDep: ${r.departureDate || '—'}${depTime ? ` (${depTime})` : ''}`;
 
           portalRows.push([
@@ -1851,9 +1943,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     } else if (targetHotel === 'Burhani') {
       renderHeader('FAIZ-E-HUSAINI — BURHANI HOTEL PORTAL UPLOAD CHECKLIST', `DATE: ${selectedDate} • SEPARATE PRINT • BURHANI (44 ROOMS)`);
       renderPortalSection('BURHANI HOTEL — ASSISTANT PORTAL ALLOTMENT CHECKLIST', 'Burhani', currentY);
+    } else if (targetHotel === 'unallotted') {
+      renderHeader('FAIZ-E-HUSAINI — UNALLOTTED ZAEREEN PORTAL UPLOAD CHECKLIST', `PENDING ROOM ALLOTMENTS • SCOPE: ${portalFilterScope.toUpperCase()}`);
+      renderPortalSection('UNALLOTTED ZAEREEN (NEEDS ROOM ALLOTMENT)', 'unallotted', currentY);
     } else {
       // Complete Master Tour Verification (All Hotels & Unallotted)
-      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (MASTER TOUR VERIFICATION)', `TOUR & FAMILY ALLOTMENT VERIFICATION • OPERATIONAL DATE: ${selectedDate}`);
+      renderHeader('FAIZ-E-HUSAINI — ASSISTANT PORTAL UPLOAD CHECKLIST (MASTER TOUR VERIFICATION)', `TOUR & FAMILY ALLOTMENT VERIFICATION • OPERATIONAL DATE: ${selectedDate} • SCOPE: ${portalFilterScope.toUpperCase()}`);
       renderPortalSection('ALL TOURS & HOTELS — ASSISTANT PORTAL ALLOTMENT VERIFICATION', 'ALL', currentY);
     }
 
@@ -1883,9 +1978,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     const fileName = `Faiz_Husaini_Assistant_Portal_Upload_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
-    if (res.blobUrl) {
-      setPdfPreviewBlobUrl(res.blobUrl);
-    }
   };
 
   if (!isOpen) return null;
@@ -2073,7 +2165,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               <button
                 type="button"
-                onClick={() => handleDownloadPortalUploadPdf(activeHotelFilter)}
+                onClick={() => handleDownloadPortalUploadPdf(portalHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'portal_upload'
                     ? 'bg-blue-800 text-white ring-2 ring-blue-300'
@@ -2209,7 +2301,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   onClick={() => {
                     if (activeTab === 'roster') handleDownloadRosterPdf(activeHotelFilter);
                     else if (activeTab === 'worker_summary') handleDownloadWorkerPdf(activeHotelFilter);
-                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(activeHotelFilter);
+                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(portalHotelFilter);
                     else handleDownloadPdf(activeHotelFilter);
                   }}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer whitespace-nowrap"
@@ -2529,7 +2621,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         const tourRefText = item.arrs[0]?.tourRefNo || item.deps[0]?.tourRefNo || item.inHouse[0]?.tourRefNo || '—';
 
                         // Unique departure and arrival operational times
-                        const depTimes = item.deps.map(d => getReservationDepartureTime(d, '01:00 AM')).filter(Boolean);
+                        const depTimes = item.deps.map(d => getReservationDepartureTime(d, '12:00 PM')).filter(Boolean);
                         const arrTimes = item.arrs.map(a => getReservationArrivalTime(a, '11:00 AM')).filter(Boolean);
                         const depTimeDisplay = depTimes.length > 0 ? Array.from(new Set(depTimes)).join(', ') : '';
                         const arrTimeDisplay = arrTimes.length > 0 ? Array.from(new Set(arrTimes)).join(', ') : '';
@@ -2626,7 +2718,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <div className="space-y-2">
                                   {item.deps.map((d, dIdx) => {
                                     const famPaxInRoom = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
-                                    const depTime = getReservationDepartureTime(d, '01:00 AM');
+                                    const depTime = getReservationDepartureTime(d, '12:00 PM');
                                     return (
                                       <div key={dIdx} className="p-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 shadow-2xs space-y-1.5">
                                         <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
@@ -2870,14 +2962,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <th className="py-2.5 px-3">Tour Ref</th>
                                 <th className="py-2.5 px-3">Office</th>
                                 <th className="py-2.5 px-3">Category</th>
-                                <th className="py-2.5 px-3">Money Given (B➔A)</th>
+                                <th className="py-2.5 px-3">Verification & Keys</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-200">
                               {tourGroup.reservations.map((r, i) => {
                                 const paxInfo = getRoomPaxInfo(r);
                                 const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                                const depTime = getReservationDepartureTime(r, '01:00 AM');
+                                const depTime = getReservationDepartureTime(r, '12:00 PM');
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
                                     <td className="py-2.5 px-3 font-mono font-black text-sm text-[#124E39]">
@@ -2910,13 +3002,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
                                     <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
                                     <td className="py-2 px-3">
-                                      {r.category === 'B to A' || r.shiftToCategoryA ? (
-                                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
-                                          {r.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending ✗'}
-                                        </span>
-                                      ) : (
-                                        <span className="text-stone-400">—</span>
-                                      )}
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        <span>Key Ready</span>
+                                      </span>
                                     </td>
                                   </tr>
                                 );
@@ -2957,7 +3046,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         <th className="py-2.5 px-3">Tour Ref</th>
                         <th className="py-2.5 px-3">Office</th>
                         <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3">Money Given (B➔A)</th>
+                        <th className="py-2.5 px-3">Verification & Keys</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-200">
@@ -2965,7 +3054,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         sortedArrivalsList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
                           const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                          const depTime = getReservationDepartureTime(r, '01:00 AM');
+                          const depTime = getReservationDepartureTime(r, '12:00 PM');
                           return (
                             <tr key={i} className="hover:bg-stone-50">
                               <td className="py-2.5 px-3 font-mono font-black text-sm text-[#124E39]">
@@ -2998,13 +3087,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <td className="py-2 px-3 text-stone-700">{r.officeName}</td>
                               <td className="py-2 px-3 text-stone-800 font-semibold">{r.category}</td>
                               <td className="py-2 px-3">
-                                {r.category === 'B to A' || r.shiftToCategoryA ? (
-                                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${r.moneyGiven === 'Yes' ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
-                                    {r.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending ✗'}
-                                  </span>
-                                ) : (
-                                  <span className="text-stone-400">—</span>
-                                )}
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>Key Ready</span>
+                                </span>
                               </td>
                             </tr>
                           );
@@ -3898,7 +3984,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   <div className="flex items-center rounded-xl bg-blue-800 p-0.5 border border-blue-600 shadow-xs">
                     <button
                       type="button"
-                      onClick={() => handleDownloadPortalUploadPdf(portalHotelFilter === 'unallotted' ? 'ALL' : portalHotelFilter)}
+                      onClick={() => handleDownloadPortalUploadPdf(portalHotelFilter)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:bg-blue-900 transition cursor-pointer"
                       title="Download Portal Allotment Verification PDF for selected hotel scope"
                     >
@@ -3909,15 +3995,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <button
                       type="button"
                       onClick={() => handleDownloadPortalUploadPdf('ALL')}
-                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      className="px-2 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
                       title="Download Master Tour Verification PDF (All Hotels)"
                     >
-                      All (114)
+                      All Hotels
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDownloadPortalUploadPdf('Saifee')}
-                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      className="px-2 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
                       title="Download Saifee Hotel Portal Upload PDF"
                     >
                       Saifee
@@ -3925,10 +4011,18 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <button
                       type="button"
                       onClick={() => handleDownloadPortalUploadPdf('Burhani')}
-                      className="px-2.5 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
+                      className="px-2 py-1 text-xs font-semibold text-blue-100 hover:text-white hover:bg-blue-900 rounded-md transition cursor-pointer"
                       title="Download Burhani Hotel Portal Upload PDF"
                     >
                       Burhani
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPortalUploadPdf('unallotted')}
+                      className="px-2 py-1 text-xs font-semibold text-amber-200 hover:text-white hover:bg-amber-900/60 rounded-md transition cursor-pointer"
+                      title="Download Unallotted Zaereen Verification PDF"
+                    >
+                      Unallotted
                     </button>
                   </div>
                 </div>
@@ -4002,7 +4096,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
-                    All (114)
+                    All Hotels ({portalScopeCount.all})
                   </button>
                   <button
                     type="button"
@@ -4013,7 +4107,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
-                    Saifee (70)
+                    Saifee ({portalScopeCount.saifee})
                   </button>
                   <button
                     type="button"
@@ -4024,7 +4118,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
-                    Burhani (44)
+                    Burhani ({portalScopeCount.burhani})
                   </button>
                   <button
                     type="button"
@@ -4035,7 +4129,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         : 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50'
                     }`}
                   >
-                    Unallotted
+                    Unallotted ({portalScopeCount.unallotted})
                   </button>
                 </div>
 
@@ -4097,7 +4191,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           {/* Tour Timings with Clock Badges */}
                           {(() => {
                             const arrTimes = tourGroup.reservations.map(r => getReservationArrivalTime(r, '11:00 AM')).filter(Boolean);
-                            const depTimes = tourGroup.reservations.map(r => getReservationDepartureTime(r, '01:00 AM')).filter(Boolean);
+                            const depTimes = tourGroup.reservations.map(r => getReservationDepartureTime(r, '12:00 PM')).filter(Boolean);
                             const earliestArr = arrTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
                             const earliestDep = depTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
                             return (
@@ -4180,7 +4274,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                             {tourGroup.reservations.map((r, rIdx) => {
                               const isUploaded = !!(portalUploadedMap[r.id] ?? r.isUploadedToPortal);
                               const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                              const depTime = getReservationDepartureTime(r, '01:00 AM');
+                              const depTime = getReservationDepartureTime(r, '12:00 PM');
                               return (
                                 <tr key={r.id || rIdx} className={`hover:bg-stone-50 ${isUploaded ? 'bg-blue-50/40' : ''}`}>
                                   <td className="py-2.5 px-3 text-center text-stone-400 font-mono text-[11px]">
@@ -4343,6 +4437,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      const iframe = document.getElementById('pdf-preview-iframe') as HTMLIFrameElement;
+                      if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                      } else {
+                        window.print();
+                      }
+                    } catch {
+                      window.print();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white shadow-xs transition cursor-pointer"
+                  title="Print document directly"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Print Document</span>
+                </button>
                 <a
                   href={pdfPreviewBlobUrl}
                   download={pdfDownloadStatus?.fileName || 'document.pdf'}
@@ -4361,12 +4476,23 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 </button>
               </div>
             </div>
-            <div className="flex-1 w-full bg-stone-200 p-1">
+            <div className="flex-1 w-full bg-stone-200 p-1 flex flex-col">
               <iframe
+                id="pdf-preview-iframe"
                 src={pdfPreviewBlobUrl}
-                className="w-full h-full rounded-xl border border-stone-300 bg-white"
+                className="w-full flex-1 rounded-xl border border-stone-300 bg-white"
                 title="Generated PDF Document Preview"
               />
+              <div className="p-2 text-center text-[11px] text-stone-500 bg-stone-100 border-t border-stone-300 flex items-center justify-center gap-2">
+                <span>Can't view the document inside the browser?</span>
+                <a
+                  href={pdfPreviewBlobUrl}
+                  download={pdfDownloadStatus?.fileName || 'document.pdf'}
+                  className="text-emerald-800 font-bold underline hover:text-emerald-950"
+                >
+                  Click here to download directly to your computer
+                </a>
+              </div>
             </div>
           </div>
         </div>
