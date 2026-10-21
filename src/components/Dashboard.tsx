@@ -28,7 +28,8 @@ import {
   Search,
   Plus,
   ArrowRightLeft,
-  History
+  History,
+  UploadCloud
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -443,7 +444,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <ArrowUpRight className="w-3 h-3 text-emerald-700" />
               </button>
 
-              {/* 1-Click Sync */}
+              {/* Push to Sheet Button */}
               <button
                 onClick={onQuickSync}
                 disabled={sheetsConfig?.isSyncing}
@@ -452,10 +453,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
                     : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white'
                 }`}
-                title="One-Click Two-Way Sync: Updates Google Sheet and App with Latest Changes"
+                title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-spin' : ''}`} />
-                <span>{sheetsConfig?.isSyncing ? 'Syncing...' : '1-Click Sync'}</span>
+                <UploadCloud className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-pulse' : ''}`} />
+                <span>{sheetsConfig?.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
               </button>
             </>
           ) : (

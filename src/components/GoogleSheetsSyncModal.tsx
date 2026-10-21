@@ -181,14 +181,25 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     }
   };
 
-  // Pull rooms & reservations from linked sheet
-  const handlePullFromSheet = async () => {
+  const [showPullConfirm, setShowPullConfirm] = useState(false);
+
+  // Pull rooms & reservations from linked sheet (with confirmation)
+  const handleInitiatePull = () => {
+    if (!accessToken || !sheetsConfig.spreadsheetId) {
+      setFeedback({ type: 'error', message: 'No Google Sheet linked or not signed in.' });
+      return;
+    }
+    setShowPullConfirm(true);
+  };
+
+  const handleExecutePullFromSheet = async () => {
     if (!accessToken || !sheetsConfig.spreadsheetId) {
       setFeedback({ type: 'error', message: 'No Google Sheet linked or not signed in.' });
       return;
     }
 
     setIsPulling(true);
+    setShowPullConfirm(false);
     setFeedback(null);
 
     try {
@@ -197,8 +208,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         fetchReservationsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms, reservations),
       ]);
 
-      if (onRoomsFetched) onRoomsFetched(freshRooms);
-      if (onReservationsFetched) onReservationsFetched(freshRes);
+      if (onRoomsFetched && freshRooms.length > 0) onRoomsFetched(freshRooms);
+      if (onReservationsFetched && freshRes.length > 0) onReservationsFetched(freshRes);
 
       onUpdateConfig({
         ...sheetsConfig,
@@ -208,7 +219,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
       setFeedback({
         type: 'success',
-        message: `Loaded ${freshRooms.length} rooms and ${freshRes.length} reservations from Google Sheets!`,
+        message: `Successfully imported all data: ${freshRes.length} zaereen (including all family members & allotted rooms) and ${freshRooms.length} rooms from Google Sheet!`,
       });
     } catch (err: any) {
       setFeedback({
@@ -466,40 +477,64 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-2 pt-1">
-                {/* Primary 1-Click Sync */}
+              {/* Action Buttons: Only Push to Sheet & Confirmed Pull from Sheet (No Two-Way Sync) */}
+              <div className="space-y-2.5 pt-1">
+                {/* Pull Confirmation Dialog */}
+                {showPullConfirm && (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-950 space-y-2.5 shadow-sm animate-in fade-in zoom-in-95 duration-150">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold text-xs text-amber-950">Confirm Pull & Import from Google Sheet</div>
+                        <div className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                          Are you sure you want to pull data from Google Sheet? This will import all zaereen, all family members, and their allotted rooms from your linked sheet into the app.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPullConfirm(false)}
+                        className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-stone-100 text-stone-700 font-bold text-xs transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExecutePullFromSheet}
+                        disabled={isPulling}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <DownloadCloud className={`w-3.5 h-3.5 ${isPulling ? 'animate-bounce' : ''}`} />
+                        <span>{isPulling ? 'Importing All Data...' : 'Yes, Pull & Import All Data'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Primary Button: Push to Sheet */}
                 <button
-                  onClick={handleTwoWaySync}
+                  type="button"
+                  onClick={handlePushToSheet}
                   disabled={isProcessing || isPulling}
                   className="w-full py-2.5 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
+                  title="Push latest app state, Zaereen grid, and room allotments to Google Sheet"
                 >
-                  <RefreshCw className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-spin' : ''}`} />
-                  <span>{isProcessing ? 'Syncing Two-Way...' : '1-Click Two-Way Sync (Sync App & Google Sheet)'}</span>
+                  <UploadCloud className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-pulse' : ''}`} />
+                  <span>{isProcessing ? 'Pushing to Sheet...' : 'Push to Sheet (Export App to Google Sheet)'}</span>
                 </button>
 
-                {/* Secondary Individual Pull / Push buttons */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handlePullFromSheet}
-                    disabled={isPulling || isProcessing}
-                    className="py-1.5 px-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition text-[11px]"
-                    title="Pull latest rows from Google Sheet only"
-                  >
-                    <DownloadCloud className={`w-3.5 h-3.5 text-stone-600 ${isPulling ? 'animate-bounce' : ''}`} />
-                    <span>Pull from Sheet</span>
-                  </button>
-
-                  <button
-                    onClick={handlePushToSheet}
-                    disabled={isProcessing || isPulling}
-                    className="py-1.5 px-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition text-[11px]"
-                    title="Push current app state to Google Sheet only"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Push to Sheet</span>
-                  </button>
-                </div>
+                {/* Secondary Button: Pull from Sheet (With Confirmation) */}
+                <button
+                  type="button"
+                  onClick={handleInitiatePull}
+                  disabled={isPulling || isProcessing}
+                  className="w-full py-2 px-3 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 border border-stone-300 rounded-lg font-semibold flex items-center justify-center gap-2 transition text-xs cursor-pointer"
+                  title="Pull and import all data from Google Sheet with confirmation"
+                >
+                  <DownloadCloud className={`w-3.5 h-3.5 text-stone-600 ${isPulling ? 'animate-bounce' : ''}`} />
+                  <span>Pull from Sheet (Import All Family Members & Rooms)</span>
+                </button>
               </div>
 
               {/* Pilgrim Categories Fetch Section */}

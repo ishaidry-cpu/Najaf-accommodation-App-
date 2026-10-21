@@ -282,12 +282,10 @@ export function generateAdministrativePdf(
         `${res.building || '—'} - Rm ${res.roomNumber || '—'}`,
         (res.arrivalDate || res.arrivalDateTime || '').replace('T', ' '),
         (res.departureDate || res.departureDateTime || '').replace('T', ' '),
-        res.upgradeReason || 'Requested Category B to A (Nizaam)',
         `$${(res.upgradeFee || 350).toLocaleString()}`,
         `$${(res.totalCost || 1350).toLocaleString()}`,
         `$${(res.amountPaid || 0).toLocaleString()}`,
         `$${(res.balanceDue || 0).toLocaleString()}`,
-        res.moneyGiven === 'Yes' ? 'Paid (Yes)' : 'Pending (No)',
       ]);
 
       autoTable(doc, {
@@ -300,15 +298,13 @@ export function generateAdministrativePdf(
             'Room & Building',
             'Arrival Date & Time',
             'Departure Date & Time',
-            'Upgrade Justification',
             'Upgrade Surcharge',
             'Total Cost',
             'Paid',
             'Balance Due',
-            'Payment Status',
           ],
         ],
-        body: tableBody.length > 0 ? tableBody : [['No category upgrades found for this hotel section', '', '', '', '', '', '', '', '', '', '', '']],
+        body: tableBody.length > 0 ? tableBody : [['No category upgrades found for this hotel section', '', '', '', '', '', '', '', '', '']],
         theme: 'grid',
         headStyles: {
           fillColor: [180, 83, 9], // amber-700
@@ -322,19 +318,9 @@ export function generateAdministrativePdf(
         },
         didParseCell: (data) => {
           if (data.section === 'body') {
-            if (data.column.index === 10) {
+            if (data.column.index === 9) {
               const text = data.cell.raw as string;
               if (text !== '$0') {
-                data.cell.styles.textColor = [185, 28, 28];
-                data.cell.styles.fontStyle = 'bold';
-              }
-            }
-            if (data.column.index === 11) {
-              const status = data.cell.raw as string;
-              if (status.includes('Paid')) {
-                data.cell.styles.textColor = [22, 101, 52];
-                data.cell.styles.fontStyle = 'bold';
-              } else {
                 data.cell.styles.textColor = [185, 28, 28];
                 data.cell.styles.fontStyle = 'bold';
               }
@@ -535,26 +521,25 @@ export function saveOrDownloadPdf(doc: jsPDF, fileName: string): PdfDownloadResu
     saved = true;
   } catch (err) {
     console.warn('doc.save failed, trying anchor download fallback:', err);
-  }
-
-  // 2. Secondary fallback / reinforcement: DOM download link
-  if (blobUrl && typeof document !== 'undefined') {
-    try {
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName;
-      link.rel = 'noopener';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        try {
-          document.body.removeChild(link);
-        } catch (e) {}
-      }, 3000);
-      saved = true;
-    } catch (e2) {
-      console.warn('DOM link click failed:', e2);
+    // 2. Secondary fallback ONLY if doc.save threw an error
+    if (blobUrl && typeof document !== 'undefined') {
+      try {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.rel = 'noopener';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try {
+            document.body.removeChild(link);
+          } catch (e) {}
+        }, 1500);
+        saved = true;
+      } catch (e2) {
+        console.warn('DOM link click failed:', e2);
+      }
     }
   }
 

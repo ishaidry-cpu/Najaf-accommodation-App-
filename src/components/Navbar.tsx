@@ -17,7 +17,8 @@ import {
   Download,
   ShieldCheck,
   Eye,
-  Lock
+  Lock,
+  UploadCloud
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { GoogleSheetsConfig, UserRole } from '../types';
@@ -234,7 +235,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <ArrowUpRight className="w-3 h-3 text-emerald-700" />
                     </button>
 
-                    {/* 1-Click Sync Button */}
+                    {/* Push to Sheet Button */}
                     <button
                       onClick={onQuickSync}
                       disabled={sheetsConfig.isSyncing}
@@ -243,10 +244,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                           ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
                           : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs'
                       }`}
-                      title="1-Click Two-Way Sync: Syncs Zaereen, 114 Rooms & Rooms Availability & Departure Timeline"
+                      title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
                     >
-                      <RefreshCw className={`w-3 h-3 text-[#EBD59E] ${sheetsConfig.isSyncing ? 'animate-spin' : ''}`} />
-                      <span>{sheetsConfig.isSyncing ? 'Syncing...' : 'Sync'}</span>
+                      <UploadCloud className={`w-3 h-3 text-[#EBD59E] ${sheetsConfig.isSyncing ? 'animate-pulse' : ''}`} />
+                      <span>{sheetsConfig.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
                     </button>
                   </>
                 ) : (

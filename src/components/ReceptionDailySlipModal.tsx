@@ -373,20 +373,27 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const [pdfDownloadStatus, setPdfDownloadStatus] = useState<PdfDownloadResult | null>(null);
   const [pdfPreviewBlobUrl, setPdfPreviewBlobUrl] = useState<string | null>(null);
 
-  // Initialize smart default date only when modal is first opened
+  // Track whether the user explicitly changed date manually
+  const userManuallyPickedDateRef = useRef(false);
   const prevIsOpenRef = useRef(false);
+
   useEffect(() => {
     if (!isOpen) {
       prevIsOpenRef.current = false;
+      userManuallyPickedDateRef.current = false;
       return;
     }
-    if (!prevIsOpenRef.current) {
-      if (initialDate) {
+    const currentActivity = activeDatesSummary.datesMap.get(selectedDate)?.total || 0;
+    if (
+      !prevIsOpenRef.current ||
+      (!userManuallyPickedDateRef.current && currentActivity === 0 && activeDatesSummary.sortedDates.length > 0)
+    ) {
+      if (initialDate && initialDate !== selectedDate) {
         setSelectedDate(initialDate);
       }
       prevIsOpenRef.current = true;
     }
-  }, [isOpen, initialDate]);
+  }, [isOpen, initialDate, selectedDate, activeDatesSummary]);
 
   // Filter arrivals on selected date using robust normalization
   const arrivalsOnDate = safeReservations.filter((r) => {
@@ -2233,7 +2240,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               <div className="flex items-center gap-1 bg-white border border-stone-300 rounded-xl px-2 py-1 shadow-2xs text-xs">
                 <button
                   type="button"
-                  onClick={() => handleNavigateActiveDate('prev')}
+                  onClick={() => {
+                    userManuallyPickedDateRef.current = true;
+                    handleNavigateActiveDate('prev');
+                  }}
                   className="p-1 text-stone-500 hover:text-stone-900 rounded"
                   title="Previous operational date with activity"
                 >
@@ -2245,13 +2255,19 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <input
                   type="date"
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(e) => {
+                    userManuallyPickedDateRef.current = true;
+                    setSelectedDate(e.target.value);
+                  }}
                   className="bg-transparent font-bold text-stone-900 focus:outline-none cursor-pointer"
                 />
 
                 <button
                   type="button"
-                  onClick={() => handleNavigateActiveDate('next')}
+                  onClick={() => {
+                    userManuallyPickedDateRef.current = true;
+                    handleNavigateActiveDate('next');
+                  }}
                   className="p-1 text-stone-500 hover:text-stone-900 rounded"
                   title="Next operational date with activity"
                 >
@@ -2271,7 +2287,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <button
                       key={dateStr}
                       type="button"
-                      onClick={() => setSelectedDate(dateStr)}
+                      onClick={() => {
+                        userManuallyPickedDateRef.current = true;
+                        setSelectedDate(dateStr);
+                      }}
                       className={`px-2 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap shadow-2xs flex items-center gap-1 ${
                         isSelected
                           ? 'bg-[#124E39] text-white shadow-xs'

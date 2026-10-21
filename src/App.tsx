@@ -473,11 +473,9 @@ export default function App() {
 
     setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
     try {
-      // Execute bidirectional synchronization:
-      // 1. Pull changes from Google Sheet (new zaereen, modified room assignments, status)
-      // 2. Merge without overwriting backend data
-      // 3. Push full updated state back to Google Sheet, including Rooms Availability & Departure Timeline tab
-      const syncResult = await twoWaySyncWithGoogleSheet(
+      // User requirement: "otherwise there should be no two way sync only 'Push to sheet'"
+      // Push current app state to Google Sheet (Zaereen grid, room allotments, timeline)
+      const syncResult = await syncAllToGoogleSheet(
         currentToken,
         sheetsConfig.spreadsheetId,
         reservations,
@@ -485,20 +483,9 @@ export default function App() {
       );
 
       if (syncResult.success) {
-        setReservations(syncResult.mergedReservations);
-        setRooms(syncResult.mergedRooms);
-        saveReservations(syncResult.mergedReservations);
-        saveRooms(syncResult.mergedRooms);
-
-        // Persist to backend server so data remains until deleted
-        if (isLiveBackendConnected) {
-          saveBackendReservations(syncResult.mergedReservations);
-          saveBackendRooms(syncResult.mergedRooms);
-        }
-
         const updatedConfig: GoogleSheetsConfig = {
           ...sheetsConfig,
-          spreadsheetUrl: syncResult.spreadsheetUrl,
+          spreadsheetUrl: syncResult.spreadsheetUrl || sheetsConfig.spreadsheetUrl,
           lastSyncedAt: new Date().toISOString(),
           isSyncing: false,
           syncError: null,
@@ -511,13 +498,13 @@ export default function App() {
         }
 
         showToast(
-          `✓ Synced with Google Sheet! Updated Zaereen Lodging & Room Allotment Grid, 114 rooms & Rooms Availability Timeline.`
+          `✓ Successfully pushed latest Zaereen records and room allotments to Google Sheet!`
         );
       } else {
-        throw new Error(syncResult.error || 'Sync failed');
+        throw new Error(syncResult.error || 'Push to sheet failed');
       }
     } catch (err: any) {
-      console.error('Two-way sync error:', err);
+      console.error('Push to Google Sheet error:', err);
       setSheetsConfig((prev) => ({
         ...prev,
         isSyncing: false,

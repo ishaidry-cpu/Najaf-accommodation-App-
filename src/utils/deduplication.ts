@@ -43,6 +43,19 @@ export function isDuplicateReservation(a: Reservation, b: Reservation): boolean 
   const itsA = normalizeItsId(a.itsId);
   const itsB = normalizeItsId(b.itsId);
   if (itsA && itsB && itsA === itsB) {
+    const nameA = normalizeText(a.applicantName || a.guestLeaderName);
+    const nameB = normalizeText(b.applicantName || b.guestLeaderName);
+    // If both have names and their names are different, they are DIFFERENT family members
+    // sharing the same family/HOF ITS ID (or registered together)! They are NOT duplicates!
+    if (nameA && nameB && nameA !== nameB) {
+      return false;
+    }
+    // Also if they have different allotted rooms, they are different family members
+    const roomA = normalizeText(a.roomNumber);
+    const roomB = normalizeText(b.roomNumber);
+    if (roomA && roomB && roomA !== roomB) {
+      return false;
+    }
     return true;
   }
 
@@ -53,6 +66,12 @@ export function isDuplicateReservation(a: Reservation, b: Reservation): boolean 
   const nameB = normalizeText(b.applicantName || b.guestLeaderName);
 
   if (tourA && tourB && nameA && nameB && tourA === tourB && nameA === nameB) {
+    // If they have different rooms allotted, they might be different allotments
+    const roomA = normalizeText(a.roomNumber);
+    const roomB = normalizeText(b.roomNumber);
+    if (roomA && roomB && roomA !== roomB) {
+      return false;
+    }
     return true;
   }
 

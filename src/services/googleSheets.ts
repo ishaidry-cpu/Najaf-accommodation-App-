@@ -443,8 +443,6 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'DEPARTURE',
     'CATEGORY',
     'MAIN PORTAL',
-    'SHIFT B TO A (NIZAAM)',
-    'MONEY GIVEN',
     'REQUEST SLIP NO.',
     'PAX COUNT',
     'LAST UPDATED',
@@ -466,8 +464,6 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     (r.departureDate || r.departureDateTime || '').slice(0, 10),
     r.category || 'Mumineen',
     r.isUploadedToPortal ? 'Uploaded' : 'Pending',
-    r.shiftToCategoryA ? 'Yes (Nizaam)' : 'No',
-    r.moneyGiven || 'No',
     r.requestSlipNo || '',
     r.paxCount || r.pax || 1,
     new Date(r.updatedAt || Date.now()).toLocaleString(),
@@ -1047,7 +1043,7 @@ export async function fetchReservationsFromGoogleSheet(
 
   const valRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-      `'${targetTab}'!A1:Z500`
+      `'${targetTab}'!A1:Z`
     )}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -1080,27 +1076,24 @@ export async function fetchReservationsFromGoogleSheet(
   let slipIdx = headerRow.findIndex((h: string) => h.includes('slip'));
   let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest') || h.includes('count'));
 
-  // Fallbacks if not matched by name
-  if (tourIdx === -1) tourIdx = 6;
-  if (itsIdx === -1) itsIdx = 1;
-  if (nameIdx === -1) nameIdx = 2;
-  if (ageIdx === -1) ageIdx = 3;
-  if (famIdx === -1) famIdx = 4;
-  if (officeIdx === -1) officeIdx = 5;
-  if (bIdx === -1) bIdx = 7;
-  if (rIdx === -1) rIdx = 8;
-  if (genderIdx === -1) genderIdx = 9;
-  if (leaderIdx === -1) leaderIdx = 10;
-  if (arrIdx === -1) arrIdx = 11;
-  if (depIdx === -1) depIdx = 12;
-  if (catIdx === -1) catIdx = 13;
-  if (portalIdx === -1) portalIdx = 14;
-  if (shiftIdx === -1) shiftIdx = 15;
-  if (moneyIdx === -1) moneyIdx = 16;
-  if (slipIdx === -1) slipIdx = 17;
-  if (paxIdx === -1) paxIdx = 18;
+  // Fallbacks if not matched by name (only if within bounds of header row)
+  if (tourIdx === -1 && headerRow.length > 6) tourIdx = 6;
+  if (itsIdx === -1 && headerRow.length > 1) itsIdx = 1;
+  if (nameIdx === -1 && headerRow.length > 2) nameIdx = 2;
+  if (ageIdx === -1 && headerRow.length > 3) ageIdx = 3;
+  if (famIdx === -1 && headerRow.length > 4) famIdx = 4;
+  if (officeIdx === -1 && headerRow.length > 5) officeIdx = 5;
+  if (bIdx === -1 && headerRow.length > 7) bIdx = 7;
+  if (rIdx === -1 && headerRow.length > 8) rIdx = 8;
+  if (genderIdx === -1 && headerRow.length > 9) genderIdx = 9;
+  if (leaderIdx === -1 && headerRow.length > 10) leaderIdx = 10;
+  if (arrIdx === -1 && headerRow.length > 11) arrIdx = 11;
+  if (depIdx === -1 && headerRow.length > 12) depIdx = 12;
+  if (catIdx === -1 && headerRow.length > 13) catIdx = 13;
+  if (portalIdx === -1 && headerRow.length > 14) portalIdx = 14;
 
   const parsedReservations: Reservation[] = [];
+  const usedExistingIds = new Set<string>();
 
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i];
@@ -1118,14 +1111,9 @@ export async function fetchReservationsFromGoogleSheet(
     const familyNo = famIdx !== -1 && row[famIdx] ? String(row[famIdx]).trim() : `F-${i}`;
     const officeName = officeIdx !== -1 && row[officeIdx] ? String(row[officeIdx]).trim() : 'Fayz E Husayni Trust Mumbai';
     const building = bIdx !== -1 && row[bIdx] ? String(row[bIdx]).trim() : 'Saifee';
-    const roomNumber = rIdx !== -1 && row[rIdx] ? String(row[rIdx]).trim().replace(/^room\s+/i, '') : '';
+    const rawRoomNumber = rIdx !== -1 && row[rIdx] ? String(row[rIdx]).trim().replace(/^room\s+/i, '') : '';
     const gender = genderIdx !== -1 && row[genderIdx] ? String(row[genderIdx]).trim() : 'Male';
     const groupLeadName = leaderIdx !== -1 && row[leaderIdx] ? String(row[leaderIdx]).trim() : (applicantName || 'Group Lead');
-    
-    const matchingRoom = rooms.find(
-      (rm) => rm.roomNumber === roomNumber && rm.building.toLowerCase() === building.toLowerCase()
-    );
-    const roomId = matchingRoom ? matchingRoom.id : `rm-${building}-${roomNumber}`;
 
     const rawArr = arrIdx !== -1 && row[arrIdx] ? String(row[arrIdx]).trim() : '';
     const rawDep = depIdx !== -1 && row[depIdx] ? String(row[depIdx]).trim() : '';
@@ -1148,66 +1136,119 @@ export async function fetchReservationsFromGoogleSheet(
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
 
-    // Match with existing reservation to preserve internal IDs and logs
-    const existing = existingReservations.find(
-      (r) =>
-        (itsId && r.itsId && r.itsId === itsId) ||
-        (tourId && applicantName && r.tourRefNo === tourId && r.applicantName === applicantName) ||
-        (tourId && familyNo && r.tourRefNo === tourId && r.family === familyNo)
-    );
+    // Check if applicantName or rawRoomNumber contains multiple family members / rooms
+    const candidateNames = applicantName
+      .split(/[,/;\n&+]|\band\b/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !/^(and|family|\d+|\+)$/i.test(s));
 
-    parsedReservations.push({
-      id: existing ? existing.id : `res-${Date.now()}-${i}`,
-      itsId: itsId || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
-      applicantName: applicantName || existing?.applicantName || 'Zaer Guest',
-      age,
-      category: rawCategory,
-      idara: existing?.idara || 'Faiz-e-Husaini',
-      gender,
-      family: familyNo,
-      tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
-      officeName,
-      groupLeadName,
-      arrivalDate,
-      departureDate,
-      shiftToCategoryA,
-      accommodationCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
-      requestSlipNo: requestSlipNo || existing?.requestSlipNo || undefined,
-      moneyGiven,
-      building: building === 'Burhani' ? 'Burhani' : 'Saifee',
-      roomNumber,
-      roomId,
-      isUploadedToPortal,
-      paxCount: pax,
-      arrivalDateTime,
-      entryPort: existing ? existing.entryPort : 'Najaf Airport (NJF)',
-      departureDateTime,
-      exitPort: existing ? existing.exitPort : 'Najaf Airport (NJF)',
-      guestLeaderName: groupLeadName,
-      guestContact: existing ? existing.guestContact : '',
-      zaereenGuests: existing?.zaereenGuests || [],
-      specialRequests: existing?.specialRequests || undefined,
-      // Compatibility fields
-      tourId: tourId || existing?.tourId || 'NKERP/TOUR/2026/1333',
-      familyNo,
-      pax,
-      totalGuests: pax,
-      tourName: existing?.tourName || 'Zaereen Group',
-      assignedCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
-      isUpgradedFromBToA: shiftToCategoryA,
-      baseCost: existing ? existing.baseCost : 1000,
-      upgradeFee: shiftToCategoryA ? (existing?.upgradeFee || 350) : 0,
-      totalCost: existing ? existing.totalCost : 1000,
-      amountPaid: moneyGiven === 'Yes' ? (existing?.totalCost || 1000) : 0,
-      balanceDue: moneyGiven === 'Yes' ? 0 : (existing?.totalCost || 1000),
-      paymentStatus,
-      paymentHistory: existing ? existing.paymentHistory : [],
-      createdAt: existing ? existing.createdAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    const candidateRooms = rawRoomNumber
+      .split(/[,/;&+]|\band\b/i)
+      .map((s) => s.trim().replace(/^room\s+/i, ''))
+      .filter(Boolean);
+
+    // If multiple members are indicated in a single row by names or pax count or rooms
+    const isMultiMemberRow = (candidateNames.length > 1 || candidateRooms.length > 1 || pax > 1) && !applicantName.includes('Group');
+    const memberCount = isMultiMemberRow
+      ? Math.max(candidateNames.length, candidateRooms.length, pax)
+      : 1;
+
+    for (let m = 0; m < memberCount; m++) {
+      const memberName = candidateNames[m] || (m === 0 ? applicantName : `${applicantName} (Member ${m + 1})`);
+      const memberRoom = candidateRooms[m] || candidateRooms[0] || rawRoomNumber;
+      const memberIts = m === 0 ? (itsId || `30${Math.floor(100000 + Math.random() * 900000)}`) : (itsId ? `${itsId}-${m + 1}` : `30${Math.floor(100000 + Math.random() * 900000)}`);
+
+      const matchingRoom = rooms.find(
+        (rm) => rm.roomNumber === memberRoom && rm.building.toLowerCase() === building.toLowerCase()
+      );
+      const roomId = matchingRoom ? matchingRoom.id : `rm-${building}-${memberRoom}`;
+
+      // Match with existing reservation to preserve internal IDs and logs
+      const normIts = memberIts.toLowerCase();
+      const normName = memberName.toLowerCase();
+      const normTour = tourId ? tourId.toLowerCase() : '';
+
+      const existing = existingReservations.find(
+        (r) =>
+          !usedExistingIds.has(r.id) &&
+          ((normIts && r.itsId && r.itsId.trim().toLowerCase() === normIts) ||
+            (normName && r.applicantName && r.applicantName.trim().toLowerCase() === normName && (!normTour || (r.tourRefNo || '').trim().toLowerCase() === normTour)))
+      );
+
+      if (existing) {
+        usedExistingIds.add(existing.id);
+      }
+
+      const uniqueRecId = existing
+        ? existing.id
+        : `res-sheet-${tourId || 'gen'}-${familyNo}-${i}-${m + 1}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+      parsedReservations.push({
+        id: uniqueRecId,
+        itsId: memberIts || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
+        applicantName: memberName || existing?.applicantName || 'Zaer Guest',
+        age: age || 38,
+        category: rawCategory,
+        idara: existing?.idara || 'Faiz-e-Husaini',
+        gender,
+        family: familyNo,
+        tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
+        officeName,
+        groupLeadName,
+        arrivalDate,
+        departureDate,
+        shiftToCategoryA,
+        accommodationCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
+        requestSlipNo: requestSlipNo || existing?.requestSlipNo || undefined,
+        moneyGiven,
+        building: building === 'Burhani' ? 'Burhani' : 'Saifee',
+        roomNumber: memberRoom,
+        roomId,
+        isUploadedToPortal,
+        paxCount: 1,
+        arrivalDateTime,
+        entryPort: existing ? existing.entryPort : 'Najaf Airport (NJF)',
+        departureDateTime,
+        exitPort: existing ? existing.exitPort : 'Najaf Airport (NJF)',
+        guestLeaderName: groupLeadName,
+        guestContact: existing ? existing.guestContact : '',
+        zaereenGuests: existing?.zaereenGuests || [],
+        specialRequests: existing?.specialRequests || undefined,
+        // Compatibility fields
+        tourId: tourId || existing?.tourId || 'NKERP/TOUR/2026/1333',
+        familyNo,
+        pax: 1,
+        totalGuests: 1,
+        tourName: existing?.tourName || 'Zaereen Group',
+        assignedCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
+        isUpgradedFromBToA: shiftToCategoryA,
+        baseCost: existing ? existing.baseCost : 1000,
+        upgradeFee: shiftToCategoryA ? (existing?.upgradeFee || 350) : 0,
+        totalCost: existing ? existing.totalCost : 1000,
+        amountPaid: moneyGiven === 'Yes' ? (existing?.totalCost || 1000) : 0,
+        balanceDue: moneyGiven === 'Yes' ? 0 : (existing?.totalCost || 1000),
+        paymentStatus,
+        paymentHistory: existing ? existing.paymentHistory : [],
+        createdAt: existing ? existing.createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
 
-  return deduplicateReservationList(parsedReservations);
+  // Ensure every family member is kept, removing only identical duplicate entries
+  const finalUnique: Reservation[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const r of parsedReservations) {
+    // Unique key: id or tourRefNo + family + itsId + applicantName
+    const key = `${r.tourRefNo}___${r.family}___${r.itsId}___${(r.applicantName || '').toLowerCase()}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      finalUnique.push(r);
+    }
+  }
+
+  return finalUnique;
 }
 
 /**
