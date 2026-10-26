@@ -1122,9 +1122,11 @@ export default function App() {
         {activeTab === 'upgrades' && (
           <CategoryUpgradeView
             reservations={reservations}
+            rooms={rooms}
             onToggleMoneyGiven={handleToggleMoneyGiven}
             onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
             onToggleShiftToCategoryA={handleToggleShiftToCategoryA}
+            onAddZaer={handleAddReservation}
           />
         )}
 

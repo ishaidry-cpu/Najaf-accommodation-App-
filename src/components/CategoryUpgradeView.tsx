@@ -22,28 +22,87 @@ import {
   Plus,
   RotateCcw
 } from 'lucide-react';
-import { Reservation, MoneyGivenStatus } from '../types';
+import { Reservation, Room, MoneyGivenStatus } from '../types';
 
 interface CategoryUpgradeViewProps {
   reservations: Reservation[];
+  rooms?: Room[];
   onToggleMoneyGiven: (reservationId: string, status: MoneyGivenStatus) => void;
   onOpenAccountsSlip: (reservation: Reservation) => void;
   onToggleShiftToCategoryA?: (reservationId: string, willShift: boolean) => void;
+  onAddZaer?: (newZaer: Reservation) => boolean | void;
 }
 
 export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   reservations,
+  rooms = [],
   onToggleMoneyGiven,
   onOpenAccountsSlip,
   onToggleShiftToCategoryA,
+  onAddZaer,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [moneyFilter, setMoneyFilter] = useState<'ALL' | 'Yes' | 'No'>('ALL');
   const [hotelFilter, setHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
 
-  // Modal to shift a zaer from B to A
+  // Modal to add a new zaer shifting from B to A (not previously in portal)
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
-  const [shiftSearchQuery, setShiftSearchQuery] = useState('');
+
+  // New Zaer (B ➔ A) Form Fields
+  const [newTourId, setNewTourId] = useState('');
+  const [newPaxCount, setNewPaxCount] = useState<number>(1);
+  const [newArrivalDate, setNewArrivalDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newDepartureDate, setNewDepartureDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d.toISOString().slice(0, 10);
+  });
+  const [newBuilding, setNewBuilding] = useState<'Saifee' | 'Burhani'>('Saifee');
+  const [newRoomNumber, setNewRoomNumber] = useState('');
+  const [newApplicantName, setNewApplicantName] = useState('');
+  const [newItsId, setNewItsId] = useState('');
+  const [newFamily, setNewFamily] = useState('1');
+  const [newPhone, setNewPhone] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [formError, setFormError] = useState('');
+
+  // Calculate nights live
+  const calculatedNights = useMemo(() => {
+    if (!newArrivalDate || !newDepartureDate) return 1;
+    const d1 = new Date(newArrivalDate);
+    const d2 = new Date(newDepartureDate);
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1;
+    const diffDays = Math.round((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24));
+    return Math.max(1, diffDays);
+  }, [newArrivalDate, newDepartureDate]);
+
+  // Unique existing Tour IDs for auto-suggestion
+  const existingTourIds = useMemo(() => {
+    const set = new Set<string>();
+    reservations.forEach((r) => {
+      const t = (r.tourRefNo || r.tourId || '').trim();
+      if (t) set.add(t);
+    });
+    return Array.from(set).sort();
+  }, [reservations]);
+
+  // Available rooms for chosen hotel
+  const availableRoomsForBuilding = useMemo(() => {
+    if (!rooms || rooms.length === 0) return [];
+    return rooms.filter((r) => (r.building || '').toLowerCase().includes(newBuilding.toLowerCase()));
+  }, [rooms, newBuilding]);
+
+  const handleTourIdChange = (val: string) => {
+    setNewTourId(val);
+    const trimmed = val.trim().toLowerCase();
+    const match = reservations.find((r) => (r.tourRefNo || r.tourId || '').trim().toLowerCase() === trimmed);
+    if (match && match.arrivalDate) {
+      setNewArrivalDate(match.arrivalDate);
+      if (match.departureDate) {
+        setNewDepartureDate(match.departureDate);
+      }
+    }
+  };
 
   // Sorting
   const [sortColumn, setSortColumn] = useState<string>('itsId');
@@ -59,30 +118,12 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   };
 
   // Filter only B to A accommodation shift requests
+  // All zaereen in this portal are A category; when b to A is pressed, new zair is added who is shifted from B
   const shiftRequests = useMemo(() => {
     return reservations.filter(
-      (r) => r.shiftToCategoryA || r.accommodationCategory === 'Category A (Nizaam)'
+      (r) => r.shiftToCategoryA || r.category === 'B to A' || (r.category && r.category.toLowerCase().includes('b to a'))
     );
   }, [reservations]);
-
-  // Zaereen eligible to shift (currently on Standard B)
-  const eligibleZaereen = useMemo(() => {
-    return reservations.filter(
-      (r) => !r.shiftToCategoryA && r.accommodationCategory !== 'Category A (Nizaam)'
-    );
-  }, [reservations]);
-
-  const filteredEligibleZaereen = useMemo(() => {
-    if (!shiftSearchQuery.trim()) return eligibleZaereen.slice(0, 15);
-    const q = shiftSearchQuery.toLowerCase();
-    return eligibleZaereen.filter(
-      (r) =>
-        r.applicantName.toLowerCase().includes(q) ||
-        r.itsId.toLowerCase().includes(q) ||
-        r.family.toLowerCase().includes(q) ||
-        r.tourRefNo.toLowerCase().includes(q)
-    );
-  }, [eligibleZaereen, shiftSearchQuery]);
 
   const filteredAndSortedRequests = useMemo(() => {
     const filtered = shiftRequests.filter((r) => {
@@ -167,12 +208,72 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     );
   };
 
-  const handleExecuteShift = (reservationId: string) => {
-    if (onToggleShiftToCategoryA) {
-      onToggleShiftToCategoryA(reservationId, true);
+  const handleSubmitNewShiftZaer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTourId.trim()) {
+      setFormError('Please enter a Tour ID.');
+      return;
     }
+    if (!newArrivalDate || !newDepartureDate) {
+      setFormError('Please select arrival and departure dates.');
+      return;
+    }
+    if (!newRoomNumber.trim()) {
+      setFormError('Please select or specify the room given in.');
+      return;
+    }
+
+    const createdReservation: Reservation = {
+      id: `b2a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      itsId: newItsId.trim() || `B2A-${Math.floor(100000 + Math.random() * 900000)}`,
+      applicantName: newApplicantName.trim() || `Zaer (Tour ${newTourId.trim()})`,
+      gender: 'Male',
+      age: 35,
+      jamaat: 'Najaf',
+      family: newFamily.trim() || '1',
+      idara: 'Accommodation Office',
+      tourRefNo: newTourId.trim(),
+      tourId: newTourId.trim(),
+      officeName: 'Faiz-e-Husaini Najaf',
+      groupLeadName: newApplicantName.trim() || `Zaer (Tour ${newTourId.trim()})`,
+      paxCount: Math.max(1, newPaxCount || 1),
+      pax: Math.max(1, newPaxCount || 1),
+      totalGuests: Math.max(1, newPaxCount || 1),
+      arrivalDate: newArrivalDate,
+      departureDate: newDepartureDate,
+      building: newBuilding,
+      roomNumber: newRoomNumber.trim(),
+      category: 'B to A',
+      accommodationCategory: 'Category A (Nizaam)',
+      shiftToCategoryA: true,
+      moneyGiven: 'No',
+      paymentStatus: 'Pending',
+      isUploadedToPortal: false,
+      specialRequests: newNotes.trim() ? `Shift B to A: ${newNotes.trim()}` : 'Shifted from Category B to Category A',
+      guestContact: newPhone.trim(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (onAddZaer) {
+      onAddZaer(createdReservation);
+    } else if (onToggleShiftToCategoryA) {
+      onToggleShiftToCategoryA(createdReservation.id, true);
+    }
+
+    // Reset and close
     setIsShiftModalOpen(false);
-    setShiftSearchQuery('');
+    setFormError('');
+    setNewTourId('');
+    setNewPaxCount(1);
+    setNewApplicantName('');
+    setNewItsId('');
+    setNewRoomNumber('');
+    setNewPhone('');
+    setNewNotes('');
+
+    // Immediately open B to A Accounts Request Slip with the 7 details
+    onOpenAccountsSlip(createdReservation);
   };
 
   return (
@@ -190,16 +291,19 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            When a Zair requests to shift accommodation from Standard (B) to Nizaam (A), an official request slip is generated for the Accounts Department. Accounts collects the money and marks whether money was given.
+            All zaereen in this portal are Category A. When a new Zaer arrives from Category B and shifts to Category A, click below to add them and generate the official 7-detail Accounts Slip.
           </p>
         </div>
 
         {/* Quick Actions & Counters */}
         <div className="flex flex-wrap items-center gap-3">
-          {onToggleShiftToCategoryA && (
+          {(onAddZaer || onToggleShiftToCategoryA) && (
             <button
-              onClick={() => setIsShiftModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition"
+              onClick={() => {
+                setFormError('');
+                setIsShiftModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#EBD59E]" />
               <span>Shift New Zaer (B ➔ A)</span>
@@ -463,83 +567,277 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
         </div>
       </div>
 
-      {/* Modal to Shift a Zaer */}
+      {/* Modal to Add New Zaer Shifting B to A */}
       {isShiftModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="bg-[#124E39] text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ArrowUpRight className="w-5 h-5 text-[#EBD59E]" />
-                <h3 className="font-bold text-base">Select Zaer to Shift (Standard B ➔ Nizaam A)</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-[#124E39] text-white p-4 sm:p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-800/80 rounded-xl">
+                  <ArrowUpRight className="w-5 h-5 text-[#EBD59E]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base sm:text-lg">Add New Zaer (Shift B ➔ A)</h3>
+                  <p className="text-xs text-[#EBD59E]/90 mt-0.5">
+                    Register a new Zaer shifting from Standard (B) to Category A and generate Accounts Slip
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsShiftModalOpen(false)}
-                className="p-1 rounded-full hover:bg-white/10 text-white/80 hover:text-white"
+                className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4">
-              <p className="text-xs text-stone-600">
-                Search zaereen currently accommodated in Standard (B) and request a shift to Category A (Nizaam). This creates an Accounts Request Slip for money collection.
-              </p>
+            {/* Modal Form Body */}
+            <form onSubmit={handleSubmitNewShiftZaer} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
-                <input
-                  type="text"
-                  placeholder="Search by ITS ID, Applicant Name, Family..."
-                  value={shiftSearchQuery}
-                  onChange={(e) => setShiftSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#124E39]"
-                />
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 text-emerald-900 leading-relaxed">
+                <strong>Portal Category Note:</strong> All zaereen in this portal belong to Category A. Entering this new zaer creates their Category A accommodation booking and immediately opens the official 7-detail Accounts Request Slip.
               </div>
 
-              <div className="divide-y divide-stone-200 border border-stone-200 rounded-xl bg-white max-h-72 overflow-y-auto">
-                {filteredEligibleZaereen.length > 0 ? (
-                  filteredEligibleZaereen.map((z) => (
-                    <div
-                      key={z.id}
-                      className="p-3 hover:bg-[#FAF7F2] flex items-center justify-between gap-3 transition"
-                    >
-                      <div>
-                        <div className="font-bold text-stone-900 text-sm">{z.applicantName}</div>
-                        <div className="text-xs text-stone-500 font-mono">
-                          ITS: {z.itsId} • Family: {z.family} • Tour: {z.tourRefNo}
-                        </div>
-                        <div className="text-[11px] text-emerald-800 font-semibold mt-0.5">
-                          Category: {z.category} • Hotel: {z.building} {z.roomNumber ? `Rm ${z.roomNumber}` : '(Unassigned)'}
-                        </div>
-                      </div>
+              {/* CORE 7 DETAILS FIELDS */}
+              <div className="space-y-3.5">
+                <div className="text-xs font-bold text-[#124E39] uppercase tracking-wider border-b border-stone-200 pb-1">
+                  1. Official Slip Details (Required)
+                </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleExecuteShift(z.id)}
-                        className="px-3 py-1.5 rounded-lg bg-[#124E39] hover:bg-[#0E3C2C] text-white text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-2xs"
-                      >
-                        <ArrowUpRight className="w-3.5 h-3.5 text-[#EBD59E]" />
-                        <span>Shift to A</span>
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-xs text-stone-400 italic">
-                    No eligible zaereen found. All zaereen may already be shifted to Category A.
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Tour ID */}
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Tour ID <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      list="b2a-tour-ids"
+                      placeholder="e.g. NZ-2026-TOUR-44"
+                      value={newTourId}
+                      onChange={(e) => handleTourIdChange(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      required
+                    />
+                    <datalist id="b2a-tour-ids">
+                      {existingTourIds.map((t) => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
+                    <span className="text-[10px] text-stone-500 mt-0.5 block">
+                      Type new Tour ID or pick from existing tours.
+                    </span>
                   </div>
-                )}
-              </div>
-            </div>
 
-            <div className="p-4 bg-stone-100 border-t border-stone-200 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsShiftModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-stone-300 hover:bg-white text-stone-700 text-xs font-bold transition"
-              >
-                Close
-              </button>
-            </div>
+                  {/* Number of Pax */}
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Number of pax <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newPaxCount}
+                      onChange={(e) => setNewPaxCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      required
+                    />
+                    <span className="text-[10px] text-stone-500 mt-0.5 block">
+                      Total persons shifting from B to A.
+                    </span>
+                  </div>
+
+                  {/* Date of Arrival */}
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Date of arrival <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={newArrivalDate}
+                      onChange={(e) => setNewArrivalDate(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      required
+                    />
+                  </div>
+
+                  {/* Date of Departure */}
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Date of departure <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={newDepartureDate}
+                      onChange={(e) => setNewDepartureDate(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Number of Nights Live Calculation Indicator */}
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-amber-950 block">Number of nights:</span>
+                    <span className="text-[11px] text-amber-800">
+                      Calculated automatically from arrival & departure dates.
+                    </span>
+                  </div>
+                  <div className="text-base font-extrabold text-[#124E39] bg-white px-3 py-1 rounded-lg border border-amber-300 shadow-2xs font-mono">
+                    {calculatedNights} Nights
+                  </div>
+                </div>
+
+                {/* Room Given In */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Hotel / Building <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newBuilding}
+                      onChange={(e) => {
+                        setNewBuilding(e.target.value as any);
+                        setNewRoomNumber('');
+                      }}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                    >
+                      <option value="Saifee">Saifee Hotel</option>
+                      <option value="Burhani">Burhani Hotel</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-stone-800 mb-1">
+                      Room given in <span className="text-red-500">*</span>
+                    </label>
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        list="available-rooms-list"
+                        placeholder="Select room or type room number (e.g. 204)"
+                        value={newRoomNumber}
+                        onChange={(e) => setNewRoomNumber(e.target.value)}
+                        className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                        required
+                      />
+                      <datalist id="available-rooms-list">
+                        {availableRoomsForBuilding.map((rm) => (
+                          <option key={rm.id} value={rm.roomNumber}>
+                            Room {rm.roomNumber} ({rm.capacity} beds - {rm.status})
+                          </option>
+                        ))}
+                      </datalist>
+                      <span className="text-[10px] text-stone-500 block">
+                        Assigned room in {newBuilding} Hotel.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* OPTIONAL IDENTIFICATION METADATA FOR PORTAL */}
+              <div className="space-y-3 pt-2">
+                <div className="text-xs font-bold text-stone-600 uppercase tracking-wider border-b border-stone-200 pb-1">
+                  2. Zaer Information (Optional for Records)
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-stone-700 mb-1">
+                      Applicant / Head of Pax Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Murtaza Bhai (or leave blank for Tour Zaer)"
+                      value={newApplicantName}
+                      onChange={(e) => setNewApplicantName(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">
+                      ITS ID (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 30482910"
+                      value={newItsId}
+                      onChange={(e) => setNewItsId(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-mono focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">
+                      Family Number
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1"
+                      value={newFamily}
+                      onChange={(e) => setNewFamily(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">
+                      Phone / WhatsApp
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="+964 / +91 ..."
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">
+                      Notes / Remarks
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Accounts note or request..."
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Actions Footer */}
+              <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsShiftModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-stone-300 hover:bg-white text-stone-700 font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-white font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-[#EBD59E]" />
+                  <span>Save & Generate B ➔ A Slip</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
