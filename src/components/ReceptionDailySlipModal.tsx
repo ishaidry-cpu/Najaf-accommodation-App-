@@ -198,11 +198,128 @@ export function normalizeHotelBuilding(b?: string): 'Saifee' | 'Burhani' | strin
   return b.trim();
 }
 
+export interface SimpleSlipEntry {
+  roomNumber: string;
+  building: string;
+  paxPerFamily: {
+    family: string;
+    paxName: string;
+    totalPaxInFamily: number;
+  }[];
+  paxNamesDisplay: string;
+  arrivalDate: string;
+  departureDate: string;
+  rawReservations: Reservation[];
+}
+
+/**
+ * Builds simple, high-readability slip rows for Arrival Slip & Departure List:
+ * Only: Room #, Building (Saifee / Burhani), Name of 1 pax per family
+ * (if members from two families, names from each separate family),
+ * Arrival Date, and Departure Date.
+ */
+export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
+  saifee: SimpleSlipEntry[];
+  burhani: SimpleSlipEntry[];
+  unallotted: SimpleSlipEntry[];
+  totalRooms: number;
+  totalPax: number;
+} {
+  const roomMap = new Map<string, Reservation[]>();
+
+  reservationsOnDate.forEach((r) => {
+    const bldg = normalizeHotelBuilding(r.building);
+    const roomNum = (r.roomNumber || '').trim();
+    const key = roomNum ? `${bldg}_${roomNum.toLowerCase()}` : `unallotted_${(r.family || r.id).trim()}`;
+    if (!roomMap.has(key)) roomMap.set(key, []);
+    roomMap.get(key)!.push(r);
+  });
+
+  const allEntries: SimpleSlipEntry[] = [];
+
+  roomMap.forEach((resList) => {
+    const first = resList[0];
+    const bldg = normalizeHotelBuilding(first.building) || (first.roomNumber ? 'Saifee' : '');
+    const roomNum = (first.roomNumber || '').trim();
+
+    // Group members of this room by family
+    const famMap = new Map<string, Reservation[]>();
+    resList.forEach((r) => {
+      const famKey = (r.family || '').trim() || `fam_${r.id}`;
+      if (!famMap.has(famKey)) famMap.set(famKey, []);
+      famMap.get(famKey)!.push(r);
+    });
+
+    const famKeys = Array.from(famMap.keys());
+    const paxPerFamily = famKeys.map((famKey) => {
+      const famMembers = famMap.get(famKey)!;
+      // Representative is group lead or first member with a name
+      const rep = famMembers.find((m) => m.groupLeadName && m.applicantName && m.groupLeadName.trim().toLowerCase() === m.applicantName.trim().toLowerCase()) ||
+                  famMembers.find((m) => (m as any).groupLead === 'Yes' && m.applicantName?.trim()) ||
+                  famMembers.find((m) => m.applicantName && m.applicantName.trim()) ||
+                  famMembers[0];
+      const isActualFam = famKey && !famKey.startsWith('fam_') && famKey !== 'NoFamily';
+      return {
+        family: isActualFam ? famKey : '',
+        paxName: rep?.applicantName?.trim() || 'Guest',
+        totalPaxInFamily: famMembers.length,
+      };
+    });
+
+    let paxNamesDisplay = '';
+    if (paxPerFamily.length === 1) {
+      // 1 family in room: show name of 1 pax of the family member
+      paxNamesDisplay = paxPerFamily[0].paxName;
+    } else {
+      // Members from multiple families: show names from each separate family
+      paxNamesDisplay = paxPerFamily
+        .map((f) => (f.family ? `${f.paxName} (Family #${f.family})` : f.paxName))
+        .join('\n');
+    }
+
+    const arrDates = Array.from(new Set(resList.map((r) => normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr)).filter(Boolean)));
+    const depDates = Array.from(new Set(resList.map((r) => normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr)).filter(Boolean)));
+
+    const arrivalDate = arrDates.length > 0 ? arrDates.join(', ') : '—';
+    const departureDate = depDates.length > 0 ? depDates.join(', ') : '—';
+
+    allEntries.push({
+      roomNumber: roomNum,
+      building: bldg,
+      paxPerFamily,
+      paxNamesDisplay,
+      arrivalDate,
+      departureDate,
+      rawReservations: resList,
+    });
+  });
+
+  const sortFn = (a: SimpleSlipEntry, b: SimpleSlipEntry) => {
+    const numA = parseInt(a.roomNumber.replace(/\D/g, ''), 10) || 9999;
+    const numB = parseInt(b.roomNumber.replace(/\D/g, ''), 10) || 9999;
+    if (numA !== numB) return numA - numB;
+    return a.roomNumber.localeCompare(b.roomNumber);
+  };
+
+  const saifee = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Saifee').sort(sortFn);
+  const burhani = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Burhani').sort(sortFn);
+  const unallotted = allEntries.filter((e) => !e.roomNumber || (normalizeHotelBuilding(e.building) !== 'Saifee' && normalizeHotelBuilding(e.building) !== 'Burhani'));
+
+  return {
+    saifee,
+    burhani,
+    unallotted,
+    totalRooms: saifee.length + burhani.length,
+    totalPax: reservationsOnDate.length,
+  };
+}
+
 interface ReceptionDailySlipModalProps {
   isOpen: boolean;
   onClose: () => void;
   reservations: Reservation[];
   rooms: Room[];
+  initialTab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload';
   onUpdateReservation?: (updated: Reservation) => void;
   onBatchUpdateReservations?: (updatedList: Reservation[]) => void;
 }
@@ -212,6 +329,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   onClose,
   reservations = [],
   rooms = [],
+  initialTab = 'arrival_slip',
   onUpdateReservation,
   onBatchUpdateReservations,
 }) => {
@@ -315,8 +433,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     }
     return dates;
   }, [activeDatesSummary.sortedDates, selectedDate]);
+
   const [activeHotelFilter, setActiveHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
-  const [activeTab, setActiveTab] = useState<'turnover' | 'roster' | 'worker_summary' | 'portal_upload'>('turnover');
+  const [activeTab, setActiveTab] = useState<'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload'>(
+    initialTab || 'arrival_slip'
+  );
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [showOnlyActiveRooms, setShowOnlyActiveRooms] = useState<boolean>(true);
   const [rosterGroupByTour, setRosterGroupByTour] = useState<boolean>(true);
   const [workerViewMode, setWorkerViewMode] = useState<'grouped' | 'room_numeric'>('grouped');
@@ -428,6 +555,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   const burhaniArrivals = arrivalsOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
   const burhaniDepartures = departuresOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
+
+  // Simple, high-readability Arrival Slip & Departure List datasets (only Room #, Building, 1 pax per family, Arr/Dep dates)
+  const simpleArrivalsData = useMemo(() => buildSimpleSlipEntries(arrivalsOnDate), [arrivalsOnDate]);
+  const simpleDeparturesData = useMemo(() => buildSimpleSlipEntries(departuresOnDate), [departuresOnDate]);
 
   // Room Preparation Schedule: Room-by-Room Departure & Arrival Turnover matrix
   const roomPrepSchedule = safeRooms.map((room) => {
@@ -1218,7 +1349,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     setPdfDownloadStatus(res);
   };
 
-  // Download Dedicated Arrivals PDF for the chosen arrival date (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+  // Download Dedicated Simple Arrival Slip PDF (User requirement: Only room number, building name (separate for Saifee & Burhani), 1 pax per family member (or all if separate families), arrival & departure date. Very simple and readable)
   const handleDownloadArrivalsPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
     const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
       targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
@@ -1236,170 +1367,256 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     const renderHeader = (title: string, subtitle: string) => {
       doc.setFillColor(18, 78, 57);
-      doc.rect(0, 0, pageWidth, 55, 'F');
+      doc.rect(0, 0, pageWidth, 52, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
-      doc.text(title, pageWidth / 2, 24, { align: 'center' });
+      doc.text(title, pageWidth / 2, 23, { align: 'center' });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
       doc.setTextColor(235, 213, 158);
-      doc.text(subtitle, pageWidth / 2, 42, { align: 'center' });
+      doc.text(subtitle, pageWidth / 2, 40, { align: 'center' });
     };
 
-    const renderArrivalsTable = (
+    const renderSectionTable = (
       hotelTitle: string,
-      tourGroups: typeof allArrivalsGroupedByTour,
-      arrivalsList: Reservation[],
+      items: SimpleSlipEntry[],
       startAtY: number,
       bannerColor: [number, number, number] = [18, 78, 57]
     ) => {
       doc.setFillColor(bannerColor[0], bannerColor[1], bannerColor[2]);
-      doc.roundedRect(20, startAtY, pageWidth - 40, 24, 3, 3, 'F');
+      doc.roundedRect(25, startAtY, pageWidth - 50, 24, 3, 3, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
+      doc.setFontSize(10.5);
       doc.setTextColor(235, 213, 158);
-      doc.text(hotelTitle, 30, startAtY + 16);
+      doc.text(hotelTitle, 35, startAtY + 16);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(8.5);
       doc.setTextColor(255, 255, 255);
-      doc.text(`Total Arrivals: ${arrivalsList.length} Zaereen • Sorted As Per Room Numbers`, pageWidth - 290, startAtY + 16);
+      const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
+      doc.text(`Total: ${items.length} Rooms • ${totalPax} Zaereen`, pageWidth - 200, startAtY + 16);
 
-      // Sort as per rooms (Requirement: "the arrival slip should be sorted as per rooms with all the details told prior")
-      const sortedByRooms = [...arrivalsList].sort((a, b) => {
-        const hasA = !!a.roomNumber && a.roomNumber.trim() !== '';
-        const hasB = !!b.roomNumber && b.roomNumber.trim() !== '';
-        if (hasA && !hasB) return -1;
-        if (!hasA && hasB) return 1;
-        const numA = parseInt(a.roomNumber || '', 10) || 9999;
-        const numB = parseInt(b.roomNumber || '', 10) || 9999;
-        if (numA !== numB) return numA - numB;
-        const famA = (a.family || '').localeCompare(b.family || '', undefined, { numeric: true });
-        if (famA !== 0) return famA;
-        return (a.applicantName || '').localeCompare(b.applicantName || '');
-      });
-
-      const rows: string[][] = [];
-      let counter = 1;
-      sortedByRooms.forEach((r) => {
-        const paxInfo = getRoomPaxInfo(r);
-        const arrTime = getReservationArrivalTime(r, '11:00 AM');
-        const depTime = getReservationDepartureTime(r, '12:00 PM');
-        const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''} Hotel)` : 'UNALLOTTED\n[Assign Rm]';
-        rows.push([
-          String(counter++),
-          roomStr,
-          `Family #${r.family || '—'}\n(${paxInfo.famPaxInRoom} Pax in Room)`,
-          `${r.applicantName}\nITS: ${r.itsId || '—'}`,
-          `Time: ${arrTime}`,
-          `Dep: ${r.departureDate || '—'}\n(${depTime})`,
-          `Tour: ${r.tourRefNo || '—'}\nOffice: ${r.officeName || '—'}`,
-          r.category || 'Mumineen',
-          r.moneyGiven === 'Yes' ? 'Paid (Cat A) ✓' : (r.shiftToCategoryA ? 'Pending Cat A' : 'Standard'),
-          '[ ] ID Verified\n[ ] Key Cards Given\n[ ] Wajba Given',
-        ]);
-      });
+      const rows: string[][] = items.map((it) => [
+        it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
+        `${it.building || ''} Hotel`,
+        it.paxNamesDisplay,
+        it.arrivalDate,
+        it.departureDate,
+      ]);
 
       safeAutoTable(doc, {
         startY: startAtY + 28,
-        head: [['#', 'Room # & Hotel (Base)', 'Family # & Room Pax', 'Applicant / Guest & ITS', 'Arrival Time', 'Departure Date & Time', 'Tour ID & Office', 'Category', 'Payment / Cat', 'Reception Sign-off']],
-        body: rows.length > 0 ? rows : [[`No arrivals scheduled for this section on ${selectedDate}`, '', '', '', '', '', '', '', '', '']],
-        margin: { left: 20, right: 20 },
+        head: [['Room #', 'Building', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date']],
+        body: rows.length > 0 ? rows : [['No arrivals scheduled for this section on this date', '', '', '', '']],
+        margin: { left: 25, right: 25 },
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 4.5, textColor: [30, 30, 30] },
-        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        styles: { fontSize: 9.5, cellPadding: 6, textColor: [30, 30, 30] },
+        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
         columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { fontStyle: 'bold', fontSize: 9, cellWidth: 85, halign: 'center' },
-          2: { fontSize: 8, cellWidth: 80 },
-          3: { fontStyle: 'bold', fontSize: 8, cellWidth: 110 },
-          4: { fontStyle: 'bold', fontSize: 8.5, cellWidth: 70, halign: 'center' },
-          5: { fontSize: 8, cellWidth: 75, halign: 'center' },
-          6: { fontSize: 7.5, cellWidth: 95 },
-          7: { fontSize: 7.5, cellWidth: 55, halign: 'center' },
-          8: { fontSize: 7.5, cellWidth: 65, halign: 'center' },
-          9: { fontSize: 7, cellWidth: 90 },
+          0: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 10 },
+          1: { cellWidth: 105, halign: 'center', fontSize: 9.5 },
+          2: { cellWidth: 382, fontStyle: 'bold', fontSize: 9.5 },
+          3: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          4: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
         },
       });
 
-      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 40);
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
     };
 
-    let currentY = 75;
+    let currentY = 68;
 
     if (targetHotel === 'Saifee') {
       renderHeader(
-        'FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) ARRIVALS MANIFEST',
-        `OFFICIAL ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • ${saifeeArrivals.length} ZAEREEN ARRIVING`
+        'FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) ARRIVAL SLIP',
+        `ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • NAJAF AL-ASHRAF`
       );
-      renderArrivalsTable('SAIFEE HOTEL (70 ROOMS) — SCHEDULED ARRIVALS & GUEST ALLOTMENT', saifeeArrivalsGroupedByTour, saifeeArrivals, currentY);
+      renderSectionTable('SAIFEE HOTEL (70 ROOMS) — ARRIVALS', simpleArrivalsData.saifee, currentY);
     } else if (targetHotel === 'Burhani') {
       renderHeader(
-        'FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) ARRIVALS MANIFEST',
-        `OFFICIAL ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • ${burhaniArrivals.length} ZAEREEN ARRIVING`
+        'FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) ARRIVAL SLIP',
+        `ARRIVAL DATE: ${selectedDate} • SEPARATE BUILDING PRINT • NAJAF AL-ASHRAF`
       );
-      renderArrivalsTable('BURHANI HOTEL (44 ROOMS) — SCHEDULED ARRIVALS & GUEST ALLOTMENT', burhaniArrivalsGroupedByTour, burhaniArrivals, currentY);
+      renderSectionTable('BURHANI HOTEL (44 ROOMS) — ARRIVALS', simpleArrivalsData.burhani, currentY);
     } else {
-      // JOINED & BIFURCATED AS PER HOTELS (Prompt: "pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+      // Both hotels: Saifee then Burhani (separate page for clean printing per building)
       renderHeader(
-        'FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST (JOINED & BIFURCATED AS PER HOTELS)',
-        `OFFICIAL ARRIVAL DATE: ${selectedDate} • TOTAL ZAEREEN: ${arrivalsOnDate.length} (SAIFEE: ${saifeeArrivals.length} | BURHANI: ${burhaniArrivals.length})`
+        'FAIZ-E-HUSAINI — ARRIVAL SLIP (SAIFEE & BURHANI HOTELS)',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • SAIFEE & BURHANI HOTELS • NAJAF AL-ASHRAF`
       );
+      renderSectionTable('PART 1: SAIFEE HOTEL (70 ROOMS) — ARRIVALS', simpleArrivalsData.saifee, currentY);
 
-      // Part 1: Saifee Hotel
-      renderArrivalsTable('PART 1: SAIFEE HOTEL (70 ROOMS) — ARRIVALS MANIFEST & GUEST ALLOTMENT', saifeeArrivalsGroupedByTour, saifeeArrivals, currentY);
-
-      // Page break for Part 2: Burhani Hotel (So each hotel can be printed separately from this PDF or joined together)
       doc.addPage();
       renderHeader(
-        'FAIZ-E-HUSAINI — SCHEDULED ARRIVALS MANIFEST (PART 2: BURHANI HOTEL)',
-        `OFFICIAL ARRIVAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS) • ${burhaniArrivals.length} ZAEREEN ARRIVING`
+        'FAIZ-E-HUSAINI — ARRIVAL SLIP (BURHANI HOTEL)',
+        `OFFICIAL ARRIVAL DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS) • NAJAF AL-ASHRAF`
       );
-      currentY = 75;
-      renderArrivalsTable('PART 2: BURHANI HOTEL (44 ROOMS) — ARRIVALS MANIFEST & GUEST ALLOTMENT', burhaniArrivalsGroupedByTour, burhaniArrivals, currentY);
+      currentY = 68;
+      renderSectionTable('PART 2: BURHANI HOTEL (44 ROOMS) — ARRIVALS', simpleArrivalsData.burhani, currentY);
 
-      // If unallotted zaereen exist, add Part 3 on clean page
-      if (unallottedArrivals.length > 0) {
+      if (simpleArrivalsData.unallotted.length > 0) {
         doc.addPage();
         renderHeader(
-          'FAIZ-E-HUSAINI — UNALLOTTED ZAEREEN ARRIVALS (ATTENTION REQUIRED)',
-          `OFFICIAL ARRIVAL DATE: ${selectedDate} • PENDING ROOM ALLOTMENT • ${unallottedArrivals.length} ZAEREEN`
+          'FAIZ-E-HUSAINI — UNALLOTTED ARRIVALS (ATTENTION REQUIRED)',
+          `OFFICIAL ARRIVAL DATE: ${selectedDate} • PENDING ROOM ALLOTMENT`
         );
-        currentY = 75;
-        renderArrivalsTable(
-          'PART 3: UNALLOTTED ZAEREEN (PENDING HOTEL & ROOM ALLOTMENT)',
-          unallottedArrivalsGroupedByTour,
-          unallottedArrivals,
+        currentY = 68;
+        renderSectionTable(
+          'PART 3: UNALLOTTED ZAEREEN (PENDING ROOM ALLOTMENT)',
+          simpleArrivalsData.unallotted,
           currentY,
-          [185, 28, 28] // red banner
+          [185, 28, 28]
         );
       }
     }
 
-    currentY = (doc as any).lastAutoTable?.finalY ?? (currentY + 25);
-    currentY += 15;
-    if (currentY + 50 > pageHeight) {
-      doc.addPage();
-      currentY = 40;
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Faiz-e-Husaini Arrival Slip — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 35, pageHeight - 12);
+      doc.text('OFFICIAL LODGING RECORD', pageWidth - 160, pageHeight - 12);
     }
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Reception In-Charge Sign-off: ___________________________  Arrival Date: ${selectedDate}`, 40, currentY + 25);
-    doc.text('Tour Coordinator Received: ___________________________', pageWidth - 280, currentY + 25);
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Saifee_Burhani';
+    const fileName = `Faiz_Husaini_Arrival_Slip_${selectedDate}${hotelSuffix}.pdf`;
+    const res = saveOrDownloadPdf(doc, fileName);
+    setPdfDownloadStatus(res);
+  };
+
+  // Download Dedicated Simple Departure List PDF (User requirement: same clean 5 columns for departures)
+  const handleDownloadDeparturesPdf = (targetHotelInput?: 'ALL' | 'Saifee' | 'Burhani' | unknown) => {
+    const targetHotel: 'ALL' | 'Saifee' | 'Burhani' =
+      targetHotelInput === 'Saifee' || targetHotelInput === 'Burhani' || targetHotelInput === 'ALL'
+        ? targetHotelInput
+        : activeHotelFilter;
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    const renderHeader = (title: string, subtitle: string) => {
+      doc.setFillColor(18, 78, 57);
+      doc.rect(0, 0, pageWidth, 52, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text(title, pageWidth / 2, 23, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(subtitle, pageWidth / 2, 40, { align: 'center' });
+    };
+
+    const renderSectionTable = (
+      hotelTitle: string,
+      items: SimpleSlipEntry[],
+      startAtY: number,
+      bannerColor: [number, number, number] = [18, 78, 57]
+    ) => {
+      doc.setFillColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+      doc.roundedRect(25, startAtY, pageWidth - 50, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text(hotelTitle, 35, startAtY + 16);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
+      doc.text(`Total: ${items.length} Rooms • ${totalPax} Zaereen`, pageWidth - 200, startAtY + 16);
+
+      const rows: string[][] = items.map((it) => [
+        it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
+        `${it.building || ''} Hotel`,
+        it.paxNamesDisplay,
+        it.arrivalDate,
+        it.departureDate,
+      ]);
+
+      safeAutoTable(doc, {
+        startY: startAtY + 28,
+        head: [['Room #', 'Building', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date']],
+        body: rows.length > 0 ? rows : [['No departures scheduled for this section on this date', '', '', '', '']],
+        margin: { left: 25, right: 25 },
+        theme: 'grid',
+        styles: { fontSize: 9.5, cellPadding: 6, textColor: [30, 30, 30] },
+        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+        columnStyles: {
+          0: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 10 },
+          1: { cellWidth: 105, halign: 'center', fontSize: 9.5 },
+          2: { cellWidth: 382, fontStyle: 'bold', fontSize: 9.5 },
+          3: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          4: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+        },
+      });
+
+      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
+    };
+
+    let currentY = 68;
+
+    if (targetHotel === 'Saifee') {
+      renderHeader(
+        'FAIZ-E-HUSAINI — SAIFEE HOTEL (70 ROOMS) DEPARTURE LIST',
+        `DEPARTURE DATE: ${selectedDate} • SEPARATE BUILDING PRINT • NAJAF AL-ASHRAF`
+      );
+      renderSectionTable('SAIFEE HOTEL (70 ROOMS) — DEPARTURES', simpleDeparturesData.saifee, currentY);
+    } else if (targetHotel === 'Burhani') {
+      renderHeader(
+        'FAIZ-E-HUSAINI — BURHANI HOTEL (44 ROOMS) DEPARTURE LIST',
+        `DEPARTURE DATE: ${selectedDate} • SEPARATE BUILDING PRINT • NAJAF AL-ASHRAF`
+      );
+      renderSectionTable('BURHANI HOTEL (44 ROOMS) — DEPARTURES', simpleDeparturesData.burhani, currentY);
+    } else {
+      // Both hotels: Saifee then Burhani (separate page for clean printing per building)
+      renderHeader(
+        'FAIZ-E-HUSAINI — DEPARTURE LIST (SAIFEE & BURHANI HOTELS)',
+        `OFFICIAL DEPARTURE DATE: ${selectedDate} • SAIFEE & BURHANI HOTELS • NAJAF AL-ASHRAF`
+      );
+      renderSectionTable('PART 1: SAIFEE HOTEL (70 ROOMS) — DEPARTURES', simpleDeparturesData.saifee, currentY);
+
+      doc.addPage();
+      renderHeader(
+        'FAIZ-E-HUSAINI — DEPARTURE LIST (BURHANI HOTEL)',
+        `OFFICIAL DEPARTURE DATE: ${selectedDate} • BURHANI HOTEL (44 ROOMS) • NAJAF AL-ASHRAF`
+      );
+      currentY = 68;
+      renderSectionTable('PART 2: BURHANI HOTEL (44 ROOMS) — DEPARTURES', simpleDeparturesData.burhani, currentY);
+
+      if (simpleDeparturesData.unallotted.length > 0) {
+        doc.addPage();
+        renderHeader(
+          'FAIZ-E-HUSAINI — UNALLOTTED DEPARTURES (ATTENTION REQUIRED)',
+          `OFFICIAL DEPARTURE DATE: ${selectedDate} • PENDING ROOM ALLOTMENT`
+        );
+        currentY = 68;
+        renderSectionTable(
+          'PART 3: UNALLOTTED ZAEREEN (PENDING ROOM ALLOTMENT)',
+          simpleDeparturesData.unallotted,
+          currentY,
+          [185, 28, 28]
+        );
+      }
+    }
 
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
-      doc.setFontSize(7);
+      doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Faiz-e-Husaini Arrivals Manifest — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 40, pageHeight - 12);
-      doc.text('BIFURCATED ADMINISTRATIVE RECORD', pageWidth - 200, pageHeight - 12);
+      doc.text(`Faiz-e-Husaini Departure List — Date: ${selectedDate} — Page ${i} of ${totalPages}`, 35, pageHeight - 12);
+      doc.text('OFFICIAL LODGING RECORD', pageWidth - 160, pageHeight - 12);
     }
 
-    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Joined_Bifurcated_Hotels';
-    const fileName = `Faiz_Husaini_Arrivals_Manifest_${selectedDate}${hotelSuffix}.pdf`;
+    const hotelSuffix = targetHotel !== 'ALL' ? `_${targetHotel}_Hotel` : '_Saifee_Burhani';
+    const fileName = `Faiz_Husaini_Departure_List_${selectedDate}${hotelSuffix}.pdf`;
     const res = saveOrDownloadPdf(doc, fileName);
     setPdfDownloadStatus(res);
   };
@@ -2095,16 +2312,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span>Print Slip</span>
               </button>
 
-              {/* Dedicated Chosen Arrival Date PDF Group (Prompt: "I want the downloaded pdf of the date of arrival I have chosen / pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too") */}
+              {/* Dedicated Chosen Arrival Date PDF Group */}
               <div className="flex items-center rounded-xl bg-[#124E39] p-0.5 border border-[#C5A059] shadow-sm">
                 <button
                   type="button"
                   onClick={() => handleDownloadArrivalsPdf('ALL')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer"
-                  title={`Download official Arrivals Manifest PDF (Joined & Bifurcated with page breaks) for chosen arrival date: ${selectedDate}`}
+                  title={`Download official Arrival Slip PDF (Joined & Bifurcated with page breaks) for chosen arrival date: ${selectedDate}`}
                 >
                   <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>Arrivals PDF ({selectedDate})</span>
+                  <span>Arrival Slip PDF ({selectedDate})</span>
                 </button>
 
                 <div className="h-4 w-px bg-[#C5A059]/40 my-auto" />
@@ -2115,7 +2332,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
                   title={`Print Saifee Hotel Arrivals Separately for ${selectedDate}`}
                 >
-                  Saifee ({saifeeArrivals.length})
+                  Saifee ({simpleArrivalsData.saifee.length})
                 </button>
 
                 <button
@@ -2124,7 +2341,40 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
                   title={`Print Burhani Hotel Arrivals Separately for ${selectedDate}`}
                 >
-                  Burhani ({burhaniArrivals.length})
+                  Burhani ({simpleArrivalsData.burhani.length})
+                </button>
+              </div>
+
+              {/* Dedicated Chosen Departure Date PDF Group */}
+              <div className="flex items-center rounded-xl bg-amber-900/90 p-0.5 border border-amber-500 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDeparturesPdf('ALL')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-200 hover:bg-amber-950 transition cursor-pointer"
+                  title={`Download official Departure List PDF (Joined & Bifurcated with page breaks) for chosen date: ${selectedDate}`}
+                >
+                  <LogOut className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Departure List PDF ({selectedDate})</span>
+                </button>
+
+                <div className="h-4 w-px bg-amber-500/40 my-auto" />
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDeparturesPdf('Saifee')}
+                  className="px-2 py-1.5 text-[11px] font-semibold text-amber-100 hover:text-white hover:bg-amber-800 rounded-md transition cursor-pointer"
+                  title={`Print Saifee Hotel Departures Separately for ${selectedDate}`}
+                >
+                  Saifee ({simpleDeparturesData.saifee.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDeparturesPdf('Burhani')}
+                  className="px-2 py-1.5 text-[11px] font-semibold text-amber-100 hover:text-white hover:bg-amber-800 rounded-md transition cursor-pointer"
+                  title={`Print Burhani Hotel Departures Separately for ${selectedDate}`}
+                >
+                  Burhani ({simpleDeparturesData.burhani.length})
                 </button>
               </div>
 
@@ -2318,17 +2568,23 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <button
                   type="button"
                   onClick={() => {
-                    if (activeTab === 'roster') handleDownloadRosterPdf(activeHotelFilter);
+                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf(activeHotelFilter);
+                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf(activeHotelFilter);
+                    else if (activeTab === 'roster') handleDownloadRosterPdf(activeHotelFilter);
                     else if (activeTab === 'worker_summary') handleDownloadWorkerPdf(activeHotelFilter);
                     else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(portalHotelFilter);
                     else handleDownloadPdf(activeHotelFilter);
                   }}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer whitespace-nowrap"
-                  title={`Download dedicated PDF for ${activeTab === 'roster' ? 'Tour Roster' : activeTab === 'worker_summary' ? 'Worker Sheet' : activeTab === 'portal_upload' ? 'Portal Upload' : 'Turnover Slip'} (${selectedDate})`}
+                  title={`Download dedicated PDF for ${activeTab} (${selectedDate})`}
                 >
                   <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
                   <span>
-                    {activeTab === 'roster'
+                    {activeTab === 'arrival_slip'
+                      ? 'Download Arrival Slip PDF'
+                      : activeTab === 'departure_list'
+                      ? 'Download Departure List PDF'
+                      : activeTab === 'roster'
                       ? 'Download Roster PDF'
                       : activeTab === 'worker_summary'
                       ? 'Download Worker PDF'
@@ -2342,7 +2598,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <button
                   type="button"
                   onClick={() => {
-                    if (activeTab === 'roster') handleDownloadRosterPdf('Saifee');
+                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf('Saifee');
+                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf('Saifee');
+                    else if (activeTab === 'roster') handleDownloadRosterPdf('Saifee');
                     else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Saifee');
                     else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Saifee');
                     else handleDownloadPdf('Saifee');
@@ -2355,7 +2613,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <button
                   type="button"
                   onClick={() => {
-                    if (activeTab === 'roster') handleDownloadRosterPdf('Burhani');
+                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf('Burhani');
+                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf('Burhani');
+                    else if (activeTab === 'roster') handleDownloadRosterPdf('Burhani');
                     else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Burhani');
                     else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Burhani');
                     else handleDownloadPdf('Burhani');
@@ -2407,13 +2667,41 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           </div>
         </div>
 
-        {/* View Switcher Tabs (Print Prep Schedule vs Standard Roster vs Worker Operations) */}
+        {/* View Switcher Tabs (Arrival Slip vs Departure List vs Turnover vs Roster vs Worker) */}
         <div className="print-hidden-element flex items-center justify-between gap-3 pt-3 flex-wrap">
           <div className="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl text-xs font-bold flex-wrap">
+            {/* 1. Simple Arrival Slip */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('arrival_slip')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                activeTab === 'arrival_slip'
+                  ? 'bg-[#124E39] text-white shadow-xs font-bold'
+                  : 'text-stone-700 hover:text-stone-900 font-semibold'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <span>Arrival Slip (Simple)</span>
+            </button>
+
+            {/* 2. Simple Departure List */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('departure_list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                activeTab === 'departure_list'
+                  ? 'bg-[#124E39] text-white shadow-xs font-bold'
+                  : 'text-stone-700 hover:text-stone-900 font-semibold'
+              }`}
+            >
+              <LogOut className="w-3.5 h-3.5 text-amber-300" />
+              <span>Departure List (Simple)</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('turnover')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'turnover'
                   ? 'bg-[#124E39] text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
@@ -2529,7 +2817,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               <FaizHusainiLogo size="lg" />
             </div>
             <div className="inline-block bg-[#124E39] text-[#EBD59E] font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1">
-              {activeTab === 'turnover'
+              {activeTab === 'arrival_slip'
+                ? 'Official Arrival Slip — Room Allotments & Dates'
+                : activeTab === 'departure_list'
+                ? 'Official Departure List — Room Numbers & Dates'
+                : activeTab === 'turnover'
                 ? 'Room Turnover & Preparation Daily Reception Slip'
                 : activeTab === 'roster'
                 ? 'Daily Tour Roster — Arrivals & Departures (Grouped by Tour ID & Time)'
@@ -2538,64 +2830,671 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 : 'Assistant Portal Upload Verification Sheet (Tour IDs & Rooms)'}
             </div>
             <div className="mt-2 text-xs font-semibold text-stone-700">
-              Operational Date: <span className="text-[#124E39] font-bold underline">{formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span> • Najaf Al-Ashraf Lodging
+              {activeTab === 'arrival_slip' ? (
+                <>
+                  Official Arrival Date:{' '}
+                  <span className="text-[#124E39] font-bold underline">
+                    {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </span>{' '}
+                  • Saifee Hotel & Burhani Hotel
+                </>
+              ) : activeTab === 'departure_list' ? (
+                <>
+                  Official Departure Date:{' '}
+                  <span className="text-[#124E39] font-bold underline">
+                    {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </span>{' '}
+                  • Saifee Hotel & Burhani Hotel
+                </>
+              ) : (
+                <>
+                  Operational Date:{' '}
+                  <span className="text-[#124E39] font-bold underline">
+                    {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </span>{' '}
+                  • Najaf Al-Ashraf Lodging
+                </>
+              )}
             </div>
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200">
-              <span className="text-stone-500 text-[10px] uppercase font-bold block">Priority Room Turnovers</span>
-              <span className="text-base font-extrabold text-purple-900">{activeTurnoversCount} Rooms</span>
-              <span className="text-[10px] text-stone-500 block">Departing ➔ Arriving same day</span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col justify-between">
-              <div>
-                <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrivals Today</span>
-                <span className="text-base font-extrabold text-emerald-800">{newArrivalsPrepCount} Rooms ({arrivalsOnDate.length} Zaereen)</span>
-                <span className="text-[10px] text-stone-500 block">Fresh check-ins to welcome</span>
+          {activeTab === 'arrival_slip' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Saifee Hotel Arrivals</span>
+                <span className="text-base font-extrabold text-emerald-900">{simpleArrivalsData.saifee.length} Rooms</span>
+                <span className="text-[10px] text-stone-500 block">70 Room Capacity</span>
               </div>
-              <button
-                type="button"
-                onClick={handleDownloadArrivalsPdf}
-                className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-[#124E39] hover:text-[#0E3C2C] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
-                title={`Download official PDF of arrivals for ${selectedDate}`}
-              >
-                <Download className="w-3 h-3 text-[#124E39]" />
-                <span>Arrivals PDF</span>
-              </button>
-            </div>
-            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200">
-              <span className="text-stone-500 text-[10px] uppercase font-bold block">Checkouts / Freeing Up</span>
-              <span className="text-base font-extrabold text-amber-800">{checkoutCleansCount} Rooms ({departuresOnDate.length} Zaereen)</span>
-              <span className="text-[10px] text-stone-500 block">Vacating to clean inventory</span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5]">
-              <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Hotel Inventory</span>
-              <span className="text-base font-extrabold text-[#124E39]">114 Official Rooms</span>
-              <span className="text-[10px] text-stone-500 block">Saifee (70) • Burhani (44)</span>
-            </div>
-          </div>
-
-          {/* Unallotted Zaereen Alert if any arrive today without a room */}
-          {unallottedArrivals.length > 0 && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex flex-col gap-2">
-              <div className="flex items-center gap-2 font-bold text-amber-900">
-                <AlertCircle className="w-4 h-4 text-amber-700" />
-                <span>Notice: {unallottedArrivals.length} Zaereen arriving on {selectedDate} have no Room Number assigned yet!</span>
+              <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Burhani Hotel Arrivals</span>
+                <span className="text-base font-extrabold text-emerald-900">{simpleArrivalsData.burhani.length} Rooms</span>
+                <span className="text-[10px] text-stone-500 block">44 Room Capacity</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {unallottedArrivals.map((z) => (
-                  <span key={z.id} className="px-2 py-0.5 rounded bg-white border border-amber-300 text-amber-900 font-medium text-[11px]">
-                    {z.applicantName} ({z.family || 'Fam'} • Tour: {z.tourRefNo})
-                  </span>
-                ))}
+              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-300">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Arriving Pax</span>
+                <span className="text-base font-extrabold text-[#124E39]">{simpleArrivalsData.totalPax} Zaereen</span>
+                <span className="text-[10px] text-stone-500 block">{simpleArrivalsData.totalRooms} Total Rooms Allotted</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5] flex flex-col justify-between">
+                <div>
+                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Export Official PDF</span>
+                  <span className="text-xs font-bold text-stone-800">Clean 5-Column Slip</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf(activeHotelFilter)}
+                  className="mt-1 flex items-center gap-1 text-[11px] font-bold text-[#124E39] hover:text-[#0E3C2C] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-[#124E39]" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            </div>
+          ) : activeTab === 'departure_list' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Saifee Hotel Departures</span>
+                <span className="text-base font-extrabold text-amber-900">{simpleDeparturesData.saifee.length} Rooms</span>
+                <span className="text-[10px] text-stone-500 block">Vacating today</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Burhani Hotel Departures</span>
+                <span className="text-base font-extrabold text-amber-900">{simpleDeparturesData.burhani.length} Rooms</span>
+                <span className="text-[10px] text-stone-500 block">Vacating today</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-300">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Departing Pax</span>
+                <span className="text-base font-extrabold text-amber-950">{simpleDeparturesData.totalPax} Zaereen</span>
+                <span className="text-[10px] text-stone-500 block">{simpleDeparturesData.totalRooms} Total Rooms Freeing</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5] flex flex-col justify-between">
+                <div>
+                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Export Official PDF</span>
+                  <span className="text-xs font-bold text-stone-800">Clean 5-Column List</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDeparturesPdf(activeHotelFilter)}
+                  className="mt-1 flex items-center gap-1 text-[11px] font-bold text-amber-900 hover:text-amber-950 bg-white px-2 py-0.5 rounded border border-amber-300 shadow-2xs w-fit cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-amber-700" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Priority Room Turnovers</span>
+                <span className="text-base font-extrabold text-purple-900">{activeTurnoversCount} Rooms</span>
+                <span className="text-[10px] text-stone-500 block">Departing ➔ Arriving same day</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col justify-between">
+                <div>
+                  <span className="text-stone-500 text-[10px] uppercase font-bold block">New Arrivals Today</span>
+                  <span className="text-base font-extrabold text-emerald-800">{newArrivalsPrepCount} Rooms ({arrivalsOnDate.length} Zaereen)</span>
+                  <span className="text-[10px] text-stone-500 block">Fresh check-ins to welcome</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArrivalsPdf(activeHotelFilter)}
+                  className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-[#124E39] hover:text-[#0E3C2C] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
+                  title={`Download official PDF of arrivals for ${selectedDate}`}
+                >
+                  <Download className="w-3 h-3 text-[#124E39]" />
+                  <span>Arrivals PDF</span>
+                </button>
+              </div>
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Checkouts / Freeing Up</span>
+                <span className="text-base font-extrabold text-amber-800">{checkoutCleansCount} Rooms ({departuresOnDate.length} Zaereen)</span>
+                <span className="text-[10px] text-stone-500 block">Vacating to clean inventory</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5]">
+                <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Hotel Inventory</span>
+                <span className="text-base font-extrabold text-[#124E39]">114 Official Rooms</span>
+                <span className="text-[10px] text-stone-500 block">Saifee (70) • Burhani (44)</span>
               </div>
             </div>
           )}
 
+          {/* Simple Arrival Slip Table (User requirement) */}
+          {activeTab === 'arrival_slip' && (
+            <div className="space-y-6">
+              {/* Building filter bar */}
+              <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
+                <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
+                  <Building2 className="w-4 h-4 text-[#124E39]" />
+                  <span>Building View:</span>
+                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('ALL')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'ALL'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      All Buildings ({simpleArrivalsData.totalRooms} Rooms)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('Saifee')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'Saifee'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      Saifee Hotel ({simpleArrivalsData.saifee.length} Rooms)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('Burhani')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'Burhani'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      Burhani Hotel ({simpleArrivalsData.burhani.length} Rooms)
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-stone-600 font-semibold">
+                  Date of Arrival: <span className="font-bold text-stone-900">{selectedDate}</span> • Simple 5-Column Format
+                </div>
+              </div>
+
+              {/* Saifee Hotel Arrivals */}
+              {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-[#124E39] text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-[#EBD59E]" />
+                      <span className="font-black text-sm text-[#EBD59E] tracking-wide">
+                        SAIFEE HOTEL (70 ROOMS) — ARRIVALS
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-100">
+                      {simpleArrivalsData.saifee.length} Rooms • {simpleArrivalsData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200 text-xs">
+                        {simpleArrivalsData.saifee.length > 0 ? (
+                          simpleArrivalsData.saifee.map((entry, idx) => (
+                            <tr key={idx} className="hover:bg-emerald-50/40 transition">
+                              <td className="py-3 px-4 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg inline-block">
+                                  Room {entry.roomNumber}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                                Saifee Hotel
+                              </td>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="space-y-1">
+                                  {entry.paxPerFamily.map((fam, fIdx) => (
+                                    <div key={fIdx} className="flex items-center gap-2">
+                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                      {entry.paxPerFamily.length > 1 && fam.family && (
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                          Family #{fam.family}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.arrivalDate}
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.departureDate}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
+                              No arrivals scheduled for Saifee Hotel on {selectedDate}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Printable Page Break between Saifee and Burhani */}
+              {activeHotelFilter === 'ALL' && (
+                <div className="hidden print:block h-6 break-before-page" />
+              )}
+
+              {/* Burhani Hotel Arrivals */}
+              {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Burhani') && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-[#124E39] text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-[#EBD59E]" />
+                      <span className="font-black text-sm text-[#EBD59E] tracking-wide">
+                        BURHANI HOTEL (44 ROOMS) — ARRIVALS
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-100">
+                      {simpleArrivalsData.burhani.length} Rooms • {simpleArrivalsData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200 text-xs">
+                        {simpleArrivalsData.burhani.length > 0 ? (
+                          simpleArrivalsData.burhani.map((entry, idx) => (
+                            <tr key={idx} className="hover:bg-emerald-50/40 transition">
+                              <td className="py-3 px-4 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg inline-block">
+                                  Room {entry.roomNumber}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                                Burhani Hotel
+                              </td>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="space-y-1">
+                                  {entry.paxPerFamily.map((fam, fIdx) => (
+                                    <div key={fIdx} className="flex items-center gap-2">
+                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                      {entry.paxPerFamily.length > 1 && fam.family && (
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                          Family #{fam.family}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.arrivalDate}
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.departureDate}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
+                              No arrivals scheduled for Burhani Hotel on {selectedDate}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Unallotted Arrivals */}
+              {simpleArrivalsData.unallotted.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-amber-800 text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-200" />
+                      <span className="font-black text-sm text-amber-100 tracking-wide">
+                        UNALLOTTED ZAEREEN (PENDING ROOM ALLOTMENT)
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-amber-100">
+                      {simpleArrivalsData.unallotted.length} Entries • {simpleArrivalsData.unallotted.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-amber-300 rounded-xl shadow-2xs bg-amber-50/30">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-amber-200 text-xs">
+                        {simpleArrivalsData.unallotted.map((entry, idx) => (
+                          <tr key={idx} className="hover:bg-amber-100/50 transition">
+                            <td className="py-3 px-4 text-center align-middle">
+                              <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                Unallotted
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-medium text-stone-500">
+                              Pending
+                            </td>
+                            <td className="py-3 px-4 align-middle">
+                              <div className="space-y-1">
+                                {entry.paxPerFamily.map((fam, fIdx) => (
+                                  <div key={fIdx} className="flex items-center gap-2">
+                                    <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                    {fam.family && (
+                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        Family #{fam.family}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              {entry.arrivalDate}
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              {entry.departureDate}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Simple Departure List Table (User requirement) */}
+          {activeTab === 'departure_list' && (
+            <div className="space-y-6">
+              {/* Building filter bar */}
+              <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
+                <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
+                  <Building2 className="w-4 h-4 text-[#124E39]" />
+                  <span>Building View:</span>
+                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('ALL')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'ALL'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      All Buildings ({simpleDeparturesData.totalRooms} Rooms)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('Saifee')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'Saifee'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      Saifee Hotel ({simpleDeparturesData.saifee.length} Rooms)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveHotelFilter('Burhani')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        activeHotelFilter === 'Burhani'
+                          ? 'bg-[#124E39] text-white shadow-xs'
+                          : 'text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      Burhani Hotel ({simpleDeparturesData.burhani.length} Rooms)
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-stone-600 font-semibold">
+                  Date of Departure: <span className="font-bold text-stone-900">{selectedDate}</span> • Simple 5-Column Format
+                </div>
+              </div>
+
+              {/* Saifee Hotel Departures */}
+              {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-amber-900 text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-amber-200" />
+                      <span className="font-black text-sm text-amber-100 tracking-wide">
+                        SAIFEE HOTEL (70 ROOMS) — DEPARTURES
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-amber-200">
+                      {simpleDeparturesData.saifee.length} Rooms • {simpleDeparturesData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200 text-xs">
+                        {simpleDeparturesData.saifee.length > 0 ? (
+                          simpleDeparturesData.saifee.map((entry, idx) => (
+                            <tr key={idx} className="hover:bg-amber-50/40 transition">
+                              <td className="py-3 px-4 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg inline-block">
+                                  Room {entry.roomNumber}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                                Saifee Hotel
+                              </td>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="space-y-1">
+                                  {entry.paxPerFamily.map((fam, fIdx) => (
+                                    <div key={fIdx} className="flex items-center gap-2">
+                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                      {entry.paxPerFamily.length > 1 && fam.family && (
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                          Family #{fam.family}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.arrivalDate}
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.departureDate}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
+                              No departures scheduled for Saifee Hotel on {selectedDate}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Printable Page Break between Saifee and Burhani */}
+              {activeHotelFilter === 'ALL' && (
+                <div className="hidden print:block h-6 break-before-page" />
+              )}
+
+              {/* Burhani Hotel Departures */}
+              {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Burhani') && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-amber-900 text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-amber-200" />
+                      <span className="font-black text-sm text-amber-100 tracking-wide">
+                        BURHANI HOTEL (44 ROOMS) — DEPARTURES
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-amber-200">
+                      {simpleDeparturesData.burhani.length} Rooms • {simpleDeparturesData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200 text-xs">
+                        {simpleDeparturesData.burhani.length > 0 ? (
+                          simpleDeparturesData.burhani.map((entry, idx) => (
+                            <tr key={idx} className="hover:bg-amber-50/40 transition">
+                              <td className="py-3 px-4 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg inline-block">
+                                  Room {entry.roomNumber}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                                Burhani Hotel
+                              </td>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="space-y-1">
+                                  {entry.paxPerFamily.map((fam, fIdx) => (
+                                    <div key={fIdx} className="flex items-center gap-2">
+                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                      {entry.paxPerFamily.length > 1 && fam.family && (
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                          Family #{fam.family}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.arrivalDate}
+                              </td>
+                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                {entry.departureDate}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
+                              No departures scheduled for Burhani Hotel on {selectedDate}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Unallotted Departures */}
+              {simpleDeparturesData.unallotted.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-amber-800 text-white px-4 py-2.5 rounded-xl shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-200" />
+                      <span className="font-black text-sm text-amber-100 tracking-wide">
+                        UNALLOTTED DEPARTURES (PENDING ROOM ALLOTMENT)
+                      </span>
+                    </div>
+                    <div className="text-xs font-semibold text-amber-100">
+                      {simpleDeparturesData.unallotted.length} Entries • {simpleDeparturesData.unallotted.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-amber-300 rounded-xl shadow-2xs bg-amber-50/30">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
+                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
+                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
+                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
+                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-amber-200 text-xs">
+                        {simpleDeparturesData.unallotted.map((entry, idx) => (
+                          <tr key={idx} className="hover:bg-amber-100/50 transition">
+                            <td className="py-3 px-4 text-center align-middle">
+                              <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                Unallotted
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-medium text-stone-500">
+                              Pending
+                            </td>
+                            <td className="py-3 px-4 align-middle">
+                              <div className="space-y-1">
+                                {entry.paxPerFamily.map((fam, fIdx) => (
+                                  <div key={fIdx} className="flex items-center gap-2">
+                                    <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                    {fam.family && (
+                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        Family #{fam.family}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              {entry.arrivalDate}
+                            </td>
+                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              {entry.departureDate}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ============================================================ */}
-          {/* TAB 1: ROOM-BY-ROOM TURNOVER & PREPARATION MATRIX (REQUESTED) */}
+          {/* TAB 3: ROOM-BY-ROOM TURNOVER & PREPARATION MATRIX            */}
           {/* ============================================================ */}
           {activeTab === 'turnover' && (
             <div className="space-y-4">

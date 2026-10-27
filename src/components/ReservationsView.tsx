@@ -31,7 +31,8 @@ import {
   Sparkles,
   MapPin,
   Tag,
-  LayoutGrid
+  LayoutGrid,
+  ShieldAlert
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
@@ -57,7 +58,7 @@ interface ReservationsViewProps {
   onOpenUploadExcel: () => void;
   onDownloadTemplate: () => void;
   onOpenAccountsSlip: (reservation: Reservation) => void;
-  onOpenReceptionSlip: () => void;
+  onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenAddZaer?: () => void;
   onOpenAddTourGroup?: () => void;
   onOpenPdfModal?: () => void;
@@ -104,6 +105,30 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // B to A Protection: Only Admin can delete B to A records
+  const [bToABlockedRecord, setBToABlockedRecord] = useState<Reservation | null>(null);
+
+  // Helper: check if a record belongs to Category B to A
+  const isBToARecord = (r?: Reservation | null): boolean => {
+    if (!r) return false;
+    return Boolean(
+      r.shiftToCategoryA ||
+      r.category === 'B to A' ||
+      (r.category && r.category.toLowerCase().includes('b to a')) ||
+      r.id.startsWith('b2a-')
+    );
+  };
+
+  // Count how many of the currently selected zaereen are in B to A
+  const selectedBToACount = useMemo(() => {
+    let count = 0;
+    selectedIds.forEach((id) => {
+      const z = reservations.find((r) => r.id === id);
+      if (isBToARecord(z)) count++;
+    });
+    return count;
+  }, [selectedIds, reservations]);
 
   // User requirement: "Give a button to delete any records which departure date has passed for 48 hours."
   const expiredReservations = useMemo(() => {
@@ -473,11 +498,26 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   };
 
   const handleExecuteBatchDelete = () => {
-    const ids = Array.from(selectedIds);
-    if (onBatchDeleteReservations) {
-      onBatchDeleteReservations(ids);
-    } else {
-      ids.forEach((id) => onDeleteReservation(id));
+    let ids = Array.from(selectedIds);
+    if (userRole !== 'admin') {
+      const protectedIds = ids.filter((id) => {
+        const z = reservations.find((r) => r.id === id);
+        return isBToARecord(z);
+      });
+      if (protectedIds.length > 0) {
+        setToastMessage({
+          text: `Action Blocked: ${protectedIds.length} B to A record(s) can only be deleted by an Admin.`,
+          type: 'info',
+        });
+        ids = ids.filter((id) => !protectedIds.includes(id));
+      }
+    }
+    if (ids.length > 0) {
+      if (onBatchDeleteReservations) {
+        onBatchDeleteReservations(ids);
+      } else {
+        ids.forEach((id) => onDeleteReservation(id));
+      }
     }
     setSelectedIds(new Set());
     setIsBatchDeleteModalOpen(false);
@@ -486,11 +526,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // User requirement: "Give a button to delete any records which departure date has passed for 48 hours."
   const handlePurgeExpiredRecords = () => {
     if (expiredReservations.length === 0) return;
-    const ids = expiredReservations.map((r) => r.id);
-    if (onBatchDeleteReservations) {
-      onBatchDeleteReservations(ids);
-    } else {
-      ids.forEach((id) => onDeleteReservation(id));
+    let targetExpired = expiredReservations;
+    if (userRole !== 'admin') {
+      targetExpired = expiredReservations.filter((r) => !isBToARecord(r));
+    }
+    const ids = targetExpired.map((r) => r.id);
+    if (ids.length > 0) {
+      if (onBatchDeleteReservations) {
+        onBatchDeleteReservations(ids);
+      } else {
+        ids.forEach((id) => onDeleteReservation(id));
+      }
     }
     setIsPurgeExpiredModalOpen(false);
     setToastMessage({
@@ -840,16 +886,29 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <span>Upload Excel</span>
           </button>
 
-          {/* Reception Daily Operational Slip & PDFs */}
+          {/* Reception Daily Operational Slips (Arrival Slip & Departure List) */}
           {onOpenReceptionSlip && (
-            <button
-              onClick={onOpenReceptionSlip}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
-              title="Open Reception Operational Slip & PDFs: Turnover Schedule, Tour Roster, Worker Room Sheet, Assistant Portal"
-            >
-              <Printer className="w-4 h-4 text-[#EBD59E]" />
-              <span>Reception Slip & PDFs</span>
-            </button>
+            <div className="flex items-center rounded-xl border border-[#C5A059]/50 bg-white p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => onOpenReceptionSlip('arrival_slip')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer"
+                title="Open Simple Arrival Slip (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-800" />
+                <span>Arrival Slip</span>
+              </button>
+              <div className="w-[1px] h-4 bg-stone-200 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => onOpenReceptionSlip('departure_list')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer"
+                title="Open Simple Departure List (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
+              >
+                <Printer className="w-3.5 h-3.5 text-amber-800" />
+                <span>Departure List</span>
+              </button>
+            </div>
           )}
 
           {/* Download Template */}
@@ -1907,9 +1966,19 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           )}
                           <button
                             type="button"
-                            onClick={() => setRecordToDelete(res)}
-                            className="p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
-                            title={`Delete record for ${res.applicantName}`}
+                            onClick={() => {
+                              if (isBToARecord(res) && userRole !== 'admin') {
+                                setBToABlockedRecord(res);
+                              } else {
+                                setRecordToDelete(res);
+                              }
+                            }}
+                            className={`p-1 rounded transition cursor-pointer ${
+                              isBToARecord(res)
+                                ? 'text-purple-600 hover:text-red-700 hover:bg-red-50'
+                                : 'text-stone-400 hover:text-red-600 hover:bg-red-50'
+                            }`}
+                            title={isBToARecord(res) ? `Delete B to A record: ${res.applicantName}` : `Delete record for ${res.applicantName}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1965,96 +2034,261 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
       </div>
 
-      {/* Single Delete Confirmation Modal (In-App Modal, never blocked by iframe) */}
-      {recordToDelete && (
+      {/* Non-Admin Blocked Modal for B to A Records */}
+      {bToABlockedRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                <Trash2 className="w-5 h-5" />
+                <ShieldAlert className="w-5 h-5 text-red-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-bold text-stone-900">Delete Zair Record</h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Are you sure you want to permanently delete this zaer record?
+                <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-900 border border-red-300 uppercase tracking-wide mb-1">
+                  ADMIN ONLY PERMISSION
+                </div>
+                <h3 className="text-base font-bold text-stone-900">
+                  Deletion Blocked: B to A Record
+                </h3>
+                <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                  When a pax is added in <strong>B to A</strong>, it <strong>should not be deleted at any cost until deleted by the admin</strong>.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setRecordToDelete(null)}
+                onClick={() => setBToABlockedRecord(null)}
                 className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Zair summary card */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
-                  <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
-                </div>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-stone-200 text-stone-700">
-                  Family {recordToDelete.family}
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs space-y-1">
+              <div>
+                <span className="text-stone-500">Applicant:</span>{' '}
+                <strong className="text-stone-900">{bToABlockedRecord.applicantName}</strong>
+              </div>
+              <div>
+                <span className="text-stone-500">Tour ID:</span>{' '}
+                <span className="font-mono font-bold text-[#124E39]">{bToABlockedRecord.tourRefNo}</span>
+              </div>
+              <div>
+                <span className="text-stone-500">Category:</span>{' '}
+                <span className="font-bold text-purple-900">Category B to A (Nizaam)</span>
+              </div>
+              <div>
+                <span className="text-stone-500">Room:</span>{' '}
+                <span className="font-semibold text-stone-800">
+                  {bToABlockedRecord.building} {bToABlockedRecord.roomNumber ? `Rm ${bToABlockedRecord.roomNumber}` : 'Unallotted'}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
-                <div>
-                  <span className="text-stone-400">Tour Ref:</span> {recordToDelete.tourRefNo}
-                </div>
-                <div>
-                  <span className="text-stone-400">Category:</span> {recordToDelete.category || 'Mumineen'}
-                </div>
-                <div>
-                  <span className="text-stone-400">Age / Gender:</span> {recordToDelete.age} yrs • {recordToDelete.gender}
-                </div>
-                <div>
-                  <span className="text-stone-400">Jamaat:</span> {recordToDelete.jamaat || '—'}
-                </div>
-                <div className="col-span-2">
-                  <span className="text-stone-400">Stay Duration:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
-                </div>
-              </div>
-              {recordToDelete.roomNumber ? (
-                <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
-                  ⚠️ <strong>Room Allocation Note:</strong> {recordToDelete.building} - Room {recordToDelete.roomNumber} will become vacant immediately upon deletion.
-                </div>
-              ) : (
-                <div className="mt-1 text-[11px] text-stone-500 italic">
-                  Zaer is currently unallotted (no room).
-                </div>
-              )}
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+              Please switch to <strong>Admin role</strong> using your Admin PIN to authorize the deletion of B to A records.
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-stone-100">
               <button
                 type="button"
-                onClick={() => setRecordToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-semibold text-xs transition cursor-pointer"
+                onClick={() => setBToABlockedRecord(null)}
+                className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs transition cursor-pointer"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (recordToDelete) {
-                    onDeleteReservation(recordToDelete.id);
-                    setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      next.delete(recordToDelete.id);
-                      return next;
-                    });
-                    setRecordToDelete(null);
-                  }
-                }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Yes, Delete Record</span>
+                Understood
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single Delete Confirmation Modal */}
+      {recordToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
+            {isBToARecord(recordToDelete) ? (
+              // B TO A REGISTRY DELETION CONFIRMATION
+              <>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
+                    <AlertCircle className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-900 border border-purple-300 uppercase tracking-wide mb-1">
+                      B TO A REGISTRY PROTECTED
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-stone-900">
+                      B to A Entry Deletion Confirmation
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecordToDelete(null)}
+                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* USER REQUIREMENT: EXACT QUESTION */}
+                <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2 shadow-xs">
+                  <div className="flex items-center gap-2 text-amber-950 font-black text-sm sm:text-base">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span>This entry is in B to A. Do you want to delete it?</span>
+                  </div>
+                  <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                    This zaer was registered under <strong>Category B to A</strong> and has an official Accounts Request Slip. Deleting this entry will permanently delete it from the system, release room <strong>{recordToDelete.building} {recordToDelete.roomNumber ? `Rm ${recordToDelete.roomNumber}` : ''}</strong>, and purge the B to A accounts records.
+                  </p>
+                </div>
+
+                {/* Zair summary card */}
+                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
+                      <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                      B ➔ A Shifted
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
+                    <div>
+                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-[#124E39]">{recordToDelete.tourRefNo}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Family #:</span> <span className="font-bold">{recordToDelete.family}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Allotted Room:</span> <span className="font-bold text-emerald-800">{recordToDelete.building} {recordToDelete.roomNumber ? `Rm ${recordToDelete.roomNumber}` : 'Unallotted'}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Accounts Slip:</span> <span className="font-mono font-bold">{recordToDelete.requestSlipNo || 'Active B to A Slip'}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-stone-400">Stay Duration:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => setRecordToDelete(null)}
+                    className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-bold text-xs transition cursor-pointer"
+                  >
+                    No, Keep in B to A
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (recordToDelete) {
+                        onDeleteReservation(recordToDelete.id);
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          next.delete(recordToDelete.id);
+                          return next;
+                        });
+                        setRecordToDelete(null);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete B to A Entry</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Standard Delete Confirmation
+              <>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-stone-900">Delete Zair Record</h3>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Are you sure you want to permanently delete this zaer record?
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecordToDelete(null)}
+                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Zair summary card */}
+                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
+                      <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-stone-200 text-stone-700">
+                      Family {recordToDelete.family}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
+                    <div>
+                      <span className="text-stone-400">Tour Ref:</span> {recordToDelete.tourRefNo}
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Category:</span> {recordToDelete.category || 'Mumineen'}
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Age / Gender:</span> {recordToDelete.age} yrs • {recordToDelete.gender}
+                    </div>
+                    <div>
+                      <span className="text-stone-400">Jamaat:</span> {recordToDelete.jamaat || '—'}
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-stone-400">Stay Duration:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
+                    </div>
+                  </div>
+                  {recordToDelete.roomNumber ? (
+                    <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
+                      ⚠️ <strong>Room Allocation Note:</strong> {recordToDelete.building} - Room {recordToDelete.roomNumber} will become vacant immediately upon deletion.
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-[11px] text-stone-500 italic">
+                      Zaer is currently unallotted (no room).
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+                  <button
+                    type="button"
+                    onClick={() => setRecordToDelete(null)}
+                    className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-semibold text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (recordToDelete) {
+                        onDeleteReservation(recordToDelete.id);
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          next.delete(recordToDelete.id);
+                          return next;
+                        });
+                        setRecordToDelete(null);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Record</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2084,16 +2318,43 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               </button>
             </div>
 
+            {/* B to A Warning if any selected are B to A */}
+            {selectedBToACount > 0 && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5 space-y-1.5 text-xs text-amber-900">
+                <div className="flex items-center gap-2 font-black text-sm text-amber-950">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    {selectedBToACount} of the selected {selectedIds.size > 1 ? 'entries are' : 'entry is'} in B to A. Do you want to delete {selectedBToACount > 1 ? 'them' : 'it'}?
+                  </span>
+                </div>
+                {userRole !== 'admin' ? (
+                  <p className="text-[11px] text-red-700 font-bold pt-1">
+                    ⛔ ACTION BLOCKED: A pax added in B to A cannot be deleted at any cost until deleted by the admin. Please switch to Admin mode with PIN to proceed.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-800">
+                    Admin Confirmation: Proceeding will permanently delete these B to A entries, free up their rooms, and purge related Accounts Request Slips.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Selected zaereen preview list */}
             <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5 text-xs">
               {Array.from(selectedIds).map((id) => {
                 const z = reservations.find((r) => r.id === id);
                 if (!z) return null;
+                const isB2A = isBToARecord(z);
                 return (
-                  <div key={id} className="flex items-center justify-between py-1 px-2 rounded bg-white border border-stone-100">
+                  <div key={id} className={`flex items-center justify-between py-1 px-2 rounded border ${isB2A ? 'bg-amber-50/70 border-amber-200' : 'bg-white border-stone-100'}`}>
                     <div>
                       <span className="font-semibold text-stone-900">{z.applicantName}</span>
                       <span className="font-mono text-stone-400 ml-1.5 text-[11px]">({z.itsId})</span>
+                      {isB2A && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                          B ➔ A Entry
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-stone-500">
                       {z.building} {z.roomNumber ? `Rm ${z.roomNumber}` : 'Unallotted'}
@@ -2115,10 +2376,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={handleExecuteBatchDelete}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                disabled={selectedBToACount > 0 && userRole !== 'admin'}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete All {selectedIds.size} Records</span>
+                <span>
+                  {selectedBToACount > 0 && userRole === 'admin'
+                    ? `Delete All (${selectedBToACount} in B to A)`
+                    : `Delete All ${selectedIds.size} Records`}
+                </span>
               </button>
             </div>
           </div>

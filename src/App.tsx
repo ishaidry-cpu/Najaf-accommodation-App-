@@ -131,6 +131,16 @@ export default function App() {
   // Modals state
   const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
   const [isReceptionSlipOpen, setIsReceptionSlipOpen] = useState(false);
+  const [receptionSlipInitialTab, setReceptionSlipInitialTab] = useState<
+    'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload'
+  >('arrival_slip');
+
+  const handleOpenReceptionSlip = (
+    tab: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload' = 'arrival_slip'
+  ) => {
+    setReceptionSlipInitialTab(tab);
+    setIsReceptionSlipOpen(true);
+  };
   const [activeAccountsSlipReservation, setActiveAccountsSlipReservation] = useState<Reservation | null>(null);
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
@@ -593,10 +603,30 @@ export default function App() {
     updatedList.forEach((r) => upsertBackendReservation(r));
   };
 
-  // Delete Reservation (Single)
+  // Helper: check if a reservation is a B to A record
+  const isBToAEntry = (r?: Reservation | null): boolean => {
+    if (!r) return false;
+    return Boolean(
+      r.shiftToCategoryA ||
+      r.category === 'B to A' ||
+      (r.category && r.category.toLowerCase().includes('b to a')) ||
+      r.id.startsWith('b2a-')
+    );
+  };
+
+  // Delete Reservation (Single) - Protected: B to A can only be deleted by Admin
   const handleDeleteReservation = (id: string) => {
     const target = reservations.find((r) => r.id === id);
     if (!target) return;
+
+    if (isBToAEntry(target) && userRole !== 'admin') {
+      showToast(
+        'Action Blocked: This pax is added in B to A. It cannot be deleted at any cost until deleted by the admin.',
+        'error'
+      );
+      return;
+    }
+
     const updated = reservations.filter((r) => r.id !== id);
     setReservations(updated);
     saveReservations(updated);
@@ -605,9 +635,20 @@ export default function App() {
     triggerAutoSync(updated, rooms);
   };
 
-  // Delete Multiple Reservations (Batch)
+  // Delete Multiple Reservations (Batch) - Protected: B to A records require Admin role
   const handleBatchDeleteReservations = (ids: string[]) => {
     if (!ids || ids.length === 0) return;
+    const targetReservations = reservations.filter((r) => ids.includes(r.id));
+    const bToACount = targetReservations.filter((r) => isBToAEntry(r)).length;
+
+    if (bToACount > 0 && userRole !== 'admin') {
+      showToast(
+        `Action Blocked: ${bToACount} of the selected zaereen are in B to A. A pax added in B to A cannot be deleted at any cost until deleted by the admin.`,
+        'error'
+      );
+      return;
+    }
+
     const idSet = new Set(ids);
     const count = ids.length;
     const updated = reservations.filter((r) => !idSet.has(r.id));
@@ -634,10 +675,18 @@ export default function App() {
     showToast(`Money Given status updated to "${status}" for ${target.applicantName}`);
   };
 
-  // Toggle Shift to Category A (Nizaam)
+  // Toggle Shift to Category A (Nizaam) - Reverting or removing requires Admin role
   const handleToggleShiftToCategoryA = (reservationId: string, willShift: boolean) => {
     const target = reservations.find((r) => r.id === reservationId);
     if (!target) return;
+
+    if (!willShift && userRole !== 'admin') {
+      showToast(
+        'Action Blocked: A pax added in B to A cannot be deleted or reverted at any cost until deleted by the admin.',
+        'error'
+      );
+      return;
+    }
 
     const slipNo = willShift ? (target.requestSlipNo || `REQ-SLIP-${Math.floor(1000 + Math.random() * 9000)}`) : undefined;
     const updated: Reservation = {
@@ -1045,7 +1094,7 @@ export default function App() {
         onOpenGoogleSheet={handleOpenGoogleSheet}
         onOpenPdfModal={() => setIsPdfModalOpen(true)}
         onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
-        onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
+        onOpenReceptionSlip={handleOpenReceptionSlip}
         onGoogleSignIn={handleGoogleSignIn}
         onGoogleLogout={handleGoogleLogout}
         isLoggingIn={isLoggingIn}
@@ -1066,7 +1115,7 @@ export default function App() {
             rooms={rooms}
             onNavigateTab={setActiveTab}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
-            onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
+            onOpenReceptionSlip={handleOpenReceptionSlip}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
@@ -1106,7 +1155,7 @@ export default function App() {
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
             onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
-            onOpenReceptionSlip={() => setIsReceptionSlipOpen(true)}
+            onOpenReceptionSlip={handleOpenReceptionSlip}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
@@ -1127,6 +1176,8 @@ export default function App() {
             onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
             onToggleShiftToCategoryA={handleToggleShiftToCategoryA}
             onAddZaer={handleAddReservation}
+            onDeleteReservation={handleDeleteReservation}
+            userRole={userRole}
           />
         )}
 
@@ -1185,6 +1236,7 @@ export default function App() {
           onClose={() => setIsReceptionSlipOpen(false)}
           reservations={reservations}
           rooms={rooms}
+          initialTab={receptionSlipInitialTab}
           onUpdateReservation={handleUpdateReservation}
           onBatchUpdateReservations={handleBatchUpdateReservations}
         />

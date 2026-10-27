@@ -35,7 +35,7 @@ interface NavbarProps {
   onOpenGoogleSheet?: () => void;
   onOpenPdfModal: () => void;
   onOpenUploadExcel: () => void;
-  onOpenReceptionSlip: () => void;
+  onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onGoogleSignIn: () => void;
   onGoogleLogout: () => void;
   isLoggingIn: boolean;
@@ -198,16 +198,32 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Reception Daily Slip Button */}
-            <button
-              onClick={onOpenReceptionSlip}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-[#124E39]/40 shadow-xs transition cursor-pointer"
-              title="Print Reception Manager Daily Operational & Room Turnover Slip"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Reception Slip</span>
-              <span className="sm:hidden">Slip</span>
-            </button>
+            {/* Arrival Slip & Departure List Quick Buttons */}
+            {onOpenReceptionSlip && (
+              <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
+                <button
+                  type="button"
+                  onClick={() => onOpenReceptionSlip('arrival_slip')}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer"
+                  title="Open Arrival Slip (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
+                >
+                  <Printer className="w-3.5 h-3.5 text-emerald-800" />
+                  <span className="hidden sm:inline">Arrival Slip</span>
+                  <span className="sm:hidden">Arrivals</span>
+                </button>
+                <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={() => onOpenReceptionSlip('departure_list')}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer"
+                  title="Open Departure List (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
+                >
+                  <Printer className="w-3.5 h-3.5 text-amber-800" />
+                  <span className="hidden sm:inline">Departure List</span>
+                  <span className="sm:hidden">Departures</span>
+                </button>
+              </div>
+            )}
 
             {/* Administrative Export PDF Button */}
             <button
@@ -302,7 +318,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           Rooms
         </button>
         <button
-          onClick={onOpenReceptionSlip}
+          onClick={() => onOpenReceptionSlip?.('arrival_slip')}
           className="px-2 py-1 rounded text-[#124E39] bg-emerald-50 border border-emerald-200 flex items-center gap-1 cursor-pointer font-bold"
         >
           <Printer className="w-3 h-3" />

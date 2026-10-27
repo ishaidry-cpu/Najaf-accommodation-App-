@@ -20,9 +20,11 @@ import {
   ArrowUp, 
   ArrowDown,
   Plus,
-  RotateCcw
+  RotateCcw,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
-import { Reservation, Room, MoneyGivenStatus } from '../types';
+import { Reservation, Room, MoneyGivenStatus, UserRole } from '../types';
 
 interface CategoryUpgradeViewProps {
   reservations: Reservation[];
@@ -31,6 +33,8 @@ interface CategoryUpgradeViewProps {
   onOpenAccountsSlip: (reservation: Reservation) => void;
   onToggleShiftToCategoryA?: (reservationId: string, willShift: boolean) => void;
   onAddZaer?: (newZaer: Reservation) => boolean | void;
+  onDeleteReservation?: (id: string) => void;
+  userRole?: UserRole;
 }
 
 export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
@@ -40,10 +44,16 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   onOpenAccountsSlip,
   onToggleShiftToCategoryA,
   onAddZaer,
+  onDeleteReservation,
+  userRole = 'admin',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [moneyFilter, setMoneyFilter] = useState<'ALL' | 'Yes' | 'No'>('ALL');
   const [hotelFilter, setHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
+
+  // Deletion protection modals for B to A
+  const [bToARecordToDelete, setBToARecordToDelete] = useState<Reservation | null>(null);
+  const [bToABlockedNotice, setBToABlockedNotice] = useState<Reservation | null>(null);
 
   // Modal to add a new zaer shifting from B to A (not previously in portal)
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
@@ -276,6 +286,14 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     onOpenAccountsSlip(createdReservation);
   };
 
+  const handleInitiateDelete = (res: Reservation) => {
+    if (userRole !== 'admin') {
+      setBToABlockedNotice(res);
+      return;
+    }
+    setBToARecordToDelete(res);
+  };
+
   return (
     <div className="space-y-5">
       {/* Top Banner */}
@@ -440,8 +458,8 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
                 <th className="py-3.5 px-3 text-center min-w-[130px]">Accounts Slip</th>
 
-                {onToggleShiftToCategoryA && (
-                  <th className="py-3.5 px-2 text-center w-16">Revert</th>
+                {(onDeleteReservation || onToggleShiftToCategoryA) && (
+                  <th className="py-3.5 px-2 text-center w-16">Remove</th>
                 )}
               </tr>
             </thead>
@@ -539,16 +557,16 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         </button>
                       </td>
 
-                      {/* Revert Action */}
-                      {onToggleShiftToCategoryA && (
+                      {/* Remove / Revert Action (Admin Protected) */}
+                      {(onDeleteReservation || onToggleShiftToCategoryA) && (
                         <td className="py-3.5 px-2 text-center">
                           <button
                             type="button"
-                            onClick={() => onToggleShiftToCategoryA(res.id, false)}
-                            className="p-1.5 rounded hover:bg-red-50 text-stone-400 hover:text-red-700 transition"
-                            title="Revert back to Standard B accommodation"
+                            onClick={() => handleInitiateDelete(res)}
+                            className="p-1.5 rounded hover:bg-red-50 text-stone-400 hover:text-red-700 transition cursor-pointer"
+                            title="Delete or Revert B to A record"
                           >
-                            <RotateCcw className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       )}
@@ -838,6 +856,131 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* B to A Entry Deletion Modal */}
+      {bToARecordToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
+                <AlertCircle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-900 border border-purple-300 uppercase tracking-wide mb-1">
+                  B TO A REGISTRY PROTECTED
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-stone-900">
+                  Delete B to A Shift Entry
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBToARecordToDelete(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Prompt */}
+            <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-2 text-amber-950 font-black text-sm sm:text-base">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>This entry is in B to A. Do you want to delete it?</span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                When a pax is added in B to A, it should not be deleted at any cost until deleted by the admin. Deleting will permanently remove their B to A shift status, free up room <strong>{bToARecordToDelete.building} {bToARecordToDelete.roomNumber ? `Rm ${bToARecordToDelete.roomNumber}` : ''}</strong>, and purge their Accounts Slip record.
+              </p>
+            </div>
+
+            {/* Pilgrim Summary */}
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 text-xs space-y-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-bold text-stone-900 text-sm">{bToARecordToDelete.applicantName}</div>
+                  <div className="font-mono text-stone-500 text-[11px]">ITS ID: {bToARecordToDelete.itsId}</div>
+                </div>
+                <span className="font-mono text-xs font-bold text-[#124E39]">Tour: {bToARecordToDelete.tourRefNo}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-stone-600 text-[11px] pt-1">
+                <div>Room: <strong className="text-stone-900">{bToARecordToDelete.building} Rm {bToARecordToDelete.roomNumber || 'Unassigned'}</strong></div>
+                <div>Payment: <strong className="text-stone-900">{bToARecordToDelete.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending ✗'}</strong></div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setBToARecordToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-bold text-xs transition cursor-pointer"
+              >
+                No, Keep in B to A
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteReservation) {
+                    onDeleteReservation(bToARecordToDelete.id);
+                  } else if (onToggleShiftToCategoryA) {
+                    onToggleShiftToCategoryA(bToARecordToDelete.id, false);
+                  }
+                  setBToARecordToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete B to A Entry</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Modal for Non-Admin */}
+      {bToABlockedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
+                <ShieldAlert className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-900 border border-red-300 uppercase tracking-wide mb-1">
+                  ADMIN ONLY PERMISSION
+                </div>
+                <h3 className="text-base font-bold text-stone-900">
+                  Deletion Blocked: B to A Record
+                </h3>
+                <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                  When a pax is added in <strong>B to A</strong>, it <strong>should not be deleted at any cost until deleted by the admin</strong>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBToABlockedNotice(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+              Please switch to <strong>Admin role</strong> using your Admin PIN to authorize the deletion of B to A records.
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setBToABlockedNotice(null)}
+                className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Understood
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -38,7 +38,7 @@ interface RoomTimelineViewProps {
   onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
   userRole?: UserRole;
-  onOpenReceptionSlip?: () => void;
+  onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenQuickAllotModal?: (res: Reservation) => void;
   onOpenAddBuildingRooms?: () => void;
 }
@@ -371,14 +371,26 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
           {/* Right Action buttons */}
           <div className="flex items-center gap-2">
             {onOpenReceptionSlip && (
-              <button
-                type="button"
-                onClick={onOpenReceptionSlip}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FAF7F2] hover:bg-stone-100 text-[#124E39] border border-[#124E39]/30 shadow-2xs transition"
-              >
-                <LogOut className="w-3.5 h-3.5 text-amber-600" />
-                <span>Daily Departure Slip</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onOpenReceptionSlip('arrival_slip')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FAF7F2] hover:bg-emerald-50 text-[#124E39] border border-emerald-700/30 shadow-2xs transition cursor-pointer"
+                  title="Open Simple Arrival Slip"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Arrival Slip</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenReceptionSlip('departure_list')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FAF7F2] hover:bg-amber-50 text-amber-900 border border-amber-600/30 shadow-2xs transition cursor-pointer"
+                  title="Open Simple Departure List"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Departure List</span>
+                </button>
+              </div>
             )}
 
             <button

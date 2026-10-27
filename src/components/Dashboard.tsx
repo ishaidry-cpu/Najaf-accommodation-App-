@@ -41,7 +41,7 @@ interface DashboardProps {
   rooms: Room[];
   onNavigateTab: (tab: 'dashboard' | 'reservations' | 'upgrades' | 'rooms') => void;
   onOpenUploadExcel: () => void;
-  onOpenReceptionSlip: () => void;
+  onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenAddZaer?: () => void;
   onOpenAddTourGroup?: () => void;
   onDownloadTemplate: () => void;
@@ -1761,10 +1761,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span>Arrivals on {selectedDate} ({arrivalsOnDate.length})</span>
             </div>
             <button
-              onClick={onOpenReceptionSlip}
-              className="text-[11px] text-[#124E39] font-semibold hover:underline"
+              onClick={() => onOpenReceptionSlip?.('arrival_slip')}
+              className="text-[11px] text-[#124E39] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
-              Print Reception Slip
+              <Printer className="w-3 h-3 text-[#124E39]" />
+              <span>Arrival Slip</span>
             </button>
           </div>
 
@@ -1811,10 +1812,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span>Departures on {selectedDate} ({departuresOnDate.length})</span>
             </div>
             <button
-              onClick={onOpenReceptionSlip}
-              className="text-[11px] text-[#124E39] font-semibold hover:underline"
+              onClick={() => onOpenReceptionSlip?.('departure_list')}
+              className="text-[11px] text-amber-900 font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
-              Daily Reception Slip
+              <Printer className="w-3 h-3 text-amber-800" />
+              <span>Departure List</span>
             </button>
           </div>
 
