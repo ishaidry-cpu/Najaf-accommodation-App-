@@ -201,29 +201,44 @@ export function normalizeHotelBuilding(b?: string): 'Saifee' | 'Burhani' | strin
 export interface SimpleSlipEntry {
   roomNumber: string;
   building: string;
+  tourIdDisplay: string;
+  familyNumberDisplay: string;
   paxPerFamily: {
     family: string;
     paxName: string;
     totalPaxInFamily: number;
+    tourId?: string;
   }[];
   paxNamesDisplay: string;
   arrivalDate: string;
   departureDate: string;
+  isTurnover: boolean;
+  turnoverNote: string;
   rawReservations: Reservation[];
 }
 
 /**
  * Builds simple, high-readability slip rows for Arrival Slip & Departure List:
- * Only: Room #, Building (Saifee / Burhani), Name of 1 pax per family
- * (if members from two families, names from each separate family),
- * Arrival Date, and Departure Date.
+ * Specific user requirements:
+ * 1. Room No / building (separate buildings for Saifee & Burhani)
+ * 2. Tour ID
+ * 3. Family Number
+ * 4. Name of one pax of the family member (if members from two families then names of all from separate family)
+ * 5. Arrival and Departure Date
+ * 6. Mark turnovers (same-day check-in & check-out)
  */
-export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
+export function buildSimpleSlipEntries(
+  reservationsOnDate: Reservation[],
+  allReservations: Reservation[] = [],
+  selectedDate: string = '',
+  slipType: 'arrival' | 'departure' = 'arrival'
+): {
   saifee: SimpleSlipEntry[];
   burhani: SimpleSlipEntry[];
   unallotted: SimpleSlipEntry[];
   totalRooms: number;
   totalPax: number;
+  totalTurnovers: number;
 } {
   const roomMap = new Map<string, Reservation[]>();
 
@@ -259,10 +274,12 @@ export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
                   famMembers.find((m) => m.applicantName && m.applicantName.trim()) ||
                   famMembers[0];
       const isActualFam = famKey && !famKey.startsWith('fam_') && famKey !== 'NoFamily';
+      const famTour = rep?.tourRefNo?.trim() || famMembers.find((m) => m.tourRefNo?.trim())?.tourRefNo?.trim() || '';
       return {
         family: isActualFam ? famKey : '',
         paxName: rep?.applicantName?.trim() || 'Guest',
         totalPaxInFamily: famMembers.length,
+        tourId: famTour,
       };
     });
 
@@ -277,19 +294,73 @@ export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
         .join('\n');
     }
 
+    // Extract unique Tour IDs for this room
+    const tourSet = new Set<string>();
+    resList.forEach((r) => {
+      const t = (r.tourRefNo || '').trim();
+      if (t) tourSet.add(t);
+    });
+    const tourIdDisplay = Array.from(tourSet).join(', ') || '—';
+
+    // Extract unique Family Numbers for this room
+    const famSet = new Set<string>();
+    resList.forEach((r) => {
+      const f = (r.family || '').trim();
+      if (f && f !== 'NoFamily' && !f.startsWith('fam_')) famSet.add(f);
+    });
+    const familyNumberDisplay = Array.from(famSet).join(', ') || (first.family?.trim() || '—');
+
     const arrDates = Array.from(new Set(resList.map((r) => normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr)).filter(Boolean)));
     const depDates = Array.from(new Set(resList.map((r) => normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr)).filter(Boolean)));
 
     const arrivalDate = arrDates.length > 0 ? arrDates.join(', ') : '—';
     const departureDate = depDates.length > 0 ? depDates.join(', ') : '—';
 
+    // Detect if this room is a Turnover on selectedDate:
+    // If Arrival Slip: is there any party departing from this room on selectedDate?
+    // If Departure List: is there any party arriving into this room on selectedDate?
+    let isTurnover = false;
+    let turnoverNote = '—';
+    const normBldg = normalizeHotelBuilding(bldg);
+    const normRoom = roomNum.trim().toLowerCase();
+
+    if (normRoom && allReservations.length > 0 && selectedDate) {
+      if (slipType === 'arrival') {
+        const matchingDep = allReservations.find((r) => {
+          const rBldg = normalizeHotelBuilding(r.building);
+          const rRoom = (r.roomNumber || '').trim().toLowerCase();
+          const rDep = normalizeDate(r.departureDate || r.departureDateTime || r.rawDepartureStr);
+          return rBldg === normBldg && rRoom === normRoom && rDep === selectedDate;
+        });
+        if (matchingDep) {
+          isTurnover = true;
+          turnoverNote = 'Turnover (Check-out & In)';
+        }
+      } else {
+        const matchingArr = allReservations.find((r) => {
+          const rBldg = normalizeHotelBuilding(r.building);
+          const rRoom = (r.roomNumber || '').trim().toLowerCase();
+          const rArr = normalizeDate(r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr);
+          return rBldg === normBldg && rRoom === normRoom && rArr === selectedDate;
+        });
+        if (matchingArr) {
+          isTurnover = true;
+          turnoverNote = 'Turnover (Check-out & In)';
+        }
+      }
+    }
+
     allEntries.push({
       roomNumber: roomNum,
       building: bldg,
+      tourIdDisplay,
+      familyNumberDisplay,
       paxPerFamily,
       paxNamesDisplay,
       arrivalDate,
       departureDate,
+      isTurnover,
+      turnoverNote,
       rawReservations: resList,
     });
   });
@@ -304,6 +375,7 @@ export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
   const saifee = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Saifee').sort(sortFn);
   const burhani = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Burhani').sort(sortFn);
   const unallotted = allEntries.filter((e) => !e.roomNumber || (normalizeHotelBuilding(e.building) !== 'Saifee' && normalizeHotelBuilding(e.building) !== 'Burhani'));
+  const totalTurnovers = allEntries.filter((e) => e.isTurnover).length;
 
   return {
     saifee,
@@ -311,6 +383,7 @@ export function buildSimpleSlipEntries(reservationsOnDate: Reservation[]): {
     unallotted,
     totalRooms: saifee.length + burhani.length,
     totalPax: reservationsOnDate.length,
+    totalTurnovers,
   };
 }
 
@@ -444,6 +517,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       setActiveTab(initialTab);
     }
   }, [isOpen, initialTab]);
+  const [showOnlyTurnoversInSlip, setShowOnlyTurnoversInSlip] = useState<boolean>(false);
   const [showOnlyActiveRooms, setShowOnlyActiveRooms] = useState<boolean>(true);
   const [rosterGroupByTour, setRosterGroupByTour] = useState<boolean>(true);
   const [workerViewMode, setWorkerViewMode] = useState<'grouped' | 'room_numeric'>('grouped');
@@ -556,9 +630,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   const burhaniArrivals = arrivalsOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
   const burhaniDepartures = departuresOnDate.filter((r) => normalizeHotelBuilding(r.building) === 'Burhani');
 
-  // Simple, high-readability Arrival Slip & Departure List datasets (only Room #, Building, 1 pax per family, Arr/Dep dates)
-  const simpleArrivalsData = useMemo(() => buildSimpleSlipEntries(arrivalsOnDate), [arrivalsOnDate]);
-  const simpleDeparturesData = useMemo(() => buildSimpleSlipEntries(departuresOnDate), [departuresOnDate]);
+  // Simple, high-readability Arrival Slip & Departure List datasets (Room #, Building, Tour ID, Family #, 1 pax per family, Arr/Dep dates, Turnover)
+  const simpleArrivalsData = useMemo(
+    () => buildSimpleSlipEntries(arrivalsOnDate, safeReservations, selectedDate, 'arrival'),
+    [arrivalsOnDate, safeReservations, selectedDate]
+  );
+  const simpleDeparturesData = useMemo(
+    () => buildSimpleSlipEntries(departuresOnDate, safeReservations, selectedDate, 'departure'),
+    [departuresOnDate, safeReservations, selectedDate]
+  );
 
   // Room Preparation Schedule: Room-by-Room Departure & Arrival Turnover matrix
   const roomPrepSchedule = safeRooms.map((room) => {
@@ -1394,30 +1474,51 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setFontSize(8.5);
       doc.setTextColor(255, 255, 255);
       const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
-      doc.text(`Total: ${items.length} Rooms • ${totalPax} Zaereen`, pageWidth - 200, startAtY + 16);
+      const turnoversCount = items.filter((it) => it.isTurnover).length;
+      doc.text(
+        `Total: ${items.length} Rooms • ${totalPax} Zaereen${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
+        pageWidth - 230,
+        startAtY + 16
+      );
 
       const rows: string[][] = items.map((it) => [
         it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
         `${it.building || ''} Hotel`,
+        it.tourIdDisplay || '—',
+        it.familyNumberDisplay || '—',
         it.paxNamesDisplay,
         it.arrivalDate,
         it.departureDate,
+        it.isTurnover ? 'TURNOVER' : '—',
       ]);
 
       safeAutoTable(doc, {
         startY: startAtY + 28,
-        head: [['Room #', 'Building', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date']],
-        body: rows.length > 0 ? rows : [['No arrivals scheduled for this section on this date', '', '', '', '']],
+        head: [['Room #', 'Building', 'Tour ID', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+        body: rows.length > 0 ? rows : [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '']],
         margin: { left: 25, right: 25 },
         theme: 'grid',
-        styles: { fontSize: 9.5, cellPadding: 6, textColor: [30, 30, 30] },
-        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+        styles: { fontSize: 9, cellPadding: 5.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9.5 },
         columnStyles: {
-          0: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 10 },
-          1: { cellWidth: 105, halign: 'center', fontSize: 9.5 },
-          2: { cellWidth: 382, fontStyle: 'bold', fontSize: 9.5 },
-          3: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
-          4: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          0: { cellWidth: 58, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          1: { cellWidth: 68, halign: 'center', fontSize: 9 },
+          2: { cellWidth: 124, halign: 'center', fontSize: 8.5 },
+          3: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          4: { cellWidth: 235, fontStyle: 'bold', fontSize: 9.5 },
+          5: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          6: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          7: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const rawItem = items[data.row.index];
+            if (rawItem?.isTurnover && data.column.index === 7) {
+              data.cell.styles.fillColor = [254, 243, 199];
+              data.cell.styles.textColor = [180, 83, 9];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         },
       });
 
@@ -1530,30 +1631,51 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setFontSize(8.5);
       doc.setTextColor(255, 255, 255);
       const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
-      doc.text(`Total: ${items.length} Rooms • ${totalPax} Zaereen`, pageWidth - 200, startAtY + 16);
+      const turnoversCount = items.filter((it) => it.isTurnover).length;
+      doc.text(
+        `Total: ${items.length} Rooms • ${totalPax} Zaereen${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
+        pageWidth - 230,
+        startAtY + 16
+      );
 
       const rows: string[][] = items.map((it) => [
         it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
         `${it.building || ''} Hotel`,
+        it.tourIdDisplay || '—',
+        it.familyNumberDisplay || '—',
         it.paxNamesDisplay,
         it.arrivalDate,
         it.departureDate,
+        it.isTurnover ? 'TURNOVER' : '—',
       ]);
 
       safeAutoTable(doc, {
         startY: startAtY + 28,
-        head: [['Room #', 'Building', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date']],
-        body: rows.length > 0 ? rows : [['No departures scheduled for this section on this date', '', '', '', '']],
+        head: [['Room #', 'Building', 'Tour ID', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+        body: rows.length > 0 ? rows : [['No departures scheduled for this section on this date', '', '', '', '', '', '', '']],
         margin: { left: 25, right: 25 },
         theme: 'grid',
-        styles: { fontSize: 9.5, cellPadding: 6, textColor: [30, 30, 30] },
-        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10 },
+        styles: { fontSize: 9, cellPadding: 5.5, textColor: [30, 30, 30] },
+        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9.5 },
         columnStyles: {
-          0: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 10 },
-          1: { cellWidth: 105, halign: 'center', fontSize: 9.5 },
-          2: { cellWidth: 382, fontStyle: 'bold', fontSize: 9.5 },
-          3: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
-          4: { cellWidth: 110, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          0: { cellWidth: 58, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
+          1: { cellWidth: 68, halign: 'center', fontSize: 9 },
+          2: { cellWidth: 124, halign: 'center', fontSize: 8.5 },
+          3: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          4: { cellWidth: 235, fontStyle: 'bold', fontSize: 9.5 },
+          5: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          6: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+          7: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const rawItem = items[data.row.index];
+            if (rawItem?.isTurnover && data.column.index === 7) {
+              data.cell.styles.fillColor = [254, 243, 199];
+              data.cell.styles.textColor = [180, 83, 9];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         },
       });
 
@@ -2871,15 +2993,18 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span className="text-base font-extrabold text-emerald-900">{simpleArrivalsData.burhani.length} Rooms</span>
                 <span className="text-[10px] text-stone-500 block">44 Room Capacity</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-300">
-                <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Arriving Pax</span>
-                <span className="text-base font-extrabold text-[#124E39]">{simpleArrivalsData.totalPax} Zaereen</span>
-                <span className="text-[10px] text-stone-500 block">{simpleArrivalsData.totalRooms} Total Rooms Allotted</span>
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300">
+                <span className="text-amber-900 text-[10px] uppercase font-black flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 text-amber-700" />
+                  <span>Turnovers Marked</span>
+                </span>
+                <span className="text-base font-extrabold text-amber-950">{simpleArrivalsData.totalTurnovers} Turnover Rooms</span>
+                <span className="text-[10px] text-amber-800 font-semibold block">Same-day checkout & arrival</span>
               </div>
               <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5] flex flex-col justify-between">
                 <div>
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Export Official PDF</span>
-                  <span className="text-xs font-bold text-stone-800">Clean 5-Column Slip</span>
+                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Pax & Export</span>
+                  <span className="text-xs font-bold text-stone-800">{simpleArrivalsData.totalPax} Zaereen ({simpleArrivalsData.totalRooms} Rooms)</span>
                 </div>
                 <button
                   type="button"
@@ -2903,15 +3028,18 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span className="text-base font-extrabold text-amber-900">{simpleDeparturesData.burhani.length} Rooms</span>
                 <span className="text-[10px] text-stone-500 block">Vacating today</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-300">
-                <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Departing Pax</span>
-                <span className="text-base font-extrabold text-amber-950">{simpleDeparturesData.totalPax} Zaereen</span>
-                <span className="text-[10px] text-stone-500 block">{simpleDeparturesData.totalRooms} Total Rooms Freeing</span>
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300">
+                <span className="text-amber-900 text-[10px] uppercase font-black flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 text-amber-700" />
+                  <span>Turnovers Marked</span>
+                </span>
+                <span className="text-base font-extrabold text-amber-950">{simpleDeparturesData.totalTurnovers} Turnover Rooms</span>
+                <span className="text-[10px] text-amber-800 font-semibold block">Same-day checkout & arrival</span>
               </div>
               <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E6DFD5] flex flex-col justify-between">
                 <div>
-                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Export Official PDF</span>
-                  <span className="text-xs font-bold text-stone-800">Clean 5-Column List</span>
+                  <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Pax & Export</span>
+                  <span className="text-xs font-bold text-stone-800">{simpleDeparturesData.totalPax} Zaereen ({simpleDeparturesData.totalRooms} Rooms)</span>
                 </div>
                 <button
                   type="button"
@@ -2962,9 +3090,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           {/* Simple Arrival Slip Table (User requirement) */}
           {activeTab === 'arrival_slip' && (
             <div className="space-y-6">
-              {/* Building filter bar */}
+              {/* Building filter & Turnover toggle bar */}
               <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
-                <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-stone-700">
                   <Building2 className="w-4 h-4 text-[#124E39]" />
                   <span>Building View:</span>
                   <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
@@ -3003,8 +3131,21 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     </button>
                   </div>
                 </div>
-                <div className="text-xs text-stone-600 font-semibold">
-                  Date of Arrival: <span className="font-bold text-stone-900">{selectedDate}</span> • Simple 5-Column Format
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-100/90 hover:bg-amber-200/80 px-3 py-1 rounded-lg border border-amber-300 cursor-pointer shadow-2xs transition">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyTurnoversInSlip}
+                      onChange={(e) => setShowOnlyTurnoversInSlip(e.target.checked)}
+                      className="rounded text-amber-700 focus:ring-amber-600 cursor-pointer"
+                    />
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Show only Turnovers ({simpleArrivalsData.totalTurnovers} Rooms)</span>
+                  </label>
+                  <div className="text-xs text-stone-600 font-semibold hidden md:block">
+                    Date of Arrival: <span className="font-bold text-stone-900">{selectedDate}</span>
+                  </div>
                 </div>
               </div>
 
@@ -3019,7 +3160,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-emerald-100">
-                      {simpleArrivalsData.saifee.length} Rooms • {simpleArrivalsData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                      {simpleArrivalsData.saifee.length} Rooms • {simpleArrivalsData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.saifee.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
@@ -3027,24 +3168,50 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200 text-xs">
-                        {simpleArrivalsData.saifee.length > 0 ? (
-                          simpleArrivalsData.saifee.map((entry, idx) => (
-                            <tr key={idx} className="hover:bg-emerald-50/40 transition">
-                              <td className="py-3 px-4 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg inline-block">
+                        {(showOnlyTurnoversInSlip
+                          ? simpleArrivalsData.saifee.filter((e) => e.isTurnover)
+                          : simpleArrivalsData.saifee
+                        ).length > 0 ? (
+                          (showOnlyTurnoversInSlip
+                            ? simpleArrivalsData.saifee.filter((e) => e.isTurnover)
+                            : simpleArrivalsData.saifee
+                          ).map((entry, idx) => (
+                            <tr
+                              key={idx}
+                              className={`transition ${
+                                entry.isTurnover
+                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
+                                  : 'hover:bg-emerald-50/40'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
                                   Room {entry.roomNumber}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
                                 Saifee Hotel
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                  {entry.tourIdDisplay || '—'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                  {entry.familyNumberDisplay || '—'}
+                                </span>
                               </td>
                               <td className="py-3 px-4 align-middle">
                                 <div className="space-y-1">
@@ -3052,7 +3219,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     <div key={fIdx} className="flex items-center gap-2">
                                       <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                       {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                           Family #{fam.family}
                                         </span>
                                       )}
@@ -3060,18 +3227,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   ))}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.arrivalDate}
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.departureDate}
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                {entry.isTurnover ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                    title="Same-day Turnover: Previous party checks out and arriving party checks in today"
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-amber-800" />
+                                    <span>TURNOVER</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                )}
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
-                              No arrivals scheduled for Saifee Hotel on {selectedDate}
+                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
+                              {showOnlyTurnoversInSlip
+                                ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
+                                : `No arrivals scheduled for Saifee Hotel on ${selectedDate}`}
                             </td>
                           </tr>
                         )}
@@ -3097,7 +3279,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-emerald-100">
-                      {simpleArrivalsData.burhani.length} Rooms • {simpleArrivalsData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                      {simpleArrivalsData.burhani.length} Rooms • {simpleArrivalsData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.burhani.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
@@ -3105,24 +3287,50 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200 text-xs">
-                        {simpleArrivalsData.burhani.length > 0 ? (
-                          simpleArrivalsData.burhani.map((entry, idx) => (
-                            <tr key={idx} className="hover:bg-emerald-50/40 transition">
-                              <td className="py-3 px-4 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg inline-block">
+                        {(showOnlyTurnoversInSlip
+                          ? simpleArrivalsData.burhani.filter((e) => e.isTurnover)
+                          : simpleArrivalsData.burhani
+                        ).length > 0 ? (
+                          (showOnlyTurnoversInSlip
+                            ? simpleArrivalsData.burhani.filter((e) => e.isTurnover)
+                            : simpleArrivalsData.burhani
+                          ).map((entry, idx) => (
+                            <tr
+                              key={idx}
+                              className={`transition ${
+                                entry.isTurnover
+                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
+                                  : 'hover:bg-emerald-50/40'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
                                   Room {entry.roomNumber}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
                                 Burhani Hotel
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                  {entry.tourIdDisplay || '—'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                  {entry.familyNumberDisplay || '—'}
+                                </span>
                               </td>
                               <td className="py-3 px-4 align-middle">
                                 <div className="space-y-1">
@@ -3130,7 +3338,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     <div key={fIdx} className="flex items-center gap-2">
                                       <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                       {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                           Family #{fam.family}
                                         </span>
                                       )}
@@ -3138,18 +3346,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   ))}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.arrivalDate}
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.departureDate}
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                {entry.isTurnover ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                    title="Same-day Turnover: Previous party checks out and arriving party checks in today"
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-amber-800" />
+                                    <span>TURNOVER</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                )}
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
-                              No arrivals scheduled for Burhani Hotel on {selectedDate}
+                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
+                              {showOnlyTurnoversInSlip
+                                ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
+                                : `No arrivals scheduled for Burhani Hotel on ${selectedDate}`}
                             </td>
                           </tr>
                         )}
@@ -3178,23 +3401,36 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-amber-200 text-xs">
                         {simpleArrivalsData.unallotted.map((entry, idx) => (
                           <tr key={idx} className="hover:bg-amber-100/50 transition">
-                            <td className="py-3 px-4 text-center align-middle">
+                            <td className="py-3 px-3 text-center align-middle">
                               <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
                                 Unallotted
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-medium text-stone-500">
+                            <td className="py-3 px-3 text-center align-middle font-medium text-stone-500">
                               Pending
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle">
+                              <span className="font-mono text-xs font-bold text-indigo-900 bg-white border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                {entry.tourIdDisplay || '—'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle">
+                              <span className="font-mono text-xs font-bold text-stone-800 bg-white border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                {entry.familyNumberDisplay || '—'}
+                              </span>
                             </td>
                             <td className="py-3 px-4 align-middle">
                               <div className="space-y-1">
@@ -3202,7 +3438,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   <div key={fIdx} className="flex items-center gap-2">
                                     <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                     {fam.family && (
-                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                         Family #{fam.family}
                                       </span>
                                     )}
@@ -3210,11 +3446,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 ))}
                               </div>
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                               {entry.arrivalDate}
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                               {entry.departureDate}
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle text-stone-400 font-bold text-xs">
+                              —
                             </td>
                           </tr>
                         ))}
@@ -3270,8 +3509,21 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     </button>
                   </div>
                 </div>
-                <div className="text-xs text-stone-600 font-semibold">
-                  Date of Departure: <span className="font-bold text-stone-900">{selectedDate}</span> • Simple 5-Column Format
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-100/90 hover:bg-amber-200/80 px-3 py-1 rounded-lg border border-amber-300 cursor-pointer shadow-2xs transition">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyTurnoversInSlip}
+                      onChange={(e) => setShowOnlyTurnoversInSlip(e.target.checked)}
+                      className="rounded text-amber-700 focus:ring-amber-600 cursor-pointer"
+                    />
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Show only Turnovers ({simpleDeparturesData.totalTurnovers} Rooms)</span>
+                  </label>
+                  <div className="text-xs text-stone-600 font-semibold hidden md:block">
+                    Date of Departure: <span className="font-bold text-stone-900">{selectedDate}</span>
+                  </div>
                 </div>
               </div>
 
@@ -3286,7 +3538,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-amber-200">
-                      {simpleDeparturesData.saifee.length} Rooms • {simpleDeparturesData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                      {simpleDeparturesData.saifee.length} Rooms • {simpleDeparturesData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.saifee.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
@@ -3294,24 +3546,50 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200 text-xs">
-                        {simpleDeparturesData.saifee.length > 0 ? (
-                          simpleDeparturesData.saifee.map((entry, idx) => (
-                            <tr key={idx} className="hover:bg-amber-50/40 transition">
-                              <td className="py-3 px-4 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg inline-block">
+                        {(showOnlyTurnoversInSlip
+                          ? simpleDeparturesData.saifee.filter((e) => e.isTurnover)
+                          : simpleDeparturesData.saifee
+                        ).length > 0 ? (
+                          (showOnlyTurnoversInSlip
+                            ? simpleDeparturesData.saifee.filter((e) => e.isTurnover)
+                            : simpleDeparturesData.saifee
+                          ).map((entry, idx) => (
+                            <tr
+                              key={idx}
+                              className={`transition ${
+                                entry.isTurnover
+                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
+                                  : 'hover:bg-amber-50/40'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg inline-block">
                                   Room {entry.roomNumber}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
                                 Saifee Hotel
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                  {entry.tourIdDisplay || '—'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                  {entry.familyNumberDisplay || '—'}
+                                </span>
                               </td>
                               <td className="py-3 px-4 align-middle">
                                 <div className="space-y-1">
@@ -3319,7 +3597,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     <div key={fIdx} className="flex items-center gap-2">
                                       <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                       {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                           Family #{fam.family}
                                         </span>
                                       )}
@@ -3327,18 +3605,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   ))}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.arrivalDate}
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.departureDate}
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                {entry.isTurnover ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                    title="Same-day Turnover: Departing party checks out and arriving party checks in today"
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-amber-800" />
+                                    <span>TURNOVER</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                )}
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
-                              No departures scheduled for Saifee Hotel on {selectedDate}
+                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
+                              {showOnlyTurnoversInSlip
+                                ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
+                                : `No departures scheduled for Saifee Hotel on ${selectedDate}`}
                             </td>
                           </tr>
                         )}
@@ -3364,7 +3657,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-amber-200">
-                      {simpleDeparturesData.burhani.length} Rooms • {simpleDeparturesData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                      {simpleDeparturesData.burhani.length} Rooms • {simpleDeparturesData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.burhani.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
@@ -3372,24 +3665,50 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200 text-xs">
-                        {simpleDeparturesData.burhani.length > 0 ? (
-                          simpleDeparturesData.burhani.map((entry, idx) => (
-                            <tr key={idx} className="hover:bg-amber-50/40 transition">
-                              <td className="py-3 px-4 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg inline-block">
+                        {(showOnlyTurnoversInSlip
+                          ? simpleDeparturesData.burhani.filter((e) => e.isTurnover)
+                          : simpleDeparturesData.burhani
+                        ).length > 0 ? (
+                          (showOnlyTurnoversInSlip
+                            ? simpleDeparturesData.burhani.filter((e) => e.isTurnover)
+                            : simpleDeparturesData.burhani
+                          ).map((entry, idx) => (
+                            <tr
+                              key={idx}
+                              className={`transition ${
+                                entry.isTurnover
+                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
+                                  : 'hover:bg-amber-50/40'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg inline-block">
                                   Room {entry.roomNumber}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-bold text-stone-700">
+                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
                                 Burhani Hotel
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                  {entry.tourIdDisplay || '—'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                  {entry.familyNumberDisplay || '—'}
+                                </span>
                               </td>
                               <td className="py-3 px-4 align-middle">
                                 <div className="space-y-1">
@@ -3397,7 +3716,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     <div key={fIdx} className="flex items-center gap-2">
                                       <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                       {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                           Family #{fam.family}
                                         </span>
                                       )}
@@ -3405,18 +3724,33 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   ))}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.arrivalDate}
                               </td>
-                              <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                 {entry.departureDate}
+                              </td>
+                              <td className="py-3 px-3 text-center align-middle">
+                                {entry.isTurnover ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                    title="Same-day Turnover: Departing party checks out and arriving party checks in today"
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-amber-800" />
+                                    <span>TURNOVER</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                )}
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-6 text-center text-stone-400 italic text-xs">
-                              No departures scheduled for Burhani Hotel on {selectedDate}
+                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
+                              {showOnlyTurnoversInSlip
+                                ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
+                                : `No departures scheduled for Burhani Hotel on ${selectedDate}`}
                             </td>
                           </tr>
                         )}
@@ -3445,23 +3779,36 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                          <th className="py-3 px-4 w-[16%] text-center">Room #</th>
-                          <th className="py-3 px-4 w-[16%] text-center">Building</th>
-                          <th className="py-3 px-4 w-[40%]">Name of Pax</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Arrival Date</th>
-                          <th className="py-3 px-4 w-[14%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
+                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
+                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
+                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
+                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-amber-200 text-xs">
                         {simpleDeparturesData.unallotted.map((entry, idx) => (
                           <tr key={idx} className="hover:bg-amber-100/50 transition">
-                            <td className="py-3 px-4 text-center align-middle">
+                            <td className="py-3 px-3 text-center align-middle">
                               <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
                                 Unallotted
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-medium text-stone-500">
+                            <td className="py-3 px-3 text-center align-middle font-medium text-stone-500">
                               Pending
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle">
+                              <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                {entry.tourIdDisplay || '—'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle">
+                              <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                {entry.familyNumberDisplay || '—'}
+                              </span>
                             </td>
                             <td className="py-3 px-4 align-middle">
                               <div className="space-y-1">
@@ -3469,7 +3816,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   <div key={fIdx} className="flex items-center gap-2">
                                     <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
                                     {fam.family && (
-                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-2 py-0.5 rounded font-mono">
+                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
                                         Family #{fam.family}
                                       </span>
                                     )}
@@ -3477,11 +3824,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 ))}
                               </div>
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                               {entry.arrivalDate}
                             </td>
-                            <td className="py-3 px-4 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                               {entry.departureDate}
+                            </td>
+                            <td className="py-3 px-3 text-center align-middle text-stone-400 font-bold text-xs">
+                              —
                             </td>
                           </tr>
                         ))}
