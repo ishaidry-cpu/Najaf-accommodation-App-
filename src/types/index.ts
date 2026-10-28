@@ -162,6 +162,8 @@ export interface Reservation {
   upgradeReason?: string;
   upgradeApprovalBy?: string;
   specialRequests?: string;
+  remarks?: string;
+  notes?: string;
   paymentHistory?: any[];
   assignedCategory?: RoomCategory;
   baseCost?: number;

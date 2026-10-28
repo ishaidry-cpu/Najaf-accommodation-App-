@@ -29,7 +29,9 @@ import {
   Plus,
   ArrowRightLeft,
   History,
-  UploadCloud
+  UploadCloud,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -47,6 +49,7 @@ interface DashboardProps {
   onDownloadTemplate: () => void;
   onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
+  onAddReservation?: (newReservation: Reservation) => boolean | void;
   onDeleteReservation?: (id: string) => void;
   onToggleBlockRoom?: (roomId: string) => void;
   userRole?: UserRole;
@@ -70,6 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDownloadTemplate,
   onAllotRoom,
   onBatchAllotFamily,
+  onAddReservation,
   onDeleteReservation,
   onToggleBlockRoom,
   userRole = 'admin',
@@ -112,8 +116,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Search & filter state for Tour & Family Room Allotment Overview
   const [tourSearchQuery, setTourSearchQuery] = useState<string>('');
   const [tourArrivalDateFilter, setTourArrivalDateFilter] = useState<string>('');
+  const [tourDepartureDateFilter, setTourDepartureDateFilter] = useState<string>('');
 
-  // Rich summaries for each tour (Zaereen count, families count, arrival dates, room change tracking)
+  // Rich summaries for each tour (Zaereen count, families count, arrival & departure dates, room change tracking)
   const tourSummaries = useMemo(() => {
     const map = new Map<string, {
       tourId: string;
@@ -122,6 +127,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       arrivalDatesSet: Set<string>;
       earliestArrival: string;
       latestArrival: string;
+      departureDatesSet: Set<string>;
+      earliestDeparture: string;
+      latestDeparture: string;
       hasRoomChange: boolean;
       roomChanges: {
         guestName: string;
@@ -147,6 +155,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           arrivalDatesSet: new Set(),
           earliestArrival: '',
           latestArrival: '',
+          departureDatesSet: new Set(),
+          earliestDeparture: '',
+          latestDeparture: '',
           hasRoomChange: false,
           roomChanges: [],
         });
@@ -155,6 +166,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const item = map.get(tid)!;
       item.totalZaereen += 1;
       if (r.family) item.familiesSet.add(r.family.trim());
+      
       const arr = (r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr || '').slice(0, 10);
       if (arr && arr.length >= 8) {
         item.arrivalDatesSet.add(arr);
@@ -163,6 +175,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
         if (!item.latestArrival || arr > item.latestArrival) {
           item.latestArrival = arr;
+        }
+      }
+
+      const dep = (r.departureDate || r.departureDateTime || r.rawDepartureStr || '').slice(0, 10);
+      if (dep && dep.length >= 8) {
+        item.departureDatesSet.add(dep);
+        if (!item.earliestDeparture || dep < item.earliestDeparture) {
+          item.earliestDeparture = dep;
+        }
+        if (!item.latestDeparture || dep > item.latestDeparture) {
+          item.latestDeparture = dep;
         }
       }
 
@@ -190,6 +213,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         familiesCount: item.familiesSet.size,
         arrivalDates: Array.from(item.arrivalDatesSet).sort(),
         primaryArrivalDate: item.earliestArrival,
+        departureDates: Array.from(item.departureDatesSet).sort(),
+        primaryDepartureDate: item.latestDeparture || item.earliestDeparture,
+        earliestDeparture: item.earliestDeparture,
+        latestDeparture: item.latestDeparture,
         hasRoomChange: item.hasRoomChange,
         roomChanges: item.roomChanges,
       }))
@@ -201,7 +228,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return tourSummaries.map((t) => t.tourId);
   }, [tourSummaries]);
 
-  // Filtered tours matching search by Tour ID AND/OR Arrival Date
+  // Filtered tours matching search by Tour ID, Arrival Date, and/or Departure Date
   const filteredTourSummaries = useMemo(() => {
     return tourSummaries.filter((t) => {
       // 1. Tour ID search query (case-insensitive substring match)
@@ -221,9 +248,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
       }
 
+      // 3. Departure Date filter (checks if any Zaer in this tour departs on or starts with the selected date)
+      if (tourDepartureDateFilter.trim()) {
+        const targetDate = tourDepartureDateFilter.trim();
+        const hasDate = t.departureDates.some((d) => d.startsWith(targetDate) || targetDate.startsWith(d));
+        if (!hasDate) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [tourSummaries, tourSearchQuery, tourArrivalDateFilter]);
+  }, [tourSummaries, tourSearchQuery, tourArrivalDateFilter, tourDepartureDateFilter]);
 
   // Selected Tour ID for the Overview Family Allotment section
   const [dashTourId, setDashTourId] = useState<string>('');
@@ -235,12 +271,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (!isCurrentInFiltered) {
         setDashTourId(filteredTourSummaries[0].tourId);
       }
-    } else if (tourSummaries.length > 0 && !tourSearchQuery && !tourArrivalDateFilter) {
+    } else if (tourSummaries.length > 0 && !tourSearchQuery && !tourArrivalDateFilter && !tourDepartureDateFilter) {
       if (!dashTourId) {
         setDashTourId(tourSummaries[0].tourId);
       }
     }
-  }, [filteredTourSummaries, dashTourId, tourSummaries, tourSearchQuery, tourArrivalDateFilter]);
+  }, [filteredTourSummaries, dashTourId, tourSummaries, tourSearchQuery, tourArrivalDateFilter, tourDepartureDateFilter]);
 
   // Inspect drawer allotment state
   const [inspectAllotMode, setInspectAllotMode] = useState<'family' | 'individual'>('family');
@@ -286,7 +322,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         allottedCount,
         isFullyAllotted: allottedCount === members.length && members.length > 0,
         arrivalDate: members[0]?.arrivalDate || todayStr,
+        arrivalTime: members[0]?.arrivalTime || '',
         departureDate: members[0]?.departureDate || todayStr,
+        departureTime: members[0]?.departureTime || '',
         commonBuilding: members[0]?.building || 'Saifee',
         commonRoom: members[0]?.roomNumber || '',
         hasRoomChange,
@@ -602,12 +640,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {filteredTourSummaries.length} of {tourSummaries.length} Tours
                 </span>
               )}
-              {(tourSearchQuery || tourArrivalDateFilter) && (
+              {(tourSearchQuery || tourArrivalDateFilter || tourDepartureDateFilter) && (
                 <button
                   type="button"
                   onClick={() => {
                     setTourSearchQuery('');
                     setTourArrivalDateFilter('');
+                    setTourDepartureDateFilter('');
                   }}
                   className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
                   title="Reset search and date filters"
@@ -619,10 +658,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Search Controls: Tour ID Search, Arrival Date Filter, Tour Dropdown */}
+          {/* Search Controls: Tour ID Search, Arrival Date Filter, Departure Date Filter, Tour Dropdown */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 pt-1">
             {/* 1. Search by Tour ID */}
-            <div className="lg:col-span-4 relative flex items-center">
+            <div className="lg:col-span-3 relative flex items-center">
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
               <input
                 type="text"
@@ -644,14 +683,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* 2. Filter by Arrival Date */}
-            <div className="lg:col-span-3 flex items-center gap-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2.5 py-1.5 shadow-2xs">
-              <Calendar className="w-3.5 h-3.5 text-[#124E39] shrink-0" />
-              <span className="text-[11px] font-bold text-stone-600 shrink-0">Arrival:</span>
+            <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2 py-1.5 shadow-2xs">
+              <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="text-[10px] font-bold text-stone-600 shrink-0">Arr:</span>
               <input
                 type="date"
                 value={tourArrivalDateFilter}
                 onChange={(e) => setTourArrivalDateFilter(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full"
+                className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full min-w-0"
                 title="Filter tours arriving on date"
               />
               {tourArrivalDateFilter && (
@@ -666,7 +705,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            {/* 3. Tour Selection Dropdown */}
+            {/* 3. Filter by Departure Date */}
+            <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs">
+              <LogOut className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span className="text-[10px] font-bold text-amber-900 shrink-0">Dep:</span>
+              <input
+                type="date"
+                value={tourDepartureDateFilter}
+                onChange={(e) => setTourDepartureDateFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer w-full min-w-0"
+                title="Filter tours departing on date"
+              />
+              {tourDepartureDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTourDepartureDateFilter('')}
+                  className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
+                  title="Clear departure date filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* 4. Tour Selection Dropdown */}
             <div className="lg:col-span-5 flex items-center gap-2">
               <span className="text-xs font-bold text-stone-700 shrink-0 hidden lg:inline">Tour:</span>
               <select
@@ -677,7 +739,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {filteredTourSummaries.length > 0 ? (
                   filteredTourSummaries.map((t) => (
                     <option key={t.tourId} value={t.tourId}>
-                      {t.tourId} {t.primaryArrivalDate ? `• Arr: ${t.primaryArrivalDate}` : ''} ({t.totalZaereen} Zaereen{t.familiesCount > 0 ? `, ${t.familiesCount} Fam` : ''})
+                      {t.tourId} • Arr: {t.primaryArrivalDate || '—'} • Dep: {t.primaryDepartureDate || '—'} ({t.totalZaereen} Zaereen{t.familiesCount > 0 ? `, ${t.familiesCount} Fam` : ''})
                     </option>
                   ))
                 ) : (
@@ -705,11 +767,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     }`}
                   >
                     <span>{t.tourId}</span>
-                    {t.primaryArrivalDate && (
-                      <span className="text-[10px] font-sans font-normal opacity-80 ml-1">
-                        ({t.primaryArrivalDate.slice(5)})
-                      </span>
-                    )}
+                    <span className="text-[10px] font-sans font-normal opacity-85 ml-1">
+                      ({t.primaryArrivalDate ? t.primaryArrivalDate.slice(5) : '—'} ➔ {t.primaryDepartureDate ? t.primaryDepartureDate.slice(5) : '—'})
+                    </span>
                   </button>
                 );
               })}
@@ -730,10 +790,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 return (
                   <>
                     {tourSum && (
-                      <span className="text-xs text-stone-600 font-medium">
-                        {tourSum.totalZaereen} Zaereen • {tourSum.familiesCount} Families
-                        {tourSum.primaryArrivalDate ? ` • Arr: ${tourSum.primaryArrivalDate}` : ''}
-                      </span>
+                      <div className="flex items-center gap-2 text-xs text-stone-600 font-medium flex-wrap">
+                        <span>{tourSum.totalZaereen} Zaereen • {tourSum.familiesCount} Families</span>
+                        <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <LogIn className="w-3 h-3 text-emerald-700" />
+                          <span>Arrival: {tourSum.primaryArrivalDate || 'N/A'}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
+                          <LogOut className="w-3 h-3 text-amber-700" />
+                          <span>Departure: {tourSum.primaryDepartureDate || 'N/A'}</span>
+                        </span>
+                      </div>
                     )}
 
                     {/* Room Change Indicator with Interactive Hover Bubble (User requirement: mark changed room with color & hover bubble) */}
@@ -873,8 +940,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         )}
                       </div>
-                      <div className="text-[11px] text-stone-500 mt-1">
-                        Stay: <strong>{famItem.arrivalDate}</strong> to <strong>{famItem.departureDate}</strong>
+
+                      <div className="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <LogIn className="w-3 h-3 text-emerald-700" />
+                          <span>Arr: {famItem.arrivalDate}{famItem.arrivalTime ? ` (${famItem.arrivalTime})` : ''}</span>
+                        </span>
+                        <span className="text-stone-300">➔</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-950 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 shadow-2xs">
+                          <LogOut className="w-3 h-3 text-amber-700" />
+                          <span>Dep: {famItem.departureDate}{famItem.departureTime ? ` (${famItem.departureTime})` : ''}</span>
+                        </span>
                       </div>
                     </div>
 
@@ -990,8 +1066,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 <div className="font-bold text-stone-900">
                                   {m.applicantName} <span className="font-mono text-stone-400 font-normal">({m.itsId})</span>
                                 </div>
-                                <div className="text-[10px] text-stone-500">
-                                  Age: {m.age} • {m.gender} • Stay: {m.arrivalDate} to {m.departureDate}
+                                <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span>Age: {m.age} • {m.gender}</span>
+                                  <span>•</span>
+                                  <span className="text-emerald-800 font-semibold inline-flex items-center gap-0.5">
+                                    <LogIn className="w-2.5 h-2.5 text-emerald-600" />
+                                    <span>Arr: {m.arrivalDate}{m.arrivalTime ? ` (${m.arrivalTime})` : ''}</span>
+                                  </span>
+                                  <span>➔</span>
+                                  <span className="text-amber-800 font-bold inline-flex items-center gap-0.5">
+                                    <LogOut className="w-2.5 h-2.5 text-amber-600" />
+                                    <span>Dep: {m.departureDate}{m.departureTime ? ` (${m.departureTime})` : ''}</span>
+                                  </span>
                                 </div>
                               </div>
 
@@ -1132,6 +1218,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           reservations={reservations}
           onAllotRoom={onAllotRoom}
           onBatchAllotFamily={onBatchAllotFamily}
+          onAddReservation={onAddReservation}
           userRole={userRole}
           onOpenReceptionSlip={onOpenReceptionSlip}
           onOpenQuickAllotModal={onOpenQuickAllotModal}

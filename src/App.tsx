@@ -1121,6 +1121,7 @@ export default function App() {
             onDownloadTemplate={downloadSampleExcelTemplate}
             onAllotRoom={handleAllotRoom}
             onBatchAllotFamily={handleBatchAllotFamily}
+            onAddReservation={handleAddReservation}
             onDeleteReservation={handleDeleteReservation}
             onToggleBlockRoom={(roomId) => {
               const r = rooms.find((rm) => rm.id === roomId);
