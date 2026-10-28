@@ -356,13 +356,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const bToAPaidCount = reservations.filter((r) => (r.category === 'B to A' || r.shiftToCategoryA) && r.moneyGiven === 'Yes').length;
   const uploadedCount = reservations.filter((r) => r.isUploadedToPortal).length;
 
-  // Arrivals and departures on selected date
-  const arrivalsOnDate = reservations.filter(
-    (r) => (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10) === selectedDate
-  );
-  const departuresOnDate = reservations.filter(
-    (r) => (r.departureDate || r.departureDateTime || '').slice(0, 10) === selectedDate
-  );
+  // Arrivals and departures on selected date (sorted tour ID wise, then room-wise)
+  const arrivalsOnDate = useMemo(() => {
+    return reservations
+      .filter((r) => (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10) === selectedDate)
+      .sort((a, b) => {
+        const tourA = (a.tourRefNo || a.tourId || '').trim();
+        const tourB = (b.tourRefNo || b.tourId || '').trim();
+        const tourCmp = tourA.localeCompare(tourB, undefined, { numeric: true });
+        if (tourCmp !== 0) return tourCmp;
+        const numA = parseInt((a.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        const numB = parseInt((b.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        if (numA !== numB) return numA - numB;
+        return (a.roomNumber || '').localeCompare(b.roomNumber || '');
+      });
+  }, [reservations, selectedDate]);
+
+  const departuresOnDate = useMemo(() => {
+    return reservations
+      .filter((r) => (r.departureDate || r.departureDateTime || '').slice(0, 10) === selectedDate)
+      .sort((a, b) => {
+        const tourA = (a.tourRefNo || a.tourId || '').trim();
+        const tourB = (b.tourRefNo || b.tourId || '').trim();
+        const tourCmp = tourA.localeCompare(tourB, undefined, { numeric: true });
+        if (tourCmp !== 0) return tourCmp;
+        const numA = parseInt((a.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        const numB = parseInt((b.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        if (numA !== numB) return numA - numB;
+        return (a.roomNumber || '').localeCompare(b.roomNumber || '');
+      });
+  }, [reservations, selectedDate]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -1865,14 +1888,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <div>
                     <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
                         <Clock className="w-2.5 h-2.5 text-indigo-600" />
                         <span>{res.arrivalTime || '11:00 AM'}</span>
                       </span>
                       <span className="text-[10px] text-stone-500 font-mono">
-                        {res.family} • {res.tourRefNo}
+                        {res.family} • Tour {res.tourRefNo || res.tourId || '—'}
                       </span>
+                      {res.officeName && (
+                        <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          Office: {res.officeName}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -1916,14 +1944,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <div>
                     <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                         <Clock className="w-2.5 h-2.5 text-amber-600" />
                         <span>{res.departureTime || '01:00 AM'}</span>
                       </span>
                       <span className="text-[10px] text-stone-500 font-mono">
-                        {res.family} • {res.tourRefNo}
+                        {res.family} • Tour {res.tourRefNo || res.tourId || '—'}
                       </span>
+                      {res.officeName && (
+                        <span className="text-[10px] text-amber-800 font-semibold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                          Office: {res.officeName}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">

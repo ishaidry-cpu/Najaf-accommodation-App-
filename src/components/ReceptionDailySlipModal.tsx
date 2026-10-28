@@ -202,12 +202,15 @@ export interface SimpleSlipEntry {
   roomNumber: string;
   building: string;
   tourIdDisplay: string;
+  primaryTourId: string;
+  officeNameDisplay: string;
   familyNumberDisplay: string;
   paxPerFamily: {
     family: string;
     paxName: string;
     totalPaxInFamily: number;
     tourId?: string;
+    officeName?: string;
   }[];
   paxNamesDisplay: string;
   arrivalDate: string;
@@ -217,15 +220,89 @@ export interface SimpleSlipEntry {
   rawReservations: Reservation[];
 }
 
+export interface TourClubbedSlipGroup {
+  tourId: string;
+  officeName: string;
+  entries: SimpleSlipEntry[];
+  totalRooms: number;
+  totalPax: number;
+  totalTurnovers: number;
+}
+
+/**
+ * Groups slip entries by Tour ID and sorts rooms room-wise within each Tour ID group.
+ * Mentioning office names prominently for each tour.
+ */
+export function clubEntriesByTour(entries: SimpleSlipEntry[]): TourClubbedSlipGroup[] {
+  const map = new Map<string, SimpleSlipEntry[]>();
+  entries.forEach((e) => {
+    const tour = (e.primaryTourId || e.tourIdDisplay || 'Unassigned Tour').trim() || 'Unassigned Tour';
+    if (!map.has(tour)) map.set(tour, []);
+    map.get(tour)!.push(e);
+  });
+
+  const sortRoomWiseFn = (a: SimpleSlipEntry, b: SimpleSlipEntry) => {
+    const numA = parseInt(a.roomNumber.replace(/\D/g, ''), 10) || 9999;
+    const numB = parseInt(b.roomNumber.replace(/\D/g, ''), 10) || 9999;
+    if (numA !== numB) return numA - numB;
+    return a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true });
+  };
+
+  const groups: TourClubbedSlipGroup[] = [];
+  map.forEach((items, tourId) => {
+    // Strictly sort room-wise within this Tour ID group!
+    const sortedRooms = [...items].sort(sortRoomWiseFn);
+
+    // Aggregate unique office names for this Tour group
+    const officeSet = new Set<string>();
+    sortedRooms.forEach((r) => {
+      if (r.officeNameDisplay && r.officeNameDisplay !== '—') {
+        r.officeNameDisplay.split(',').forEach((s) => {
+          const clean = s.trim();
+          if (clean && clean !== '—') officeSet.add(clean);
+        });
+      }
+      r.rawReservations.forEach((res) => {
+        const o = (res.officeName || '').trim();
+        if (o) officeSet.add(o);
+      });
+    });
+    const officeName = Array.from(officeSet).join(', ') || '—';
+    const totalPax = sortedRooms.reduce((sum, it) => sum + it.rawReservations.length, 0);
+    const totalTurnovers = sortedRooms.filter((it) => it.isTurnover).length;
+
+    groups.push({
+      tourId,
+      officeName,
+      entries: sortedRooms,
+      totalRooms: sortedRooms.length,
+      totalPax,
+      totalTurnovers,
+    });
+  });
+
+  // Sort tour groups by Tour ID, unassigned at the end
+  groups.sort((a, b) => {
+    if (a.tourId === 'Unassigned Tour') return 1;
+    if (b.tourId === 'Unassigned Tour') return -1;
+    return a.tourId.localeCompare(b.tourId, undefined, { numeric: true });
+  });
+
+  return groups;
+}
+
 /**
  * Builds simple, high-readability slip rows for Arrival Slip & Departure List:
  * Specific user requirements:
  * 1. Room No / building (separate buildings for Saifee & Burhani)
  * 2. Tour ID
- * 3. Family Number
- * 4. Name of one pax of the family member (if members from two families then names of all from separate family)
- * 5. Arrival and Departure Date
- * 6. Mark turnovers (same-day check-in & check-out)
+ * 3. Office Name (dedicated column)
+ * 4. Clubbed Tour ID wise mentioning Office Names
+ * 5. In each Tour ID sorted Room Wise
+ * 6. Family Number
+ * 7. Name of one pax of the family member (if members from two families then names of all from separate family)
+ * 8. Arrival and Departure Date
+ * 9. Mark turnovers (same-day check-in & check-out)
  */
 export function buildSimpleSlipEntries(
   reservationsOnDate: Reservation[],
@@ -236,6 +313,9 @@ export function buildSimpleSlipEntries(
   saifee: SimpleSlipEntry[];
   burhani: SimpleSlipEntry[];
   unallotted: SimpleSlipEntry[];
+  saifeeTourGroups: TourClubbedSlipGroup[];
+  burhaniTourGroups: TourClubbedSlipGroup[];
+  unallottedTourGroups: TourClubbedSlipGroup[];
   totalRooms: number;
   totalPax: number;
   totalTurnovers: number;
@@ -275,11 +355,13 @@ export function buildSimpleSlipEntries(
                   famMembers[0];
       const isActualFam = famKey && !famKey.startsWith('fam_') && famKey !== 'NoFamily';
       const famTour = rep?.tourRefNo?.trim() || famMembers.find((m) => m.tourRefNo?.trim())?.tourRefNo?.trim() || '';
+      const famOffice = rep?.officeName?.trim() || famMembers.find((m) => m.officeName?.trim())?.officeName?.trim() || '';
       return {
         family: isActualFam ? famKey : '',
         paxName: rep?.applicantName?.trim() || 'Guest',
         totalPaxInFamily: famMembers.length,
         tourId: famTour,
+        officeName: famOffice,
       };
     });
 
@@ -301,6 +383,15 @@ export function buildSimpleSlipEntries(
       if (t) tourSet.add(t);
     });
     const tourIdDisplay = Array.from(tourSet).join(', ') || '—';
+    const primaryTourId = Array.from(tourSet)[0] || 'Unassigned Tour';
+
+    // Extract unique Office Name(s) for this room
+    const officeSet = new Set<string>();
+    resList.forEach((r) => {
+      const o = (r.officeName || '').trim();
+      if (o) officeSet.add(o);
+    });
+    const officeNameDisplay = Array.from(officeSet).join(', ') || '—';
 
     // Extract unique Family Numbers for this room
     const famSet = new Set<string>();
@@ -354,6 +445,8 @@ export function buildSimpleSlipEntries(
       roomNumber: roomNum,
       building: bldg,
       tourIdDisplay,
+      primaryTourId,
+      officeNameDisplay,
       familyNumberDisplay,
       paxPerFamily,
       paxNamesDisplay,
@@ -365,22 +458,37 @@ export function buildSimpleSlipEntries(
     });
   });
 
-  const sortFn = (a: SimpleSlipEntry, b: SimpleSlipEntry) => {
+  // Sort by Tour ID first, then room-wise within each tour
+  const sortTourThenRoomFn = (a: SimpleSlipEntry, b: SimpleSlipEntry) => {
+    const tourA = (a.primaryTourId || a.tourIdDisplay || 'Unassigned Tour').trim();
+    const tourB = (b.primaryTourId || b.tourIdDisplay || 'Unassigned Tour').trim();
+    if (tourA !== tourB) {
+      if (tourA === 'Unassigned Tour') return 1;
+      if (tourB === 'Unassigned Tour') return -1;
+      return tourA.localeCompare(tourB, undefined, { numeric: true });
+    }
     const numA = parseInt(a.roomNumber.replace(/\D/g, ''), 10) || 9999;
     const numB = parseInt(b.roomNumber.replace(/\D/g, ''), 10) || 9999;
     if (numA !== numB) return numA - numB;
-    return a.roomNumber.localeCompare(b.roomNumber);
+    return a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true });
   };
 
-  const saifee = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Saifee').sort(sortFn);
-  const burhani = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Burhani').sort(sortFn);
-  const unallotted = allEntries.filter((e) => !e.roomNumber || (normalizeHotelBuilding(e.building) !== 'Saifee' && normalizeHotelBuilding(e.building) !== 'Burhani'));
+  const saifee = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Saifee').sort(sortTourThenRoomFn);
+  const burhani = allEntries.filter((e) => e.roomNumber && normalizeHotelBuilding(e.building) === 'Burhani').sort(sortTourThenRoomFn);
+  const unallotted = allEntries.filter((e) => !e.roomNumber || (normalizeHotelBuilding(e.building) !== 'Saifee' && normalizeHotelBuilding(e.building) !== 'Burhani')).sort(sortTourThenRoomFn);
   const totalTurnovers = allEntries.filter((e) => e.isTurnover).length;
+
+  const saifeeTourGroups = clubEntriesByTour(saifee);
+  const burhaniTourGroups = clubEntriesByTour(burhani);
+  const unallottedTourGroups = clubEntriesByTour(unallotted);
 
   return {
     saifee,
     burhani,
     unallotted,
+    saifeeTourGroups,
+    burhaniTourGroups,
+    unallottedTourGroups,
     totalRooms: saifee.length + burhani.length,
     totalPax: reservationsOnDate.length,
     totalTurnovers,
@@ -1475,54 +1583,97 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(255, 255, 255);
       const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
       const turnoversCount = items.filter((it) => it.isTurnover).length;
+      const tourGroups = clubEntriesByTour(items);
       doc.text(
-        `Total: ${items.length} Rooms • ${totalPax} Zaereen${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
-        pageWidth - 230,
+        `Total: ${items.length} Rooms • ${totalPax} Zaereen • ${tourGroups.length} Tours${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
+        pageWidth - 270,
         startAtY + 16
       );
 
-      const rows: string[][] = items.map((it) => [
-        it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
-        `${it.building || ''} Hotel`,
-        it.tourIdDisplay || '—',
-        it.familyNumberDisplay || '—',
-        it.paxNamesDisplay,
-        it.arrivalDate,
-        it.departureDate,
-        it.isTurnover ? 'TURNOVER' : '—',
-      ]);
+      if (items.length === 0) {
+        safeAutoTable(doc, {
+          startY: startAtY + 28,
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          body: [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '', '']],
+          margin: { left: 25, right: 25 },
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 5 },
+          headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+        });
+        return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
+      }
 
-      safeAutoTable(doc, {
-        startY: startAtY + 28,
-        head: [['Room #', 'Building', 'Tour ID', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
-        body: rows.length > 0 ? rows : [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '']],
-        margin: { left: 25, right: 25 },
-        theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 5.5, textColor: [30, 30, 30] },
-        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9.5 },
-        columnStyles: {
-          0: { cellWidth: 58, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
-          1: { cellWidth: 68, halign: 'center', fontSize: 9 },
-          2: { cellWidth: 124, halign: 'center', fontSize: 8.5 },
-          3: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          4: { cellWidth: 235, fontStyle: 'bold', fontSize: 9.5 },
-          5: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          6: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          7: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-        },
-        didParseCell: (data: any) => {
-          if (data.section === 'body') {
-            const rawItem = items[data.row.index];
-            if (rawItem?.isTurnover && data.column.index === 7) {
-              data.cell.styles.fillColor = [254, 243, 199];
-              data.cell.styles.textColor = [180, 83, 9];
-              data.cell.styles.fontStyle = 'bold';
+      let yPos = startAtY + 28;
+
+      tourGroups.forEach((tg) => {
+        if (yPos > pageHeight - 90) {
+          doc.addPage();
+          yPos = 35;
+        }
+
+        // Tour ID Clubbed Subheader mentioning Tour ID & Office Name
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.roundedRect(25, yPos, pageWidth - 50, 18, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(235, 213, 158);
+        doc.text(`TOUR ID: ${tg.tourId}`, 35, yPos + 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(255, 255, 255);
+        doc.text(
+          `•   OFFICE NAME: ${tg.officeName || '—'}   •   ${tg.entries.length} Rooms (Sorted Room-Wise), ${tg.totalPax} Zaereen${tg.totalTurnovers > 0 ? ` (${tg.totalTurnovers} Turnovers)` : ''}`,
+          155,
+          yPos + 12
+        );
+
+        const rows: string[][] = tg.entries.map((it) => [
+          it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
+          `${it.building || ''} Hotel`,
+          it.tourIdDisplay || tg.tourId || '—',
+          it.officeNameDisplay || tg.officeName || '—',
+          it.familyNumberDisplay || '—',
+          it.paxNamesDisplay,
+          it.arrivalDate,
+          it.departureDate,
+          it.isTurnover ? 'TURNOVER' : '—',
+        ]);
+
+        safeAutoTable(doc, {
+          startY: yPos + 20,
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          body: rows,
+          margin: { left: 25, right: 25 },
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 4.5, textColor: [30, 30, 30] },
+          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+          columnStyles: {
+            0: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            1: { cellWidth: 62, halign: 'center', fontSize: 8 },
+            2: { cellWidth: 80, halign: 'center', fontSize: 8 },
+            3: { cellWidth: 90, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            5: { cellWidth: 195, fontStyle: 'bold', fontSize: 8.5 },
+            6: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            7: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            8: { cellWidth: 72, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+          },
+          didParseCell: (data: any) => {
+            if (data.section === 'body') {
+              const rawItem = tg.entries[data.row.index];
+              if (rawItem?.isTurnover && data.column.index === 8) {
+                data.cell.styles.fillColor = [254, 243, 199];
+                data.cell.styles.textColor = [180, 83, 9];
+                data.cell.styles.fontStyle = 'bold';
+              }
             }
-          }
-        },
+          },
+        });
+
+        yPos = ((doc as any).lastAutoTable?.finalY ?? (yPos + 30)) + 14;
       });
 
-      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
+      return yPos;
     };
 
     let currentY = 68;
@@ -1632,54 +1783,97 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       doc.setTextColor(255, 255, 255);
       const totalPax = items.reduce((sum, it) => sum + it.rawReservations.length, 0);
       const turnoversCount = items.filter((it) => it.isTurnover).length;
+      const tourGroups = clubEntriesByTour(items);
       doc.text(
-        `Total: ${items.length} Rooms • ${totalPax} Zaereen${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
-        pageWidth - 230,
+        `Total: ${items.length} Rooms • ${totalPax} Zaereen • ${tourGroups.length} Tours${turnoversCount > 0 ? ` • ${turnoversCount} Turnovers` : ''}`,
+        pageWidth - 270,
         startAtY + 16
       );
 
-      const rows: string[][] = items.map((it) => [
-        it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
-        `${it.building || ''} Hotel`,
-        it.tourIdDisplay || '—',
-        it.familyNumberDisplay || '—',
-        it.paxNamesDisplay,
-        it.arrivalDate,
-        it.departureDate,
-        it.isTurnover ? 'TURNOVER' : '—',
-      ]);
+      if (items.length === 0) {
+        safeAutoTable(doc, {
+          startY: startAtY + 28,
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          body: [['No departures scheduled for this section on this date', '', '', '', '', '', '', '', '']],
+          margin: { left: 25, right: 25 },
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 5 },
+          headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+        });
+        return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
+      }
 
-      safeAutoTable(doc, {
-        startY: startAtY + 28,
-        head: [['Room #', 'Building', 'Tour ID', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
-        body: rows.length > 0 ? rows : [['No departures scheduled for this section on this date', '', '', '', '', '', '', '']],
-        margin: { left: 25, right: 25 },
-        theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 5.5, textColor: [30, 30, 30] },
-        headStyles: { fillColor: bannerColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9.5 },
-        columnStyles: {
-          0: { cellWidth: 58, halign: 'center', fontStyle: 'bold', fontSize: 9.5 },
-          1: { cellWidth: 68, halign: 'center', fontSize: 9 },
-          2: { cellWidth: 124, halign: 'center', fontSize: 8.5 },
-          3: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          4: { cellWidth: 235, fontStyle: 'bold', fontSize: 9.5 },
-          5: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          6: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-          7: { cellWidth: 84, halign: 'center', fontStyle: 'bold', fontSize: 9 },
-        },
-        didParseCell: (data: any) => {
-          if (data.section === 'body') {
-            const rawItem = items[data.row.index];
-            if (rawItem?.isTurnover && data.column.index === 7) {
-              data.cell.styles.fillColor = [254, 243, 199];
-              data.cell.styles.textColor = [180, 83, 9];
-              data.cell.styles.fontStyle = 'bold';
+      let yPos = startAtY + 28;
+
+      tourGroups.forEach((tg) => {
+        if (yPos > pageHeight - 90) {
+          doc.addPage();
+          yPos = 35;
+        }
+
+        // Tour ID Clubbed Subheader mentioning Tour ID & Office Name
+        doc.setFillColor(30, 41, 59); // slate-800
+        doc.roundedRect(25, yPos, pageWidth - 50, 18, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(235, 213, 158);
+        doc.text(`TOUR ID: ${tg.tourId}`, 35, yPos + 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(255, 255, 255);
+        doc.text(
+          `•   OFFICE NAME: ${tg.officeName || '—'}   •   ${tg.entries.length} Rooms (Sorted Room-Wise), ${tg.totalPax} Zaereen${tg.totalTurnovers > 0 ? ` (${tg.totalTurnovers} Turnovers)` : ''}`,
+          155,
+          yPos + 12
+        );
+
+        const rows: string[][] = tg.entries.map((it) => [
+          it.roomNumber ? `Room ${it.roomNumber}` : 'Unallotted',
+          `${it.building || ''} Hotel`,
+          it.tourIdDisplay || tg.tourId || '—',
+          it.officeNameDisplay || tg.officeName || '—',
+          it.familyNumberDisplay || '—',
+          it.paxNamesDisplay,
+          it.arrivalDate,
+          it.departureDate,
+          it.isTurnover ? 'TURNOVER' : '—',
+        ]);
+
+        safeAutoTable(doc, {
+          startY: yPos + 20,
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          body: rows,
+          margin: { left: 25, right: 25 },
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 4.5, textColor: [30, 30, 30] },
+          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+          columnStyles: {
+            0: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            1: { cellWidth: 62, halign: 'center', fontSize: 8 },
+            2: { cellWidth: 80, halign: 'center', fontSize: 8 },
+            3: { cellWidth: 90, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            5: { cellWidth: 195, fontStyle: 'bold', fontSize: 8.5 },
+            6: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            7: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            8: { cellWidth: 72, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+          },
+          didParseCell: (data: any) => {
+            if (data.section === 'body') {
+              const rawItem = tg.entries[data.row.index];
+              if (rawItem?.isTurnover && data.column.index === 8) {
+                data.cell.styles.fillColor = [254, 243, 199];
+                data.cell.styles.textColor = [180, 83, 9];
+                data.cell.styles.fontStyle = 'bold';
+              }
             }
-          }
-        },
+          },
+        });
+
+        yPos = ((doc as any).lastAutoTable?.finalY ?? (yPos + 30)) + 14;
       });
 
-      return (doc as any).lastAutoTable?.finalY ?? (startAtY + 38);
+      return yPos;
     };
 
     let currentY = 68;
@@ -3151,7 +3345,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               {/* Saifee Hotel Arrivals */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between bg-[#124E39] text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-[#EBD59E]" />
@@ -3160,106 +3354,158 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-emerald-100">
-                      {simpleArrivalsData.saifee.length} Rooms • {simpleArrivalsData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.saifee.filter(r => r.isTurnover).length} Turnovers
+                      {simpleArrivalsData.saifee.length} Rooms • {simpleArrivalsData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.saifeeTourGroups.length} Tours • {simpleArrivalsData.saifee.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200 text-xs">
-                        {(showOnlyTurnoversInSlip
-                          ? simpleArrivalsData.saifee.filter((e) => e.isTurnover)
-                          : simpleArrivalsData.saifee
-                        ).length > 0 ? (
-                          (showOnlyTurnoversInSlip
-                            ? simpleArrivalsData.saifee.filter((e) => e.isTurnover)
-                            : simpleArrivalsData.saifee
-                          ).map((entry, idx) => (
-                            <tr
-                              key={idx}
-                              className={`transition ${
-                                entry.isTurnover
-                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
-                                  : 'hover:bg-emerald-50/40'
-                              }`}
-                            >
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
-                                  Room {entry.roomNumber}
+                  {(() => {
+                    const groups = simpleArrivalsData.saifeeTourGroups
+                      .map((g) => ({
+                        ...g,
+                        displayedEntries: showOnlyTurnoversInSlip ? g.entries.filter((e) => e.isTurnover) : g.entries,
+                      }))
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    if (groups.length === 0) {
+                      return (
+                        <div className="p-6 text-center text-xs text-stone-500 italic bg-white border border-stone-200 rounded-xl">
+                          {showOnlyTurnoversInSlip
+                            ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
+                            : `No arrivals scheduled for Saifee Hotel on ${selectedDate}`}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group) => (
+                          <div key={group.tourId} className="border border-stone-300 rounded-xl overflow-hidden shadow-2xs bg-white">
+                            {/* Tour ID & Office Name Clubbed Banner */}
+                            <div className="bg-[#0E3C2C] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
+                              <div className="flex items-center gap-2.5 flex-wrap">
+                                <span className="text-[10px] uppercase font-black tracking-wider text-[#EBD59E] bg-black/30 px-2 py-0.5 rounded border border-[#C5A059]/40">
+                                  Tour Group
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
-                                Saifee Hotel
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                  {entry.tourIdDisplay || '—'}
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-[#EBD59E] font-black">{group.tourId}</span>
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                  {entry.familyNumberDisplay || '—'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 align-middle">
-                                <div className="space-y-1">
-                                  {entry.paxPerFamily.map((fam, fIdx) => (
-                                    <div key={fIdx} className="flex items-center gap-2">
-                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                      {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                          Family #{fam.family}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.arrivalDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.departureDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                {entry.isTurnover ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
-                                    title="Same-day Turnover: Previous party checks out and arriving party checks in today"
-                                  >
-                                    <RefreshCw className="w-3 h-3 text-amber-800" />
-                                    <span>TURNOVER</span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-extrabold text-amber-300 bg-black/30 px-2 py-0.5 rounded border border-amber-300/30">
+                                    {group.officeName || '—'}
                                   </span>
-                                ) : (
-                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-white/90 flex items-center gap-2">
+                                <span className="bg-black/30 px-2.5 py-0.5 rounded text-emerald-200 font-mono font-bold">
+                                  {group.displayedEntries.length} Rooms (Sorted Room-Wise)
+                                </span>
+                                <span>•</span>
+                                <span>{group.totalPax} Zaereen</span>
+                                {group.totalTurnovers > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-300 font-bold bg-amber-950/80 px-2 py-0.5 rounded border border-amber-400/50">
+                                      {group.totalTurnovers} Turnovers
+                                    </span>
+                                  </>
                                 )}
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
-                              {showOnlyTurnoversInSlip
-                                ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
-                                : `No arrivals scheduled for Saifee Hotel on ${selectedDate}`}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </div>
+
+                            {/* Table sorted room-wise within this Tour ID */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-stone-200 text-xs">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr
+                                      key={idx}
+                                      className={`transition ${
+                                        entry.isTurnover
+                                          ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                                          : 'hover:bg-emerald-50/50'
+                                      }`}
+                                    >
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
+                                          Room {entry.roomNumber}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-bold text-stone-700 text-xs">
+                                        Saifee Hotel
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {entry.paxPerFamily.length > 1 && fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        {entry.isTurnover ? (
+                                          <span
+                                            className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                            title="Same-day Turnover: Previous party checks out and arriving party checks in today"
+                                          >
+                                            <RefreshCw className="w-3 h-3 text-amber-800" />
+                                            <span>TURNOVER</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-stone-300 font-bold text-xs">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3270,7 +3516,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               {/* Burhani Hotel Arrivals */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Burhani') && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between bg-[#124E39] text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-[#EBD59E]" />
@@ -3279,112 +3525,164 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-emerald-100">
-                      {simpleArrivalsData.burhani.length} Rooms • {simpleArrivalsData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.burhani.filter(r => r.isTurnover).length} Turnovers
+                      {simpleArrivalsData.burhani.length} Rooms • {simpleArrivalsData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleArrivalsData.burhaniTourGroups.length} Tours • {simpleArrivalsData.burhani.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200 text-xs">
-                        {(showOnlyTurnoversInSlip
-                          ? simpleArrivalsData.burhani.filter((e) => e.isTurnover)
-                          : simpleArrivalsData.burhani
-                        ).length > 0 ? (
-                          (showOnlyTurnoversInSlip
-                            ? simpleArrivalsData.burhani.filter((e) => e.isTurnover)
-                            : simpleArrivalsData.burhani
-                          ).map((entry, idx) => (
-                            <tr
-                              key={idx}
-                              className={`transition ${
-                                entry.isTurnover
-                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
-                                  : 'hover:bg-emerald-50/40'
-                              }`}
-                            >
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
-                                  Room {entry.roomNumber}
+                  {(() => {
+                    const groups = simpleArrivalsData.burhaniTourGroups
+                      .map((g) => ({
+                        ...g,
+                        displayedEntries: showOnlyTurnoversInSlip ? g.entries.filter((e) => e.isTurnover) : g.entries,
+                      }))
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    if (groups.length === 0) {
+                      return (
+                        <div className="p-6 text-center text-xs text-stone-500 italic bg-white border border-stone-200 rounded-xl">
+                          {showOnlyTurnoversInSlip
+                            ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
+                            : `No arrivals scheduled for Burhani Hotel on ${selectedDate}`}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group) => (
+                          <div key={group.tourId} className="border border-stone-300 rounded-xl overflow-hidden shadow-2xs bg-white">
+                            {/* Tour ID & Office Name Clubbed Banner */}
+                            <div className="bg-[#0E3C2C] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
+                              <div className="flex items-center gap-2.5 flex-wrap">
+                                <span className="text-[10px] uppercase font-black tracking-wider text-[#EBD59E] bg-black/30 px-2 py-0.5 rounded border border-[#C5A059]/40">
+                                  Tour Group
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
-                                Burhani Hotel
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                  {entry.tourIdDisplay || '—'}
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-[#EBD59E] font-black">{group.tourId}</span>
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                  {entry.familyNumberDisplay || '—'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 align-middle">
-                                <div className="space-y-1">
-                                  {entry.paxPerFamily.map((fam, fIdx) => (
-                                    <div key={fIdx} className="flex items-center gap-2">
-                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                      {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                          Family #{fam.family}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.arrivalDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.departureDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                {entry.isTurnover ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
-                                    title="Same-day Turnover: Previous party checks out and arriving party checks in today"
-                                  >
-                                    <RefreshCw className="w-3 h-3 text-amber-800" />
-                                    <span>TURNOVER</span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-extrabold text-amber-300 bg-black/30 px-2 py-0.5 rounded border border-amber-300/30">
+                                    {group.officeName || '—'}
                                   </span>
-                                ) : (
-                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-white/90 flex items-center gap-2">
+                                <span className="bg-black/30 px-2.5 py-0.5 rounded text-emerald-200 font-mono font-bold">
+                                  {group.displayedEntries.length} Rooms (Sorted Room-Wise)
+                                </span>
+                                <span>•</span>
+                                <span>{group.totalPax} Zaereen</span>
+                                {group.totalTurnovers > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-300 font-bold bg-amber-950/80 px-2 py-0.5 rounded border border-amber-400/50">
+                                      {group.totalTurnovers} Turnovers
+                                    </span>
+                                  </>
                                 )}
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
-                              {showOnlyTurnoversInSlip
-                                ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
-                                : `No arrivals scheduled for Burhani Hotel on ${selectedDate}`}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </div>
+
+                            {/* Table sorted room-wise within this Tour ID */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-stone-200 text-xs">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr
+                                      key={idx}
+                                      className={`transition ${
+                                        entry.isTurnover
+                                          ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                                          : 'hover:bg-emerald-50/50'
+                                      }`}
+                                    >
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono font-black text-sm text-[#124E39] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
+                                          Room {entry.roomNumber}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-bold text-stone-700 text-xs">
+                                        Burhani Hotel
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {entry.paxPerFamily.length > 1 && fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        {entry.isTurnover ? (
+                                          <span
+                                            className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                            title="Same-day Turnover: Previous party checks out and arriving party checks in today"
+                                          >
+                                            <RefreshCw className="w-3 h-3 text-amber-800" />
+                                            <span>TURNOVER</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-stone-300 font-bold text-xs">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
               {/* Unallotted Arrivals */}
               {simpleArrivalsData.unallotted.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between bg-amber-800 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-amber-200" />
@@ -3397,69 +3695,111 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-amber-300 rounded-xl shadow-2xs bg-amber-50/30">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-amber-200 text-xs">
-                        {simpleArrivalsData.unallotted.map((entry, idx) => (
-                          <tr key={idx} className="hover:bg-amber-100/50 transition">
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
-                                Unallotted
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-medium text-stone-500">
-                              Pending
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-mono text-xs font-bold text-indigo-900 bg-white border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                {entry.tourIdDisplay || '—'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-mono text-xs font-bold text-stone-800 bg-white border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                {entry.familyNumberDisplay || '—'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 align-middle">
-                              <div className="space-y-1">
-                                {entry.paxPerFamily.map((fam, fIdx) => (
-                                  <div key={fIdx} className="flex items-center gap-2">
-                                    <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                    {fam.family && (
-                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                        Family #{fam.family}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
+                  {(() => {
+                    const groups = simpleArrivalsData.unallottedTourGroups
+                      .map((g) => ({
+                        ...g,
+                        displayedEntries: showOnlyTurnoversInSlip ? g.entries.filter((e) => e.isTurnover) : g.entries,
+                      }))
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group) => (
+                          <div key={group.tourId} className="border border-amber-300 rounded-xl overflow-hidden shadow-2xs bg-amber-50/20">
+                            {/* Tour ID & Office Name Clubbed Banner */}
+                            <div className="bg-amber-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-amber-800">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-amber-200 font-black">{group.tourId}</span>
+                                </span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-bold text-amber-200 bg-amber-950/60 px-2 py-0.5 rounded">
+                                    {group.officeName || '—'}
+                                  </span>
+                                </span>
                               </div>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                              {entry.arrivalDate}
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                              {entry.departureDate}
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle text-stone-400 font-bold text-xs">
-                              —
-                            </td>
-                          </tr>
+                              <div className="text-[11px] font-semibold text-amber-100">
+                                {group.displayedEntries.length} Pending Allotment • {group.totalPax} Zaereen
+                              </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-200 text-xs">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr key={idx} className="hover:bg-amber-100/50 transition">
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                          Unallotted
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-medium text-stone-500">
+                                        Pending
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-white border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-white border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-white border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle text-stone-400 font-bold text-xs">
+                                        —
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -3529,115 +3869,172 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               {/* Saifee Hotel Departures */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between bg-amber-900 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-amber-200" />
                       <span className="font-black text-sm text-amber-100 tracking-wide">
-                        SAIFEE HOTEL (70 ROOMS) — DEPARTURES
+                        SAIFEE HOTEL (70 ROOMS) — DEPARTURES (CLUBBED TOUR ID WISE)
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-amber-200">
-                      {simpleDeparturesData.saifee.length} Rooms • {simpleDeparturesData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.saifee.filter(r => r.isTurnover).length} Turnovers
+                      {simpleDeparturesData.saifeeTourGroups.length} Tours • {simpleDeparturesData.saifee.length} Rooms • {simpleDeparturesData.saifee.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.saifee.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200 text-xs">
-                        {(showOnlyTurnoversInSlip
-                          ? simpleDeparturesData.saifee.filter((e) => e.isTurnover)
-                          : simpleDeparturesData.saifee
-                        ).length > 0 ? (
-                          (showOnlyTurnoversInSlip
-                            ? simpleDeparturesData.saifee.filter((e) => e.isTurnover)
-                            : simpleDeparturesData.saifee
-                          ).map((entry, idx) => (
-                            <tr
-                              key={idx}
-                              className={`transition ${
-                                entry.isTurnover
-                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
-                                  : 'hover:bg-amber-50/40'
-                              }`}
-                            >
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg inline-block">
-                                  Room {entry.roomNumber}
+                  {(() => {
+                    const groups = simpleDeparturesData.saifeeTourGroups
+                      .map((g) => {
+                        const displayedEntries = showOnlyTurnoversInSlip
+                          ? g.entries.filter((e) => e.isTurnover)
+                          : g.entries;
+                        return { ...g, displayedEntries };
+                      })
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    if (groups.length === 0) {
+                      return (
+                        <div className="p-8 text-center bg-white border border-stone-200 rounded-xl text-stone-400 italic text-xs">
+                          {showOnlyTurnoversInSlip
+                            ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
+                            : `No departures scheduled for Saifee Hotel on ${selectedDate}`}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group, gIdx) => (
+                          <div
+                            key={gIdx}
+                            className="border border-stone-300 rounded-xl overflow-hidden bg-white shadow-2xs"
+                          >
+                            {/* Tour ID & Office Name Clubbed Subheader */}
+                            <div className="bg-stone-800 text-stone-100 px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-stone-700">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded">
+                                  Tour Group
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
-                                Saifee Hotel
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                  {entry.tourIdDisplay || '—'}
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-amber-300 font-black">{group.tourId}</span>
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                  {entry.familyNumberDisplay || '—'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 align-middle">
-                                <div className="space-y-1">
-                                  {entry.paxPerFamily.map((fam, fIdx) => (
-                                    <div key={fIdx} className="flex items-center gap-2">
-                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                      {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                          Family #{fam.family}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.arrivalDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.departureDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                {entry.isTurnover ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
-                                    title="Same-day Turnover: Departing party checks out and arriving party checks in today"
-                                  >
-                                    <RefreshCw className="w-3 h-3 text-amber-800" />
-                                    <span>TURNOVER</span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-extrabold text-amber-200 bg-black/30 px-2 py-0.5 rounded border border-amber-300/30">
+                                    {group.officeName || '—'}
                                   </span>
-                                ) : (
-                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-white/90 flex items-center gap-2">
+                                <span className="bg-black/30 px-2.5 py-0.5 rounded text-amber-200 font-mono font-bold">
+                                  {group.displayedEntries.length} Rooms (Sorted Room-Wise)
+                                </span>
+                                <span>•</span>
+                                <span>{group.totalPax} Zaereen</span>
+                                {group.totalTurnovers > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-300 font-bold bg-amber-950/80 px-2 py-0.5 rounded border border-amber-400/50">
+                                      {group.totalTurnovers} Turnovers
+                                    </span>
+                                  </>
                                 )}
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
-                              {showOnlyTurnoversInSlip
-                                ? `No turnover rooms scheduled for Saifee Hotel on ${selectedDate}`
-                                : `No departures scheduled for Saifee Hotel on ${selectedDate}`}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </div>
+
+                            {/* Table sorted room-wise within this Tour ID */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-stone-200 text-xs">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr
+                                      key={idx}
+                                      className={`transition ${
+                                        entry.isTurnover
+                                          ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                                          : 'hover:bg-amber-50/40'
+                                      }`}
+                                    >
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono font-black text-sm text-amber-950 bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                          Room {entry.roomNumber}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-bold text-stone-700 text-xs">
+                                        Saifee Hotel
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {entry.paxPerFamily.length > 1 && fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        {entry.isTurnover ? (
+                                          <span
+                                            className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                            title="Same-day Turnover: Departing party checks out and arriving party checks in today"
+                                          >
+                                            <RefreshCw className="w-3 h-3 text-amber-800" />
+                                            <span>TURNOVER</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-stone-300 font-bold text-xs">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -3648,196 +4045,311 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               {/* Burhani Hotel Departures */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Burhani') && (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between bg-amber-900 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-amber-200" />
                       <span className="font-black text-sm text-amber-100 tracking-wide">
-                        BURHANI HOTEL (44 ROOMS) — DEPARTURES
+                        BURHANI HOTEL (44 ROOMS) — DEPARTURES (CLUBBED TOUR ID WISE)
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-amber-200">
-                      {simpleDeparturesData.burhani.length} Rooms • {simpleDeparturesData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.burhani.filter(r => r.isTurnover).length} Turnovers
+                      {simpleDeparturesData.burhaniTourGroups.length} Tours • {simpleDeparturesData.burhani.length} Rooms • {simpleDeparturesData.burhani.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen • {simpleDeparturesData.burhani.filter(r => r.isTurnover).length} Turnovers
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs bg-white">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200 text-xs">
-                        {(showOnlyTurnoversInSlip
-                          ? simpleDeparturesData.burhani.filter((e) => e.isTurnover)
-                          : simpleDeparturesData.burhani
-                        ).length > 0 ? (
-                          (showOnlyTurnoversInSlip
-                            ? simpleDeparturesData.burhani.filter((e) => e.isTurnover)
-                            : simpleDeparturesData.burhani
-                          ).map((entry, idx) => (
-                            <tr
-                              key={idx}
-                              className={`transition ${
-                                entry.isTurnover
-                                  ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
-                                  : 'hover:bg-amber-50/40'
-                              }`}
-                            >
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono font-black text-sm text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg inline-block">
-                                  Room {entry.roomNumber}
+                  {(() => {
+                    const groups = simpleDeparturesData.burhaniTourGroups
+                      .map((g) => {
+                        const displayedEntries = showOnlyTurnoversInSlip
+                          ? g.entries.filter((e) => e.isTurnover)
+                          : g.entries;
+                        return { ...g, displayedEntries };
+                      })
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    if (groups.length === 0) {
+                      return (
+                        <div className="p-8 text-center bg-white border border-stone-200 rounded-xl text-stone-400 italic text-xs">
+                          {showOnlyTurnoversInSlip
+                            ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
+                            : `No departures scheduled for Burhani Hotel on ${selectedDate}`}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group, gIdx) => (
+                          <div
+                            key={gIdx}
+                            className="border border-stone-300 rounded-xl overflow-hidden bg-white shadow-2xs"
+                          >
+                            {/* Tour ID & Office Name Clubbed Subheader */}
+                            <div className="bg-stone-800 text-stone-100 px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-stone-700">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded">
+                                  Tour Group
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-bold text-stone-700 text-xs">
-                                Burhani Hotel
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                  {entry.tourIdDisplay || '—'}
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-amber-300 font-black">{group.tourId}</span>
                                 </span>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                  {entry.familyNumberDisplay || '—'}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 align-middle">
-                                <div className="space-y-1">
-                                  {entry.paxPerFamily.map((fam, fIdx) => (
-                                    <div key={fIdx} className="flex items-center gap-2">
-                                      <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                      {entry.paxPerFamily.length > 1 && fam.family && (
-                                        <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                          Family #{fam.family}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.arrivalDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                                {entry.departureDate}
-                              </td>
-                              <td className="py-3 px-3 text-center align-middle">
-                                {entry.isTurnover ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
-                                    title="Same-day Turnover: Departing party checks out and arriving party checks in today"
-                                  >
-                                    <RefreshCw className="w-3 h-3 text-amber-800" />
-                                    <span>TURNOVER</span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-extrabold text-amber-200 bg-black/30 px-2 py-0.5 rounded border border-amber-300/30">
+                                    {group.officeName || '—'}
                                   </span>
-                                ) : (
-                                  <span className="text-stone-300 font-bold text-xs">—</span>
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-white/90 flex items-center gap-2">
+                                <span className="bg-black/30 px-2.5 py-0.5 rounded text-amber-200 font-mono font-bold">
+                                  {group.displayedEntries.length} Rooms (Sorted Room-Wise)
+                                </span>
+                                <span>•</span>
+                                <span>{group.totalPax} Zaereen</span>
+                                {group.totalTurnovers > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-300 font-bold bg-amber-950/80 px-2 py-0.5 rounded border border-amber-400/50">
+                                      {group.totalTurnovers} Turnovers
+                                    </span>
+                                  </>
                                 )}
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={8} className="py-6 text-center text-stone-400 italic text-xs">
-                              {showOnlyTurnoversInSlip
-                                ? `No turnover rooms scheduled for Burhani Hotel on ${selectedDate}`
-                                : `No departures scheduled for Burhani Hotel on ${selectedDate}`}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </div>
+
+                            {/* Table sorted room-wise within this Tour ID */}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-stone-200 text-xs">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr
+                                      key={idx}
+                                      className={`transition ${
+                                        entry.isTurnover
+                                          ? 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                                          : 'hover:bg-amber-50/40'
+                                      }`}
+                                    >
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono font-black text-sm text-amber-950 bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                          Room {entry.roomNumber}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-bold text-stone-700 text-xs">
+                                        Burhani Hotel
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {entry.paxPerFamily.length > 1 && fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-stone-100 border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        {entry.isTurnover ? (
+                                          <span
+                                            className="inline-flex items-center gap-1 font-black text-[10px] px-2.5 py-1 rounded-md bg-amber-200/90 text-amber-950 border border-amber-400 shadow-2xs whitespace-nowrap"
+                                            title="Same-day Turnover: Departing party checks out and arriving party checks in today"
+                                          >
+                                            <RefreshCw className="w-3 h-3 text-amber-800" />
+                                            <span>TURNOVER</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-stone-300 font-bold text-xs">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
               {/* Unallotted Departures */}
               {simpleDeparturesData.unallotted.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between bg-amber-800 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-amber-200" />
                       <span className="font-black text-sm text-amber-100 tracking-wide">
-                        UNALLOTTED DEPARTURES (PENDING ROOM ALLOTMENT)
+                        UNALLOTTED DEPARTURES (PENDING ROOM ALLOTMENT - CLUBBED TOUR ID WISE)
                       </span>
                     </div>
                     <div className="text-xs font-semibold text-amber-100">
-                      {simpleDeparturesData.unallotted.length} Entries • {simpleDeparturesData.unallotted.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
+                      {simpleDeparturesData.unallottedTourGroups.length} Tours • {simpleDeparturesData.unallotted.length} Entries • {simpleDeparturesData.unallotted.reduce((s, r) => s + r.rawReservations.length, 0)} Zaereen
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-amber-300 rounded-xl shadow-2xs bg-amber-50/30">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                          <th className="py-3 px-3 w-[8%] text-center">Room #</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Building</th>
-                          <th className="py-3 px-3 w-[15%] text-center">Tour ID</th>
-                          <th className="py-3 px-3 w-[9%] text-center">Family #</th>
-                          <th className="py-3 px-4 w-[28%]">Name of Pax (1 per Family)</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Arrival Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Departure Date</th>
-                          <th className="py-3 px-3 w-[10%] text-center">Turnover</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-amber-200 text-xs">
-                        {simpleDeparturesData.unallotted.map((entry, idx) => (
-                          <tr key={idx} className="hover:bg-amber-100/50 transition">
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
-                                Unallotted
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-medium text-stone-500">
-                              Pending
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
-                                {entry.tourIdDisplay || '—'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle">
-                              <span className="font-mono text-xs font-bold text-stone-800 bg-stone-100 border border-stone-300 px-2 py-0.5 rounded inline-block">
-                                {entry.familyNumberDisplay || '—'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 align-middle">
-                              <div className="space-y-1">
-                                {entry.paxPerFamily.map((fam, fIdx) => (
-                                  <div key={fIdx} className="flex items-center gap-2">
-                                    <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
-                                    {fam.family && (
-                                      <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
-                                        Family #{fam.family}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
+                  {(() => {
+                    const groups = simpleDeparturesData.unallottedTourGroups
+                      .map((g) => {
+                        const displayedEntries = showOnlyTurnoversInSlip
+                          ? g.entries.filter((e) => e.isTurnover)
+                          : g.entries;
+                        return { ...g, displayedEntries };
+                      })
+                      .filter((g) => g.displayedEntries.length > 0);
+
+                    if (groups.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group, gIdx) => (
+                          <div
+                            key={gIdx}
+                            className="border border-amber-300 rounded-xl overflow-hidden bg-amber-50/20 shadow-2xs"
+                          >
+                            {/* Tour ID & Office Name Subheader */}
+                            <div className="bg-amber-900/90 text-amber-100 px-4 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-amber-800">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-black/30 text-amber-200 border border-amber-300/30 px-2 py-0.5 rounded">
+                                  Tour Group
+                                </span>
+                                <span className="font-mono font-bold text-sm text-white">
+                                  Tour ID: <span className="text-amber-300 font-black">{group.tourId}</span>
+                                </span>
+                                <span className="text-white/40 font-bold">•</span>
+                                <span className="text-xs text-white/90">
+                                  Office Name:{' '}
+                                  <span className="font-extrabold text-amber-200 bg-black/40 px-2 py-0.5 rounded border border-amber-300/30">
+                                    {group.officeName || '—'}
+                                  </span>
+                                </span>
                               </div>
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                              {entry.arrivalDate}
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
-                              {entry.departureDate}
-                            </td>
-                            <td className="py-3 px-3 text-center align-middle text-stone-400 font-bold text-xs">
-                              —
-                            </td>
-                          </tr>
+                              <div className="text-[11px] font-semibold text-amber-100 flex items-center gap-2">
+                                <span className="bg-black/40 px-2 py-0.5 rounded text-amber-200 font-mono font-bold">
+                                  {group.displayedEntries.length} Entries
+                                </span>
+                                <span>•</span>
+                                <span>{group.totalPax} Zaereen</span>
+                              </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
+                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
+                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
+                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-200 text-xs bg-white">
+                                  {group.displayedEntries.map((entry, idx) => (
+                                    <tr key={idx} className="hover:bg-amber-100/50 transition">
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-bold text-xs text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg inline-block">
+                                          Unallotted
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-medium text-stone-500">
+                                        Pending
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.tourIdDisplay || group.tourId || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="text-xs font-semibold text-stone-800 bg-white border border-stone-200 px-2 py-0.5 rounded inline-block">
+                                          {entry.officeNameDisplay || group.officeName || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle">
+                                        <span className="font-mono text-xs font-bold text-stone-800 bg-white border border-stone-300 px-2 py-0.5 rounded inline-block">
+                                          {entry.familyNumberDisplay || '—'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-4 align-middle">
+                                        <div className="space-y-1">
+                                          {entry.paxPerFamily.map((fam, fIdx) => (
+                                            <div key={fIdx} className="flex items-center gap-2">
+                                              <span className="font-bold text-stone-900 text-sm">{fam.paxName}</span>
+                                              {fam.family && (
+                                                <span className="text-[10px] font-extrabold text-stone-600 bg-white border border-stone-300 px-1.5 py-0.2 rounded font-mono">
+                                                  Family #{fam.family}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.arrivalDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                        {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center align-middle text-stone-400 font-bold text-xs">
+                                        —
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

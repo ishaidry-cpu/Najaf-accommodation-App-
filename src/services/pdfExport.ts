@@ -592,18 +592,27 @@ export function generateArrivalsPdfForDate(
 
     const groups: { tourRefNo: string; officeName: string; list: Reservation[] }[] = [];
     map.forEach((items, tourRefNo) => {
-      // Sort chronologically by arrival time
+      // Sort room-wise within tour group
       const sorted = [...items].sort((a, b) => {
-        const tA = (a.arrivalDateTime || a.arrivalDate || '').slice(11, 16) || '11:00';
-        const tB = (b.arrivalDateTime || b.arrivalDate || '').slice(11, 16) || '11:00';
-        return tA.localeCompare(tB);
+        const numA = parseInt((a.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        const numB = parseInt((b.roomNumber || '').replace(/\D/g, ''), 10) || 9999;
+        if (numA !== numB) return numA - numB;
+        return (a.roomNumber || '').localeCompare(b.roomNumber || '');
       });
+      const office = items.find((it) => it.officeName && it.officeName.trim())?.officeName || items[0]?.officeName || '—';
       groups.push({
         tourRefNo,
-        officeName: items[0]?.officeName || '—',
+        officeName: office,
         list: sorted,
       });
     });
+
+    groups.sort((a, b) => {
+      if (a.tourRefNo === 'Unassigned Tour') return 1;
+      if (b.tourRefNo === 'Unassigned Tour') return -1;
+      return a.tourRefNo.localeCompare(b.tourRefNo, undefined, { numeric: true });
+    });
+
     return groups;
   };
 
@@ -643,14 +652,14 @@ export function generateArrivalsPdfForDate(
         const timeStr = (r.arrivalDateTime || r.arrivalDate || '').replace('T', ' ').slice(11, 16) || '11:00 AM';
         rows.push([
           String(counter++),
-          `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
+          group.tourRefNo,
+          r.officeName || group.officeName || '—',
           r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED\n[Assign Rm]',
           `Fam #${r.family || '—'}\n(${r.paxCount || 1} Pax)`,
           `${r.applicantName || r.guestLeaderName || '—'}\nITS: ${r.itsId || '—'}`,
           `Time: ${timeStr}`,
           (r.departureDate || r.departureDateTime || '').replace('T', ' ').slice(0, 10) || '—',
           r.category || (r.shiftToCategoryA ? 'B ➔ A (NIZAAM)' : 'Standard'),
-          r.moneyGiven === 'Yes' ? 'Paid ✓' : (r.shiftToCategoryA ? 'Pending' : '—'),
           '[ ] ID Verified\n[ ] Keys Handed\n[ ] Wajba Given',
         ]);
       });
@@ -661,14 +670,14 @@ export function generateArrivalsPdfForDate(
       head: [
         [
           '#',
-          'Tour ID & Office',
+          'Tour ID',
+          'Office Name',
           'Room & Building',
           'Family & Pax',
           'Applicant / Guest & ITS',
           'Arrival Time',
           'Departure Date',
           'Category',
-          'Money (B➔A)',
           'Reception Check-in Checklist',
         ],
       ],
@@ -677,12 +686,12 @@ export function generateArrivalsPdfForDate(
       styles: { fontSize: 8, cellPadding: 4, textColor: [30, 30, 30], overflow: 'linebreak' },
       headStyles: { fillColor: badgeColor, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 25 },
-        1: { fontStyle: 'bold' },
-        2: { fontStyle: 'bold', halign: 'center' },
-        4: { fontStyle: 'bold' },
-        5: { fontStyle: 'bold', halign: 'center' },
-        6: { halign: 'center' },
+        0: { halign: 'center', cellWidth: 22 },
+        1: { fontStyle: 'bold', halign: 'center' },
+        2: { fontStyle: 'bold' },
+        3: { fontStyle: 'bold', halign: 'center' },
+        5: { fontStyle: 'bold' },
+        6: { fontStyle: 'bold', halign: 'center' },
         7: { halign: 'center' },
         8: { halign: 'center' },
       },
