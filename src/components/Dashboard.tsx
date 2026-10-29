@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Building2, 
   BedDouble, 
@@ -35,7 +35,13 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
-import { getRoomStatusOnDate, getRoomBookingOnDate, getVacantRoomsForDuration } from '../services/storage';
+import {
+  getRoomStatusOnDate,
+  getRoomBookingOnDate,
+  getRoomBookingsOnDate,
+  countEffectivePax,
+  getVacantRoomsForDuration,
+} from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
 
 interface DashboardProps {
@@ -101,8 +107,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Hotel selector: 'ALL' | building name
   const [selectedHotel, setSelectedHotel] = useState<string>('ALL');
-  // Filter for room buttons: 'all' | 'available' | 'occupied' | 'blocked'
-  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied' | 'blocked'>('all');
+  // Filter for room buttons: 'all' | 'available' (Green) | 'partial' (Orange) | 'full' (Red) | 'occupied' | 'blocked' (Grey) | 'vip' (v)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'partial' | 'full' | 'occupied' | 'blocked' | 'vip'>('all');
 
   // Selected room for popup/drawer inspector
   const [inspectedRoom, setInspectedRoom] = useState<Room | null>(null);
@@ -333,22 +339,170 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [reservations, currentTourId, todayStr]);
 
+  // Helper to compute room matrix occupancy state on selected date:
+  // - Full occupied (No space): RED
+  // - Occupied but still space: ORANGE
+  // - Completely available: GREEN
+  // - Blocked: GREY (with Lock sign)
+  // - VIP occupied (written in tour ID): small 'v' badge
+  const getMatrixState = useCallback(
+    (room: Room) => {
+      if (room.status === 'blocked') {
+        return {
+          status: 'blocked' as const,
+          occupants: [] as Reservation[],
+          currentOccupancy: 0,
+          baseCapacity: room.capacity || room.pax || 2,
+          bufferCapacity: room.buffer || 0,
+          maxCapacity: (room.capacity || room.pax || 2) + (room.buffer || 0),
+          remainingSlots: 0,
+          isVip: false,
+          vipTourIds: [] as string[],
+        };
+      }
+
+      const occupants = getRoomBookingsOnDate(room, selectedDate, reservations);
+      const currentOccupancy = countEffectivePax(occupants);
+      const baseCapacity = room.capacity || room.pax || 2;
+      const bufferCapacity = room.buffer || 0;
+      const maxCapacity = baseCapacity + bufferCapacity;
+      const remainingSlots = Math.max(0, maxCapacity - currentOccupancy);
+
+      // Check if occupied by VIP (written in tour ID)
+      const vipOccupants = occupants.filter((r) => {
+        const tour = (r.tourRefNo || r.tourId || '').toUpperCase();
+        return tour.includes('VIP') || tour.includes('V.I.P');
+      });
+      const isVip = vipOccupants.length > 0;
+      const vipTourIds = Array.from(
+        new Set(vipOccupants.map((o) => (o.tourRefNo || o.tourId || '').trim()).filter(Boolean))
+      );
+
+      let status: 'blocked' | 'full' | 'partial' | 'available' = 'available';
+      if (currentOccupancy >= maxCapacity && maxCapacity > 0) {
+        status = 'full'; // RED: Full occupied (No space)
+      } else if (currentOccupancy > 0) {
+        status = 'partial'; // ORANGE: Occupied but still space
+      } else {
+        status = 'available'; // GREEN: Completely available
+      }
+
+      return {
+        status,
+        occupants,
+        currentOccupancy,
+        baseCapacity,
+        bufferCapacity,
+        maxCapacity,
+        remainingSlots,
+        isVip,
+        vipTourIds,
+      };
+    },
+    [selectedDate, reservations]
+  );
+
   // Dynamic room statistics on the selected date
   const filteredRooms = rooms.filter((r) => {
-    if (selectedHotel !== 'ALL' && r.building !== selectedHotel) return false;
+    if (selectedHotel !== 'ALL' && r.building.toLowerCase() !== selectedHotel.toLowerCase()) return false;
     return true;
   });
 
-  let vacantCount = 0;
-  let occupiedCount = 0;
+  let completelyAvailableCount = 0;
+  let partialOccupiedCount = 0;
+  let fullOccupiedCount = 0;
   let blockedCount = 0;
+  let vipRoomsCount = 0;
 
   filteredRooms.forEach((r) => {
-    const st = getRoomStatusOnDate(r, selectedDate, reservations);
-    if (st === 'blocked') blockedCount++;
-    else if (st === 'occupied') occupiedCount++;
-    else vacantCount++;
+    const st = getMatrixState(r);
+    if (st.status === 'blocked') blockedCount++;
+    else if (st.status === 'full') fullOccupiedCount++;
+    else if (st.status === 'partial') partialOccupiedCount++;
+    else completelyAvailableCount++;
+
+    if (st.isVip) vipRoomsCount++;
   });
+
+  const vacantCount = completelyAvailableCount;
+  const occupiedCount = partialOccupiedCount + fullOccupiedCount;
+
+  // Render function for each room button in Compact Matrix:
+  // Color Concept:
+  // - full occupied (No space) - RED
+  // - occupied but still space - ORANGE
+  // - completely available - Green
+  // - Blocked - Grey and lock sign (just like it is now)
+  // - if occupied by VIP (written in tour ID) mention a small v in the button
+  const renderMatrixRoomButton = (room: Room) => {
+    const state = getMatrixState(room);
+    if (statusFilter === 'available' && state.status !== 'available') return null;
+    if (statusFilter === 'partial' && state.status !== 'partial') return null;
+    if (statusFilter === 'full' && state.status !== 'full') return null;
+    if (statusFilter === 'occupied' && state.status !== 'partial' && state.status !== 'full') return null;
+    if (statusFilter === 'blocked' && state.status !== 'blocked') return null;
+    if (statusFilter === 'vip' && !state.isVip) return null;
+
+    let btnBg = 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700'; // completely available - Green
+    if (state.status === 'full') {
+      btnBg = 'bg-red-600 hover:bg-red-700 text-white border border-red-700'; // full occupied (No space) - RED
+    } else if (state.status === 'partial') {
+      btnBg = 'bg-orange-500 hover:bg-orange-600 text-white border border-orange-600'; // occupied but still space - ORANGE
+    } else if (state.status === 'blocked') {
+      btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400'; // Blocked - Grey
+    }
+
+    const tooltipLines = [
+      `Room ${room.roomNumber} (${room.building})`,
+      `Occupancy: ${state.currentOccupancy} / ${state.maxCapacity} Pax${state.remainingSlots > 0 ? ` (${state.remainingSlots} space left)` : ' (No space)'}`,
+      `Bed: ${room.bedType || 'Single Beds'} • Toilet: ${room.toiletType || 'Standard'}`,
+      state.status === 'blocked'
+        ? `Status: BLOCKED (${room.blockedReason || 'Maintenance buffer'})`
+        : state.status === 'full'
+        ? 'Status: FULL OCCUPIED (No space - RED)'
+        : state.status === 'partial'
+        ? `Status: OCCUPIED BUT STILL SPACE (${state.remainingSlots} open - ORANGE)`
+        : 'Status: COMPLETELY AVAILABLE (Green)',
+    ];
+
+    if (state.isVip) {
+      tooltipLines.push(`⭐ VIP Tour ID: ${state.vipTourIds.join(', ')}`);
+    }
+
+    if (state.occupants.length > 0) {
+      tooltipLines.push(
+        `Guests (${state.occupants.length}):\n` +
+          state.occupants
+            .map((o: Reservation) => `• ${o.applicantName} (Fam #${o.family}, Tour: ${o.tourRefNo || o.tourId || '—'})`)
+            .join('\n')
+      );
+    }
+
+    return (
+      <button
+        key={room.id}
+        type="button"
+        onClick={() => setInspectedRoom(room)}
+        title={tooltipLines.join('\n')}
+        className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
+          inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
+        }`}
+      >
+        <span className="leading-tight">{room.roomNumber}</span>
+        {state.status === 'blocked' && (
+          <Lock className="w-2.5 h-2.5 text-stone-700 absolute bottom-0.5 right-0.5" />
+        )}
+        {state.isVip && (
+          <span
+            className="absolute top-0.5 right-0.5 text-[8.5px] font-black leading-none px-1 py-0.2 rounded-xs bg-amber-300 text-stone-950 border border-amber-400 shadow-2xs font-mono"
+            title={`VIP Tour: ${state.vipTourIds.join(', ')}`}
+          >
+            v
+          </span>
+        )}
+      </button>
+    );
+  };
 
   // Overall counts
   const totalZaereen = reservations.length;
@@ -1321,193 +1475,192 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Status Quick Filter */}
-            <div className="flex items-center bg-stone-100 p-1 rounded-lg text-xs">
+            <div className="flex items-center bg-stone-100 p-1 rounded-lg text-xs flex-wrap gap-1">
               <button
+                type="button"
                 onClick={() => setStatusFilter('all')}
-                className={`px-2 py-0.5 rounded transition ${statusFilter === 'all' ? 'bg-white font-bold text-stone-900 shadow-2xs' : 'text-stone-500'}`}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'all' ? 'bg-white font-bold text-stone-900 shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
               >
-                All
+                All ({filteredRooms.length})
               </button>
               <button
+                type="button"
                 onClick={() => setStatusFilter('available')}
-                className={`px-2 py-0.5 rounded transition ${statusFilter === 'available' ? 'bg-emerald-700 font-bold text-white shadow-2xs' : 'text-stone-500'}`}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'available' ? 'bg-emerald-600 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
+                title="Completely Available Rooms (Green)"
               >
-                Vacant ({vacantCount})
+                Available ({completelyAvailableCount})
               </button>
               <button
-                onClick={() => setStatusFilter('occupied')}
-                className={`px-2 py-0.5 rounded transition ${statusFilter === 'occupied' ? 'bg-amber-600 font-bold text-white shadow-2xs' : 'text-stone-500'}`}
+                type="button"
+                onClick={() => setStatusFilter('partial')}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'partial' ? 'bg-orange-500 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
+                title="Occupied but Still Space (Orange)"
               >
-                Occupied ({occupiedCount})
+                Has Space ({partialOccupiedCount})
               </button>
               <button
+                type="button"
+                onClick={() => setStatusFilter('full')}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'full' ? 'bg-red-600 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
+                title="Full Occupied - No Space Left (Red)"
+              >
+                Full ({fullOccupiedCount})
+              </button>
+              <button
+                type="button"
                 onClick={() => setStatusFilter('blocked')}
-                className={`px-2 py-0.5 rounded transition ${statusFilter === 'blocked' ? 'bg-stone-500 font-bold text-white shadow-2xs' : 'text-stone-500'}`}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'blocked' ? 'bg-stone-500 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
+                title="Blocked Inventory (Grey with Lock)"
               >
                 Blocked ({blockedCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('vip')}
+                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'vip' ? 'bg-amber-400 font-bold text-amber-950 shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
+                title="Rooms occupied by VIP Tour ID ('v' badge)"
+              >
+                VIP ({vipRoomsCount})
               </button>
             </div>
           </div>
         </div>
 
         {/* Legend Bar */}
-        <div className="flex flex-wrap items-center gap-4 text-xs bg-[#FAF7F2] p-2.5 rounded-xl border border-[#E6DFD5]">
+        <div className="flex flex-wrap items-center gap-3.5 text-xs bg-[#FAF7F2] p-2.5 rounded-xl border border-[#E6DFD5]">
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-emerald-700 text-white text-[9px] font-bold flex items-center justify-center">✓</span>
-            <span className="font-semibold text-emerald-900">Green = Vacant ({vacantCount})</span>
-            <span className="text-stone-500 text-[11px]">— Available for room allotment</span>
+            <span className="w-3.5 h-3.5 rounded bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">✓</span>
+            <span className="font-semibold text-emerald-900">Green = Completely Available ({completelyAvailableCount})</span>
+            <span className="text-stone-500 text-[11px]">— No occupants, full room free</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-amber-600 text-white text-[9px] font-bold flex items-center justify-center">●</span>
-            <span className="font-semibold text-amber-900">Amber = Occupied ({occupiedCount})</span>
-            <span className="text-stone-500 text-[11px]">— In use by Zaer</span>
+            <span className="w-3.5 h-3.5 rounded bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center">●</span>
+            <span className="font-semibold text-orange-900">Orange = Occupied (Still Space) ({partialOccupiedCount})</span>
+            <span className="text-stone-500 text-[11px]">— Open slots remaining for zaer</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-stone-400 text-white text-[9px] font-bold flex items-center justify-center">🔒</span>
-            <span className="font-semibold text-stone-800">Gray = Blocked ({blockedCount})</span>
-            <span className="text-stone-500 text-[11px]">— Maintenance or VIP hold</span>
+            <span className="w-3.5 h-3.5 rounded bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">✕</span>
+            <span className="font-semibold text-red-900">Red = Full Occupied ({fullOccupiedCount})</span>
+            <span className="text-stone-500 text-[11px]">— No space remaining</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded bg-stone-300 text-stone-800 border border-stone-400 text-[9px] font-bold flex items-center justify-center">🔒</span>
+            <span className="font-semibold text-stone-800">Grey = Blocked ({blockedCount})</span>
+            <span className="text-stone-500 text-[11px]">— Maintenance or hold</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-3.5 rounded bg-amber-300 text-stone-950 font-mono text-[9px] font-black flex items-center justify-center border border-amber-400">v</span>
+            <span className="font-semibold text-amber-950">Small 'v' = VIP Tour</span>
+            <span className="text-stone-500 text-[11px]">— Occupied by VIP ({vipRoomsCount})</span>
           </div>
         </div>
 
         {/* Minimalist Button Matrix for Buildings */}
         <div className="space-y-6 pt-1">
           {/* BURHANI HOTEL BUTTON MATRIX (44 Rooms) */}
-          {(selectedHotel === 'ALL' || selectedHotel === 'Burhani') && (
-            <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
-                  <Building2 className="w-4 h-4 text-[#124E39]" />
-                  <span>BURHANI HOTEL (44 Rooms: Ground, Mezzanine, Floors 1 to 4)</span>
-                </div>
-                <span className="text-[11px] text-stone-500 font-semibold">
-                  {rooms.filter(r => r.building.toLowerCase() === 'burhani' && getRoomStatusOnDate(r, selectedDate, reservations) === 'available').length} Vacant / {rooms.filter(r => r.building.toLowerCase() === 'burhani').length} Total
-                </span>
-              </div>
+          {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'burhani') && (() => {
+            const burhaniRooms = rooms.filter(r => r.building.toLowerCase() === 'burhani');
+            const bVacant = burhaniRooms.filter(r => getMatrixState(r).status === 'available').length;
+            const bPartial = burhaniRooms.filter(r => getMatrixState(r).status === 'partial').length;
+            const bFull = burhaniRooms.filter(r => getMatrixState(r).status === 'full').length;
+            const bBlocked = burhaniRooms.filter(r => getMatrixState(r).status === 'blocked').length;
 
-              {/* Burhani Floor Sections */}
-              {[
-                { label: 'Ground Fl', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.roomNumber.startsWith('G')) },
-                { label: 'Mezzanine', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.roomNumber.startsWith('M')) },
-                { label: 'Floor 1 (101-110)', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.floor === 1 && !r.roomNumber.startsWith('M')) },
-                { label: 'Floor 2 (201-210)', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.floor === 2) },
-                { label: 'Floor 3 (301-310)', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.floor === 3) },
-                { label: 'Floor 4 (401-410)', rooms: rooms.filter(r => r.building.toLowerCase() === 'burhani' && r.floor === 4) },
-              ].map((flGroup, idx) => {
-                if (flGroup.rooms.length === 0) return null;
-                const sortedRooms = [...flGroup.rooms].sort((a, b) => {
-                  const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
-                  const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
-                  return numA - numB;
-                });
-
-                return (
-                  <div key={`burhani-fl-${idx}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
-                      {flGroup.label}
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 flex-1">
-                      {sortedRooms.map((room) => {
-                        const status = getRoomStatusOnDate(room, selectedDate, reservations);
-                        if (statusFilter !== 'all' && status !== statusFilter) return null;
-
-                        const booking = getRoomBookingOnDate(room, selectedDate, reservations);
-
-                        let btnBg = 'bg-emerald-700 hover:bg-emerald-800 text-white';
-                        if (status === 'occupied') {
-                          btnBg = 'bg-amber-600 hover:bg-amber-700 text-white';
-                        } else if (status === 'blocked') {
-                          btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400';
-                        }
-
-                        return (
-                          <button
-                            key={room.id}
-                            type="button"
-                            onClick={() => setInspectedRoom(room)}
-                            title={`Room ${room.roomNumber} (${room.building})\nPax: ${room.capacity}${room.buffer ? ` (+${room.buffer} Buffer)` : ''}\nToilet: ${room.toiletType}\nBed: ${room.bedType}\nStatus: ${status.toUpperCase()}\n${booking ? `Guest: ${booking.applicantName} (${booking.family})\nTour: ${booking.tourRefNo}` : ''}`}
-                            className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
-                              inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
-                            }`}
-                          >
-                            <span>{room.roomNumber}</span>
-                            {status === 'blocked' && (
-                              <Lock className="w-2 h-2 text-stone-700 absolute bottom-0.5 right-0.5" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+            return (
+              <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
+                    <Building2 className="w-4 h-4 text-[#124E39]" />
+                    <span>BURHANI HOTEL (44 Rooms: Ground, Mezzanine, Floors 1 to 4)</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{bVacant} Free</span>
+                    <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{bPartial} Has Space</span>
+                    <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{bFull} Full</span>
+                    {bBlocked > 0 && <span className="text-stone-700 font-bold bg-stone-200 px-1.5 py-0.5 rounded border border-stone-300">{bBlocked} Blocked</span>}
+                    <span className="text-stone-400">•</span>
+                    <span>{burhaniRooms.length} Total</span>
+                  </div>
+                </div>
+
+                {/* Burhani Floor Sections */}
+                {[
+                  { label: 'Ground Fl', rooms: burhaniRooms.filter(r => r.roomNumber.startsWith('G')) },
+                  { label: 'Mezzanine', rooms: burhaniRooms.filter(r => r.roomNumber.startsWith('M')) },
+                  { label: 'Floor 1 (101-110)', rooms: burhaniRooms.filter(r => r.floor === 1 && !r.roomNumber.startsWith('M')) },
+                  { label: 'Floor 2 (201-210)', rooms: burhaniRooms.filter(r => r.floor === 2) },
+                  { label: 'Floor 3 (301-310)', rooms: burhaniRooms.filter(r => r.floor === 3) },
+                  { label: 'Floor 4 (401-410)', rooms: burhaniRooms.filter(r => r.floor === 4) },
+                ].map((flGroup, idx) => {
+                  if (flGroup.rooms.length === 0) return null;
+                  const sortedRooms = [...flGroup.rooms].sort((a, b) => {
+                    const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
+                    const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
+                    return numA - numB;
+                  });
+
+                  return (
+                    <div key={`burhani-fl-${idx}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
+                        {flGroup.label}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 flex-1">
+                        {sortedRooms.map(renderMatrixRoomButton)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* SAIFEE HOTEL BUTTON MATRIX (70 Rooms) */}
-          {(selectedHotel === 'ALL' || selectedHotel === 'Saifee') && (
-            <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
-                  <Building2 className="w-4 h-4 text-[#124E39]" />
-                  <span>SAIFEE HOTEL (70 Rooms: Floors 1 to 7)</span>
-                </div>
-                <span className="text-[11px] text-stone-500 font-semibold">
-                  {rooms.filter(r => r.building.toLowerCase() === 'saifee' && getRoomStatusOnDate(r, selectedDate, reservations) === 'available').length} Vacant / {rooms.filter(r => r.building.toLowerCase() === 'saifee').length} Total
-                </span>
-              </div>
+          {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'saifee') && (() => {
+            const saifeeRooms = rooms.filter(r => r.building.toLowerCase() === 'saifee');
+            const sVacant = saifeeRooms.filter(r => getMatrixState(r).status === 'available').length;
+            const sPartial = saifeeRooms.filter(r => getMatrixState(r).status === 'partial').length;
+            const sFull = saifeeRooms.filter(r => getMatrixState(r).status === 'full').length;
+            const sBlocked = saifeeRooms.filter(r => getMatrixState(r).status === 'blocked').length;
 
-              {/* Floors 1 through 7 */}
-              {[1, 2, 3, 4, 5, 6, 7].map((fl) => {
-                const floorRooms = rooms
-                  .filter((r) => r.building.toLowerCase() === 'saifee' && r.floor === fl)
-                  .sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber));
-
-                if (floorRooms.length === 0) return null;
-
-                return (
-                  <div key={`saifee-fl-${fl}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
-                      Floor {fl} ({fl}01-{fl}10)
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 flex-1">
-                      {floorRooms.map((room) => {
-                        const status = getRoomStatusOnDate(room, selectedDate, reservations);
-                        if (statusFilter !== 'all' && status !== statusFilter) return null;
-
-                        const booking = getRoomBookingOnDate(room, selectedDate, reservations);
-
-                        let btnBg = 'bg-emerald-700 hover:bg-emerald-800 text-white';
-                        if (status === 'occupied') {
-                          btnBg = 'bg-amber-600 hover:bg-amber-700 text-white';
-                        } else if (status === 'blocked') {
-                          btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400';
-                        }
-
-                        return (
-                          <button
-                            key={room.id}
-                            type="button"
-                            onClick={() => setInspectedRoom(room)}
-                            title={`Room ${room.roomNumber} (${room.building})\nPax: ${room.capacity}${room.buffer ? ` (+${room.buffer} Buffer)` : ''}\nToilet: ${room.toiletType}\nBed: ${room.bedType}\nStatus: ${status.toUpperCase()}\n${booking ? `Guest: ${booking.applicantName} (${booking.family})\nTour: ${booking.tourRefNo}` : ''}`}
-                            className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
-                              inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
-                            }`}
-                          >
-                            <span>{room.roomNumber}</span>
-                            {status === 'blocked' && (
-                              <Lock className="w-2 h-2 text-stone-700 absolute bottom-0.5 right-0.5" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+            return (
+              <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
+                    <Building2 className="w-4 h-4 text-[#124E39]" />
+                    <span>SAIFEE HOTEL (70 Rooms: Floors 1 to 7)</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{sVacant} Free</span>
+                    <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{sPartial} Has Space</span>
+                    <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{sFull} Full</span>
+                    {sBlocked > 0 && <span className="text-stone-700 font-bold bg-stone-200 px-1.5 py-0.5 rounded border border-stone-300">{sBlocked} Blocked</span>}
+                    <span className="text-stone-400">•</span>
+                    <span>{saifeeRooms.length} Total</span>
+                  </div>
+                </div>
+
+                {/* Floors 1 through 7 */}
+                {[1, 2, 3, 4, 5, 6, 7].map((fl) => {
+                  const floorRooms = saifeeRooms
+                    .filter((r) => r.floor === fl)
+                    .sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber));
+
+                  if (floorRooms.length === 0) return null;
+
+                  return (
+                    <div key={`saifee-fl-${fl}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
+                        Floor {fl} ({fl}01-{fl}10)
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 flex-1">
+                        {floorRooms.map(renderMatrixRoomButton)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* DYNAMIC ADDITIONAL BUILDINGS (e.g. Al-Rawda, Najaf Grand, etc.) */}
           {distinctBuildings
@@ -1525,20 +1678,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 floorMap.get(flKey)!.push(r);
               });
 
-              const vacantInBldg = bldgRooms.filter(
-                (r) => getRoomStatusOnDate(r, selectedDate, reservations) === 'available'
-              ).length;
+              const bldgVacant = bldgRooms.filter((r) => getMatrixState(r).status === 'available').length;
+              const bldgPartial = bldgRooms.filter((r) => getMatrixState(r).status === 'partial').length;
+              const bldgFull = bldgRooms.filter((r) => getMatrixState(r).status === 'full').length;
 
               return (
                 <div key={bldg} className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
                       <Building2 className="w-4 h-4 text-[#124E39]" />
                       <span>{bldg.toUpperCase()} HOTEL ({bldgRooms.length} Rooms)</span>
                     </div>
-                    <span className="text-[11px] text-stone-500 font-semibold">
-                      {vacantInBldg} Vacant / {bldgRooms.length} Total
-                    </span>
+                    <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
+                      <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{bldgVacant} Free</span>
+                      <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{bldgPartial} Has Space</span>
+                      <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{bldgFull} Full</span>
+                      <span className="text-stone-400">•</span>
+                      <span>{bldgRooms.length} Total</span>
+                    </div>
                   </div>
 
                   {Array.from(floorMap.entries()).map(([flLabel, flRooms]) => {
@@ -1553,38 +1710,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
                           {flLabel}
                         </div>
-
                         <div className="flex flex-wrap gap-1.5 flex-1">
-                          {sortedRooms.map((room) => {
-                            const status = getRoomStatusOnDate(room, selectedDate, reservations);
-                            if (statusFilter !== 'all' && status !== statusFilter) return null;
-
-                            const booking = getRoomBookingOnDate(room, selectedDate, reservations);
-
-                            let btnBg = 'bg-emerald-700 hover:bg-emerald-800 text-white';
-                            if (status === 'occupied') {
-                              btnBg = 'bg-amber-600 hover:bg-amber-700 text-white';
-                            } else if (status === 'blocked') {
-                              btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400';
-                            }
-
-                            return (
-                              <button
-                                key={room.id}
-                                type="button"
-                                onClick={() => setInspectedRoom(room)}
-                                title={`Room ${room.roomNumber} (${room.building})\nPax: ${room.capacity}${room.buffer ? ` (+${room.buffer} Buffer)` : ''}\nToilet: ${room.toiletType}\nBed: ${room.bedType}\nStatus: ${status.toUpperCase()}\n${booking ? `Guest: ${booking.applicantName} (${booking.family})\nTour: ${booking.tourRefNo}` : ''}`}
-                                className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
-                                  inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
-                                }`}
-                              >
-                                <span>{room.roomNumber}</span>
-                                {status === 'blocked' && (
-                                  <Lock className="w-2 h-2 text-stone-700 absolute bottom-0.5 right-0.5" />
-                                )}
-                              </button>
-                            );
-                          })}
+                          {sortedRooms.map(renderMatrixRoomButton)}
                         </div>
                       </div>
                     );
@@ -1618,15 +1745,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <div className="text-stone-500 font-semibold mb-1">Status on {selectedDate}:</div>
                 {(() => {
-                  const status = getRoomStatusOnDate(inspectedRoom, selectedDate, reservations);
-                  const booking = getRoomBookingOnDate(inspectedRoom, selectedDate, reservations);
+                  const state = getMatrixState(inspectedRoom);
 
-                  if (status === 'blocked') {
+                  if (state.status === 'blocked') {
                     return (
-                      <div className="p-2.5 rounded-lg bg-stone-200 border border-stone-300 text-stone-800 space-y-1">
+                      <div className="p-3 rounded-xl bg-stone-200 border border-stone-300 text-stone-800 space-y-1.5">
                         <div className="font-bold flex items-center gap-1.5 text-stone-900">
                           <Lock className="w-3.5 h-3.5" />
-                          <span>BLOCKED INVENTORY</span>
+                          <span>BLOCKED INVENTORY (GREY)</span>
                         </div>
                         <div className="text-[11px] text-stone-600">
                           {inspectedRoom.blockedReason || 'Maintenance buffer'}
@@ -1635,7 +1761,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => onToggleBlockRoom(inspectedRoom.id)}
-                            className="mt-1 px-2.5 py-1 rounded bg-stone-800 text-white text-[10px] font-bold hover:bg-stone-900"
+                            className="mt-1 px-2.5 py-1 rounded bg-stone-800 text-white text-[10px] font-bold hover:bg-stone-900 cursor-pointer"
                           >
                             Unblock Room
                           </button>
@@ -1644,38 +1770,80 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     );
                   }
 
-                  if (status === 'occupied' && booking) {
+                  if (state.occupants.length > 0) {
+                    const isFull = state.status === 'full';
                     return (
-                      <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
-                        <div className="font-bold flex items-center justify-between text-amber-950">
-                          <span>OCCUPIED BY ZAER</span>
-                          {onDeleteReservation && (
-                            <button
-                              type="button"
-                              onClick={() => setRecordToDelete(booking)}
-                              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-100/70 px-2 py-0.5 rounded font-bold flex items-center gap-1 transition"
-                              title="Delete this Zair record"
+                      <div className={`p-3 rounded-xl border space-y-2.5 ${
+                        isFull
+                          ? 'bg-red-50/90 border-red-300 text-red-950'
+                          : 'bg-orange-50/90 border-orange-300 text-orange-950'
+                      }`}>
+                        <div className="flex items-center justify-between flex-wrap gap-1">
+                          <div className="font-extrabold flex items-center gap-1.5 text-xs">
+                            <span className={`w-2.5 h-2.5 rounded-full ${isFull ? 'bg-red-600' : 'bg-orange-500'}`} />
+                            <span>
+                              {isFull
+                                ? 'FULL OCCUPIED (NO SPACE - RED)'
+                                : `OCCUPIED BUT STILL SPACE (${state.remainingSlots} SLOTS LEFT - ORANGE)`}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white border border-stone-200 text-stone-800">
+                            Pax: {state.currentOccupancy} / {state.maxCapacity}
+                          </span>
+                        </div>
+
+                        {state.isVip && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-amber-950 bg-amber-100 border border-amber-300 px-2 py-1 rounded-md">
+                            <span className="font-mono font-black bg-amber-300 text-stone-950 px-1 rounded text-[10px] border border-amber-400">v</span>
+                            <span>VIP Tour Group Booking ({state.vipTourIds.join(', ')})</span>
+                          </div>
+                        )}
+
+                        {/* Occupants list */}
+                        <div className="space-y-1.5 pt-0.5">
+                          <div className="text-[11px] font-bold text-stone-700">
+                            Occupants in this Room ({state.occupants.length}):
+                          </div>
+                          {state.occupants.map((booking: Reservation) => (
+                            <div
+                              key={booking.id}
+                              className="bg-white p-2.5 rounded-lg border border-stone-200 flex items-start justify-between gap-2 text-[11px] shadow-2xs"
                             >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Delete Record</span>
-                            </button>
-                          )}
+                              <div className="space-y-0.5">
+                                <div className="font-bold text-stone-900">
+                                  {booking.applicantName} ({booking.gender}, {booking.age} yrs)
+                                </div>
+                                <div className="text-stone-600 text-[10px]">
+                                  Family #{booking.family} • ITS: {booking.itsId} • Tour: {booking.tourRefNo || booking.tourId || '—'}
+                                </div>
+                                {booking.officeName && (
+                                  <div className="text-emerald-800 font-semibold text-[10px]">
+                                    Office: {booking.officeName}
+                                  </div>
+                                )}
+                                <div className="text-stone-500 text-[10px]">
+                                  Dates: {booking.arrivalDate} to {booking.departureDate} ({booking.category})
+                                </div>
+                              </div>
+                              {onDeleteReservation && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecordToDelete(booking)}
+                                  className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition cursor-pointer"
+                                  title="Delete this Zair record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                        <div className="text-[11px]">
-                          <strong>Applicant:</strong> {booking.applicantName} ({booking.gender}, {booking.age} yrs)
-                        </div>
-                        <div className="text-[11px]">
-                          <strong>Family:</strong> {booking.family} • <strong>ITS:</strong> {booking.itsId}
-                        </div>
-                        <div className="text-[11px]">
-                          <strong>Tour Ref:</strong> {booking.tourRefNo} • <strong>Office:</strong> {booking.officeName}
-                        </div>
-                        <div className="text-[11px]">
-                          <strong>Stay Duration:</strong> {booking.arrivalDate} to {booking.departureDate}
-                        </div>
-                        <div className="text-[11px]">
-                          <strong>Category:</strong> {booking.category} {booking.category === 'B to A' && `(Money Given: ${booking.moneyGiven})`}
-                        </div>
+
+                        {!isFull && state.remainingSlots > 0 && (
+                          <div className="text-[10px] text-orange-900 font-semibold bg-orange-100/80 p-1.5 rounded border border-orange-200">
+                            ✓ {state.remainingSlots} slot(s) still open. You can allot another zaer to this room using the allotment form below.
+                          </div>
+                        )}
                       </div>
                     );
                   }
@@ -1685,7 +1853,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <div className="flex items-center justify-between">
                         <div className="font-extrabold text-emerald-950 flex items-center gap-1.5">
                           <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                          <span>VACANT ROOM READY FOR ALLOTMENT</span>
+                          <span>COMPLETELY AVAILABLE (GREEN)</span>
                         </div>
 
                         {/* Allotment Mode Toggle */}
