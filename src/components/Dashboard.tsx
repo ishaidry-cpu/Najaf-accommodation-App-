@@ -44,6 +44,7 @@ import {
   getVacantRoomsForDuration,
 } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
+import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
 
 interface DashboardProps {
   reservations: Reservation[];
@@ -57,6 +58,8 @@ interface DashboardProps {
   onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
   onAddReservation?: (newReservation: Reservation) => boolean | void;
+  onUpdateReservation?: (updatedReservation: Reservation) => void;
+  onBatchUpdateReservations?: (updatedReservations: Reservation[]) => void;
   onDeleteReservation?: (id: string) => void;
   onToggleBlockRoom?: (roomId: string) => void;
   userRole?: UserRole;
@@ -81,6 +84,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onAllotRoom,
   onBatchAllotFamily,
   onAddReservation,
+  onUpdateReservation,
+  onBatchUpdateReservations,
   onDeleteReservation,
   onToggleBlockRoom,
   userRole = 'admin',
@@ -96,6 +101,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>('timeline');
   // Deleting record confirmation state
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
+  // Special Guest & Requirements modal state (Scope: Guest / Family / Tour ID)
+  const [specialGuestModalTarget, setSpecialGuestModalTarget] = useState<Reservation | null>(null);
+  const [specialGuestInitialScope, setSpecialGuestInitialScope] = useState<SpecialGuestScope>('guest');
+  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toastFeedback) return;
+    const t = setTimeout(() => setToastFeedback(null), 4000);
+    return () => clearTimeout(t);
+  }, [toastFeedback]);
+
   // Date selector for room availability view (defaults to today)
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -1040,6 +1056,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 );
               })()}
             </div>
+
+            {/* Special Tour Action Button (Scope: Tour ID) */}
+            {(() => {
+              const tourMembers = reservations.filter((r) => r.tourRefNo === currentTourId);
+              const tourStarredCount = tourMembers.filter((r) => r.isSpecialGuest).length;
+              const hasSpecial = tourStarredCount > 0;
+              const firstMember = tourMembers[0];
+              if (!firstMember) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSpecialGuestModalTarget(firstMember);
+                    setSpecialGuestInitialScope('tour');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                    hasSpecial
+                      ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
+                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300'
+                  }`}
+                  title={`Click to mark or edit special requirements for Tour ${currentTourId}`}
+                >
+                  <Star className={`w-3.5 h-3.5 ${hasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
+                  <span>{hasSpecial ? `Tour Special (${tourStarredCount}/${tourMembers.length})` : 'Star Tour'}</span>
+                </button>
+              );
+            })()}
           </div>
         )}
 
@@ -1085,6 +1128,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 font-bold">
                           {famItem.totalCount} Members
                         </span>
+
+                        {/* Family Special Status Button (Scope: Whole Family) */}
+                        {(() => {
+                          const famStarredCount = famItem.members.filter((m) => m.isSpecialGuest).length;
+                          const famHasSpecial = famStarredCount > 0;
+                          const firstMember = famItem.members[0];
+                          if (!firstMember) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSpecialGuestModalTarget(firstMember);
+                                setSpecialGuestInitialScope('family');
+                              }}
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 transition cursor-pointer border ${
+                                famHasSpecial
+                                  ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
+                                  : 'bg-white text-stone-600 border-stone-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
+                              }`}
+                              title={`Click to mark or edit special requirements for Family ${famItem.family}`}
+                            >
+                              <Star className={`w-3 h-3 ${famHasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
+                              <span>{famHasSpecial ? `Family Special (${famStarredCount})` : 'Star Family'}</span>
+                            </button>
+                          );
+                        })()}
                         {famItem.isFullyAllotted ? (
                           <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-700 text-white font-extrabold flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
@@ -1165,12 +1234,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           .filter((m) => m.isSpecialGuest)
                           .map((m) => (
                             <div key={m.id} className="flex items-center gap-2 flex-wrap text-xs">
-                              <span className="font-black text-amber-950 underline decoration-amber-400">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSpecialGuestModalTarget(m);
+                                  setSpecialGuestInitialScope('guest');
+                                }}
+                                className="font-black text-amber-950 underline decoration-amber-400 hover:text-amber-800 transition cursor-pointer text-left"
+                                title="Click to edit special guest scope & requirements"
+                              >
                                 {m.applicantName} ({m.itsId}):
-                              </span>
-                              <span className="px-2 py-0.5 rounded-md bg-amber-200/90 text-amber-950 font-bold border border-amber-400/80 shadow-2xs">
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSpecialGuestModalTarget(m);
+                                  setSpecialGuestInitialScope('guest');
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-amber-200/90 hover:bg-amber-300 text-amber-950 font-bold border border-amber-400/80 shadow-2xs transition cursor-pointer text-left"
+                                title="Click to edit special requirements"
+                              >
                                 {m.specialRemarks || 'Special VIP requirements noted'}
-                              </span>
+                              </button>
                             </div>
                           ))}
                       </div>
@@ -1291,20 +1376,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             >
                               <div>
                                 <div className="font-bold text-stone-900 flex items-center gap-1.5 flex-wrap">
-                                  {m.isSpecialGuest && (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-400 text-[10px] font-black shadow-2xs">
-                                      <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
-                                      <span>Special Guest</span>
-                                    </span>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSpecialGuestModalTarget(m);
+                                      setSpecialGuestInitialScope('guest');
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer ${
+                                      m.isSpecialGuest
+                                        ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
+                                        : 'bg-white text-stone-500 border-stone-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
+                                    }`}
+                                    title={`Click to mark or edit special requirements for ${m.applicantName} (Scope: Guest / Family / Tour ID)`}
+                                  >
+                                    <Star className={`w-3 h-3 ${m.isSpecialGuest ? 'text-amber-500 fill-amber-400' : 'text-stone-400'}`} />
+                                    <span>{m.isSpecialGuest ? 'Special' : 'Star'}</span>
+                                  </button>
                                   <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
                                     {m.applicantName}
                                   </span>
                                   <span className="font-mono text-stone-400 font-normal">({m.itsId})</span>
                                   {m.isSpecialGuest && m.specialRemarks && (
-                                    <span className="px-2 py-0.5 rounded-md bg-amber-200/90 text-amber-950 text-[11px] font-bold border border-amber-400/80 shadow-2xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSpecialGuestModalTarget(m);
+                                        setSpecialGuestInitialScope('guest');
+                                      }}
+                                      className="px-2 py-0.5 rounded-md bg-amber-200/90 hover:bg-amber-300 text-amber-950 text-[11px] font-bold border border-amber-400/80 shadow-2xs cursor-pointer text-left transition"
+                                      title="Click to edit special lodging requirement"
+                                    >
                                       Requirement: {m.specialRemarks}
-                                    </span>
+                                    </button>
                                   )}
                                 </div>
                                 <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -2283,6 +2386,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span>Yes, Delete Record</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Special Guest & Lodging Requirements Modal (Scope: Guest / Family / Tour ID) */}
+      <SpecialGuestModal
+        isOpen={!!specialGuestModalTarget}
+        onClose={() => setSpecialGuestModalTarget(null)}
+        targetReservation={specialGuestModalTarget}
+        allReservations={reservations}
+        onUpdateReservation={(updated) => {
+          if (onUpdateReservation) {
+            onUpdateReservation(updated);
+          }
+        }}
+        onBatchUpdateReservations={onBatchUpdateReservations}
+        onShowToast={(msg) => setToastFeedback(msg)}
+        initialScope={specialGuestInitialScope}
+      />
+
+      {/* Toast Feedback Notification */}
+      {toastFeedback && (
+        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg border bg-[#124E39] text-[#EBD59E] border-[#124E39]">
+            <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
+            <span>{toastFeedback}</span>
+            <button
+              type="button"
+              onClick={() => setToastFeedback(null)}
+              className="ml-2 text-stone-300 hover:text-white cursor-pointer"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}

@@ -1158,6 +1158,8 @@ export default function App() {
             onAllotRoom={handleAllotRoom}
             onBatchAllotFamily={handleBatchAllotFamily}
             onAddReservation={handleAddReservation}
+            onUpdateReservation={handleUpdateReservation}
+            onBatchUpdateReservations={handleBatchUpdateReservations}
             onDeleteReservation={handleDeleteReservation}
             onToggleBlockRoom={(roomId) => {
               const r = rooms.find((rm) => rm.id === roomId);
