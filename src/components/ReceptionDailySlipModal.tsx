@@ -215,6 +215,8 @@ export interface SimpleSlipEntry {
   paxNamesDisplay: string;
   arrivalDate: string;
   departureDate: string;
+  arrivalTime: string;
+  departureTime: string;
   isTurnover: boolean;
   turnoverNote: string;
   rawReservations: Reservation[];
@@ -407,6 +409,25 @@ export function buildSimpleSlipEntries(
     const arrivalDate = arrDates.length > 0 ? arrDates.join(', ') : '—';
     const departureDate = depDates.length > 0 ? depDates.join(', ') : '—';
 
+    // Extract exact arrival time & departure time
+    const arrTimes = Array.from(
+      new Set(
+        resList
+          .map((r) => getReservationArrivalTime(r, '') || (r.arrivalTime ? r.arrivalTime.trim() : ''))
+          .filter(Boolean)
+      )
+    );
+    const depTimes = Array.from(
+      new Set(
+        resList
+          .map((r) => getReservationDepartureTime(r, '') || (r.departureTime ? r.departureTime.trim() : ''))
+          .filter(Boolean)
+      )
+    );
+
+    const arrivalTime = arrTimes.length > 0 ? arrTimes.join(', ') : (first.arrivalTime ? first.arrivalTime.trim() : '—');
+    const departureTime = depTimes.length > 0 ? depTimes.join(', ') : (first.departureTime ? first.departureTime.trim() : '—');
+
     // Detect if this room is a Turnover on selectedDate:
     // If Arrival Slip: is there any party departing from this room on selectedDate?
     // If Departure List: is there any party arriving into this room on selectedDate?
@@ -452,6 +473,8 @@ export function buildSimpleSlipEntries(
       paxNamesDisplay,
       arrivalDate,
       departureDate,
+      arrivalTime,
+      departureTime,
       isTurnover,
       turnoverNote,
       rawReservations: resList,
@@ -1593,8 +1616,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       if (items.length === 0) {
         safeAutoTable(doc, {
           startY: startAtY + 28,
-          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
-          body: [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '', '']],
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Arrival Time', 'Departure Date', 'Departure Time', 'Turnover']],
+          body: [['No arrivals scheduled for this section on this date', '', '', '', '', '', '', '', '', '', '']],
           margin: { left: 25, right: 25 },
           theme: 'grid',
           styles: { fontSize: 8.5, cellPadding: 5 },
@@ -1635,33 +1658,37 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           it.familyNumberDisplay || '—',
           it.paxNamesDisplay,
           it.arrivalDate,
+          it.arrivalTime || '—',
           it.departureDate,
+          it.departureTime || '—',
           it.isTurnover ? 'TURNOVER' : '—',
         ]);
 
         safeAutoTable(doc, {
           startY: yPos + 20,
-          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Arrival Time', 'Departure Date', 'Departure Time', 'Turnover']],
           body: rows,
           margin: { left: 25, right: 25 },
           theme: 'grid',
-          styles: { fontSize: 8.5, cellPadding: 4.5, textColor: [30, 30, 30] },
-          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+          styles: { fontSize: 8, cellPadding: 4, textColor: [30, 30, 30] },
+          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
           columnStyles: {
-            0: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
-            1: { cellWidth: 62, halign: 'center', fontSize: 8 },
-            2: { cellWidth: 80, halign: 'center', fontSize: 8 },
-            3: { cellWidth: 90, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            4: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
-            5: { cellWidth: 195, fontStyle: 'bold', fontSize: 8.5 },
-            6: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            7: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            8: { cellWidth: 72, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            0: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            1: { cellWidth: 55, halign: 'center', fontSize: 8 },
+            2: { cellWidth: 75, halign: 'center', fontSize: 8 },
+            3: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 45, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            5: { cellWidth: 162, fontStyle: 'bold', fontSize: 8.5 },
+            6: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            7: { cellWidth: 60, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            8: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            9: { cellWidth: 60, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            10: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
           },
           didParseCell: (data: any) => {
             if (data.section === 'body') {
               const rawItem = tg.entries[data.row.index];
-              if (rawItem?.isTurnover && data.column.index === 8) {
+              if (rawItem?.isTurnover && data.column.index === 10) {
                 data.cell.styles.fillColor = [254, 243, 199];
                 data.cell.styles.textColor = [180, 83, 9];
                 data.cell.styles.fontStyle = 'bold';
@@ -1793,8 +1820,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       if (items.length === 0) {
         safeAutoTable(doc, {
           startY: startAtY + 28,
-          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
-          body: [['No departures scheduled for this section on this date', '', '', '', '', '', '', '', '']],
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Arrival Time', 'Departure Date', 'Departure Time', 'Turnover']],
+          body: [['No departures scheduled for this section on this date', '', '', '', '', '', '', '', '', '', '']],
           margin: { left: 25, right: 25 },
           theme: 'grid',
           styles: { fontSize: 8.5, cellPadding: 5 },
@@ -1835,33 +1862,37 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           it.familyNumberDisplay || '—',
           it.paxNamesDisplay,
           it.arrivalDate,
+          it.arrivalTime || '—',
           it.departureDate,
+          it.departureTime || '—',
           it.isTurnover ? 'TURNOVER' : '—',
         ]);
 
         safeAutoTable(doc, {
           startY: yPos + 20,
-          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Departure Date', 'Turnover']],
+          head: [['Room #', 'Building', 'Tour ID', 'Office Name', 'Family #', 'Name of Pax (1 per Family)', 'Arrival Date', 'Arrival Time', 'Departure Date', 'Departure Time', 'Turnover']],
           body: rows,
           margin: { left: 25, right: 25 },
           theme: 'grid',
-          styles: { fontSize: 8.5, cellPadding: 4.5, textColor: [30, 30, 30] },
-          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+          styles: { fontSize: 8, cellPadding: 4, textColor: [30, 30, 30] },
+          headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
           columnStyles: {
-            0: { cellWidth: 55, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
-            1: { cellWidth: 62, halign: 'center', fontSize: 8 },
-            2: { cellWidth: 80, halign: 'center', fontSize: 8 },
-            3: { cellWidth: 90, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            4: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
-            5: { cellWidth: 195, fontStyle: 'bold', fontSize: 8.5 },
-            6: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            7: { cellWidth: 68, halign: 'center', fontStyle: 'bold', fontSize: 8 },
-            8: { cellWidth: 72, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            0: { cellWidth: 50, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            1: { cellWidth: 55, halign: 'center', fontSize: 8 },
+            2: { cellWidth: 75, halign: 'center', fontSize: 8 },
+            3: { cellWidth: 85, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 45, halign: 'center', fontStyle: 'bold', fontSize: 8.5 },
+            5: { cellWidth: 162, fontStyle: 'bold', fontSize: 8.5 },
+            6: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            7: { cellWidth: 60, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            8: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            9: { cellWidth: 60, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+            10: { cellWidth: 65, halign: 'center', fontStyle: 'bold', fontSize: 8 },
           },
           didParseCell: (data: any) => {
             if (data.section === 'body') {
               const rawItem = tg.entries[data.row.index];
-              if (rawItem?.isTurnover && data.column.index === 8) {
+              if (rawItem?.isTurnover && data.column.index === 10) {
                 data.cell.styles.fillColor = [254, 243, 199];
                 data.cell.styles.textColor = [180, 83, 9];
                 data.cell.styles.fontStyle = 'bold';
@@ -3419,15 +3450,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-stone-200 text-xs">
@@ -3477,11 +3510,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle">
                                         {entry.isTurnover ? (
@@ -3590,15 +3629,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-stone-200 text-xs">
@@ -3648,11 +3689,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle">
                                         {entry.isTurnover ? (
@@ -3730,15 +3777,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-amber-200 text-xs">
@@ -3781,11 +3830,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle text-stone-400 font-bold text-xs">
                                         —
@@ -3948,15 +4003,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-stone-200 text-xs">
@@ -4006,11 +4063,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle">
                                         {entry.isTurnover ? (
@@ -4124,15 +4187,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-stone-100 text-stone-800 text-[11px] font-extrabold uppercase tracking-wider border-b border-stone-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-stone-200 text-xs">
@@ -4182,11 +4247,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle">
                                         {entry.isTurnover ? (
@@ -4280,15 +4351,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <table className="w-full text-left border-collapse">
                                 <thead>
                                   <tr className="bg-amber-100/70 text-amber-950 text-[11px] font-extrabold uppercase tracking-wider border-b border-amber-300">
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Room #</th>
-                                    <th className="py-2.5 px-3 w-[10%] text-center">Building</th>
-                                    <th className="py-2.5 px-3 w-[12%] text-center">Tour ID</th>
-                                    <th className="py-2.5 px-3 w-[14%] text-center">Office Name</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Family #</th>
-                                    <th className="py-2.5 px-4 w-[24%]">Name of Pax (1 per Family)</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Arrival Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Departure Date</th>
-                                    <th className="py-2.5 px-3 w-[8%] text-center">Turnover</th>
+                                    <th className="py-2.5 px-2.5 w-[7%] text-center">Room #</th>
+                                    <th className="py-2.5 px-2 w-[8%] text-center">Building</th>
+                                    <th className="py-2.5 px-2.5 w-[11%] text-center">Tour ID</th>
+                                    <th className="py-2.5 px-2.5 w-[13%] text-center">Office Name</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Family #</th>
+                                    <th className="py-2.5 px-3 w-[21%]">Name of Pax (1 per Family)</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Arrival Time</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Date</th>
+                                    <th className="py-2.5 px-2 w-[7%] text-center">Departure Time</th>
+                                    <th className="py-2.5 px-2 w-[6%] text-center">Turnover</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-amber-200 text-xs bg-white">
@@ -4331,11 +4404,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           ))}
                                         </div>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.arrivalDate}
                                       </td>
-                                      <td className="py-2.5 px-3 text-center align-middle font-mono font-bold text-stone-800 text-xs">
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-emerald-900 text-xs bg-emerald-50/70 border border-emerald-200/50 rounded">
+                                        {entry.arrivalTime || '—'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-stone-800 text-xs">
                                         {entry.departureDate}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center align-middle font-mono font-bold text-amber-900 text-xs bg-amber-50/70 border border-amber-200/50 rounded">
+                                        {entry.departureTime || '—'}
                                       </td>
                                       <td className="py-2.5 px-3 text-center align-middle text-stone-400 font-bold text-xs">
                                         —
