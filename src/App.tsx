@@ -274,15 +274,28 @@ export default function App() {
   }, []);
 
   // Initialize Firebase Auth listener
+  // User Requirement:
+  // "When loged in via ishaidry@gmail.com it automatically gives admin access. With all other logins or without loing it gives only receptionist view.
+  // only admin view can push to sheet. without admin login no one can push to sheet they can only pull from sheet. it is only receptionist view without admin login."
   useEffect(() => {
     const unsubscribe = initAuth(
       (authUser, token) => {
         setUser(authUser);
         setAccessToken(token);
+        const email = (authUser?.email || '').trim().toLowerCase();
+        if (email === 'ishaidry@gmail.com') {
+          setUserRole('admin');
+          saveStoredUserRole('admin');
+        } else {
+          setUserRole('receptionist');
+          saveStoredUserRole('receptionist');
+        }
       },
       () => {
         setUser(null);
         setAccessToken(null);
+        setUserRole('receptionist');
+        saveStoredUserRole('receptionist');
       }
     );
 
@@ -322,9 +335,13 @@ export default function App() {
     });
   }, [reservations]);
 
-  // Sync to Google Sheets if configured
+  // Sync to Google Sheets if configured (strictly Admin only)
   const triggerAutoSync = useCallback(
     async (currentReservations: Reservation[], currentRooms: Room[]) => {
+      // User Requirement: without admin login no one can push to sheet
+      if (userRole !== 'admin') {
+        return;
+      }
       if (!accessToken || !sheetsConfig.spreadsheetId || !sheetsConfig.autoSync) {
         return;
       }
@@ -362,7 +379,7 @@ export default function App() {
         }));
       }
     },
-    [accessToken, sheetsConfig]
+    [accessToken, sheetsConfig, userRole]
   );
 
   // Sign In Handler
@@ -373,10 +390,18 @@ export default function App() {
       if (res) {
         setUser(res.user);
         setAccessToken(res.accessToken);
-        showToast(`Connected to Google as ${res.user.displayName || res.user.email}`);
-
-        if (sheetsConfig.spreadsheetId) {
-          await triggerAutoSync(reservations, rooms);
+        const email = (res.user.email || '').trim().toLowerCase();
+        if (email === 'ishaidry@gmail.com') {
+          setUserRole('admin');
+          saveStoredUserRole('admin');
+          showToast(`Welcome Admin ${res.user.displayName || email}! Full editable rights & Push to Google Sheet enabled.`);
+          if (sheetsConfig.spreadsheetId) {
+            await triggerAutoSync(reservations, rooms);
+          }
+        } else {
+          setUserRole('receptionist');
+          saveStoredUserRole('receptionist');
+          showToast(`Logged in as ${email}. Receptionist view active (View-only, Pull from Google Sheet allowed).`);
         }
       }
     } catch (err: any) {
@@ -393,7 +418,9 @@ export default function App() {
       await logout();
       setUser(null);
       setAccessToken(null);
-      showToast('Signed out of Google.', 'info');
+      setUserRole('receptionist');
+      saveStoredUserRole('receptionist');
+      showToast('Signed out of Google. Switched to Receptionist view.', 'info');
     } catch (err) {
       console.error('Logout error', err);
     }
@@ -474,6 +501,12 @@ export default function App() {
       } finally {
         setIsLoggingIn(false);
       }
+    }
+
+    // User Requirement: "only admin view can push to sheet. without admin login no one can push to sheet they can only pull from sheet. it is only receptionist view without admin login."
+    if (userRole !== 'admin') {
+      showToast('Action Blocked: Only Administrator (logged in as ishaidry@gmail.com) can push to sheet. Receptionist view can only pull from sheet.', 'error');
+      return;
     }
 
     if (!sheetsConfig.spreadsheetId) {
@@ -979,18 +1012,21 @@ export default function App() {
       finalReservations = deduplicateReservationList(imported);
       feedbackToast = `Replaced all zaereen with ${finalReservations.length} records from Excel. Saved to backend.`;
     } else {
-      const { uniqueToAppend, totalDuplicatesSkipped, finalReservations: merged } = deduplicateForAppend(
+      const { uniqueToAppend, totalDuplicatesSkipped, updatedExistingCount, finalReservations: merged } = deduplicateForAppend(
         reservations,
         imported
       );
       finalReservations = merged;
 
+      const updateMsg = updatedExistingCount > 0 ? ` (${updatedExistingCount} records updated with new arrival & departure times)` : '';
       if (uniqueToAppend.length === 0) {
-        feedbackToast = `All ${imported.length} zaereen in the sheet are already present. No duplicates were added!`;
+        feedbackToast = updatedExistingCount > 0
+          ? `Updated ${updatedExistingCount} existing zaereen with new arrival/departure times & dates from Excel. No duplicates added!`
+          : `All ${imported.length} zaereen in the sheet are already present. No duplicates were added!`;
       } else if (totalDuplicatesSkipped > 0) {
-        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen (${totalDuplicatesSkipped} duplicate${totalDuplicatesSkipped > 1 ? 's' : ''} skipped). Saved to backend!`;
+        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen${updateMsg} (${totalDuplicatesSkipped} duplicate${totalDuplicatesSkipped > 1 ? 's' : ''} skipped). Saved to backend!`;
       } else {
-        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen to database. Saved to backend!`;
+        feedbackToast = `Appended ${uniqueToAppend.length} unique zaereen to database${updateMsg}. Saved to backend!`;
       }
     }
 
@@ -1274,6 +1310,7 @@ export default function App() {
         onGoogleSignIn={handleGoogleSignIn}
         reservations={reservations}
         rooms={rooms}
+        userRole={userRole}
         onRoomsFetched={(newRooms) => {
           setRooms(newRooms);
           saveRooms(newRooms);
@@ -1323,6 +1360,8 @@ export default function App() {
         currentRole={userRole}
         adminPin={adminPin}
         onSaveRoleSettings={handleSaveRoleSettings}
+        user={user}
+        onGoogleSignIn={handleGoogleSignIn}
       />
 
       {/* Quick Room Allotment Modal (Easy Allotment with capacity and buffer) */}

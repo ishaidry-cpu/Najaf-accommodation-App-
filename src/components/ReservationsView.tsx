@@ -32,7 +32,8 @@ import {
   MapPin,
   Tag,
   LayoutGrid,
-  ShieldAlert
+  ShieldAlert,
+  Star
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
@@ -138,6 +139,29 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
   // User requirement: "make allcolumns visible to the screen"
   const [fitColumnsToScreen, setFitColumnsToScreen] = useState(true);
+
+  // User Requirement 4: Star badge on special guests with remarks
+  const [specialGuestModalTarget, setSpecialGuestModalTarget] = useState<Reservation | null>(null);
+  const [specialGuestIsStarred, setSpecialGuestIsStarred] = useState<boolean>(false);
+  const [specialGuestRemarks, setSpecialGuestRemarks] = useState<string>('');
+
+  const handleOpenSpecialGuestModal = (res: Reservation) => {
+    setSpecialGuestModalTarget(res);
+    setSpecialGuestIsStarred(Boolean(res.isSpecialGuest));
+    setSpecialGuestRemarks(res.specialRemarks || '');
+  };
+
+  const handleSaveSpecialGuest = () => {
+    if (!specialGuestModalTarget) return;
+    const updated: Reservation = {
+      ...specialGuestModalTarget,
+      isSpecialGuest: specialGuestIsStarred,
+      specialRemarks: specialGuestIsStarred ? specialGuestRemarks.trim() : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    onUpdateReservation(updated);
+    setSpecialGuestModalTarget(null);
+  };
 
   // Precomputed family counts to avoid O(N^2) loops inside rows
   const familyCountMap = useMemo(() => {
@@ -1670,13 +1694,35 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
                       {/* 2. Applicant Name */}
                       <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'}`}>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 group/name relative">
+                          {/* Star button on hover & persistent gold star badge when starred */}
+                          {res.isSpecialGuest ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSpecialGuestModal(res)}
+                              className="shrink-0 p-0.5 text-amber-500 hover:text-amber-600 rounded transition cursor-pointer hover:bg-amber-100/60"
+                              title={`Special Guest: ${res.specialRemarks || 'Click to edit special requirements'}`}
+                            >
+                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500 drop-shadow-xs" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSpecialGuestModal(res)}
+                              className="opacity-0 group-hover/name:opacity-100 shrink-0 p-0.5 text-stone-300 hover:text-amber-500 rounded transition cursor-pointer hover:bg-stone-100"
+                              title="Add star badge & special lodging remarks"
+                            >
+                              <Star className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <input
                             type="text"
                             value={res.applicantName}
                             onChange={(e) => handleFieldChange(res.id, 'applicantName', e.target.value)}
-                            title={res.applicantName}
-                            className="w-full bg-transparent font-bold text-stone-950 text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
+                            title={res.specialRemarks ? `${res.applicantName} (⭐ Requirement: ${res.specialRemarks})` : res.applicantName}
+                            className={`w-full bg-transparent font-bold text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate ${
+                              res.isSpecialGuest ? 'text-amber-950 font-black' : 'text-stone-950'
+                            }`}
                           />
                           {isShiftedToA && (
                             <span 
@@ -2686,6 +2732,140 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             >
               <X className="w-3.5 h-3.5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Special Guest & Lodging Requirements Modal (User requirement 4) */}
+      {specialGuestModalTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-[#FAF7F2] rounded-2xl border border-[#E6DFD5] shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-stone-200">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-700 border border-amber-300">
+                  <Star className="w-5 h-5 fill-amber-400 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-sm">
+                    Special Guest & Lodging Requirements
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    Add star badge and specify allocation requirements
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSpecialGuestModalTarget(null)}
+                className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Guest Summary */}
+            <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-stone-900 text-sm">{specialGuestModalTarget.applicantName}</span>
+                <span className="font-mono text-stone-500 font-bold">ITS: {specialGuestModalTarget.itsId}</span>
+              </div>
+              <div className="text-stone-500 text-[11px] flex items-center gap-2 flex-wrap">
+                <span>Family: {specialGuestModalTarget.family || '—'}</span>
+                <span>•</span>
+                <span>Tour ID: {specialGuestModalTarget.tourRefNo || '—'}</span>
+                <span>•</span>
+                <span>Allotted Room: {specialGuestModalTarget.roomNumber ? `${specialGuestModalTarget.building} ${specialGuestModalTarget.roomNumber}` : 'Not Allotted'}</span>
+              </div>
+            </div>
+
+            {/* Star Toggle Switch */}
+            <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Star className={`w-5 h-5 ${specialGuestIsStarred ? 'text-amber-500 fill-amber-400' : 'text-stone-400'}`} />
+                <div>
+                  <div className="text-xs font-bold text-stone-900">
+                    Mark as Special Guest (Star Badge)
+                  </div>
+                  <div className="text-[11px] text-stone-500">
+                    Highlights guest in Tour & Family Room Allotment Overview
+                  </div>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={specialGuestIsStarred}
+                  onChange={(e) => setSpecialGuestIsStarred(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* Remarks Textarea */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-stone-700">
+                Special Lodging Requirements & Remarks:
+              </label>
+              <textarea
+                rows={3}
+                value={specialGuestRemarks}
+                onChange={(e) => setSpecialGuestRemarks(e.target.value)}
+                placeholder="e.g. Ground floor required, elderly wheelchair user, western toilet, double bed..."
+                className="w-full bg-white border border-stone-300 rounded-xl p-2.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+              />
+            </div>
+
+            {/* Quick Chips for Common Requirements */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                Quick Insert Common Requirements:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  'Ground floor only',
+                  'Western toilet required',
+                  'Wheelchair user / Elderly',
+                  'Double bed required',
+                  'Near elevator / Lift',
+                  'VIP Mumineen',
+                  'Quiet room requested',
+                  'Adjacent family rooms'
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => {
+                      setSpecialGuestIsStarred(true);
+                      setSpecialGuestRemarks((prev) => (prev ? `${prev}, ${chip}` : chip));
+                    }}
+                    className="px-2 py-1 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 border border-stone-200 text-[11px] font-medium transition cursor-pointer"
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSpecialGuestModalTarget(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-stone-700 bg-stone-200/80 hover:bg-stone-300 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSpecialGuest}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-[#EBD59E]" />
+                <span>Save Requirements</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

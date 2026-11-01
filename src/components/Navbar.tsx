@@ -235,23 +235,57 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden xl:inline">Export PDF</span>
             </button>
 
-            {/* Google Sheets Access & 1-Click Sync (User request: "once sync button & i can access the google") */}
-            {!isReceptionist && (
-              <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 p-1 rounded-xl shadow-2xs">
-                {hasLinkedSheet ? (
-                  <>
-                    {/* Open Google Sheet Directly */}
-                    <button
-                      onClick={onOpenGoogleSheet || onOpenSheetsModal}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
-                      title="Open synced Google Sheet in new tab"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                      <span className="hidden sm:inline">Google Sheet</span>
-                      <ArrowUpRight className="w-3 h-3 text-emerald-700" />
-                    </button>
+            {/* Google User Sign-in / Profile */}
+            {user ? (
+              <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-stone-200 shadow-2xs">
+                <div
+                  className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center font-bold text-[11px]"
+                  title={user.email || 'Google User'}
+                >
+                  {user.email ? user.email[0].toUpperCase() : 'U'}
+                </div>
+                <span className="text-xs font-semibold text-stone-700 max-w-[120px] truncate hidden xl:inline" title={user.email || ''}>
+                  {user.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={onGoogleLogout}
+                  className="p-1 text-stone-500 hover:text-rose-700 hover:bg-stone-100 rounded-lg transition cursor-pointer"
+                  title="Sign out of Google"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onGoogleSignIn}
+                disabled={isLoggingIn}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer"
+                title="Sign in with Google (ishaidry@gmail.com for Admin access)"
+              >
+                <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <span className="hidden sm:inline">{isLoggingIn ? 'Signing in...' : 'Sign In'}</span>
+              </button>
+            )}
 
-                    {/* Push to Sheet Button */}
+            {/* Google Sheets Access & Sync Controls */}
+            <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 p-1 rounded-xl shadow-2xs">
+              {hasLinkedSheet ? (
+                <>
+                  {/* Open Google Sheet Directly */}
+                  <button
+                    onClick={onOpenGoogleSheet || onOpenSheetsModal}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                    title="Open synced Google Sheet in new tab"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                    <span className="hidden sm:inline">Google Sheet</span>
+                    <ArrowUpRight className="w-3 h-3 text-emerald-700" />
+                  </button>
+
+                  {/* Push to Sheet Button (Admin Only) */}
+                  {!isReceptionist && (
                     <button
                       onClick={onQuickSync}
                       disabled={sheetsConfig.isSyncing}
@@ -263,30 +297,42 @@ export const Navbar: React.FC<NavbarProps> = ({
                       title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
                     >
                       <UploadCloud className={`w-3 h-3 text-[#EBD59E] ${sheetsConfig.isSyncing ? 'animate-pulse' : ''}`} />
-                      <span>{sheetsConfig.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
+                      <span>{sheetsConfig.isSyncing ? 'Pushing...' : 'Push'}</span>
                     </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={onOpenSheetsModal}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
-                    title="Connect Google Sheet to sync rooms, zaereen & departure timeline"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                    <span className="hidden sm:inline">Connect Sheet</span>
-                  </button>
-                )}
+                  )}
 
-                {/* Settings icon to open Google Sheets Modal */}
+                  {/* Pull from Sheet shortcut (Receptionist View) */}
+                  {isReceptionist && (
+                    <button
+                      onClick={onOpenSheetsModal}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition cursor-pointer"
+                      title="Receptionist View: Pull latest records from Google Sheet"
+                    >
+                      <Download className="w-3 h-3 text-[#EBD59E]" />
+                      <span>Pull</span>
+                    </button>
+                  )}
+                </>
+              ) : (
                 <button
                   onClick={onOpenSheetsModal}
-                  className="p-1 rounded-md text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
-                  title="Configure Google Sheet settings"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                  title="Connect Google Sheet to sync rooms, zaereen & departure timeline"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                  <span className="hidden sm:inline">Connect Sheet</span>
                 </button>
-              </div>
-            )}
+              )}
+
+              {/* Settings icon to open Google Sheets Modal */}
+              <button
+                onClick={onOpenSheetsModal}
+                className="p-1 rounded-md text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
+                title="Configure Google Sheet settings"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -31,7 +31,8 @@ import {
   History,
   UploadCloud,
   LogIn,
-  LogOut
+  LogOut,
+  Star
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -659,20 +660,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <ArrowUpRight className="w-3 h-3 text-emerald-700" />
               </button>
 
-              {/* Push to Sheet Button */}
-              <button
-                onClick={onQuickSync}
-                disabled={sheetsConfig?.isSyncing}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
-                  sheetsConfig?.isSyncing
-                    ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
-                    : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white'
-                }`}
-                title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
-              >
-                <UploadCloud className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-pulse' : ''}`} />
-                <span>{sheetsConfig?.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
-              </button>
+              {/* Push to Sheet Button (Admin Only) or Pull from Sheet (Receptionist) */}
+              {userRole === 'admin' ? (
+                <button
+                  onClick={onQuickSync}
+                  disabled={sheetsConfig?.isSyncing}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
+                    sheetsConfig?.isSyncing
+                      ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
+                      : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white'
+                  }`}
+                  title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
+                >
+                  <UploadCloud className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-pulse' : ''}`} />
+                  <span>{sheetsConfig?.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={onOpenSheetsModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition cursor-pointer"
+                  title="Receptionist View: Click to Pull latest Zaereen records & 114 Rooms from Google Sheet"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Pull from Sheet</span>
+                </button>
+              )}
             </>
           ) : (
             <button
@@ -1141,9 +1153,47 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </button>
                   </div>
 
+                  {/* Special Guest Requirements Banner on Family Card */}
+                  {famItem.members.some((m) => m.isSpecialGuest) && (
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-xs shadow-2xs">
+                      <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-[11px] uppercase tracking-wide">
+                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                        <span>Special Guest Requirements (Do Not Overlook When Allocating):</span>
+                      </div>
+                      <div className="mt-1.5 space-y-1">
+                        {famItem.members
+                          .filter((m) => m.isSpecialGuest)
+                          .map((m) => (
+                            <div key={m.id} className="flex items-center gap-2 flex-wrap text-xs">
+                              <span className="font-black text-amber-950 underline decoration-amber-400">
+                                {m.applicantName} ({m.itsId}):
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-amber-200/90 text-amber-950 font-bold border border-amber-400/80 shadow-2xs">
+                                {m.specialRemarks || 'Special VIP requirements noted'}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Summary of members names */}
-                  <div className="text-xs text-stone-700 font-medium mt-2 line-clamp-1">
-                    Guests: {famItem.members.map((m) => `${m.applicantName} (${m.age})`).join(', ')}
+                  <div className="text-xs text-stone-700 font-medium mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-stone-500 font-semibold">Guests:</span>
+                    {famItem.members.map((m, mIdx) => (
+                      <span key={m.id} className="inline-flex items-center gap-1">
+                        {m.isSpecialGuest && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-950 border border-amber-400 text-[10px] font-black shadow-2xs" title={m.specialRemarks || 'Special Guest'}>
+                            <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
+                            <span>STAR</span>
+                          </span>
+                        )}
+                        <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
+                          {m.applicantName} ({m.age})
+                        </span>
+                        {mIdx < famItem.members.length - 1 && <span className="text-stone-300">,</span>}
+                      </span>
+                    ))}
                   </div>
 
                   {/* 1-Click Allotment Controls */}
@@ -1240,8 +1290,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg bg-stone-50 border border-stone-200 gap-2 text-xs"
                             >
                               <div>
-                                <div className="font-bold text-stone-900">
-                                  {m.applicantName} <span className="font-mono text-stone-400 font-normal">({m.itsId})</span>
+                                <div className="font-bold text-stone-900 flex items-center gap-1.5 flex-wrap">
+                                  {m.isSpecialGuest && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-400 text-[10px] font-black shadow-2xs">
+                                      <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
+                                      <span>Special Guest</span>
+                                    </span>
+                                  )}
+                                  <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
+                                    {m.applicantName}
+                                  </span>
+                                  <span className="font-mono text-stone-400 font-normal">({m.itsId})</span>
+                                  {m.isSpecialGuest && m.specialRemarks && (
+                                    <span className="px-2 py-0.5 rounded-md bg-amber-200/90 text-amber-950 text-[11px] font-bold border border-amber-400/80 shadow-2xs">
+                                      Requirement: {m.specialRemarks}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
                                   <span>Age: {m.age} • {m.gender}</span>

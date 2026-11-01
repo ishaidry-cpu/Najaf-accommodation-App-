@@ -140,6 +140,10 @@ export interface Reservation {
   isRoomChanged?: boolean;
   roomChangeHistory?: RoomChangeRecord[];
 
+  // Special Guest Requirements & Star Badge:
+  isSpecialGuest?: boolean;        // True if starred as special guest / VIP / specific lodging requirement
+  specialRemarks?: string;         // Special requirements (e.g. 'Ground floor only, wheelchair user, western toilet')
+
   // Tick button in the end to note if room allocation is uploaded on main portal:
   isUploadedToPortal: boolean; // true = uploaded / ticked, false = pending
 

@@ -17,7 +17,7 @@ import {
   Building2
 } from 'lucide-react';
 import { User } from 'firebase/auth';
-import { GoogleSheetsConfig, Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES } from '../types';
+import { GoogleSheetsConfig, Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
   createAccommodationSpreadsheet, 
   syncAllToGoogleSheet, 
@@ -43,6 +43,7 @@ interface GoogleSheetsSyncModalProps {
   onReservationsFetched?: (newReservations: Reservation[]) => void;
   onCategoriesFetched?: (newCategories: string[]) => void;
   onOpenAddBuildingRoomsModal?: () => void;
+  userRole?: UserRole;
 }
 
 export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
@@ -60,6 +61,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   onReservationsFetched,
   onCategoriesFetched,
   onOpenAddBuildingRoomsModal,
+  userRole = 'receptionist',
 }) => {
   if (!isOpen) return null;
 
@@ -231,8 +233,16 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     }
   };
 
-  // Push current data to linked sheet
+  // Push current data to linked sheet (Admin only)
   const handlePushToSheet = async () => {
+    if (userRole !== 'admin') {
+      setFeedback({ 
+        type: 'error', 
+        message: 'Action Restricted: Only Administrator (logged in as ishaidry@gmail.com) can push to Google Sheet. Receptionist view can only pull from sheet.' 
+      });
+      return;
+    }
+
     if (!accessToken || !sheetsConfig.spreadsheetId) {
       setFeedback({ type: 'error', message: 'No Google Sheet linked or not signed in.' });
       return;
@@ -512,27 +522,39 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                   </div>
                 )}
 
-                {/* Primary Button: Push to Sheet */}
-                <button
-                  type="button"
-                  onClick={handlePushToSheet}
-                  disabled={isProcessing || isPulling}
-                  className="w-full py-2.5 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
-                  title="Push latest app state, Zaereen grid, and room allotments to Google Sheet"
-                >
-                  <UploadCloud className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-pulse' : ''}`} />
-                  <span>{isProcessing ? 'Pushing to Sheet...' : 'Push to Sheet (Export App to Google Sheet)'}</span>
-                </button>
+                {/* Primary Button: Push to Sheet (Admin Only) */}
+                {userRole === 'admin' ? (
+                  <button
+                    type="button"
+                    onClick={handlePushToSheet}
+                    disabled={isProcessing || isPulling}
+                    className="w-full py-2.5 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
+                    title="Push latest app state, Zaereen grid, and room allotments to Google Sheet"
+                  >
+                    <UploadCloud className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-pulse' : ''}`} />
+                    <span>{isProcessing ? 'Pushing to Sheet...' : 'Push to Sheet (Export App to Google Sheet)'}</span>
+                  </button>
+                ) : (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2 shadow-2xs">
+                    <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Push to Sheet is Admin-Only:</span>
+                      <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                        Only Administrator logged in via <strong>ishaidry@gmail.com</strong> can push data to Google Sheet. In Receptionist view, you can pull from Google Sheet below.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Secondary Button: Pull from Sheet (With Confirmation) */}
                 <button
                   type="button"
                   onClick={handleInitiatePull}
                   disabled={isPulling || isProcessing}
-                  className="w-full py-2 px-3 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-800 border border-stone-300 rounded-lg font-semibold flex items-center justify-center gap-2 transition text-xs cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition text-xs shadow-sm cursor-pointer"
                   title="Pull and import all data from Google Sheet with confirmation"
                 >
-                  <DownloadCloud className={`w-3.5 h-3.5 text-stone-600 ${isPulling ? 'animate-bounce' : ''}`} />
+                  <DownloadCloud className={`w-4 h-4 text-[#EBD59E] ${isPulling ? 'animate-bounce' : ''}`} />
                   <span>Pull from Sheet (Import All Family Members & Rooms)</span>
                 </button>
               </div>

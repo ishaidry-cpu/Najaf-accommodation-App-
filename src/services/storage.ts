@@ -1595,9 +1595,9 @@ const ADMIN_PIN_STORAGE_KEY = 'zaereen_admin_pin_v1';
 export function getStoredUserRole(): UserRole {
   try {
     const val = localStorage.getItem(USER_ROLE_STORAGE_KEY);
-    return val === 'receptionist' ? 'receptionist' : 'admin';
+    return val === 'admin' ? 'admin' : 'receptionist';
   } catch {
-    return 'admin';
+    return 'receptionist';
   }
 }
 

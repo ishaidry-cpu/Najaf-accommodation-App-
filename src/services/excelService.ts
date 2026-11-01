@@ -41,15 +41,28 @@ export interface ParsedZaerRow {
 export function extractTimeFromExcelValue(val: any, defaultFallback: string = ''): string {
   if (val === undefined || val === null || val === '') return defaultFallback;
 
+  // 1. If string, extract clean time directly (handles "11:00 AM", "01-10-2026 11:00 AM", "14:30", etc.)
+  if (typeof val === 'string') {
+    const clean = extractCleanTime(val, undefined, undefined, '');
+    if (clean) return clean;
+  }
+
+  // 2. If it's an Excel fractional day (e.g. 0.45833 for 11:00 AM) or serial date with fraction
   if (typeof val === 'number') {
-    // If it's an Excel fractional day (e.g. 0.45833 for 11:00 AM) or serial date with fraction
     const frac = val - Math.floor(val);
-    if (frac > 0.0001 && frac < 0.9999) {
+    if (frac > 0.00001 && frac < 0.99999) {
       return formatMinutesToTime12(frac * 1440);
     }
   }
 
+  // 3. If it's a Date object: SheetJS parses dates in UTC by default when cellDates: true!
+  // Checking UTC hours/minutes first avoids timezone shift (+5:30, +1, etc.)
   if (val instanceof Date) {
+    const utcH = val.getUTCHours();
+    const utcM = val.getUTCMinutes();
+    if (utcH !== 0 || utcM !== 0) {
+      return formatMinutesToTime12(utcH * 60 + utcM);
+    }
     const h = val.getHours();
     const m = val.getMinutes();
     if (h !== 0 || m !== 0) {
@@ -204,7 +217,7 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
       for (const sheetName of workbook.SheetNames) {
         const ws = workbook.Sheets[sheetName];
         if (!ws) continue;
-        const currentRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const currentRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
         
         const cleanedRows = currentRows.filter(r => Array.isArray(r) && r.some(c => String(c || '').trim() !== ''));
         if (cleanedRows.length === 0) continue;

@@ -81,6 +81,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Filters
   const [hotelFilter, setHotelFilter] = useState<string>('ALL');
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
+  const [capacityFilter, setCapacityFilter] = useState<'ALL' | '2' | '3' | '4'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'vacant' | 'departing' | 'occupied'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -307,6 +308,13 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
         if (fl !== floorFilter) return false;
       }
 
+      // Capacity filter: 2 pax / 3 pax / 4 pax
+      if (capacityFilter !== 'ALL') {
+        const cap = Number(capacityFilter);
+        const roomCap = Number(room.capacity || room.pax || 0);
+        if (roomCap !== cap) return false;
+      }
+
       // Room vacancy info
       const vacInfo = roomVacancySummary.get(`${room.building}_${room.roomNumber}`);
 
@@ -346,7 +354,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
 
       return true;
     });
-  }, [rooms, hotelFilter, floorFilter, statusFilter, searchQuery, roomVacancySummary, reservations]);
+  }, [rooms, hotelFilter, floorFilter, capacityFilter, statusFilter, searchQuery, roomVacancySummary, reservations]);
 
   // Quick allot action when clicking on a vacant cell
   const handleCellClick = (room: Room, dateStr: string) => {
@@ -680,6 +688,52 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 </option>
               ))}
             </select>
+
+            {/* Capacity filter: 2 pax / 3 pax / 4 pax */}
+            <div className="flex items-center bg-stone-100 p-1 rounded-xl text-xs font-semibold">
+              <span className="text-[10px] text-stone-500 font-bold px-1.5 uppercase tracking-wider flex items-center gap-1">
+                <Users className="w-3 h-3 text-stone-400" /> Capacity:
+              </span>
+              <button
+                type="button"
+                onClick={() => setCapacityFilter('ALL')}
+                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                  capacityFilter === 'ALL' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setCapacityFilter('2')}
+                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                  capacityFilter === '2' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                }`}
+                title="Filter 2 Pax rooms"
+              >
+                2 Pax
+              </button>
+              <button
+                type="button"
+                onClick={() => setCapacityFilter('3')}
+                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                  capacityFilter === '3' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                }`}
+                title="Filter 3 Pax rooms"
+              >
+                3 Pax
+              </button>
+              <button
+                type="button"
+                onClick={() => setCapacityFilter('4')}
+                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                  capacityFilter === '4' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                }`}
+                title="Filter 4 Pax rooms"
+              >
+                4 Pax
+              </button>
+            </div>
 
             {/* Status filter: Highlight departing/vacant */}
             <div className="flex items-center bg-stone-100 p-1 rounded-xl text-xs font-semibold">

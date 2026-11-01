@@ -97,13 +97,15 @@ export function isDuplicateReservation(a: Reservation, b: Reservation): boolean 
 export interface AppendDeduplicationResult {
   /** The incoming reservations that are completely unique and not present in existing */
   uniqueToAppend: Reservation[];
-  /** Count of incoming items that were skipped because they already exist in the database */
+  /** Count of existing records whose arrival/departure dates/times were updated from the incoming file */
+  updatedExistingCount: number;
+  /** Count of incoming items that were skipped or merged because they already exist in the database */
   skippedExistingDuplicatesCount: number;
   /** Count of duplicate items found within the incoming batch itself */
   skippedInternalDuplicatesCount: number;
   /** Total duplicates skipped (existing + internal) */
   totalDuplicatesSkipped: number;
-  /** The final combined list (existing + uniqueToAppend) */
+  /** The final combined list (existing updated with new dates/times + uniqueToAppend) */
   finalReservations: Reservation[];
   /** Detailed list of skipped duplicate names and reasons for user visibility */
   duplicateDetails: Array<{ name: string; itsId: string; reason: string }>;
@@ -111,7 +113,8 @@ export interface AppendDeduplicationResult {
 
 /**
  * Deduplicates an incoming batch of reservations against existing database records.
- * Ensures: "When append dont append duplicates only unique should be added".
+ * Ensures: "When append dont append duplicates only unique should be added"
+ * AND: "Departure and arrival time should be same as in the excel uploaded file update".
  */
 export function deduplicateForAppend(
   existingReservations: Reservation[],
@@ -122,6 +125,10 @@ export function deduplicateForAppend(
 
   let skippedInternalDuplicatesCount = 0;
   let skippedExistingDuplicatesCount = 0;
+  let updatedExistingCount = 0;
+
+  // Clone existing reservations so we can update their arrival/departure times if present in the upload
+  const updatedExisting: Reservation[] = existingReservations.map((r) => ({ ...r }));
 
   // 1. Deduplicate within the incoming batch itself
   const deduplicatedIncoming: Reservation[] = [];
@@ -143,16 +150,49 @@ export function deduplicateForAppend(
 
   // 2. Check each incoming against the existing database records
   for (const incoming of deduplicatedIncoming) {
-    const existingMatch = existingReservations.find((existing) =>
+    const existingIndex = updatedExisting.findIndex((existing) =>
       isDuplicateReservation(existing, incoming)
     );
 
-    if (existingMatch) {
+    if (existingIndex !== -1) {
       skippedExistingDuplicatesCount++;
+      const existingMatch = updatedExisting[existingIndex];
+
+      // Update arrival and departure times & dates from the uploaded update file
+      const timesOrDatesChanged =
+        (incoming.arrivalTime && incoming.arrivalTime !== existingMatch.arrivalTime) ||
+        (incoming.departureTime && incoming.departureTime !== existingMatch.departureTime) ||
+        (incoming.arrivalDate && incoming.arrivalDate !== existingMatch.arrivalDate) ||
+        (incoming.departureDate && incoming.departureDate !== existingMatch.departureDate);
+
+      if (timesOrDatesChanged) {
+        updatedExistingCount++;
+      }
+
+      // Preserve existing room allotment, star badge, and B-to-A shift status while updating arrival/departure details
+      updatedExisting[existingIndex] = {
+        ...existingMatch,
+        arrivalDate: incoming.arrivalDate || existingMatch.arrivalDate,
+        departureDate: incoming.departureDate || existingMatch.departureDate,
+        arrivalTime: incoming.arrivalTime || existingMatch.arrivalTime,
+        departureTime: incoming.departureTime || existingMatch.departureTime,
+        rawArrivalStr: incoming.rawArrivalStr || existingMatch.rawArrivalStr,
+        rawDepartureStr: incoming.rawDepartureStr || existingMatch.rawDepartureStr,
+        officeName: incoming.officeName || existingMatch.officeName,
+        tourRefNo: incoming.tourRefNo || existingMatch.tourRefNo,
+        tourId: incoming.tourRefNo || existingMatch.tourId,
+        groupLeadName: incoming.groupLeadName || existingMatch.groupLeadName,
+        jamaat: incoming.jamaat || existingMatch.jamaat,
+        age: incoming.age !== undefined ? incoming.age : existingMatch.age,
+        gender: incoming.gender || existingMatch.gender,
+        family: incoming.family || existingMatch.family,
+        updatedAt: new Date().toISOString(),
+      };
+
       const reason =
         normalizeItsId(existingMatch.itsId) === normalizeItsId(incoming.itsId) && incoming.itsId
-          ? `Matches existing ITS ID: ${incoming.itsId}`
-          : `Matches existing zaer "${existingMatch.applicantName}" in Tour ${existingMatch.tourRefNo || ''}`;
+          ? `Updated arrival/departure time for existing ITS ID: ${incoming.itsId}`
+          : `Updated arrival/departure time for "${existingMatch.applicantName}" in Tour ${existingMatch.tourRefNo || ''}`;
 
       duplicateDetails.push({
         name: incoming.applicantName || 'Unknown',
@@ -167,10 +207,11 @@ export function deduplicateForAppend(
   const totalDuplicatesSkipped =
     skippedInternalDuplicatesCount + skippedExistingDuplicatesCount;
 
-  const finalReservations = [...existingReservations, ...uniqueToAppend];
+  const finalReservations = [...updatedExisting, ...uniqueToAppend];
 
   return {
     uniqueToAppend,
+    updatedExistingCount,
     skippedExistingDuplicatesCount,
     skippedInternalDuplicatesCount,
     totalDuplicatesSkipped,
