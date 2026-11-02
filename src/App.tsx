@@ -337,12 +337,15 @@ export default function App() {
 
   // Sync to Google Sheets if configured (strictly Admin only)
   const triggerAutoSync = useCallback(
-    async (currentReservations: Reservation[], currentRooms: Room[]) => {
+    async (currentReservations: Reservation[], currentRooms: Room[], force: boolean = false) => {
       // User Requirement: without admin login no one can push to sheet
       if (userRole !== 'admin') {
         return;
       }
-      if (!accessToken || !sheetsConfig.spreadsheetId || !sheetsConfig.autoSync) {
+      if (!accessToken || !sheetsConfig.spreadsheetId) {
+        return;
+      }
+      if (!force && !sheetsConfig.autoSync) {
         return;
       }
 
@@ -364,6 +367,9 @@ export default function App() {
           };
           setSheetsConfig(updated);
           saveSheetsConfig(updated);
+          if (force) {
+            showToast('⭐ Special status updated & synced to Google Sheet!', 'success');
+          }
         } else {
           setSheetsConfig((prev) => ({
             ...prev,
@@ -379,7 +385,7 @@ export default function App() {
         }));
       }
     },
-    [accessToken, sheetsConfig, userRole]
+    [accessToken, sheetsConfig, userRole, showToast]
   );
 
   // Sign In Handler
@@ -617,7 +623,8 @@ export default function App() {
         r.id === updatedReservation.id ? updatedReservation : r
       );
       saveReservations(updated);
-      triggerAutoSync(updated, rooms);
+      const isSpecialToggled = updatedReservation.isSpecialGuest !== undefined;
+      triggerAutoSync(updated, rooms, isSpecialToggled);
       return updated;
     });
     upsertBackendReservation(updatedReservation);
@@ -630,7 +637,8 @@ export default function App() {
     setReservations((prev) => {
       const updated = prev.map((r) => map.get(r.id) || r);
       saveReservations(updated);
-      triggerAutoSync(updated, rooms);
+      const anySpecialToggled = updatedList.some((r) => r.isSpecialGuest !== undefined);
+      triggerAutoSync(updated, rooms, anySpecialToggled);
       return updated;
     });
     updatedList.forEach((r) => upsertBackendReservation(r));

@@ -172,6 +172,8 @@ export function deduplicateForAppend(
       // Preserve existing room allotment, star badge, and B-to-A shift status while updating arrival/departure details
       updatedExisting[existingIndex] = {
         ...existingMatch,
+        isSpecialGuest: incoming.isSpecialGuest !== undefined ? incoming.isSpecialGuest : existingMatch.isSpecialGuest,
+        specialRemarks: incoming.specialRemarks || existingMatch.specialRemarks,
         arrivalDate: incoming.arrivalDate || existingMatch.arrivalDate,
         departureDate: incoming.departureDate || existingMatch.departureDate,
         arrivalTime: incoming.arrivalTime || existingMatch.arrivalTime,
@@ -222,12 +224,24 @@ export function deduplicateForAppend(
 
 /**
  * Deduplicates any arbitrary list of reservations, keeping only unique records.
+ * If duplicate records occur, merges special guest star badges, remarks, and allotments.
  */
 export function deduplicateReservationList(reservations: Reservation[]): Reservation[] {
   const result: Reservation[] = [];
   for (const r of reservations) {
-    if (!result.some((existing) => isDuplicateReservation(existing, r))) {
+    const existingIndex = result.findIndex((existing) => isDuplicateReservation(existing, r));
+    if (existingIndex === -1) {
       result.push(r);
+    } else {
+      const existing = result[existingIndex];
+      result[existingIndex] = {
+        ...existing,
+        isSpecialGuest: existing.isSpecialGuest || r.isSpecialGuest,
+        specialRemarks: existing.specialRemarks || r.specialRemarks,
+        roomNumber: existing.roomNumber || r.roomNumber,
+        building: existing.building || r.building,
+        shiftToCategoryA: existing.shiftToCategoryA || r.shiftToCategoryA,
+      };
     }
   }
   return result;

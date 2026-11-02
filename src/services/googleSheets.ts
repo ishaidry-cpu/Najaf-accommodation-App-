@@ -401,7 +401,7 @@ export function generateTimelineRows(
           rm.roomNumber,
           rm.floor,
           rm.capacity,
-          'OCCUPIED',
+          r.isSpecialGuest ? 'OCCUPIED (⭐ SPECIAL GUEST)' : 'OCCUPIED',
           r.applicantName || r.groupLeadName || r.guestLeaderName || 'Zaer Guest',
           r.itsId || '—',
           r.tourRefNo || r.tourId || '—',
@@ -412,7 +412,14 @@ export function generateTimelineRows(
           daysRemainingStr,
           turnoverStatus,
           r.accommodationCategory || rm.category,
-          r.specialRequests || rm.notes || rm.amenities.join(', '),
+          [
+            r.isSpecialGuest ? `⭐ Special Guest: ${r.specialRemarks || 'VIP Requirements'}` : '',
+            r.specialRequests,
+            rm.notes,
+            rm.amenities.join(', '),
+          ]
+            .filter(Boolean)
+            .join(' | '),
           new Date(r.updatedAt || Date.now()).toLocaleString(),
         ]);
       }
@@ -424,7 +431,7 @@ export function generateTimelineRows(
 
 /**
  * Generates rows matching EXACTLY the "Zaereen Lodging & Room Allotment Grid"
- * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | MAIN PORTAL | SHIFT B TO A (NIZAAM) | MONEY GIVEN | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | SPECIAL GUEST | SPECIAL REMARKS | MAIN PORTAL | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
  */
 export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
   const headers = [
@@ -442,6 +449,8 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'ARRIVAL',
     'DEPARTURE',
     'CATEGORY',
+    'SPECIAL GUEST',
+    'SPECIAL REMARKS',
     'MAIN PORTAL',
     'REQUEST SLIP NO.',
     'PAX COUNT',
@@ -463,6 +472,8 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
     (r.departureDate || r.departureDateTime || '').slice(0, 10),
     r.category || 'Mumineen',
+    r.isSpecialGuest ? '⭐ YES' : 'NO',
+    r.specialRemarks || '',
     r.isUploadedToPortal ? 'Uploaded' : 'Pending',
     r.requestSlipNo || '',
     r.paxCount || r.pax || 1,
@@ -698,6 +709,8 @@ export async function twoWaySyncWithGoogleSheet(
         departureDateTime: sr.departureDateTime || match.departureDateTime,
         moneyGiven: sr.moneyGiven || match.moneyGiven,
         category: sr.category || match.category,
+        isSpecialGuest: sr.isSpecialGuest !== undefined ? sr.isSpecialGuest : match.isSpecialGuest,
+        specialRemarks: sr.specialRemarks !== undefined ? sr.specialRemarks : match.specialRemarks,
         isUploadedToPortal: sr.isUploadedToPortal !== undefined ? sr.isUploadedToPortal : match.isUploadedToPortal,
         shiftToCategoryA: sr.shiftToCategoryA !== undefined ? sr.shiftToCategoryA : match.shiftToCategoryA,
         requestSlipNo: sr.requestSlipNo || match.requestSlipNo,
@@ -709,6 +722,8 @@ export async function twoWaySyncWithGoogleSheet(
       uniqueFromSheetCount++;
       mergedResMap.set(sr.id, {
         ...sr,
+        isSpecialGuest: sr.isSpecialGuest ?? false,
+        specialRemarks: sr.specialRemarks,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -1075,6 +1090,22 @@ export async function fetchReservationsFromGoogleSheet(
   let moneyIdx = headerRow.findIndex((h: string) => h.includes('money') || h.includes('account'));
   let slipIdx = headerRow.findIndex((h: string) => h.includes('slip'));
   let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest') || h.includes('count'));
+  let specialIdx = headerRow.findIndex((h: string) =>
+    h.includes('special guest') ||
+    h.includes('special status') ||
+    h === 'special' ||
+    h.includes('star') ||
+    h.includes('vip') ||
+    h === 'is_special_guest'
+  );
+  let remarksIdx = headerRow.findIndex((h: string) =>
+    h.includes('special remarks') ||
+    h.includes('special req') ||
+    h.includes('special requirement') ||
+    h === 'remarks' ||
+    h.includes('star remarks') ||
+    h === 'special_remarks'
+  );
 
   // Fallbacks if not matched by name (only if within bounds of header row)
   if (tourIdx === -1 && headerRow.length > 6) tourIdx = 6;
@@ -1136,6 +1167,16 @@ export async function fetchReservationsFromGoogleSheet(
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
 
+    // Special Guest & Requirements extraction from sheet
+    const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? String(row[specialIdx]).trim() : '';
+    const hasSpecialInSheet = specialIdx !== -1 && rawSpecial !== '';
+    const isSpecialGuestFromSheet = hasSpecialInSheet
+      ? /yes|true|⭐|vip|special|star/i.test(rawSpecial)
+      : undefined;
+
+    const rawRemarks = remarksIdx !== -1 && row[remarksIdx] !== undefined ? String(row[remarksIdx]).trim() : '';
+    const specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
+
     // Check if applicantName or rawRoomNumber contains multiple family members / rooms
     const candidateNames = applicantName
       .split(/[,/;\n&+]|\band\b/i)
@@ -1179,6 +1220,15 @@ export async function fetchReservationsFromGoogleSheet(
         usedExistingIds.add(existing.id);
       }
 
+      // Preserve special guest status from sheet or fallback to existing
+      const finalIsSpecial = isSpecialGuestFromSheet !== undefined
+        ? isSpecialGuestFromSheet
+        : (existing?.isSpecialGuest ?? false);
+
+      const finalSpecialRemarks = specialRemarksFromSheet !== undefined
+        ? specialRemarksFromSheet
+        : existing?.specialRemarks;
+
       const uniqueRecId = existing
         ? existing.id
         : `res-sheet-${tourId || 'gen'}-${familyNo}-${i}-${m + 1}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -1205,6 +1255,8 @@ export async function fetchReservationsFromGoogleSheet(
         roomNumber: memberRoom,
         roomId,
         isUploadedToPortal,
+        isSpecialGuest: finalIsSpecial,
+        specialRemarks: finalSpecialRemarks,
         paxCount: 1,
         arrivalDateTime,
         entryPort: existing ? existing.entryPort : 'Najaf Airport (NJF)',
