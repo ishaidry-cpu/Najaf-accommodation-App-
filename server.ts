@@ -2,13 +2,16 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { generateSaifeeBurhani114Rooms, INITIAL_RESERVATIONS } from './src/services/storage';
+import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS } from './src/services/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const portArgIndex = process.argv.indexOf('--port');
+const PORT = portArgIndex !== -1 && process.argv[portArgIndex + 1]
+  ? parseInt(process.argv[portArgIndex + 1], 10)
+  : (process.env.APP_PORT ? parseInt(process.env.APP_PORT, 10) : 3000);
 const isDev = process.env.NODE_ENV !== 'production';
 
 app.use(express.json({ limit: '50mb' }));
@@ -52,9 +55,17 @@ function writeJsonFile<T>(filePath: string, data: T): void {
 // Initialize seed data if not present
 function initializeData() {
   if (!fs.existsSync(ROOMS_FILE)) {
-    console.log('Seeding initial 114 rooms to server backend storage...');
-    const initialRooms = generateSaifeeBurhani114Rooms();
+    console.log('Seeding initial 144 rooms across Saifee, Burhani, and Badri to server backend storage...');
+    const initialRooms = [...generateSaifeeBurhani114Rooms(), ...generateBadriRooms()];
     writeJsonFile(ROOMS_FILE, initialRooms);
+  } else {
+    const existingRooms = readJsonFile<any[]>(ROOMS_FILE, []);
+    const hasBadri = existingRooms.some((r) => (r.building || '').toLowerCase() === 'badri');
+    if (!hasBadri) {
+      console.log('Adding Badri rooms to server rooms storage...');
+      const updatedRooms = [...existingRooms, ...generateBadriRooms()];
+      writeJsonFile(ROOMS_FILE, updatedRooms);
+    }
   }
 
   if (!fs.existsSync(RESERVATIONS_FILE)) {
@@ -83,9 +94,38 @@ function initializeData() {
 
 initializeData();
 
+// Live Multi-Window SSE Clients registry
+let sseClients: express.Response[] = [];
+
+function broadcastLiveChange(eventType: string, payload: any = {}) {
+  const message = `data: ${JSON.stringify({ type: eventType, timestamp: Date.now(), ...payload })}\n\n`;
+  sseClients.forEach((client) => {
+    try {
+      client.write(message);
+    } catch {
+      // client connection closed
+    }
+  });
+}
+
 // ==========================================
 // REST API ROUTES (/api/*)
 // ==========================================
+
+// SSE stream for real-time live updates across all open windows on this computer
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: Date.now() })}\n\n`);
+  sseClients.push(res);
+
+  req.on('close', () => {
+    sseClients = sseClients.filter((c) => c !== res);
+  });
+});
 
 // Health & Status
 app.get('/api/status', (req, res) => {
@@ -115,6 +155,7 @@ app.post('/api/reservations', (req, res) => {
   }
   writeJsonFile(RESERVATIONS_FILE, reservations);
   console.log(`[API] Saved ${reservations.length} reservations to backend data store.`);
+  broadcastLiveChange('RESERVATIONS_UPDATED');
   res.json({ success: true, count: reservations.length });
 });
 
@@ -135,6 +176,7 @@ app.post('/api/reservations/upsert', (req, res) => {
   }
 
   writeJsonFile(RESERVATIONS_FILE, current);
+  broadcastLiveChange('RESERVATIONS_UPDATED', { reservation: updatedRes });
   res.json({ success: true, reservation: updatedRes, total: current.length });
 });
 
@@ -146,6 +188,7 @@ app.delete('/api/reservations/:id', (req, res) => {
 
   writeJsonFile(RESERVATIONS_FILE, filtered);
   console.log(`[API] Deleted reservation ${id}. Total remaining: ${filtered.length}`);
+  broadcastLiveChange('RESERVATIONS_UPDATED', { deletedId: id });
   res.json({ success: true, remaining: filtered.length });
 });
 
@@ -162,6 +205,7 @@ app.post('/api/reservations/batch-delete', (req, res) => {
 
   writeJsonFile(RESERVATIONS_FILE, filtered);
   console.log(`[API] Batch deleted ${ids.length} reservations. Total remaining: ${filtered.length}`);
+  broadcastLiveChange('RESERVATIONS_UPDATED', { deletedIds: ids });
   res.json({ success: true, deleted: ids.length, remaining: filtered.length });
 });
 
@@ -178,6 +222,7 @@ app.post('/api/rooms', (req, res) => {
     return res.status(400).json({ error: 'Expected array of rooms in { rooms: [...] }' });
   }
   writeJsonFile(ROOMS_FILE, rooms);
+  broadcastLiveChange('ROOMS_UPDATED');
   res.json({ success: true, count: rooms.length });
 });
 
@@ -191,6 +236,7 @@ app.put('/api/rooms/:id', (req, res) => {
   if (index >= 0) {
     rooms[index] = { ...rooms[index], ...updates };
     writeJsonFile(ROOMS_FILE, rooms);
+    broadcastLiveChange('ROOMS_UPDATED', { roomId: id });
     res.json({ success: true, room: rooms[index] });
   } else {
     res.status(404).json({ error: `Room ${id} not found` });
@@ -202,6 +248,7 @@ app.post('/api/rooms/reset', (req, res) => {
   const freshRooms = generateSaifeeBurhani114Rooms();
   writeJsonFile(ROOMS_FILE, freshRooms);
   console.log('[API] Reset rooms to official 114 inventory.');
+  broadcastLiveChange('ROOMS_UPDATED');
   res.json({ success: true, rooms: freshRooms });
 });
 

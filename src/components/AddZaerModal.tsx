@@ -73,8 +73,9 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
-    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
-    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
+    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
+    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
+    return Array.from(set).sort();
   }, [rooms]);
 
   const [building, setBuilding] = useState<string>('Saifee');

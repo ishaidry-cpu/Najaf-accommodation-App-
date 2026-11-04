@@ -45,6 +45,7 @@ interface RoomTimelineViewProps {
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenQuickAllotModal?: (res: Reservation) => void;
   onOpenAddBuildingRooms?: () => void;
+  onRefreshLiveComputerData?: () => Promise<void> | void;
 }
 
 export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
@@ -57,8 +58,22 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   onOpenReceptionSlip,
   onOpenQuickAllotModal,
   onOpenAddBuildingRooms,
+  onRefreshLiveComputerData,
 }) => {
   const isReadOnly = userRole === 'receptionist';
+
+  // Refresh Timeline state (refreshes all data on same computer without changing startDateStr)
+  const [isRefreshingTimeline, setIsRefreshingTimeline] = useState(false);
+  const handleRefreshTimeline = async () => {
+    setIsRefreshingTimeline(true);
+    try {
+      if (onRefreshLiveComputerData) {
+        await onRefreshLiveComputerData();
+      }
+    } finally {
+      setIsRefreshingTimeline(false);
+    }
+  };
 
   // Base starting date for the timeline (defaults to today)
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -69,9 +84,11 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
 
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
-    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
-    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
-  }, [rooms]);
+    const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
+    rooms.forEach((r) => { if (r.building && r.building.trim()) bSet.add(r.building.trim()); });
+    reservations.forEach((res) => { if (res.building && res.building.trim()) bSet.add(res.building.trim()); });
+    return Array.from(bSet).sort();
+  }, [rooms, reservations]);
 
   // Existing Tour IDs for auto-suggestion datalist
   const existingTourIds = useMemo(() => {
@@ -609,6 +626,19 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               onChange={(e) => setStartDateStr(e.target.value)}
               className="bg-transparent text-xs font-bold text-stone-800 px-1 focus:outline-none cursor-pointer"
             />
+
+            {/* Refresh Timeline Icon Button (reloads data fed in this computer without changing startDateStr) */}
+            <div className="h-4 w-px bg-stone-300 mx-1" />
+            <button
+              type="button"
+              onClick={handleRefreshTimeline}
+              disabled={isRefreshingTimeline}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-[#124E39] hover:bg-emerald-50 border border-[#124E39]/30 transition cursor-pointer"
+              title="Refresh Timeline: Pulls all rooms & zaereen data fed in this computer without changing the timeline date"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#124E39] ${isRefreshingTimeline ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshingTimeline ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
           </div>
 
           {/* Day count window buttons */}

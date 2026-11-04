@@ -33,7 +33,7 @@ interface NavbarProps {
   onOpenRoleModal: () => void;
   onOpenSheetsModal: () => void;
   onOpenGoogleSheet?: () => void;
-  onOpenPdfModal: () => void;
+  onOpenPdfModal: (reportType?: any, tourId?: string) => void;
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onGoogleSignIn: () => void;
@@ -225,15 +225,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Administrative Export PDF Button */}
-            <button
-              onClick={onOpenPdfModal}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 shadow-xs transition cursor-pointer"
-              title="Export Administrative PDF Reports (Manifest, Room Inventory, Category Upgrades)"
-            >
-              <FileText className="w-3.5 h-3.5 text-stone-600" />
-              <span className="hidden xl:inline">Export PDF</span>
-            </button>
+            {/* Tour Manifest & Administrative Export PDF Buttons */}
+            <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
+              <button
+                type="button"
+                onClick={() => onOpenPdfModal('tour_manifest')}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer"
+                title="Tour ID Specific Lodging Manifest (Search Tour ID, View Pax Names & Download Manifest)"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-800" />
+                <span className="hidden sm:inline">Tour Manifest</span>
+                <span className="sm:hidden">Tour</span>
+              </button>
+              <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => onOpenPdfModal('all_reservations')}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-stone-700 hover:bg-stone-100 transition cursor-pointer"
+                title="Export Administrative PDF Reports (Manifest, Room Inventory, Category Upgrades)"
+              >
+                <Download className="w-3.5 h-3.5 text-stone-500" />
+                <span className="hidden xl:inline">Export PDF</span>
+              </button>
+            </div>
 
             {/* Google User Sign-in / Profile */}
             {user ? (

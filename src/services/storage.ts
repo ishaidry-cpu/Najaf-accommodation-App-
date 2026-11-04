@@ -1,4 +1,4 @@
-import { Room, Reservation, GoogleSheetsConfig, DEFAULT_ZAEREEN_CATEGORIES, UserRole, RoomOccupancyDetail, RoomAllotmentCheck } from '../types';
+import { Room, RoomCategory, Reservation, GoogleSheetsConfig, DEFAULT_ZAEREEN_CATEGORIES, UserRole, RoomOccupancyDetail, RoomAllotmentCheck } from '../types';
 import { 
   checkTurnoverTimingConflict, 
   TurnoverTimingResult, 
@@ -17,7 +17,7 @@ const RESERVATIONS_STORAGE_KEY = 'zaereen_accommodation_reservations_saifee_burh
 const SHEETS_CONFIG_KEY = 'zaereen_accommodation_sheets_config_saifee_burhani_v5';
 const CATEGORIES_STORAGE_KEY = 'zaereen_accommodation_categories_v1';
 
-export const INITIAL_BUILDINGS = ['Burhani', 'Saifee'];
+export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri'];
 
 interface RawRoomConfig {
   building: 'BURHANI' | 'SAIFEE';
@@ -241,7 +241,52 @@ export function generateSaifeeBurhani114Rooms(): Room[] {
   });
 }
 
-export const INITIAL_ROOMS: Room[] = generateSaifeeBurhani114Rooms();
+/**
+ * Generates Badri Hotel rooms: 30 rooms across Floors 1 to 3 (101-110, 201-210, 301-310)
+ */
+export function generateBadriRooms(): Room[] {
+  const rooms: Room[] = [];
+  const floors = [1, 2, 3];
+  floors.forEach((floor) => {
+    for (let r = 1; r <= 10; r++) {
+      const roomNumber = `${floor}${r < 10 ? '0' : ''}${r}`;
+      const isEven = r % 2 === 0;
+      const pax = isEven ? 4 : 3;
+      const buffer = isEven ? 1 : 0;
+      const toiletType = isEven ? 'Both WESTERN & INDIAN' : 'WESTERN';
+      const bedType = isEven ? 'Both Single Bed & double Bed' : 'Single Beds';
+      const category: RoomCategory = isEven ? 'Category A (Nizaam)' : 'Category B (Standard)';
+      rooms.push({
+        id: `rm-bd-${roomNumber.toLowerCase()}`,
+        roomNumber,
+        building: 'Badri',
+        floor,
+        floorLabel: `Floor ${floor}`,
+        capacity: pax,
+        pax,
+        buffer,
+        toiletType,
+        bedType,
+        category,
+        status: 'available',
+        amenities: [
+          `${toiletType} Toilet`,
+          bedType,
+          'Air Conditioning',
+          'Wi-Fi',
+          'Prayer Mats',
+          ...(buffer > 0 ? [`Buffer: ${buffer}`] : []),
+        ],
+      });
+    }
+  });
+  return rooms;
+}
+
+export const INITIAL_ROOMS: Room[] = [
+  ...generateSaifeeBurhani114Rooms(),
+  ...generateBadriRooms(),
+];
 
 /**
  * Initial Zaereen matching user's exact work process fields and user's Excel sheet screenshot:
@@ -1488,6 +1533,12 @@ export function getStoredRooms(): Room[] {
     if (!Array.isArray(parsed) || parsed.length === 0 || !parsed[0].toiletType) {
       saveRooms(INITIAL_ROOMS);
       return INITIAL_ROOMS;
+    }
+    const hasBadri = parsed.some((r: Room) => (r.building || '').toLowerCase() === 'badri');
+    if (!hasBadri) {
+      const merged = [...parsed, ...generateBadriRooms()];
+      saveRooms(merged);
+      return merged;
     }
     return parsed;
   } catch {

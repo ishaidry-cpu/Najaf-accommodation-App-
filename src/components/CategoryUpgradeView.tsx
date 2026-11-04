@@ -49,7 +49,15 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [moneyFilter, setMoneyFilter] = useState<'ALL' | 'Yes' | 'No'>('ALL');
-  const [hotelFilter, setHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
+  const [hotelFilter, setHotelFilter] = useState<string>('ALL');
+
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
+    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
+    reservations.forEach((res) => { if (res.building) set.add(res.building.trim()); });
+    return Array.from(set).sort();
+  }, [rooms, reservations]);
 
   // Deletion protection modals for B to A
   const [bToARecordToDelete, setBToARecordToDelete] = useState<Reservation | null>(null);
@@ -67,7 +75,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     d.setDate(d.getDate() + 3);
     return d.toISOString().slice(0, 10);
   });
-  const [newBuilding, setNewBuilding] = useState<'Saifee' | 'Burhani'>('Saifee');
+  const [newBuilding, setNewBuilding] = useState<string>('Saifee');
   const [newRoomNumber, setNewRoomNumber] = useState('');
   const [newApplicantName, setNewApplicantName] = useState('');
   const [newItsId, setNewItsId] = useState('');
@@ -365,12 +373,13 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
           <select
             value={hotelFilter}
-            onChange={(e) => setHotelFilter(e.target.value as any)}
+            onChange={(e) => setHotelFilter(e.target.value)}
             className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">All Hotels</option>
-            <option value="Saifee">Saifee Hotel</option>
-            <option value="Burhani">Burhani Hotel</option>
+            {distinctBuildings.map((bldg) => (
+              <option key={bldg} value={bldg}>{bldg} Hotel</option>
+            ))}
           </select>
         </div>
       </div>
@@ -725,13 +734,14 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                     <select
                       value={newBuilding}
                       onChange={(e) => {
-                        setNewBuilding(e.target.value as any);
+                        setNewBuilding(e.target.value);
                         setNewRoomNumber('');
                       }}
                       className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
                     >
-                      <option value="Saifee">Saifee Hotel</option>
-                      <option value="Burhani">Burhani Hotel</option>
+                      {distinctBuildings.map((bldg) => (
+                        <option key={bldg} value={bldg}>{bldg} Hotel</option>
+                      ))}
                     </select>
                   </div>
 

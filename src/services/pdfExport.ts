@@ -358,8 +358,149 @@ export function generateAdministrativePdf(
         renderUpgradesTable('PART 3: UNALLOTTED ZAEREEN UPGRADES', unallottedList, currentY);
       }
     }
+  } else if (options.reportType === 'tour_manifest') {
+    // DEDICATED TOUR ID SPECIFIC LODGING MANIFEST (Includes full names of all pax, ITS IDs, family, room allocations, timings, and special guest requirements)
+    const renderTourManifestTable = (hotelTitle: string, list: Reservation[], startAtY: number) => {
+      // Sub-section hotel banner
+      doc.setFillColor(18, 78, 57); // #124E39
+      doc.roundedRect(30, startAtY, pageWidth - 60, 24, 3, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158); // Gold #EBD59E
+      doc.text(hotelTitle, 40, startAtY + 16);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`Total Zaereen in Section: ${list.length}`, pageWidth - 160, startAtY + 16);
+
+      const tableBody = list.map((res, idx) => {
+        const paxNameWithDetails = [
+          res.applicantName || res.groupLeadName || '—',
+          res.itsId ? `(ITS: ${res.itsId})` : '',
+        ].filter(Boolean).join(' ');
+
+        const ageGender = [
+          res.gender || '',
+          res.age ? `Age ${res.age}` : '',
+        ].filter(Boolean).join(' • ') || '—';
+
+        const roomText = res.roomNumber
+          ? `${res.building || 'Hotel'}\nRm ${res.roomNumber}`
+          : 'Pending / Unallotted';
+
+        const arrText = `${(res.arrivalDate || '').slice(0, 10)}${res.arrivalTime ? `\n${res.arrivalTime}` : ''}`.trim() || '—';
+        const depText = `${(res.departureDate || '').slice(0, 10)}${res.departureTime ? `\n${res.departureTime}` : ''}`.trim() || '—';
+
+        let specialText = '—';
+        if (res.isSpecialGuest) {
+          specialText = `★ SPECIAL GUEST\n${res.specialRemarks || 'Special Requirement'}`;
+        } else if (res.notes || res.remarks) {
+          specialText = res.notes || res.remarks || '—';
+        }
+
+        return [
+          String(idx + 1),
+          res.tourRefNo || res.tourId || '',
+          paxNameWithDetails,
+          res.family || res.familyNumber || res.familyNo || '—',
+          roomText,
+          arrText,
+          depText,
+          ageGender,
+          `${res.category || 'Standard'}\n(${res.officeName || '—'})`,
+          specialText,
+        ];
+      });
+
+      autoTable(doc, {
+        startY: startAtY + 28,
+        head: [
+          [
+            '#',
+            'Tour Ref No.',
+            'Pax / Zair Full Name (ITS ID)',
+            'Fam #',
+            'Building & Room',
+            'Arrival Date & Time',
+            'Departure Date & Time',
+            'Age/Gender',
+            'Category / Office',
+            'Special Status / Remarks',
+          ],
+        ],
+        body: tableBody.length > 0 ? tableBody : [['', 'No zaereen records found for this tour in this section', '', '', '', '', '', '', '', '']],
+        theme: 'grid',
+        headStyles: {
+          fillColor: [18, 78, 57], // #124E39 deep emerald
+          textColor: [235, 213, 158], // Gold #EBD59E
+          fontStyle: 'bold',
+          fontSize: 7.5,
+        },
+        bodyStyles: {
+          fontSize: 7.5,
+          cellPadding: 3.5,
+        },
+        columnStyles: {
+          0: { cellWidth: 20, halign: 'center' },
+          1: { cellWidth: 70 },
+          2: { cellWidth: 145, fontStyle: 'bold' },
+          3: { cellWidth: 45, halign: 'center' },
+          4: { cellWidth: 75, fontStyle: 'bold' },
+          5: { cellWidth: 70 },
+          6: { cellWidth: 70 },
+          7: { cellWidth: 65 },
+          8: { cellWidth: 90 },
+          9: { cellWidth: 95 },
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body') {
+            if (data.column.index === 9 && typeof data.cell.raw === 'string' && data.cell.raw.includes('★')) {
+              data.cell.styles.textColor = [180, 83, 9]; // amber-700
+              data.cell.styles.fillColor = [254, 243, 199]; // amber-100
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (data.column.index === 4 && typeof data.cell.raw === 'string' && data.cell.raw.includes('Pending')) {
+              data.cell.styles.textColor = [220, 38, 38];
+            }
+          }
+        },
+        margin: { left: 25, right: 25 },
+      });
+
+      return (doc as any).lastAutoTable.finalY + 20;
+    };
+
+    if (options.buildingFilter === 'Saifee') {
+      const saifeeList = filteredReservations.filter((r) => (r.building || '').toLowerCase().includes('saifee'));
+      renderTourManifestTable(`TOUR MANIFEST — SAIFEE HOTEL (70 ROOMS) — ${options.tourIdFilter && options.tourIdFilter !== 'ALL' ? `TOUR: ${options.tourIdFilter}` : 'ALL TOURS'}`, saifeeList, currentY);
+    } else if (options.buildingFilter === 'Burhani') {
+      const burhaniList = filteredReservations.filter((r) => (r.building || '').toLowerCase().includes('burhani'));
+      renderTourManifestTable(`TOUR MANIFEST — BURHANI HOTEL (44 ROOMS) — ${options.tourIdFilter && options.tourIdFilter !== 'ALL' ? `TOUR: ${options.tourIdFilter}` : 'ALL TOURS'}`, burhaniList, currentY);
+    } else {
+      // ALL HOTELS: JOINED & BIFURCATED WITH PAGE BREAKS
+      const saifeeList = filteredReservations.filter((r) => (r.building || '').toLowerCase().includes('saifee'));
+      const burhaniList = filteredReservations.filter((r) => (r.building || '').toLowerCase().includes('burhani'));
+      const unallottedList = filteredReservations.filter(
+        (r) => !r.building || (!r.building.toLowerCase().includes('saifee') && !r.building.toLowerCase().includes('burhani'))
+      );
+
+      // Part 1: Saifee Hotel
+      renderTourManifestTable(`PART 1: SAIFEE HOTEL — TOUR MANIFEST (${options.tourIdFilter && options.tourIdFilter !== 'ALL' ? `TOUR: ${options.tourIdFilter}` : 'ALL TOURS'})`, saifeeList, currentY);
+
+      // Page break for Part 2: Burhani Hotel
+      doc.addPage();
+      currentY = 40;
+      renderTourManifestTable(`PART 2: BURHANI HOTEL — TOUR MANIFEST (${options.tourIdFilter && options.tourIdFilter !== 'ALL' ? `TOUR: ${options.tourIdFilter}` : 'ALL TOURS'})`, burhaniList, currentY);
+
+      // If any unallotted zaereen exist, add Part 3 on clean page
+      if (unallottedList.length > 0) {
+        doc.addPage();
+        currentY = 40;
+        renderTourManifestTable('PART 3: UNALLOTTED ZAEREEN (PENDING HOTEL ROOM ALLOTMENT)', unallottedList, currentY);
+      }
+    }
   } else {
-    // All reservations / Tour manifest - BIFURCATED AS PER HOTELS (Prompt: "pdf should be bifurcated as per hotels. different buildings can be printed seperately and when joined it can be done too")
+    // All reservations manifest - BIFURCATED AS PER HOTELS (Includes Pax Names)
     const renderManifestTable = (hotelTitle: string, list: Reservation[], startAtY: number) => {
       // Sub-section hotel banner
       doc.setFillColor(18, 78, 57); // #124E39
@@ -373,34 +514,37 @@ export function generateAdministrativePdf(
       doc.setTextColor(255, 255, 255);
       doc.text(`Total Zaereen in Section: ${list.length}`, pageWidth - 160, startAtY + 16);
 
-      const tableBody = list.map((res) => [
-        res.tourRefNo || res.tourId || '',
-        res.family || res.familyNumber || res.familyNo || '',
-        res.officeName || '—',
-        `${res.paxCount || res.pax || res.totalGuests || 1} Pax`,
-        (res.arrivalDate || res.arrivalDateTime || '').replace('T', ' '),
-        res.entryPort || 'Najaf (NJF)',
-        (res.departureDate || res.departureDateTime || '').replace('T', ' '),
-        res.exitPort || 'Najaf (NJF)',
-        `${res.building || 'Unallotted'}\nRm ${res.roomNumber || '—'}`,
-      ]);
+      const tableBody = list.map((res, idx) => {
+        const paxDetails = `${res.applicantName || res.groupLeadName || '—'}${res.itsId ? `\n(ITS: ${res.itsId})` : ''}`;
+        return [
+          String(idx + 1),
+          res.tourRefNo || res.tourId || '',
+          res.family || res.familyNumber || res.familyNo || '',
+          paxDetails,
+          res.officeName || '—',
+          `${res.building || 'Unallotted'}\nRm ${res.roomNumber || '—'}`,
+          `${(res.arrivalDate || res.arrivalDateTime || '').slice(0, 10)}${res.arrivalTime ? ` (${res.arrivalTime})` : ''}`,
+          `${(res.departureDate || res.departureDateTime || '').slice(0, 10)}${res.departureTime ? ` (${res.departureTime})` : ''}`,
+          res.isSpecialGuest ? `★ SPECIAL\n${res.specialRemarks || ''}` : `${res.paxCount || res.pax || 1} Pax (${res.category || 'Std'})`,
+        ];
+      });
 
       autoTable(doc, {
         startY: startAtY + 28,
         head: [
           [
+            '#',
             'Tour Ref No.',
-            'Family No.',
+            'Family #',
+            'Pax / Zair Name (ITS ID)',
             'Office Name',
-            'Pax',
-            'Arrival Date & Time',
-            'Entry Port',
-            'Departure Date & Time',
-            'Exit Port',
             'Building & Room',
+            'Arrival Date & Time',
+            'Departure Date & Time',
+            'Pax / Category / Status',
           ],
         ],
-        body: tableBody.length > 0 ? tableBody : [['No zaereen records found for this hotel section', '', '', '', '', '', '', '', '']],
+        body: tableBody.length > 0 ? tableBody : [['', 'No zaereen records found for this hotel section', '', '', '', '', '', '', '']],
         theme: 'grid',
         headStyles: {
           fillColor: [15, 23, 42],
@@ -409,10 +553,29 @@ export function generateAdministrativePdf(
           fontSize: 8,
         },
         bodyStyles: {
-          fontSize: 8,
+          fontSize: 7.5,
           cellPadding: 4,
         },
-        margin: { left: 30, right: 30 },
+        columnStyles: {
+          0: { cellWidth: 20, halign: 'center' },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 45, halign: 'center' },
+          3: { cellWidth: 150, fontStyle: 'bold' },
+          4: { cellWidth: 100 },
+          5: { cellWidth: 80, fontStyle: 'bold' },
+          6: { cellWidth: 85 },
+          7: { cellWidth: 85 },
+          8: { cellWidth: 100 },
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body') {
+            if (data.column.index === 8 && typeof data.cell.raw === 'string' && data.cell.raw.includes('★')) {
+              data.cell.styles.textColor = [180, 83, 9];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        margin: { left: 25, right: 25 },
       });
 
       return (doc as any).lastAutoTable.finalY + 20;

@@ -32,7 +32,8 @@ import {
   UploadCloud,
   LogIn,
   LogOut,
-  Star
+  Star,
+  FileText
 } from 'lucide-react';
 import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -70,6 +71,8 @@ interface DashboardProps {
   onQuickSync?: () => void;
   isLiveBackendConnected?: boolean;
   onOpenAddBuildingRooms?: () => void;
+  onRefreshLiveComputerData?: () => Promise<void> | void;
+  onOpenPdfModal?: (reportType?: any, tourId?: string) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -96,6 +99,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onQuickSync,
   isLiveBackendConnected = true,
   onOpenAddBuildingRooms,
+  onRefreshLiveComputerData,
+  onOpenPdfModal,
 }) => {
   // Rooms View Mode: 'timeline' (Top Dates & Horizontal Rooms) vs 'buttons' (Compact Matrix)
   const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>('timeline');
@@ -105,6 +110,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [specialGuestModalTarget, setSpecialGuestModalTarget] = useState<Reservation | null>(null);
   const [specialGuestInitialScope, setSpecialGuestInitialScope] = useState<SpecialGuestScope>('guest');
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+
+  // Refresh Matrix state (refreshes all data on same computer without changing selectedDate)
+  const [isRefreshingMatrix, setIsRefreshingMatrix] = useState(false);
+  const handleRefreshMatrix = async () => {
+    setIsRefreshingMatrix(true);
+    try {
+      if (onRefreshLiveComputerData) {
+        await onRefreshLiveComputerData();
+      }
+    } finally {
+      setIsRefreshingMatrix(false);
+    }
+  };
 
   useEffect(() => {
     if (!toastFeedback) return;
@@ -118,9 +136,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
-    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
-    return list.length > 0 ? list.sort() : ['Saifee', 'Burhani'];
-  }, [rooms]);
+    const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
+    rooms.forEach((r) => { if (r.building && r.building.trim()) bSet.add(r.building.trim()); });
+    reservations.forEach((res) => { if (res.building && res.building.trim()) bSet.add(res.building.trim()); });
+    return Array.from(bSet).sort();
+  }, [rooms, reservations]);
 
   // Hotel selector: 'ALL' | building name
   const [selectedHotel, setSelectedHotel] = useState<string>('ALL');
@@ -1057,32 +1077,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
               })()}
             </div>
 
-            {/* Special Tour Action Button (Scope: Tour ID) */}
-            {(() => {
-              const tourMembers = reservations.filter((r) => r.tourRefNo === currentTourId);
-              const tourStarredCount = tourMembers.filter((r) => r.isSpecialGuest).length;
-              const hasSpecial = tourStarredCount > 0;
-              const firstMember = tourMembers[0];
-              if (!firstMember) return null;
-              return (
+            {/* Special Tour Action Button (Scope: Tour ID) & Tour Manifest Quick Button */}
+            <div className="flex items-center gap-2">
+              {onOpenPdfModal && currentTourId && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSpecialGuestModalTarget(firstMember);
-                    setSpecialGuestInitialScope('tour');
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
-                    hasSpecial
-                      ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
-                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300'
-                  }`}
-                  title={`Click to mark or edit special requirements for Tour ${currentTourId}`}
+                  onClick={() => onOpenPdfModal('tour_manifest', currentTourId)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border bg-[#124E39] text-[#EBD59E] hover:bg-[#0E3C2C] border-[#C5A059]/50 shadow-2xs"
+                  title={`Open Tour ID Specific Lodging Manifest for Tour ${currentTourId} (Search, Pax Names, Allotments & PDF)`}
                 >
-                  <Star className={`w-3.5 h-3.5 ${hasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
-                  <span>{hasSpecial ? `Tour Special (${tourStarredCount}/${tourMembers.length})` : 'Star Tour'}</span>
+                  <FileText className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Tour Manifest</span>
                 </button>
-              );
-            })()}
+              )}
+
+              {(() => {
+                const tourMembers = reservations.filter((r) => r.tourRefNo === currentTourId);
+                const tourStarredCount = tourMembers.filter((r) => r.isSpecialGuest).length;
+                const hasSpecial = tourStarredCount > 0;
+                const firstMember = tourMembers[0];
+                if (!firstMember) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpecialGuestModalTarget(firstMember);
+                      setSpecialGuestInitialScope('tour');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
+                      hasSpecial
+                        ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
+                        : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300'
+                    }`}
+                    title={`Click to mark or edit special requirements for Tour ${currentTourId}`}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${hasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
+                    <span>{hasSpecial ? `Tour Special (${tourStarredCount}/${tourMembers.length})` : 'Star Tour'}</span>
+                  </button>
+                );
+              })()}
+            </div>
           </div>
         )}
 
@@ -1103,6 +1137,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 famItem.departureDate,
                 rooms,
                 reservations.filter((r) => !memberIds.has(r.id))
+              );
+
+              // All rooms in the selected building for this family
+              const allRoomsInBuilding = rooms
+                .filter((r) => (r.building || '').trim().toLowerCase() === currentBuilding.trim().toLowerCase())
+                .sort((a, b) => {
+                  const floorDiff = a.floor - b.floor;
+                  if (floorDiff !== 0) return floorDiff;
+                  const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
+                  const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
+                  return numA !== numB ? numA - numB : a.roomNumber.localeCompare(b.roomNumber);
+                });
+
+              const vacantRoomNumbers = new Set(vacantRoomsForFam.map((r) => r.roomNumber));
+              const otherRoomsInBuilding = allRoomsInBuilding.filter(
+                (r) => !vacantRoomNumbers.has(r.roomNumber) && r.roomNumber !== currentRoom
               );
 
               const isExpanded = !!expandedFamilies[famItem.family];
@@ -1294,8 +1344,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       }}
                       className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2 py-1 text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer"
                     >
-                      <option value="Saifee">Saifee</option>
-                      <option value="Burhani">Burhani</option>
+                      {distinctBuildings.map((bldg) => (
+                        <option key={bldg} value={bldg}>
+                          {bldg}
+                        </option>
+                      ))}
                     </select>
 
                     <select
@@ -1307,22 +1360,51 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           [famItem.family]: { building: currentBuilding, roomNumber: newR },
                         }));
                       }}
-                      className="flex-1 min-w-[130px] bg-white border border-emerald-300 rounded-lg px-2 py-1 text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
+                      className="flex-1 min-w-[140px] bg-white border border-emerald-300 rounded-lg px-2 py-1 text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
                     >
-                      <option value="">-- Choose Vacant Room --</option>
+                      <option value="">-- Choose Room in {currentBuilding} --</option>
                       {currentRoom && (
                         <option value={currentRoom}>
                           Room {currentRoom} ({currentBuilding}) ✓ Current
                         </option>
                       )}
-                      {vacantRoomsForFam
-                        .filter((rm) => rm.roomNumber !== currentRoom)
-                        .map((rm) => (
-                          <option key={rm.id} value={rm.roomNumber}>
-                            Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity})
-                          </option>
-                        ))}
+                      {vacantRoomsForFam.length > 0 && (
+                        <optgroup label={`Vacant Rooms in ${currentBuilding} (${vacantRoomsForFam.length})`}>
+                          {vacantRoomsForFam
+                            .filter((rm) => rm.roomNumber !== currentRoom)
+                            .map((rm) => (
+                              <option key={rm.id} value={rm.roomNumber}>
+                                Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {otherRoomsInBuilding.length > 0 && (
+                        <optgroup label={`Other Rooms in ${currentBuilding} (${otherRoomsInBuilding.length})`}>
+                          {otherRoomsInBuilding.map((rm) => (
+                            <option key={rm.id} value={rm.roomNumber}>
+                              Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.status === 'blocked' ? ' • Blocked' : ''})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {allRoomsInBuilding.length === 0 && (
+                        <option value="" disabled>
+                          No rooms configured in {currentBuilding}
+                        </option>
+                      )}
                     </select>
+
+                    {allRoomsInBuilding.length === 0 && onOpenAddBuildingRooms && (
+                      <button
+                        type="button"
+                        onClick={onOpenAddBuildingRooms}
+                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold cursor-pointer"
+                        title={`Add rooms to ${currentBuilding}`}
+                      >
+                        + Add Rooms
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -1361,13 +1443,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                       <div className="space-y-1.5">
                         {famItem.members.map((m) => {
+                          const memberBuilding = m.building || 'Saifee';
                           const vacantForMember = getVacantRoomsForDuration(
-                            m.building || 'Saifee',
+                            memberBuilding,
                             m.arrivalDate,
                             m.departureDate,
                             rooms,
                             reservations,
                             m.id
+                          );
+                          const allRoomsForMember = rooms
+                            .filter((r) => (r.building || '').trim().toLowerCase() === memberBuilding.trim().toLowerCase())
+                            .sort((a, b) => {
+                              const floorDiff = a.floor - b.floor;
+                              if (floorDiff !== 0) return floorDiff;
+                              const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
+                              const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
+                              return numA !== numB ? numA - numB : a.roomNumber.localeCompare(b.roomNumber);
+                            });
+                          const memberVacantSet = new Set(vacantForMember.map((r) => r.roomNumber));
+                          const otherRoomsForMember = allRoomsForMember.filter(
+                            (r) => !memberVacantSet.has(r.roomNumber) && r.roomNumber !== m.roomNumber
                           );
                           return (
                             <div
@@ -1433,8 +1529,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   }}
                                   className="bg-white border border-stone-300 rounded px-1.5 py-0.5 text-xs font-bold text-[#124E39] cursor-pointer"
                                 >
-                                  <option value="Saifee">Saifee</option>
-                                  <option value="Burhani">Burhani</option>
+                                  {distinctBuildings.map((bldg) => (
+                                    <option key={bldg} value={bldg}>
+                                      {bldg}
+                                    </option>
+                                  ))}
                                 </select>
 
                                 <select
@@ -1442,19 +1541,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   onChange={(e) => {
                                     onAllotRoom(m.id, m.building || 'Saifee', e.target.value);
                                   }}
-                                  className="bg-white border border-stone-300 rounded px-2 py-0.5 text-xs font-bold text-stone-900 cursor-pointer"
+                                  className="bg-white border border-stone-300 rounded px-2 py-0.5 text-xs font-bold text-stone-900 cursor-pointer min-w-[120px]"
                                 >
                                   <option value="">-- No Room --</option>
                                   {m.roomNumber && (
-                                    <option value={m.roomNumber}>Rm {m.roomNumber} ✓</option>
+                                    <option value={m.roomNumber}>Rm {m.roomNumber} ({memberBuilding}) ✓ Current</option>
                                   )}
-                                  {vacantForMember
-                                    .filter((rm) => rm.roomNumber !== m.roomNumber)
-                                    .map((rm) => (
-                                      <option key={rm.id} value={rm.roomNumber}>
-                                        Rm {rm.roomNumber}
-                                      </option>
-                                    ))}
+                                  {vacantForMember.length > 0 && (
+                                    <optgroup label={`Vacant (${vacantForMember.length})`}>
+                                      {vacantForMember
+                                        .filter((rm) => rm.roomNumber !== m.roomNumber)
+                                        .map((rm) => (
+                                          <option key={rm.id} value={rm.roomNumber}>
+                                            Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity})
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  )}
+                                  {otherRoomsForMember.length > 0 && (
+                                    <optgroup label={`Other Rooms (${otherRoomsForMember.length})`}>
+                                      {otherRoomsForMember.map((rm) => (
+                                        <option key={rm.id} value={rm.roomNumber}>
+                                          Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.status === 'blocked' ? ' • Blocked' : ''})
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  {allRoomsForMember.length === 0 && (
+                                    <option value="" disabled>No rooms in {memberBuilding}</option>
+                                  )}
                                 </select>
 
                                 {onDeleteReservation && (
@@ -1566,6 +1681,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           userRole={userRole}
           onOpenReceptionSlip={onOpenReceptionSlip}
           onOpenQuickAllotModal={onOpenQuickAllotModal}
+          onOpenAddBuildingRooms={onOpenAddBuildingRooms}
+          onRefreshLiveComputerData={onRefreshLiveComputerData}
         />
       )}
 
@@ -1590,6 +1707,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 text-xs">
+            {/* Refresh Matrix Button (Takes all data fed in the same computer without changing selectedDate) */}
+            <button
+              type="button"
+              onClick={handleRefreshMatrix}
+              disabled={isRefreshingMatrix}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF7F2] hover:bg-emerald-50 text-[#124E39] border border-[#124E39]/30 hover:border-[#124E39] rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+              title="Refresh Compact Matrix: Pulls all room allocations & zaereen fed on this computer without changing the selected date"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#124E39] ${isRefreshingMatrix ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingMatrix ? 'Refreshing...' : 'Refresh Matrix'}</span>
+            </button>
+
             {/* Date Picker Control */}
             <div className="flex items-center gap-1.5 bg-[#FAF7F2] border border-[#E6DFD5] rounded-lg px-2.5 py-1.5 shadow-2xs">
               <Calendar className="w-3.5 h-3.5 text-[#124E39]" />

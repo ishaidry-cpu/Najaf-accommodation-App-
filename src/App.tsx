@@ -71,6 +71,10 @@ import {
   deduplicateReservationList, 
   isDuplicateReservation 
 } from './utils/deduplication';
+import { 
+  broadcastLiveSync, 
+  subscribeToMultiWindowSync 
+} from './utils/multiWindowSync';
 
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
@@ -83,6 +87,7 @@ import { AccountsRequestSlipModal } from './components/AccountsRequestSlipModal'
 import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
 import { GoogleSheetCategoriesModal } from './components/GoogleSheetCategoriesModal';
 import { PdfExportModal } from './components/PdfExportModal';
+import { PdfExportOptions } from './services/pdfExport';
 import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
 import { AddZaerModal } from './components/AddZaerModal';
@@ -145,6 +150,17 @@ export default function App() {
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfModalInitialReportType, setPdfModalInitialReportType] = useState<PdfExportOptions['reportType']>('all_reservations');
+  const [pdfModalInitialTourId, setPdfModalInitialTourId] = useState<string>('ALL');
+
+  const handleOpenPdfModal = (
+    reportType: PdfExportOptions['reportType'] = 'all_reservations',
+    tourId: string = 'ALL'
+  ) => {
+    setPdfModalInitialReportType(reportType);
+    setPdfModalInitialTourId(tourId);
+    setIsPdfModalOpen(true);
+  };
   const [isAddZaerOpen, setIsAddZaerOpen] = useState(false);
   const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
   const [isAddBuildingRoomsOpen, setIsAddBuildingRoomsOpen] = useState(false);
@@ -207,71 +223,83 @@ export default function App() {
     );
   };
 
-  // Load persistent backend data on startup with local fallback
-  useEffect(() => {
-    async function loadData() {
-      // 1. Initial immediate hydrate from local storage
-      const localRooms = getStoredRooms();
-      const localReservations = getStoredReservations();
-      const localSheetsConfig = getStoredSheetsConfig();
-      const localCategories = getStoredCategories();
+  // User Requirement: "when refeshed it should take all the data which is fed in the same computer"
+  // And "in compact button matrix I want to add live change when multiple windows are open."
+  const handleRefreshLiveComputerData = useCallback(async (showFeedback = true) => {
+    // 1. Initial immediate hydrate from local storage
+    const localRooms = getStoredRooms();
+    const localReservations = getStoredReservations();
+    const localSheetsConfig = getStoredSheetsConfig();
+    const localCategories = getStoredCategories();
 
-      setRooms(localRooms);
-      setReservations(localReservations);
-      setSheetsConfig(localSheetsConfig);
-      setCategories(localCategories);
+    setRooms(localRooms);
+    setReservations(localReservations);
+    setSheetsConfig(localSheetsConfig);
+    setCategories(localCategories);
 
-      // 2. Query live server backend
-      try {
-        const health = await checkBackendHealth();
-        if (health) {
-          setIsLiveBackendConnected(true);
-          const [backendRes, backendRooms, backendSettings] = await Promise.all([
-            fetchBackendReservations(),
-            fetchBackendRooms(),
-            fetchBackendSettings(),
-          ]);
+    // 2. Query live server backend for latest data fed across windows
+    try {
+      const health = await checkBackendHealth();
+      if (health) {
+        setIsLiveBackendConnected(true);
+        const [backendRes, backendRooms, backendSettings] = await Promise.all([
+          fetchBackendReservations(),
+          fetchBackendRooms(),
+          fetchBackendSettings(),
+        ]);
 
-          if (backendRes && Array.isArray(backendRes)) {
-            setReservations(backendRes);
-            saveReservations(backendRes);
-          } else if (localReservations.length > 0) {
-            saveBackendReservations(localReservations);
+        if (backendRes && Array.isArray(backendRes)) {
+          setReservations(backendRes);
+          saveReservations(backendRes);
+        } else if (localReservations.length > 0) {
+          saveBackendReservations(localReservations);
+        }
+
+        if (backendRooms && Array.isArray(backendRooms)) {
+          setRooms(backendRooms);
+          saveRooms(backendRooms);
+        } else if (localRooms.length > 0) {
+          saveBackendRooms(localRooms);
+        }
+
+        if (backendSettings) {
+          if (backendSettings.sheetsConfig) {
+            setSheetsConfig(backendSettings.sheetsConfig);
+            saveSheetsConfig(backendSettings.sheetsConfig);
           }
-
-          if (backendRooms && Array.isArray(backendRooms)) {
-            setRooms(backendRooms);
-            saveRooms(backendRooms);
-          } else if (localRooms.length > 0) {
-            saveBackendRooms(localRooms);
-          }
-
-          if (backendSettings) {
-            if (backendSettings.sheetsConfig) {
-              setSheetsConfig(backendSettings.sheetsConfig);
-              saveSheetsConfig(backendSettings.sheetsConfig);
-            }
-            if (backendSettings.categories) {
-              setCategories(backendSettings.categories);
-              saveStoredCategories(backendSettings.categories);
-            }
-            if (backendSettings.userRole) {
-              setUserRole(backendSettings.userRole);
-              saveStoredUserRole(backendSettings.userRole);
-            }
-            if (backendSettings.adminPin) {
-              setAdminPin(backendSettings.adminPin);
-              saveStoredAdminPin(backendSettings.adminPin);
-            }
+          if (backendSettings.categories) {
+            setCategories(backendSettings.categories);
+            saveStoredCategories(backendSettings.categories);
           }
         }
-      } catch (err) {
-        console.warn('Backend sync initialized from local cache:', err);
+      }
+      if (showFeedback) {
+        showToast('✓ Successfully refreshed all latest accommodation & zaereen data on this computer.');
+      }
+    } catch (err) {
+      console.warn('Backend sync refreshed from local cache:', err);
+      if (showFeedback) {
+        showToast('Refreshed data from computer cache.', 'info');
       }
     }
-
-    loadData();
   }, []);
+
+  // Initial data load on mount
+  useEffect(() => {
+    handleRefreshLiveComputerData(false);
+  }, [handleRefreshLiveComputerData]);
+
+  // Live Multi-Window synchronization listener (BroadcastChannel + Window Storage + SSE)
+  // When another open window on this computer makes any allotment or data change, silently refresh
+  useEffect(() => {
+    const unsubscribe = subscribeToMultiWindowSync(() => {
+      handleRefreshLiveComputerData(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [handleRefreshLiveComputerData]);
 
   // Initialize Firebase Auth listener
   // User Requirement:
@@ -579,6 +607,7 @@ export default function App() {
     upsertBackendReservation(newReservation);
     showToast(`Added Zair record for ${newReservation.applicantName}`);
     triggerAutoSync(updated, rooms);
+    broadcastLiveSync({ type: 'RESERVATION_ADDED', reservationId: newReservation.id });
     return true;
   };
 
@@ -613,6 +642,7 @@ export default function App() {
       );
     }
     triggerAutoSync(finalReservations, rooms);
+    broadcastLiveSync({ type: 'TOUR_BATCH_ADDED', tourId });
     return true;
   };
 
@@ -628,6 +658,7 @@ export default function App() {
       return updated;
     });
     upsertBackendReservation(updatedReservation);
+    broadcastLiveSync({ type: 'RESERVATION_UPDATED', reservationId: updatedReservation.id });
   };
 
   // Batch Update Reservations
@@ -642,6 +673,7 @@ export default function App() {
       return updated;
     });
     updatedList.forEach((r) => upsertBackendReservation(r));
+    broadcastLiveSync({ type: 'RESERVATIONS_BATCH_UPDATED', count: updatedList.length });
   };
 
   // Helper: check if a reservation is a B to A record
@@ -674,6 +706,7 @@ export default function App() {
     deleteBackendReservation(id);
     showToast(`Deleted zaer record for ${target.applicantName} (${target.itsId || target.tourRefNo})`);
     triggerAutoSync(updated, rooms);
+    broadcastLiveSync({ type: 'RESERVATION_DELETED', reservationId: id });
   };
 
   // Delete Multiple Reservations (Batch) - Protected: B to A records require Admin role
@@ -698,6 +731,7 @@ export default function App() {
     batchDeleteBackendReservations(ids);
     showToast(`Deleted ${count} zaer record${count > 1 ? 's' : ''}`);
     triggerAutoSync(updated, rooms);
+    broadcastLiveSync({ type: 'RESERVATIONS_BATCH_DELETED', count });
   };
 
   // Toggle Money Given for accounts
@@ -1052,6 +1086,7 @@ export default function App() {
     saveBackendReservations(finalReservations);
     showToast(feedbackToast);
     triggerAutoSync(finalReservations, rooms);
+    broadcastLiveSync({ type: 'EXCEL_IMPORTED', count: finalReservations.length });
     setActiveTab('reservations');
     // Prompt to sync document with Google Sheet after uploading Excel
     setAfterExcelSyncPrompt({ count: finalReservations.length });
@@ -1064,6 +1099,7 @@ export default function App() {
     saveRooms(updatedRooms);
     updateBackendRoom(roomId, { status });
     triggerAutoSync(reservations, updatedRooms);
+    broadcastLiveSync({ type: 'ROOM_STATUS_UPDATED', roomId, status });
   };
 
   const handleUpdateRoomDetails = (updatedRoom: Room) => {
@@ -1072,6 +1108,7 @@ export default function App() {
     saveRooms(updatedRooms);
     updateBackendRoom(updatedRoom.id, updatedRoom);
     triggerAutoSync(reservations, updatedRooms);
+    broadcastLiveSync({ type: 'ROOM_DETAILS_UPDATED', roomId: updatedRoom.id });
   };
 
   const handleResetToSaifeeBurhaniRooms = () => {
@@ -1082,6 +1119,7 @@ export default function App() {
       resetBackendRooms();
       showToast('Restored official 114 rooms across Burhani (44) and Saifee (70).');
       triggerAutoSync(reservations, freshRooms);
+      broadcastLiveSync({ type: 'ROOMS_RESET_114' });
     }
   };
 
@@ -1108,6 +1146,7 @@ export default function App() {
     saveRooms(finalRooms);
     saveBackendRooms(finalRooms);
     triggerAutoSync(reservations, finalRooms);
+    broadcastLiveSync({ type: 'ROOMS_ADDED', count: newRoomsToAdd.length });
 
     const distinctNewBuildings = Array.from(new Set(newRoomsToAdd.map((r) => r.building)));
     showToast(
@@ -1121,6 +1160,7 @@ export default function App() {
     saveRooms(updated);
     saveBackendRooms(updated);
     triggerAutoSync(reservations, updated);
+    broadcastLiveSync({ type: 'ROOM_DELETED', roomId });
     showToast('Room removed from inventory.');
   };
 
@@ -1136,7 +1176,7 @@ export default function App() {
         onOpenRoleModal={() => setIsRoleModalOpen(true)}
         onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
         onOpenGoogleSheet={handleOpenGoogleSheet}
-        onOpenPdfModal={() => setIsPdfModalOpen(true)}
+        onOpenPdfModal={handleOpenPdfModal}
         onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
         onOpenReceptionSlip={handleOpenReceptionSlip}
         onGoogleSignIn={handleGoogleSignIn}
@@ -1182,10 +1222,12 @@ export default function App() {
             onOpenGoogleSheet={handleOpenGoogleSheet}
             onQuickSync={handleQuickSync}
             isLiveBackendConnected={isLiveBackendConnected}
+            onRefreshLiveComputerData={() => handleRefreshLiveComputerData(true)}
             onOpenAddBuildingRooms={() => {
               setAddBuildingRoomsInitialTab('manual');
               setIsAddBuildingRoomsOpen(true);
             }}
+            onOpenPdfModal={handleOpenPdfModal}
           />
         )}
 
@@ -1361,6 +1403,8 @@ export default function App() {
         onClose={() => setIsPdfModalOpen(false)}
         reservations={reservations}
         rooms={rooms}
+        initialReportType={pdfModalInitialReportType}
+        initialTourId={pdfModalInitialTourId}
       />
 
       {/* Role Management Modal (Admin PIN vs Receptionist View-Only) */}

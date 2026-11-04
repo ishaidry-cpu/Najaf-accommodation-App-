@@ -45,10 +45,18 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   onBatchAllotFamily,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [hotelFilter, setHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
+  const [hotelFilter, setHotelFilter] = useState<string>('ALL');
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
   const [amenityFilter, setAmenityFilter] = useState<'ALL' | 'western' | 'indian' | 'double' | 'single'>('ALL');
   const [allotMode, setAllotMode] = useState<'single' | 'family'>('single');
+
+  // Dynamic distinct buildings list
+  const distinctBuildings = useMemo(() => {
+    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
+    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
+    reservations.forEach((res) => { if (res.building) set.add(res.building.trim()); });
+    return Array.from(set).sort();
+  }, [rooms, reservations]);
 
   if (!isOpen || !targetReservation) return null;
 
@@ -392,34 +400,33 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
             </div>
 
             {/* Hotel Filter Tabs */}
-            <div className="sm:col-span-4 flex items-center bg-stone-200/70 p-0.5 rounded-xl text-xs font-semibold">
+            <div className="sm:col-span-5 flex items-center bg-stone-200/70 p-0.5 rounded-xl text-xs font-semibold overflow-x-auto gap-0.5">
               <button
                 type="button"
                 onClick={() => setHotelFilter('ALL')}
-                className={`flex-1 py-1 text-center rounded-lg transition ${
+                className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
                   hotelFilter === 'ALL' ? 'bg-white text-[#124E39] shadow-xs font-bold' : 'text-stone-600'
                 }`}
               >
-                All (114)
+                All ({rooms.length})
               </button>
-              <button
-                type="button"
-                onClick={() => setHotelFilter('Saifee')}
-                className={`flex-1 py-1 text-center rounded-lg transition ${
-                  hotelFilter === 'Saifee' ? 'bg-white text-[#124E39] shadow-xs font-bold' : 'text-stone-600'
-                }`}
-              >
-                Saifee (70)
-              </button>
-              <button
-                type="button"
-                onClick={() => setHotelFilter('Burhani')}
-                className={`flex-1 py-1 text-center rounded-lg transition ${
-                  hotelFilter === 'Burhani' ? 'bg-white text-[#124E39] shadow-xs font-bold' : 'text-stone-600'
-                }`}
-              >
-                Burhani (44)
-              </button>
+              {distinctBuildings.map((bldg) => {
+                const bCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                return (
+                  <button
+                    key={bldg}
+                    type="button"
+                    onClick={() => setHotelFilter(bldg)}
+                    className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
+                      hotelFilter.toLowerCase() === bldg.toLowerCase()
+                        ? 'bg-white text-[#124E39] shadow-xs font-bold'
+                        : 'text-stone-600'
+                    }`}
+                  >
+                    {bldg} ({bCount})
+                  </button>
+                );
+              })}
             </div>
 
             {/* Floor selector */}

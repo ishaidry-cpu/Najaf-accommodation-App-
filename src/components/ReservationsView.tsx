@@ -225,10 +225,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
   // Distinct buildings from rooms and reservations
   const distinctBuildings = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
     rooms.forEach((r) => { if (r.building) set.add(r.building); });
     reservations.forEach((r) => { if (r.building) set.add(r.building); });
-    return Array.from(set).length > 0 ? Array.from(set).sort() : ['Saifee', 'Burhani'];
+    return Array.from(set).sort();
   }, [rooms, reservations]);
 
   // Distinct families for selected batch Tour ID

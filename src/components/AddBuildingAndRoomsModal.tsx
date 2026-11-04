@@ -55,7 +55,9 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   // Existing distinct building names
   const existingBuildingNames = useMemo(() => {
     const list = Array.from(new Set(existingRooms.map((r) => r.building).filter(Boolean)));
-    return list.length > 0 ? list : ['Saifee', 'Burhani'];
+    const defaults = ['Saifee', 'Burhani', 'Badri'];
+    const combined = Array.from(new Set([...defaults, ...list]));
+    return combined.sort();
   }, [existingRooms]);
 
   // ==========================================
