@@ -87,7 +87,51 @@ export function generateAdministrativePdf(
   let currentY = 90;
 
   // Summary Metrics Banner
-  if (options.reportType !== 'rooms_inventory') {
+  if (options.reportType === 'tour_manifest') {
+    // User requirement: in "Tour Manifest" remove all monetory categories TOTAL BILLED, COLLECTED & BALANCE OUTSTANDING
+    const totalRecords = filteredReservations.length;
+    const totalZaereen = filteredReservations.reduce((sum, r) => sum + (r.totalGuests || r.paxCount || 1), 0);
+    const uniqueFamiliesCount = new Set(filteredReservations.map((r) => (r.family || '').trim()).filter(Boolean)).size;
+    const allottedCount = filteredReservations.filter((r) => r.roomNumber && r.roomNumber.trim()).length;
+    const unallottedCount = filteredReservations.filter((r) => !r.roomNumber || !r.roomNumber.trim()).length;
+    const specialGuestsCount = filteredReservations.filter((r) => r.isSpecialGuest).length;
+
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(40, currentY, pageWidth - 80, 44, 4, 4, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, currentY, pageWidth - 80, 44, 4, 4, 'S');
+
+    const colWidth = (pageWidth - 80) / 6;
+    const statCards: { label: string; val: string; highlight?: boolean; color?: number[] }[] = [
+      { label: 'TOTAL ZAEREEN', val: `${totalZaereen} Pax` },
+      { label: 'TOTAL FAMILIES', val: `${uniqueFamiliesCount} Fam` },
+      { label: 'ROOMS ALLOTTED', val: `${allottedCount} Allotted`, color: [22, 101, 52] },
+      { label: 'PENDING ALLOTMENT', val: `${unallottedCount} Pending`, highlight: unallottedCount > 0 },
+      { label: 'SPECIAL GUESTS', val: specialGuestsCount > 0 ? `★ ${specialGuestsCount} Special` : '0 Special', color: specialGuestsCount > 0 ? [180, 83, 9] : undefined },
+      { label: 'HOTEL PRINT MODE', val: options.buildingFilter === 'ALL' ? 'Both (Saifee & Burhani)' : `${options.buildingFilter} Hotel` },
+    ];
+
+    statCards.forEach((stat, idx) => {
+      const x = 40 + idx * colWidth + 12;
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text(stat.label, x, currentY + 16);
+
+      doc.setFontSize(10.5);
+      doc.setFont('helvetica', 'bold');
+      if (stat.highlight) {
+        doc.setTextColor(220, 38, 38); // red-600
+      } else if (stat.color) {
+        doc.setTextColor(stat.color[0], stat.color[1], stat.color[2]);
+      } else {
+        doc.setTextColor(15, 23, 42);
+      }
+      doc.text(stat.val, x, currentY + 34);
+    });
+
+    currentY += 56;
+  } else if (options.reportType === 'category_upgrades') {
     const totalRecords = filteredReservations.length;
     const totalZaereen = filteredReservations.reduce((sum, r) => sum + (r.totalGuests || r.paxCount || 1), 0);
     const upgradedCount = filteredReservations.filter((r) => r.isUpgradedFromBToA || r.category === 'B to A').length;
@@ -121,6 +165,49 @@ export function generateAdministrativePdf(
       doc.setFont('helvetica', 'bold');
       if (stat.highlight) {
         doc.setTextColor(220, 38, 38); // red-600
+      } else {
+        doc.setTextColor(15, 23, 42);
+      }
+      doc.text(stat.val, x, currentY + 34);
+    });
+
+    currentY += 56;
+  } else if (options.reportType === 'all_reservations') {
+    const totalRecords = filteredReservations.length;
+    const totalZaereen = filteredReservations.reduce((sum, r) => sum + (r.totalGuests || r.paxCount || 1), 0);
+    const uniqueFamiliesCount = new Set(filteredReservations.map((r) => (r.family || '').trim()).filter(Boolean)).size;
+    const allottedCount = filteredReservations.filter((r) => r.roomNumber && r.roomNumber.trim()).length;
+    const unallottedCount = filteredReservations.filter((r) => !r.roomNumber || !r.roomNumber.trim()).length;
+    const specialGuestsCount = filteredReservations.filter((r) => r.isSpecialGuest).length;
+
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(40, currentY, pageWidth - 80, 44, 4, 4, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(40, currentY, pageWidth - 80, 44, 4, 4, 'S');
+
+    const colWidth = (pageWidth - 80) / 6;
+    const statCards: { label: string; val: string; highlight?: boolean; color?: number[] }[] = [
+      { label: 'TOTAL ZAEREEN', val: `${totalZaereen} Pax` },
+      { label: 'TOTAL FAMILIES', val: `${uniqueFamiliesCount} Fam` },
+      { label: 'ROOMS ALLOTTED', val: `${allottedCount} Rooms`, color: [22, 101, 52] },
+      { label: 'PENDING ALLOTMENT', val: `${unallottedCount} Pending`, highlight: unallottedCount > 0 },
+      { label: 'SPECIAL GUESTS', val: specialGuestsCount > 0 ? `★ ${specialGuestsCount}` : '0', color: specialGuestsCount > 0 ? [180, 83, 9] : undefined },
+      { label: 'BUILDING MODE', val: options.buildingFilter === 'ALL' ? 'Both Hotels' : `${options.buildingFilter} Hotel` },
+    ];
+
+    statCards.forEach((stat, idx) => {
+      const x = 40 + idx * colWidth + 12;
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text(stat.label, x, currentY + 16);
+
+      doc.setFontSize(10.5);
+      doc.setFont('helvetica', 'bold');
+      if (stat.highlight) {
+        doc.setTextColor(220, 38, 38);
+      } else if (stat.color) {
+        doc.setTextColor(stat.color[0], stat.color[1], stat.color[2]);
       } else {
         doc.setTextColor(15, 23, 42);
       }
@@ -626,9 +713,14 @@ export function generateAdministrativePdf(
     doc.setTextColor(100, 116, 139);
     doc.text('Prepared by: Accommodation Desk Officer', 50, signY + 30);
 
-    // Signature Box 2: Finance & Balance Audited
+    // Signature Box 2: Verification (Non-monetary for Tour Manifest)
+    const box2Text = options.reportType === 'tour_manifest'
+      ? 'Tour Coordinator / Rooming Verified'
+      : options.reportType === 'category_upgrades'
+      ? 'Financial Balance Audited & Verified'
+      : 'Reception & Allotment Verified';
     doc.line(pageWidth / 2 - 75, signY + 20, pageWidth / 2 + 75, signY + 20);
-    doc.text('Financial Balance Audited & Verified', pageWidth / 2 - 75, signY + 30);
+    doc.text(box2Text, pageWidth / 2 - 75, signY + 30);
 
     // Signature Box 3: Approved Director
     doc.line(pageWidth - 200, signY + 20, pageWidth - 50, signY + 20);
