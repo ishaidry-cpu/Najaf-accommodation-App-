@@ -1709,6 +1709,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                               res.isSpecialGuest ? 'text-amber-950 font-black' : 'text-stone-950'
                             }`}
                           />
+                          {res.idara && res.idara.trim() && res.idara.trim() !== '—' && res.idara.toLowerCase() !== 'n/a' && (
+                            <span 
+                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs"
+                              title={`Idara: ${res.idara}`}
+                            >
+                              🏢 {res.idara}
+                            </span>
+                          )}
                           {isShiftedToA && (
                             <span 
                               className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 shadow-2xs"

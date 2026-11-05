@@ -55,7 +55,8 @@ import {
 import { 
   initAuth, 
   googleSignIn, 
-  logout 
+  logout,
+  getSessionRemainingMs
 } from './services/firebaseAuth';
 import { 
   syncAllToGoogleSheet, 
@@ -416,6 +417,131 @@ export default function App() {
     [accessToken, sheetsConfig, userRole, showToast]
   );
 
+  // Pull rooms & reservations from linked sheet (Accessible by Receptionist & Admin)
+  // User Requirement: "so when pulled by receptionist it updates the blocked/unblock rooms too"
+  const handlePullFromGoogleSheet = useCallback(
+    async (showFeedback: boolean = false) => {
+      if (!sheetsConfig.spreadsheetId) return;
+
+      try {
+        setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
+        const [freshRooms, freshRes] = await Promise.all([
+          fetchRoomsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms),
+          fetchReservationsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms, reservations),
+        ]);
+
+        if (freshRooms && freshRooms.length > 0) {
+          setRooms(freshRooms);
+          saveRooms(freshRooms);
+          saveBackendRooms(freshRooms);
+        }
+
+        if (freshRes && freshRes.length > 0) {
+          const uniqueRes = deduplicateReservationList(freshRes);
+          setReservations(uniqueRes);
+          saveReservations(uniqueRes);
+          saveBackendReservations(uniqueRes);
+        }
+
+        broadcastLiveSync({ type: 'PULL_COMPLETED' });
+
+        const updated: GoogleSheetsConfig = {
+          ...sheetsConfig,
+          lastSyncedAt: new Date().toISOString(),
+          isSyncing: false,
+          syncError: null,
+        };
+        setSheetsConfig(updated);
+        saveSheetsConfig(updated);
+
+        if (showFeedback) {
+          showToast(
+            `✓ Successfully pulled from Google Sheet! Synchronized ${freshRooms.length} rooms (with blocked/unblocked status) and ${freshRes.length} zaereen.`
+          );
+        }
+      } catch (err: any) {
+        console.warn('Google Sheet pull error:', err);
+        setSheetsConfig((prev) => ({
+          ...prev,
+          isSyncing: false,
+          syncError: err.message || 'Pull failed',
+        }));
+        if (showFeedback) {
+          showToast(err.message || 'Failed to pull from Google Sheet', 'error');
+        }
+      }
+    },
+    [accessToken, sheetsConfig, rooms, reservations, showToast]
+  );
+
+  // Logout Handler
+  const handleGoogleLogout = useCallback(async () => {
+    try {
+      await logout();
+      setUser(null);
+      setAccessToken(null);
+      setUserRole('receptionist');
+      saveStoredUserRole('receptionist');
+      showToast('Signed out of Google. Switched to Receptionist view.', 'info');
+    } catch (err) {
+      console.error('Logout error', err);
+    }
+  }, [showToast]);
+
+  // 1-Hour Session & Recurring Auto Push/Pull Lifecycle:
+  // User Requirement:
+  // "2: Receptionist should have live update. the admin should push after every one hour and receptionist view should pull after every one hour. (manual push and pull should be intact as logic given before)
+  //  3: keep signed in for 1 hour without need to log in again and after 1 hr logout automatically and before that push if admin and pull if receptionist view"
+  useEffect(() => {
+    const ONE_HOUR = 60 * 60 * 1000;
+
+    // Hourly Interval for Auto-Push (Admin) and Auto-Pull (Receptionist)
+    const hourlySyncInterval = setInterval(async () => {
+      if (userRole === 'admin') {
+        if (accessToken && sheetsConfig.spreadsheetId) {
+          try {
+            await triggerAutoSync(reservations, rooms, true);
+            showToast('⏰ Hourly Admin Push: Pushed latest Zaereen and blocked/unblocked room details to Google Sheet.', 'info');
+          } catch (e) {
+            console.warn('Hourly auto-push error:', e);
+          }
+        }
+      } else {
+        // Receptionist view pulls after every 1 hour
+        if (sheetsConfig.spreadsheetId) {
+          await handlePullFromGoogleSheet(true);
+        }
+      }
+    }, ONE_HOUR);
+
+    // Session Timeout Checker (Every 30 seconds):
+    // Keeps signed in for 1 hour without needing to re-login.
+    // When 1 hour expires, pushes if admin / pulls if receptionist, and automatically logs out.
+    const sessionTimer = setInterval(async () => {
+      if (user) {
+        const remaining = getSessionRemainingMs();
+        if (remaining <= 0) {
+          try {
+            if (userRole === 'admin' && accessToken && sheetsConfig.spreadsheetId) {
+              await syncAllToGoogleSheet(accessToken, sheetsConfig.spreadsheetId, reservations, rooms);
+            } else if (sheetsConfig.spreadsheetId) {
+              await handlePullFromGoogleSheet(false);
+            }
+          } catch (e) {
+            console.warn('Pre-logout auto-sync error:', e);
+          }
+          await handleGoogleLogout();
+          showToast('🔒 1-hour session expired. Final sync executed to Google Sheet and automatically signed out.', 'info');
+        }
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(hourlySyncInterval);
+      clearInterval(sessionTimer);
+    };
+  }, [user, userRole, accessToken, sheetsConfig, reservations, rooms, triggerAutoSync, handlePullFromGoogleSheet, handleGoogleLogout, showToast]);
+
   // Sign In Handler
   const handleGoogleSignIn = async () => {
     setIsLoggingIn(true);
@@ -443,20 +569,6 @@ export default function App() {
       showToast(err.message || 'Sign in failed. Please try again.', 'error');
     } finally {
       setIsLoggingIn(false);
-    }
-  };
-
-  // Logout Handler
-  const handleGoogleLogout = async () => {
-    try {
-      await logout();
-      setUser(null);
-      setAccessToken(null);
-      setUserRole('receptionist');
-      saveStoredUserRole('receptionist');
-      showToast('Signed out of Google. Switched to Receptionist view.', 'info');
-    } catch (err) {
-      console.error('Logout error', err);
     }
   };
 
@@ -1366,7 +1478,9 @@ export default function App() {
         onRoomsFetched={(newRooms) => {
           setRooms(newRooms);
           saveRooms(newRooms);
-          showToast(`Imported ${newRooms.length} rooms from Google Sheet!`);
+          saveBackendRooms(newRooms);
+          broadcastLiveSync({ type: 'ROOMS_UPDATED' });
+          showToast(`Imported ${newRooms.length} rooms from Google Sheet! (Blocked & unblocked rooms synchronized)`);
         }}
         onReservationsFetched={(newRes) => {
           const uniqueRes = deduplicateReservationList(newRes);

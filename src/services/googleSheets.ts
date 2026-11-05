@@ -431,7 +431,7 @@ export function generateTimelineRows(
 
 /**
  * Generates rows matching EXACTLY the "Zaereen Lodging & Room Allotment Grid"
- * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | SPECIAL GUEST | SPECIAL REMARKS | MAIN PORTAL | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | IDARA | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | SPECIAL GUEST | SPECIAL REMARKS | MAIN PORTAL | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
  */
 export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
   const headers = [
@@ -440,6 +440,7 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'NAME',
     'AGE',
     'FAMILY',
+    'IDARA',
     'OFFICE NAME',
     'TOUR ID',
     'BUILDING',
@@ -457,28 +458,38 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'LAST UPDATED',
   ];
 
-  const rows = reservations.map((r, index) => [
-    index + 1,
-    r.itsId || '',
-    r.applicantName || r.groupLeadName || '',
-    r.age ?? '',
-    r.family || r.familyNumber || '',
-    r.officeName || '',
-    r.tourRefNo || r.tourId || '',
-    r.building || '',
-    r.roomNumber || '',
-    r.gender || 'Male',
-    r.groupLeadName || r.applicantName || '',
-    (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
-    (r.departureDate || r.departureDateTime || '').slice(0, 10),
-    r.category || 'Mumineen',
-    r.isSpecialGuest ? '⭐ YES' : 'NO',
-    r.specialRemarks || '',
-    r.isUploadedToPortal ? 'Uploaded' : 'Pending',
-    r.requestSlipNo || '',
-    r.paxCount || r.pax || 1,
-    new Date(r.updatedAt || Date.now()).toLocaleString(),
-  ]);
+  const rows = reservations.map((r, index) => {
+    const hasIdara = !!(r.idara && r.idara.trim() && r.idara.trim() !== '—' && r.idara.trim().toLowerCase() !== 'n/a');
+    const isSpecial = r.isSpecialGuest || hasIdara;
+    let remarks = r.specialRemarks || '';
+    if (hasIdara && !remarks.includes(`[Idara: ${r.idara}]`) && !remarks.includes(r.idara)) {
+      remarks = remarks ? `[Idara: ${r.idara}] ${remarks}` : `[Idara: ${r.idara}]`;
+    }
+
+    return [
+      index + 1,
+      r.itsId || '',
+      r.applicantName || r.groupLeadName || '',
+      r.age ?? '',
+      r.family || r.familyNumber || '',
+      r.idara || '',
+      r.officeName || '',
+      r.tourRefNo || r.tourId || '',
+      r.building || '',
+      r.roomNumber || '',
+      r.gender || 'Male',
+      r.groupLeadName || r.applicantName || '',
+      (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
+      (r.departureDate || r.departureDateTime || '').slice(0, 10),
+      r.category || 'Mumineen',
+      isSpecial ? '⭐ YES' : 'NO',
+      remarks,
+      r.isUploadedToPortal ? 'Uploaded' : 'Pending',
+      r.requestSlipNo || '',
+      r.paxCount || r.pax || 1,
+      new Date(r.updatedAt || Date.now()).toLocaleString(),
+    ];
+  });
 
   return { headers, rows };
 }
@@ -509,6 +520,8 @@ export async function syncAllToGoogleSheet(
     const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(uniqueReservations);
 
     // 2. Prepare Rooms Header and Rows
+    // User requirement: "When sheet pushed by admin it should also push Block room details so when pulled by receptionist it updates the blocked/unblock rooms too"
+    // User requirement: "the capacity from Capacity (Beds) colum and buffer from Amenities column and should display as it displays now example 2+1 or 3+1 or 4+1"
     const roomHeaders = [
       'Building',
       'Room Number',
@@ -522,18 +535,25 @@ export async function syncAllToGoogleSheet(
       'Notes',
     ];
 
-    const roomRows = rooms.map((rm) => [
-      rm.building,
-      rm.roomNumber,
-      rm.floor,
-      rm.capacity,
-      rm.category,
-      rm.status.toUpperCase(),
-      rm.blockedReason || (rm.status === 'blocked' ? 'Blocked' : 'N/A'),
-      rm.expectedUnblockDate || 'N/A',
-      rm.amenities.join(', '),
-      rm.notes || '',
-    ]);
+    const roomRows = rooms.map((rm) => {
+      const isBlocked = rm.status === 'blocked';
+      const bufferAmenity = rm.buffer && rm.buffer > 0 ? `Buffer: ${rm.buffer}` : '';
+      const baseAmenities = (rm.amenities || []).filter((a) => !a.toLowerCase().includes('buffer'));
+      const combinedAmenities = bufferAmenity ? [bufferAmenity, ...baseAmenities] : baseAmenities;
+
+      return [
+        rm.building,
+        rm.roomNumber,
+        rm.floor,
+        rm.capacity, // Base beds (e.g. 2, 3, 4)
+        rm.category,
+        isBlocked ? 'BLOCKED' : (rm.status === 'cleaning' ? 'CLEANING' : (rm.status === 'occupied' ? 'OCCUPIED' : 'AVAILABLE')),
+        isBlocked ? (rm.blockedReason || 'Blocked for Maintenance') : 'N/A',
+        isBlocked ? (rm.expectedUnblockDate || 'N/A') : 'N/A',
+        combinedAmenities.join(', '),
+        rm.notes || '',
+      ];
+    });
 
     // 3. Prepare Rooms Availability & Departure Timeline Header and Rows
     const { headers: timelineHeaders, rows: timelineRows } = generateTimelineRows(
@@ -574,11 +594,11 @@ export async function syncAllToGoogleSheet(
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
 
-    // Update Zaereen Lodging & Room Allotment Grid sheet
+    // Update Zaereen Lodging & Room Allotment Grid sheet (A to U)
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      `'${ZAEREEN_GRID_TAB}'!A1:T` + (gridRows.length + 10),
+      `'${ZAEREEN_GRID_TAB}'!A1:U` + (gridRows.length + 10),
       [gridHeaders, ...gridRows]
     );
 
@@ -731,22 +751,23 @@ export async function twoWaySyncWithGoogleSheet(
 
   const mergedReservations = deduplicateReservationList(Array.from(mergedResMap.values()));
 
-  // 4. Merge rooms
-  // User requirement: "do not change the room capacity automatically."
+  // 4. Merge rooms: accurately sync blocked and unblocked status, capacity, and buffer
   const mergedRoomsMap = new Map<string, Room>();
   currentRooms.forEach((rm) => mergedRoomsMap.set(rm.id, rm));
   sheetRooms.forEach((srm) => {
     const match = currentRooms.find(
-      (rm) => rm.roomNumber === srm.roomNumber && rm.building.toLowerCase() === srm.building.toLowerCase()
+      (rm) => rm.roomNumber.toLowerCase() === srm.roomNumber.toLowerCase() && rm.building.toLowerCase() === srm.building.toLowerCase()
     );
     if (match) {
+      const isBlocked = srm.status === 'blocked';
       mergedRoomsMap.set(match.id, {
         ...match,
-        status: srm.status || match.status,
-        capacity: match.capacity, // DO NOT change room capacity automatically!
-        pax: match.pax || match.capacity,
-        buffer: match.buffer,
-        blockedReason: srm.blockedReason ?? match.blockedReason,
+        status: srm.status,
+        capacity: srm.capacity || match.capacity,
+        pax: srm.pax || match.pax || match.capacity,
+        buffer: srm.buffer !== undefined ? srm.buffer : match.buffer,
+        blockedReason: isBlocked ? (srm.blockedReason || match.blockedReason || 'Blocked by administrator') : undefined,
+        expectedUnblockDate: isBlocked ? (srm.expectedUnblockDate || match.expectedUnblockDate) : undefined,
         notes: srm.notes ?? match.notes,
       });
     } else {
@@ -867,20 +888,54 @@ export async function fetchRoomsFromGoogleSheet(
   const metaData = await metaRes.json();
   const sheets: any[] = metaData.sheets || [];
 
-  // Locate the tab for rooms (e.g. Rooms_Inventory, Rooms, Room Inventory, or first available)
+  // User Requirement: "it should pick from room inventory sheet and the capacity from Capacity (Beds) colum and buffer from Amenities column and should display as it displays now example 2+1 or 3+1 or 4+1."
+  // CRITICAL: NEVER select 'Zaereen Lodging & Room Allotment Grid', 'Timeline', or guest reservation manifests!
+  const isExcludedRoomTab = (title: string) => {
+    const t = title.toLowerCase().trim();
+    return (
+      t.includes('grid') ||
+      t.includes('lodging') ||
+      t.includes('allotment') ||
+      t.includes('zaereen') ||
+      t.includes('reservation') ||
+      t.includes('timeline') ||
+      t.includes('availability') ||
+      t.includes('upgrade')
+    );
+  };
+
+  // Priority 1: Exact matches or tabs containing 'inventory'
   let targetTab = sheets.find((s) => {
-    const title = (s.properties?.title || '').toLowerCase();
-    return title.includes('room') || title.includes('inventory');
+    const title = (s.properties?.title || '').toLowerCase().trim();
+    return (
+      !isExcludedRoomTab(title) &&
+      (title === 'rooms_inventory' ||
+        title === 'room_inventory' ||
+        title === 'rooms inventory' ||
+        title === 'room inventory' ||
+        title.includes('inventory'))
+    );
   })?.properties?.title;
 
+  // Priority 2: Tabs with 'room' or 'hotel' that are NOT zaereen/grid/timeline/allotment/upgrades
+  if (!targetTab) {
+    targetTab = sheets.find((s) => {
+      const title = (s.properties?.title || '').toLowerCase().trim();
+      return (
+        !isExcludedRoomTab(title) &&
+        (title.includes('room') || title.includes('hotel') || title.includes('building'))
+      );
+    })?.properties?.title;
+  }
+
+  // Priority 3: Fallback to second sheet if first is Zaereen Grid
   if (!targetTab && sheets.length > 1) {
-    targetTab = sheets[1].properties?.title;
-  } else if (!targetTab && sheets.length > 0) {
-    targetTab = sheets[0].properties?.title;
+    const nonExcluded = sheets.find((s) => !isExcludedRoomTab(s.properties?.title || ''));
+    if (nonExcluded) targetTab = nonExcluded.properties?.title;
   }
 
   if (!targetTab) {
-    throw new Error('No tab found in Google Sheet for Rooms Inventory.');
+    throw new Error('No valid Rooms Inventory tab found in the Google Sheet.');
   }
 
   // 2. Read values from target tab
@@ -908,28 +963,29 @@ export async function fetchRoomsFromGoogleSheet(
 
   // Detect header indices
   const headerRow = rawRows[0].map((h: any) => String(h || '').trim().toLowerCase());
-  let bIdx = headerRow.findIndex((h: string) => h.includes('building'));
-  let rIdx = headerRow.findIndex((h: string) => h.includes('room'));
+  let bIdx = headerRow.findIndex((h: string) => h.includes('building') || h.includes('hotel'));
+  let rIdx = headerRow.findIndex((h: string) => (h.includes('room') && !h.includes('allot')) || h.includes('number') || h === 'roomno');
   let fIdx = headerRow.findIndex((h: string) => h.includes('floor'));
-  let cIdx = headerRow.findIndex((h: string) => h.includes('capacity') || h.includes('bed'));
-  let catIdx = headerRow.findIndex((h: string) => h.includes('category'));
-  let sIdx = headerRow.findIndex((h: string) => h.includes('status'));
+  let cIdx = headerRow.findIndex((h: string) => h.includes('capacity') || h.includes('bed') || h === 'cap' || h.includes('pax'));
+  let catIdx = headerRow.findIndex((h: string) => h.includes('category') || h.includes('type'));
+  let sIdx = headerRow.findIndex((h: string) => h.includes('status') || h === 'current status');
   let brIdx = headerRow.findIndex((h: string) => h.includes('blocked') || h.includes('reason'));
   let unbIdx = headerRow.findIndex((h: string) => h.includes('unblock') || h.includes('reopen') || h.includes('date'));
   let amIdx = headerRow.findIndex((h: string) => h.includes('amenit'));
+  let bufIdx = headerRow.findIndex((h: string) => h === 'buffer' || h.includes('buffer'));
   let nIdx = headerRow.findIndex((h: string) => h.includes('note'));
 
-  // Fallback if headers were not explicitly matched
+  // Fallback if headers were not explicitly matched (only if reasonably within range)
   if (bIdx === -1) bIdx = 0;
   if (rIdx === -1) rIdx = 1;
   if (fIdx === -1) fIdx = 2;
-  if (cIdx === -1) cIdx = 3;
-  if (catIdx === -1) catIdx = 4;
-  if (sIdx === -1) sIdx = 5;
-  if (brIdx === -1) brIdx = 6;
-  if (unbIdx === -1) unbIdx = 7;
-  if (amIdx === -1) amIdx = 8;
-  if (nIdx === -1) nIdx = 9;
+  if (cIdx === -1 && headerRow.length > 3) cIdx = 3;
+  if (catIdx === -1 && headerRow.length > 4) catIdx = 4;
+  if (sIdx === -1 && headerRow.length > 5) sIdx = 5;
+  if (brIdx === -1 && headerRow.length > 6) brIdx = 6;
+  if (unbIdx === -1 && headerRow.length > 7) unbIdx = 7;
+  if (amIdx === -1 && headerRow.length > 8) amIdx = 8;
+  if (nIdx === -1 && headerRow.length > 9) nIdx = 9;
 
   const parsedRooms: Room[] = [];
 
@@ -937,59 +993,119 @@ export async function fetchRoomsFromGoogleSheet(
     const row = rawRows[i];
     if (!row || row.length === 0) continue;
 
-    const building = String(row[bIdx] || '').trim();
-    let roomNumber = String(row[rIdx] || '').trim().replace(/^room\s+/i, '');
+    const building = String(row[bIdx >= 0 ? bIdx : 0] || '').trim();
+    let roomNumber = String(row[rIdx >= 0 ? rIdx : 1] || '').trim().replace(/^room\s+/i, '');
 
     // Skip empty lines or duplicated headers
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
 
-    const floor = parseInt(String(row[fIdx] || '1'), 10) || 1;
-    const capacity = parseInt(String(row[cIdx] || '3'), 10) || 3;
+    // Look for matching existing room ID to maintain consistency
+    const existing = existingRooms.find(
+      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
+    );
+
+    let floor = fIdx >= 0 ? parseInt(String(row[fIdx] || '1'), 10) : (existing ? existing.floor : 1);
+    if (isNaN(floor) || floor <= 0) {
+      const m = roomNumber.match(/^(\d)/);
+      floor = m ? parseInt(m[1], 10) : (existing ? existing.floor : 1);
+    }
+
+    // Capacity parsing: e.g. "2", "3", "4" or "2+1"
+    const rawCapStr = cIdx >= 0 ? String(row[cIdx] || '').trim() : '';
+    let capacity = existing ? existing.capacity : 3;
+    let bufferFromCap = 0;
+
+    if (rawCapStr) {
+      const plusMatch = rawCapStr.match(/^(\d+)\s*\+\s*(\d+)/);
+      if (plusMatch) {
+        capacity = parseInt(plusMatch[1], 10) || 3;
+        bufferFromCap = parseInt(plusMatch[2], 10) || 0;
+      } else {
+        const numMatch = rawCapStr.match(/\d+/);
+        if (numMatch) {
+          capacity = parseInt(numMatch[0], 10) || 3;
+        }
+      }
+    }
+    // Cap safety: if parsed capacity > 15 (e.g. read guest age or ITS column by mistake), revert to existing room capacity
+    if (capacity > 15) {
+      capacity = existing ? existing.capacity : 3;
+    }
+
+    // Buffer parsing: from explicit Buffer column or Amenities column
+    const rawAmenities = amIdx >= 0 ? String(row[amIdx] || '').trim() : '';
+    let buffer = bufferFromCap;
+    if (bufIdx >= 0 && row[bufIdx] !== undefined) {
+      const bMatch = String(row[bufIdx]).match(/\d+/);
+      if (bMatch) buffer = parseInt(bMatch[0], 10);
+    } else if (rawAmenities) {
+      // User requirement: "buffer from Amenities column and should display as it displays now example 2+1 or 3+1 or 4+1"
+      const bMatch =
+        rawAmenities.match(/buffer[:\s]*(\d+)/i) ||
+        rawAmenities.match(/\+(\d+)\s*(?:buffer|buf)?/i) ||
+        rawAmenities.match(/(\d+)\s*buffer/i);
+      if (bMatch) {
+        buffer = parseInt(bMatch[1], 10);
+      } else if (existing?.buffer !== undefined) {
+        buffer = existing.buffer;
+      }
+    } else if (existing?.buffer !== undefined) {
+      buffer = existing.buffer;
+    }
 
     // Category parsing
-    const rawCategory = String(row[catIdx] || '').toLowerCase();
-    let category: Room['category'] = 'Category B (Standard)';
+    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '').toLowerCase() : '';
+    let category: Room['category'] = existing?.category || 'Category B (Standard)';
     if (rawCategory.includes('a') || rawCategory.includes('nizaam')) {
       category = 'Category A (Nizaam)';
     } else if (rawCategory.includes('suite') || rawCategory.includes('exec')) {
       category = 'Executive Suite';
     }
 
-    // Status parsing
-    const rawStatus = String(row[sIdx] || '').toLowerCase();
+    // Status parsing: BLOCKED vs AVAILABLE / VACANT
+    // User requirement: "updates the blocked/unblock rooms too"
+    const rawStatus = sIdx >= 0 ? String(row[sIdx] || '').toLowerCase() : '';
+    const isBlocked = rawStatus.includes('block');
+    const isOccupied = rawStatus.includes('occup');
+    const isCleaning = rawStatus.includes('clean');
+
     let status: Room['status'] = 'available';
-    if (rawStatus.includes('block')) {
+    if (isBlocked) {
       status = 'blocked';
-    } else if (rawStatus.includes('occup')) {
+    } else if (isOccupied) {
       status = 'occupied';
-    } else if (rawStatus.includes('clean')) {
+    } else if (isCleaning) {
       status = 'cleaning';
+    } else {
+      status = 'available';
     }
 
     // Blocked details
-    const rawBlockedReason = String(row[brIdx] || '').trim();
-    const blockedReason = rawBlockedReason && rawBlockedReason !== 'N/A' && rawBlockedReason !== '—'
-      ? rawBlockedReason
-      : (status === 'blocked' ? 'Maintenance in progress' : undefined);
+    const rawBlockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : '';
+    const rawUnblockDate = unbIdx >= 0 ? String(row[unbIdx] || '').trim() : '';
 
-    const rawUnblockDate = String(row[unbIdx] || '').trim();
-    const expectedUnblockDate = rawUnblockDate && rawUnblockDate !== 'N/A' && rawUnblockDate !== '—'
-      ? rawUnblockDate
+    const blockedReason = isBlocked
+      ? rawBlockedReason && rawBlockedReason !== 'N/A' && rawBlockedReason !== '—'
+        ? rawBlockedReason
+        : existing?.blockedReason || 'Maintenance in progress'
       : undefined;
 
-    // Amenities parsing
-    const rawAmenities = String(row[amIdx] || '').trim();
+    const expectedUnblockDate = isBlocked
+      ? rawUnblockDate && rawUnblockDate !== 'N/A' && rawUnblockDate !== '—'
+        ? rawUnblockDate
+        : existing?.expectedUnblockDate
+      : undefined;
+
+    // Amenities parsing (exclude raw "Buffer: X" since it's preserved in the buffer field)
     const amenities = rawAmenities
-      ? rawAmenities.split(',').map((a) => a.trim()).filter(Boolean)
-      : ['Standard Amenities'];
+      ? rawAmenities
+          .split(',')
+          .map((a) => a.trim())
+          .filter((a) => a.length > 0 && !/^buffer[:\s]*\d+/i.test(a))
+      : existing?.amenities || ['Standard Amenities'];
 
-    const notes = String(row[nIdx] || '').trim();
-
-    // Look for matching existing room ID to maintain consistency
-    const existing = existingRooms.find(
-      (er) => er.roomNumber === roomNumber && er.building.toLowerCase() === building.toLowerCase()
-    );
+    const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : existing?.notes || '';
 
     const id = existing
       ? existing.id
@@ -1000,15 +1116,34 @@ export async function fetchRoomsFromGoogleSheet(
       roomNumber,
       building,
       floor,
+      floorLabel: existing?.floorLabel || `Floor ${floor}`,
       capacity,
+      pax: capacity,
+      buffer,
       category,
       status,
       blockedReason,
       expectedUnblockDate,
+      toiletType: existing?.toiletType || 'WESTERN',
+      bedType: existing?.bedType || 'Single Beds',
       amenities,
       notes: notes || undefined,
     });
   }
+
+  // Preserve any existing rooms (e.g. Badri rooms or others) that were not present in this specific sheet
+  existingRooms.forEach((er) => {
+    if (
+      !parsedRooms.some(
+        (pr) =>
+          pr.id === er.id ||
+          (pr.roomNumber.toLowerCase() === er.roomNumber.toLowerCase() &&
+            pr.building.toLowerCase() === er.building.toLowerCase())
+      )
+    ) {
+      parsedRooms.push(er);
+    }
+  });
 
   return parsedRooms;
 }
@@ -1090,6 +1225,7 @@ export async function fetchReservationsFromGoogleSheet(
   let moneyIdx = headerRow.findIndex((h: string) => h.includes('money') || h.includes('account'));
   let slipIdx = headerRow.findIndex((h: string) => h.includes('slip'));
   let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest') || h.includes('count'));
+  let idaraIdx = headerRow.findIndex((h: string) => h === 'idara' || h.includes('idara'));
   let specialIdx = headerRow.findIndex((h: string) =>
     h.includes('special guest') ||
     h.includes('special status') ||
@@ -1167,15 +1303,32 @@ export async function fetchReservationsFromGoogleSheet(
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
 
+    // Idara detection & Special Guest / Star assignment
+    // User requirement: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
+    const rawIdara = idaraIdx !== -1 && row[idaraIdx] ? String(row[idaraIdx]).trim() : '';
+    const hasIdaraMentioned = rawIdara !== '' && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-';
+
     // Special Guest & Requirements extraction from sheet
     const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? String(row[specialIdx]).trim() : '';
     const hasSpecialInSheet = specialIdx !== -1 && rawSpecial !== '';
-    const isSpecialGuestFromSheet = hasSpecialInSheet
+    let isSpecialGuestFromSheet = hasSpecialInSheet
       ? /yes|true|⭐|vip|special|star/i.test(rawSpecial)
       : undefined;
 
+    if (hasIdaraMentioned) {
+      isSpecialGuestFromSheet = true;
+    }
+
     const rawRemarks = remarksIdx !== -1 && row[remarksIdx] !== undefined ? String(row[remarksIdx]).trim() : '';
-    const specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
+    let specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
+    if (hasIdaraMentioned) {
+      const idaraTag = `[Idara: ${rawIdara}]`;
+      if (!specialRemarksFromSheet) {
+        specialRemarksFromSheet = `${idaraTag} Priority Zaer`;
+      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(rawIdara)) {
+        specialRemarksFromSheet = `${idaraTag} ${specialRemarksFromSheet}`;
+      }
+    }
 
     // Check if applicantName or rawRoomNumber contains multiple family members / rooms
     const candidateNames = applicantName
@@ -1239,7 +1392,7 @@ export async function fetchReservationsFromGoogleSheet(
         applicantName: memberName || existing?.applicantName || 'Zaer Guest',
         age: age || 38,
         category: rawCategory,
-        idara: existing?.idara || 'Faiz-e-Husaini',
+        idara: rawIdara || existing?.idara || 'Faiz-e-Husaini',
         gender,
         family: familyNo,
         tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
@@ -1639,13 +1792,50 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
 
+    const existing = existingRooms.find(
+      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
+    );
+
     let floor = parseInt(String(row[fIdx] || '1'), 10);
-    if (isNaN(floor)) {
+    if (isNaN(floor) || floor <= 0) {
       const m = roomNumber.match(/^(\d)/);
-      floor = m ? parseInt(m[1], 10) : 1;
+      floor = m ? parseInt(m[1], 10) : (existing ? existing.floor : 1);
     }
-    const capacity = parseInt(String(row[cIdx] || '3'), 10) || 3;
-    const buffer = bufIdx >= 0 ? parseInt(String(row[bufIdx] || '0'), 10) || 0 : 0;
+
+    // Capacity parsing: e.g. "2", "3", "4" or "2+1"
+    const rawCapStr = cIdx >= 0 ? String(row[cIdx] || '').trim() : '';
+    let capacity = existing ? existing.capacity : 3;
+    let bufferFromCap = 0;
+
+    if (rawCapStr) {
+      const plusMatch = rawCapStr.match(/^(\d+)\s*\+\s*(\d+)/);
+      if (plusMatch) {
+        capacity = parseInt(plusMatch[1], 10) || 3;
+        bufferFromCap = parseInt(plusMatch[2], 10) || 0;
+      } else {
+        const numMatch = rawCapStr.match(/\d+/);
+        if (numMatch) {
+          capacity = parseInt(numMatch[0], 10) || 3;
+        }
+      }
+    }
+    if (capacity > 15) {
+      capacity = existing ? existing.capacity : 3;
+    }
+
+    let buffer = bufferFromCap;
+    if (bufIdx >= 0 && row[bufIdx] !== undefined) {
+      const bMatch = String(row[bufIdx]).match(/\d+/);
+      if (bMatch) buffer = parseInt(bMatch[0], 10);
+    } else {
+      const fullRowText = row.join(' ');
+      const bMatch = fullRowText.match(/buffer[:\s]*(\d+)/i) || fullRowText.match(/\+(\d+)\s*(?:buffer|buf)?/i);
+      if (bMatch) {
+        buffer = parseInt(bMatch[1], 10);
+      } else if (existing?.buffer !== undefined) {
+        buffer = existing.buffer;
+      }
+    }
 
     const rawToilet = toiletIdx >= 0 ? String(row[toiletIdx] || '').toLowerCase() : '';
     const toiletType = rawToilet.includes('indian') ? 'Indian Toilet' : 'Western Toilet';
@@ -1678,12 +1868,14 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       status = 'cleaning';
     }
 
-    const blockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : undefined;
-    const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : undefined;
+    const rawBlockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : '';
+    const blockedReason = status === 'blocked'
+      ? (rawBlockedReason && rawBlockedReason !== 'N/A' && rawBlockedReason !== '—'
+          ? rawBlockedReason
+          : existing?.blockedReason || 'Maintenance hold')
+      : undefined;
 
-    const existing = existingRooms.find(
-      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
-    );
+    const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : undefined;
 
     const id = existing
       ? existing.id
@@ -1695,18 +1887,32 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       building,
       floor: existing ? existing.floor : floor,
       floorLabel: existing ? existing.floorLabel : `Floor ${floor}`,
-      capacity: existing ? existing.capacity : capacity, // Do not change room capacity automatically!
-      pax: existing ? (existing.pax || existing.capacity) : capacity,
-      buffer: existing ? (existing.buffer ?? buffer) : buffer,
+      capacity,
+      pax: capacity,
+      buffer,
       category: existing ? existing.category : category,
       status,
       toiletType: existing ? existing.toiletType : toiletType,
       bedType: existing ? existing.bedType : bedType,
-      blockedReason: blockedReason || (status === 'blocked' ? 'Maintenance hold' : undefined),
+      blockedReason,
       notes: notes ?? existing?.notes,
       amenities: existing?.amenities || ['Air Conditioning', 'WiFi', 'Clean Linens'],
     });
   }
+
+  // Preserve existing rooms not in CSV
+  existingRooms.forEach((er) => {
+    if (
+      !parsedRooms.some(
+        (pr) =>
+          pr.id === er.id ||
+          (pr.roomNumber.toLowerCase() === er.roomNumber.toLowerCase() &&
+            pr.building.toLowerCase() === er.building.toLowerCase())
+      )
+    ) {
+      parsedRooms.push(er);
+    }
+  });
 
   return parsedRooms;
 }

@@ -842,6 +842,12 @@ export function convertRowsToReservations(
       roomNumber: row.roomNumber || '',
       isUploadedToPortal: !!row.isUploadedToPortal,
 
+      // Idara starring logic: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
+      isSpecialGuest: !!(row.idara && row.idara.trim() && row.idara.trim() !== '—' && row.idara.toLowerCase() !== 'n/a'),
+      specialRemarks: (row.idara && row.idara.trim() && row.idara.trim() !== '—' && row.idara.toLowerCase() !== 'n/a')
+        ? `[Idara: ${row.idara}] Priority Zaer`
+        : undefined,
+
       // Synced helpers
       familyNumber: row.family,
       familyNo: row.family,

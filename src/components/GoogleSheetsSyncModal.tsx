@@ -497,7 +497,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                       <div>
                         <div className="font-bold text-xs text-amber-950">Confirm Pull & Import from Google Sheet</div>
                         <div className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
-                          Are you sure you want to pull data from Google Sheet? This will import all zaereen, all family members, and their allotted rooms from your linked sheet into the app.
+                          Are you sure you want to pull data from Google Sheet? This will import all zaereen, all family members, their allotted rooms, and blocked/unblocked room statuses from your linked sheet into the app.
                         </div>
                       </div>
                     </div>
@@ -555,7 +555,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                   title="Pull and import all data from Google Sheet with confirmation"
                 >
                   <DownloadCloud className={`w-4 h-4 text-[#EBD59E] ${isPulling ? 'animate-bounce' : ''}`} />
-                  <span>Pull from Sheet (Import All Family Members & Rooms)</span>
+                  <span>Pull from Sheet (Import Blocked Rooms, Allotments & Zaereen)</span>
                 </button>
               </div>
 

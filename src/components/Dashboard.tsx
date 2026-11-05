@@ -1323,6 +1323,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span>STAR</span>
                           </span>
                         )}
+                        {m.idara && m.idara.trim() && m.idara !== '—' && m.idara.toLowerCase() !== 'n/a' && (
+                          <span className="px-1 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-300 text-[9px] font-bold" title={`Idara: ${m.idara}`}>
+                            🏢 {m.idara}
+                          </span>
+                        )}
                         <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
                           {m.applicantName} ({m.age})
                         </span>
@@ -1508,6 +1513,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </div>
                                 <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
                                   <span>Age: {m.age} • {m.gender}</span>
+                                  {m.idara && m.idara.trim() && m.idara !== '—' && m.idara.toLowerCase() !== 'n/a' && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
+                                        🏢 Idara: {m.idara}
+                                      </span>
+                                    </>
+                                  )}
                                   <span>•</span>
                                   <span className="text-emerald-800 font-semibold inline-flex items-center gap-0.5">
                                     <LogIn className="w-2.5 h-2.5 text-emerald-600" />
