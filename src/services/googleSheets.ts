@@ -430,8 +430,9 @@ export function generateTimelineRows(
 }
 
 /**
- * Generates rows matching EXACTLY the "Zaereen Lodging & Room Allotment Grid"
- * Sequence: SR # | ITS | NAME | AGE | FAMILY | IDARA | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | SPECIAL GUEST | SPECIAL REMARKS | MAIN PORTAL | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
+ * Generates rows for "Zaereen Lodging & Room Allotment Grid"
+ * User Instruction: "combine category and idar in one column remove tour Id and everything else"
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY / IDARA
  */
 export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
   const headers = [
@@ -440,30 +441,33 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'NAME',
     'AGE',
     'FAMILY',
-    'IDARA',
     'OFFICE NAME',
-    'TOUR ID',
     'BUILDING',
     'ROOM ALLOTTMENT',
     'GENDER',
     'GROUP LEAD',
     'ARRIVAL',
     'DEPARTURE',
-    'CATEGORY',
-    'SPECIAL GUEST',
-    'SPECIAL REMARKS',
-    'MAIN PORTAL',
-    'REQUEST SLIP NO.',
-    'PAX COUNT',
-    'LAST UPDATED',
+    'CATEGORY / IDARA',
   ];
 
   const rows = reservations.map((r, index) => {
-    const hasIdara = !!(r.idara && r.idara.trim() && r.idara.trim() !== '—' && r.idara.trim().toLowerCase() !== 'n/a');
-    const isSpecial = r.isSpecialGuest || hasIdara;
-    let remarks = r.specialRemarks || '';
-    if (hasIdara && !remarks.includes(`[Idara: ${r.idara}]`) && !remarks.includes(r.idara)) {
-      remarks = remarks ? `[Idara: ${r.idara}] ${remarks}` : `[Idara: ${r.idara}]`;
+    const rawIdara = (r.idara || '').trim();
+    const hasIdara = !!(rawIdara && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-');
+    const rawCat = (r.category || '').trim();
+    const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
+
+    // Combine category and idara in one column
+    // "When there is idara in the category just add that and if the category is other than mumineen and there is also an idara show both in the category column by default it is mumineen category and no need to show that (same as it is now)"
+    let combinedCatIdara = '—';
+    if (!isMumineen && hasIdara) {
+      combinedCatIdara = `${rawCat} • ${rawIdara}`;
+    } else if (!isMumineen && !hasIdara) {
+      combinedCatIdara = rawCat;
+    } else if (isMumineen && hasIdara) {
+      combinedCatIdara = rawIdara;
+    } else {
+      combinedCatIdara = '—';
     }
 
     return [
@@ -472,22 +476,14 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
       r.applicantName || r.groupLeadName || '',
       r.age ?? '',
       r.family || r.familyNumber || '',
-      r.idara || '',
       r.officeName || '',
-      r.tourRefNo || r.tourId || '',
       r.building || '',
       r.roomNumber || '',
       r.gender || 'Male',
       r.groupLeadName || r.applicantName || '',
       (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
       (r.departureDate || r.departureDateTime || '').slice(0, 10),
-      r.category || 'Mumineen',
-      isSpecial ? '⭐ YES' : 'NO',
-      remarks,
-      r.isUploadedToPortal ? 'Uploaded' : 'Pending',
-      r.requestSlipNo || '',
-      r.paxCount || r.pax || 1,
-      new Date(r.updatedAt || Date.now()).toLocaleString(),
+      combinedCatIdara,
     ];
   });
 
@@ -594,11 +590,11 @@ export async function syncAllToGoogleSheet(
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
 
-    // Update Zaereen Lodging & Room Allotment Grid sheet (A to U)
+    // Update Zaereen Lodging & Room Allotment Grid sheet (A to M: 13 columns, Tour ID & extras removed)
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      `'${ZAEREEN_GRID_TAB}'!A1:U` + (gridRows.length + 10),
+      `'${ZAEREEN_GRID_TAB}'!A1:M` + (gridRows.length + 10),
       [gridHeaders, ...gridRows]
     );
 
@@ -1289,7 +1285,38 @@ export async function fetchReservationsFromGoogleSheet(
     const arrivalDateTime = rawArr ? rawArr.replace(' ', 'T') : `${arrivalDate}T11:00:00`;
     const departureDateTime = rawDep ? rawDep.replace(' ', 'T') : `${departureDate}T01:00:00`;
 
-    const rawCategory = catIdx !== -1 && row[catIdx] ? String(row[catIdx]).trim() : 'Mumineen';
+    // Parse Category & Idara from combined CATEGORY / IDARA cell or legacy separate columns
+    let category = 'Mumineen';
+    let idara = '';
+
+    const catCell = catIdx !== -1 && row[catIdx] ? String(row[catIdx]).trim() : '';
+    if (catCell && catCell !== '—') {
+      if (catCell.includes('•')) {
+        const parts = catCell.split('•').map((p) => p.trim());
+        category = parts[0] || 'Mumineen';
+        idara = parts[1] || '';
+      } else {
+        const isKnownCat = /mumineen|muntasbeen|qasreali|baitezainy|nizaam|category a|b to a/i.test(catCell);
+        if (isKnownCat) {
+          category = catCell;
+        } else {
+          // Cell contains only the Idara name
+          idara = catCell;
+          category = 'Mumineen';
+        }
+      }
+    }
+
+    // Also check legacy separate Idara column if present and idara not yet found
+    if (!idara && idaraIdx !== -1 && row[idaraIdx]) {
+      const rawLegacy = String(row[idaraIdx]).trim();
+      if (rawLegacy && rawLegacy !== '—' && rawLegacy.toLowerCase() !== 'n/a' && rawLegacy !== '-') {
+        idara = rawLegacy;
+      }
+    }
+
+    const hasIdaraMentioned = idara !== '' && idara !== '—' && idara.toLowerCase() !== 'n/a' && idara !== '-';
+
     const rawPortal = portalIdx !== -1 && row[portalIdx] ? String(row[portalIdx]).toLowerCase() : '';
     const isUploadedToPortal = rawPortal.includes('yes') || rawPortal.includes('upload') || rawPortal.includes('true');
 
@@ -1302,11 +1329,6 @@ export async function fetchReservationsFromGoogleSheet(
 
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
-
-    // Idara detection & Special Guest / Star assignment
-    // User requirement: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
-    const rawIdara = idaraIdx !== -1 && row[idaraIdx] ? String(row[idaraIdx]).trim() : '';
-    const hasIdaraMentioned = rawIdara !== '' && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-';
 
     // Special Guest & Requirements extraction from sheet
     const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? String(row[specialIdx]).trim() : '';
@@ -1322,10 +1344,10 @@ export async function fetchReservationsFromGoogleSheet(
     const rawRemarks = remarksIdx !== -1 && row[remarksIdx] !== undefined ? String(row[remarksIdx]).trim() : '';
     let specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
     if (hasIdaraMentioned) {
-      const idaraTag = `[Idara: ${rawIdara}]`;
+      const idaraTag = `[Idara: ${idara}]`;
       if (!specialRemarksFromSheet) {
         specialRemarksFromSheet = `${idaraTag} Priority Zaer`;
-      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(rawIdara)) {
+      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(idara)) {
         specialRemarksFromSheet = `${idaraTag} ${specialRemarksFromSheet}`;
       }
     }
@@ -1391,8 +1413,8 @@ export async function fetchReservationsFromGoogleSheet(
         itsId: memberIts || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
         applicantName: memberName || existing?.applicantName || 'Zaer Guest',
         age: age || 38,
-        category: rawCategory,
-        idara: rawIdara || existing?.idara || 'Faiz-e-Husaini',
+        category: category || 'Mumineen',
+        idara: idara || '',
         gender,
         family: familyNo,
         tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',

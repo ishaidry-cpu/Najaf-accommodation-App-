@@ -319,8 +319,14 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
   let catIdx = findCol(['category', 'cat', 'class']);
   let genderIdx = findCol(['gender', 'sex']);
   let famIdx = findCol(['family', 'family no', 'family number', 'family id', 'fam']);
-  let idaraIdx = findCol(['idara', 'organization', 'trust']);
   let hofIdx = findCol(['hof_id', 'hof id', 'hof']);
+  // User instruction: "Idara is in coumn I in the excel file. no other coulmn fix that."
+  // Column I is index 8 (0-indexed). Strictly Column I; do NOT search for 'trust' or 'organization' which matches Office Name.
+  let idaraIdx = 8;
+  const headerExactIdaraIdx = headers.findIndex((h) => h.trim().toLowerCase() === 'idara');
+  if (headerExactIdaraIdx !== -1) {
+    idaraIdx = headerExactIdaraIdx;
+  }
   let groupAdminIdx = findCol(['groupadmin', 'group admin']);
   let groupIdIdx = findCol(['group_id', 'group id']);
   let tourIdx = findCol(['tour reference no.', 'tour reference no', 'tour ref no', 'tour ref', 'tour reference', 'tour id']);
@@ -386,7 +392,11 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     const gender = rawGender.toLowerCase().startsWith('f') ? 'Female' : 'Male';
     
     const family = famIdx >= 0 && row[famIdx] ? String(row[famIdx]).trim() : `F-${parsedList.length + 1}`;
-    const idara = idaraIdx >= 0 && row[idaraIdx] ? String(row[idaraIdx]).trim() : '';
+    // User instruction: "Idara is in coumn I in the excel file. no other coulmn fix that."
+    const rawIdaraVal = (row.length > idaraIdx && row[idaraIdx] != null) ? String(row[idaraIdx]).trim() : '';
+    const idara = (rawIdaraVal && rawIdaraVal !== '—' && rawIdaraVal.toLowerCase() !== 'n/a' && rawIdaraVal !== '-')
+      ? rawIdaraVal
+      : '';
     const hofId = hofIdx >= 0 && row[hofIdx] ? String(row[hofIdx]).trim() : '';
     const groupAdmin = groupAdminIdx >= 0 && row[groupAdminIdx] ? String(row[groupAdminIdx]).trim() : '';
     const groupId = groupIdIdx >= 0 && row[groupIdIdx] ? String(row[groupIdIdx]).trim() : '';
@@ -460,7 +470,7 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
       category,
       gender,
       family,
-      idara: idara || 'Fayz E Husayni Trust Mumbai',
+      idara: idara, // Strictly from column I, no fallback to office name or default
       hofId,
       groupAdmin,
       groupId,
@@ -653,7 +663,7 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       category: 'Mumineen',
       gender: 'Female',
       family: 'F-1',
-      idara: 'Fayz E Husayni Trust Mumbai',
+      idara: '',
       hofId: '20304504',
       groupAdmin: '',
       groupId: '1766839506',
@@ -680,7 +690,7 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       category: 'Mumineen',
       gender: 'Female',
       family: 'F-2',
-      idara: 'Fayz E Husayni Trust Mumbai',
+      idara: '',
       hofId: '30423689',
       groupAdmin: '',
       groupId: '1766839507',
@@ -817,7 +827,7 @@ export function convertRowsToReservations(
       category: row.category || 'Mumineen',
       gender: row.gender || 'Male',
       family: row.family,
-      idara: row.idara || 'Fayz E Husayni Trust Mumbai',
+      idara: row.idara || '',
       hofId: row.hofId || '',
       groupAdmin: row.groupAdmin || '',
       groupId: row.groupId || '',

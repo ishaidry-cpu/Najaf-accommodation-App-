@@ -9,7 +9,7 @@
     "category": "Mumineen",
     "gender": "Female",
     "family": "F-1",
-    "idara": "Fayz E Husayni Trust Mumbai",
+    "idara": "",
     "hofId": "20304504",
     "groupAdmin": "",
     "groupId": "1766839506",
@@ -40,7 +40,8 @@
     "isUpgradedFromBToA": true,
     "assignedCategory": "Category A (Nizaam)",
     "createdAt": "2026-09-28T08:00:00Z",
-    "updatedAt": "2026-09-28T08:00:00Z"
+    "updatedAt": "2026-09-28T08:00:00Z",
+    "isSpecialGuest": false
   },
   {
     "id": "res-sb-102",
@@ -52,7 +53,7 @@
     "category": "Mumineen",
     "gender": "Female",
     "family": "F-2",
-    "idara": "Fayz E Husayni Trust Mumbai",
+    "idara": "",
     "hofId": "30423689",
     "groupAdmin": "",
     "groupId": "1766839507",
@@ -81,7 +82,8 @@
     "isUpgradedFromBToA": false,
     "assignedCategory": "Category B (Standard)",
     "createdAt": "2026-09-28T08:05:00Z",
-    "updatedAt": "2026-09-28T08:05:00Z"
+    "updatedAt": "2026-09-28T08:05:00Z",
+    "isSpecialGuest": false
   },
   {
     "id": "res-sb-103",
