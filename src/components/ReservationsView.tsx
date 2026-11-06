@@ -800,69 +800,97 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   };
 
   // Helper to render category at the end:
-  // "if any category is other than mumineen color it otherwise no need to mention and keep it in the the end"
+  // "Remove the idara name from the list. it hides the name. When there is idara in the category just add that and if the category is other than mumineen and there is also an idara show both in the category column by default it is mumineen category and no need to show that (same as it is now)"
   const renderCategoryBadge = (res: Reservation) => {
     const rawCat = (res.category || '').trim();
     const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
+    const hasIdara = !!(res.idara && res.idara.trim() && res.idara.trim() !== '—' && res.idara.toLowerCase() !== 'n/a' && res.idara.trim() !== '-');
+    const idaraName = hasIdara ? res.idara.trim() : '';
 
-    if (isMumineen) {
-      // Mumineen: no need to mention, show clean dash
+    // Category badge class for non-mumineen categories
+    const lower = rawCat.toLowerCase();
+    let catBadgeClass = 'bg-rose-100 text-rose-950 border-rose-300';
+    if (lower === 'muntasbeen') {
+      catBadgeClass = 'bg-purple-100 text-purple-950 border-purple-400 font-black';
+    } else if (lower === 'qasreali') {
+      catBadgeClass = 'bg-amber-100 text-amber-950 border-amber-400 font-black ring-1 ring-amber-300';
+    } else if (lower === 'baitezainy') {
+      catBadgeClass = 'bg-cyan-100 text-cyan-950 border-cyan-400 font-black';
+    } else if (lower.includes('nizaam') || lower.includes('category a')) {
+      catBadgeClass = 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black';
+    }
+
+    // Reusable hidden select for changing category on click/hover
+    const categorySelect = (
+      <select
+        value={res.category}
+        onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
+        className="opacity-0 group-hover:opacity-100 absolute inset-0 text-xs rounded border border-stone-300 bg-white cursor-pointer transition font-bold z-10"
+        title="Click to change category"
+      >
+        {categories.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+        {!categories.includes(res.category) && res.category && (
+          <option value={res.category}>{res.category}</option>
+        )}
+      </select>
+    );
+
+    // Case 1: Default Mumineen with NO Idara -> show clean dash (no need to show Mumineen)
+    if (isMumineen && !hasIdara) {
       return (
         <div className="flex items-center justify-center relative group min-w-[50px]" title="Category: Mumineen (Default)">
           <span className="text-stone-300 font-mono text-xs select-none">—</span>
-          {/* Subtle edit trigger on hover/click */}
-          <select
-            value={res.category}
-            onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
-            className="opacity-0 group-hover:opacity-100 absolute inset-0 text-xs rounded border border-stone-300 bg-white cursor-pointer transition font-medium"
-            title="Click to change category"
-          >
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            {!categories.includes(res.category) && res.category && (
-              <option value={res.category}>{res.category}</option>
-            )}
-          </select>
+          {categorySelect}
         </div>
       );
     }
 
-    // Other than Mumineen: COLOR IT!
-    const lower = rawCat.toLowerCase();
-    let badgeClass = 'bg-rose-100 text-rose-950 border-rose-300';
-    if (lower === 'muntasbeen') {
-      badgeClass = 'bg-purple-100 text-purple-950 border-purple-400 font-black';
-    } else if (lower === 'qasreali') {
-      badgeClass = 'bg-amber-100 text-amber-950 border-amber-400 font-black ring-1 ring-amber-300';
-    } else if (lower === 'baitezainy') {
-      badgeClass = 'bg-cyan-100 text-cyan-950 border-cyan-400 font-black';
-    } else if (lower.includes('nizaam') || lower.includes('category a')) {
-      badgeClass = 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black';
+    // Case 2: Default Mumineen WITH Idara -> show only Idara in category column
+    if (isMumineen && hasIdara) {
+      return (
+        <div className="relative group inline-flex items-center justify-center max-w-full">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100/90 text-amber-950 border border-amber-300 shadow-2xs tracking-wide"
+            title={`Idara: ${idaraName}`}
+          >
+            <span className="text-[10px]">🏢</span>
+            <span className="truncate max-w-[120px]">{idaraName}</span>
+          </span>
+          {categorySelect}
+        </div>
+      );
     }
 
+    // Case 3: Other than Mumineen WITH Idara -> show BOTH Category and Idara
+    if (!isMumineen && hasIdara) {
+      return (
+        <div className="relative group inline-flex flex-wrap items-center justify-center gap-1 max-w-full">
+          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black border shadow-2xs uppercase tracking-wide ${catBadgeClass}`}>
+            {rawCat}
+          </span>
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100/90 text-amber-950 border border-amber-300 shadow-2xs"
+            title={`Idara: ${idaraName}`}
+          >
+            <span className="text-[9px]">🏢</span>
+            <span className="truncate max-w-[100px]">{idaraName}</span>
+          </span>
+          {categorySelect}
+        </div>
+      );
+    }
+
+    // Case 4: Other than Mumineen with NO Idara -> show Category badge
     return (
       <div className="relative group inline-block">
-        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black border shadow-2xs uppercase tracking-wide ${badgeClass}`}>
+        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black border shadow-2xs uppercase tracking-wide ${catBadgeClass}`}>
           {rawCat}
         </span>
-        <select
-          value={res.category}
-          onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
-          className="opacity-0 group-hover:opacity-100 absolute inset-0 text-xs rounded border border-stone-300 bg-white cursor-pointer transition font-bold"
-          title="Click to change category"
-        >
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-          {!categories.includes(res.category) && res.category && (
-            <option value={res.category}>{res.category}</option>
-          )}
-        </select>
+        {categorySelect}
       </div>
     );
   };
@@ -1594,7 +1622,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <th
                   onClick={() => handleSort('category')}
                   className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
-                    fitColumnsToScreen ? 'w-[85px]' : 'min-w-[125px]'
+                    fitColumnsToScreen ? 'w-[105px]' : 'min-w-[140px]'
                   }`}
                   title="Click to sort by Category"
                 >
@@ -1709,14 +1737,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                               res.isSpecialGuest ? 'text-amber-950 font-black' : 'text-stone-950'
                             }`}
                           />
-                          {res.idara && res.idara.trim() && res.idara.trim() !== '—' && res.idara.toLowerCase() !== 'n/a' && (
-                            <span 
-                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs"
-                              title={`Idara: ${res.idara}`}
-                            >
-                              🏢 {res.idara}
-                            </span>
-                          )}
                           {isShiftedToA && (
                             <span 
                               className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 shadow-2xs"
@@ -1958,7 +1978,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       </td>
 
                       {/* 13. Category */}
-                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[85px]' : 'min-w-[125px]'}`}>
+                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[105px]' : 'min-w-[140px]'}`}>
                         {renderCategoryBadge(res)}
                       </td>
 

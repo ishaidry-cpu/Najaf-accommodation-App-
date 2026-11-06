@@ -1323,11 +1323,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span>STAR</span>
                           </span>
                         )}
-                        {m.idara && m.idara.trim() && m.idara !== '—' && m.idara.toLowerCase() !== 'n/a' && (
-                          <span className="px-1 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-300 text-[9px] font-bold" title={`Idara: ${m.idara}`}>
-                            🏢 {m.idara}
-                          </span>
-                        )}
                         <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
                           {m.applicantName} ({m.age})
                         </span>
