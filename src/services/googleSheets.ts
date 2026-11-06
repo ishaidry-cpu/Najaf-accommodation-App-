@@ -430,8 +430,8 @@ export function generateTimelineRows(
 }
 
 /**
- * Generates rows for "Zaereen Lodging & Room Allotment Grid"
- * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY / IDARA
+ * Generates rows matching EXACTLY the "Zaereen Lodging & Room Allotment Grid"
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY | SPECIAL GUEST | SPECIAL REMARKS | MAIN PORTAL | REQUEST SLIP NO. | PAX COUNT | LAST UPDATED
  */
 export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
   const headers = [
@@ -448,30 +448,18 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'GROUP LEAD',
     'ARRIVAL',
     'DEPARTURE',
-    'CATEGORY / IDARA',
+    'CATEGORY',
+    'SPECIAL GUEST',
+    'SPECIAL REMARKS',
+    'MAIN PORTAL',
+    'REQUEST SLIP NO.',
+    'PAX COUNT',
+    'LAST UPDATED',
   ];
 
   const rows = reservations.map((r, index) => {
-    let rawIdara = (r.idara || '').trim();
-    // User instruction: "Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
-    if (rawIdara && /faiz|fayz|husaini|husayni/i.test(rawIdara)) {
-      rawIdara = '';
-    }
-    const hasIdara = !!(rawIdara && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-');
-    const rawCat = (r.category || '').trim();
-    const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
-
-    // Combine category and idara in one column
-    let combinedCatIdara = '—';
-    if (!isMumineen && hasIdara) {
-      combinedCatIdara = `${rawCat} • ${rawIdara}`;
-    } else if (!isMumineen && !hasIdara) {
-      combinedCatIdara = rawCat;
-    } else if (isMumineen && hasIdara) {
-      combinedCatIdara = rawIdara;
-    } else {
-      combinedCatIdara = '—';
-    }
+    const isSpecial = !!r.isSpecialGuest;
+    const cleanRemarks = (r.specialRemarks || '').replace(/\[Idara:[^\]]+\]\s*/gi, '').trim();
 
     return [
       index + 1,
@@ -487,7 +475,13 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
       r.groupLeadName || r.applicantName || '',
       (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
       (r.departureDate || r.departureDateTime || '').slice(0, 10),
-      combinedCatIdara,
+      r.category || 'Mumineen',
+      isSpecial ? '⭐ YES' : 'NO',
+      cleanRemarks,
+      r.isUploadedToPortal ? 'Uploaded' : 'Pending',
+      r.requestSlipNo || '',
+      r.paxCount || r.pax || 1,
+      new Date(r.updatedAt || Date.now()).toLocaleString(),
     ];
   });
 
@@ -594,13 +588,28 @@ export async function syncAllToGoogleSheet(
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
 
-    // Update Zaereen Lodging & Room Allotment Grid sheet (A to N: 14 columns including Tour ID & Category/Idara)
+    // Update Zaereen Lodging & Room Allotment Grid sheet (A to T, exactly 20 columns)
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      `'${ZAEREEN_GRID_TAB}'!A1:N` + (gridRows.length + 10),
+      `'${ZAEREEN_GRID_TAB}'!A1:T` + (gridRows.length + 10),
       [gridHeaders, ...gridRows]
     );
+
+    // Clear column U:Z if a previous sync had the 21st column
+    try {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+          `'${ZAEREEN_GRID_TAB}'!U1:Z500`
+        )}:clear`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+    } catch {
+      // Ignore clear failure if sheet is narrower
+    }
 
     // Update Rooms_Inventory sheet
     await updateSheetRange(
@@ -875,83 +884,87 @@ export async function fetchRoomsFromGoogleSheet(
   spreadsheetId: string,
   existingRooms: Room[] = []
 ): Promise<Room[]> {
-  // 1. Get spreadsheet metadata to locate the rooms tab
-  const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  try {
+    // 1. Get spreadsheet metadata to locate the rooms tab
+    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
 
-  if (!metaRes.ok) {
-    const error = await metaRes.json();
-    throw new Error(error?.error?.message || 'Failed to inspect Google Sheet tabs.');
-  }
+    if (!metaRes.ok) {
+      console.warn('Could not inspect Google Sheet metadata for rooms tab; retaining existing rooms.');
+      return existingRooms;
+    }
 
-  const metaData = await metaRes.json();
-  const sheets: any[] = metaData.sheets || [];
+    const metaData = await metaRes.json();
+    const sheets: any[] = metaData.sheets || [];
 
-  // User Requirement: "it should pick from room inventory sheet and the capacity from Capacity (Beds) colum and buffer from Amenities column and should display as it displays now example 2+1 or 3+1 or 4+1."
-  // CRITICAL: NEVER select 'Zaereen Lodging & Room Allotment Grid', 'Timeline', or guest reservation manifests!
-  const isExcludedRoomTab = (title: string) => {
-    const t = title.toLowerCase().trim();
-    return (
-      t.includes('grid') ||
-      t.includes('lodging') ||
-      t.includes('allotment') ||
-      t.includes('zaereen') ||
-      t.includes('reservation') ||
-      t.includes('timeline') ||
-      t.includes('availability') ||
-      t.includes('upgrade')
-    );
-  };
+    // User Requirement: "it should pick from room inventory sheet and the capacity from Capacity (Beds) colum and buffer from Amenities column and should display as it displays now example 2+1 or 3+1 or 4+1."
+    // CRITICAL: NEVER select 'Zaereen Lodging & Room Allotment Grid', 'Timeline', or guest reservation manifests!
+    const isExcludedRoomTab = (title: string) => {
+      const t = title.toLowerCase().trim();
+      return (
+        t.includes('grid') ||
+        t.includes('lodging') ||
+        t.includes('allotment') ||
+        t.includes('zaereen') ||
+        t.includes('reservation') ||
+        t.includes('timeline') ||
+        t.includes('availability') ||
+        t.includes('upgrade')
+      );
+    };
 
-  // Priority 1: Exact matches or tabs containing 'inventory'
-  let targetTab = sheets.find((s) => {
-    const title = (s.properties?.title || '').toLowerCase().trim();
-    return (
-      !isExcludedRoomTab(title) &&
-      (title === 'rooms_inventory' ||
-        title === 'room_inventory' ||
-        title === 'rooms inventory' ||
-        title === 'room inventory' ||
-        title.includes('inventory'))
-    );
-  })?.properties?.title;
-
-  // Priority 2: Tabs with 'room' or 'hotel' that are NOT zaereen/grid/timeline/allotment/upgrades
-  if (!targetTab) {
-    targetTab = sheets.find((s) => {
+    // Priority 1: Exact matches or tabs containing 'inventory'
+    let targetTab = sheets.find((s) => {
       const title = (s.properties?.title || '').toLowerCase().trim();
       return (
         !isExcludedRoomTab(title) &&
-        (title.includes('room') || title.includes('hotel') || title.includes('building'))
+        (title === 'rooms_inventory' ||
+          title === 'room_inventory' ||
+          title === 'rooms inventory' ||
+          title === 'room inventory' ||
+          title.includes('inventory'))
       );
     })?.properties?.title;
-  }
 
-  // Priority 3: Fallback to second sheet if first is Zaereen Grid
-  if (!targetTab && sheets.length > 1) {
-    const nonExcluded = sheets.find((s) => !isExcludedRoomTab(s.properties?.title || ''));
-    if (nonExcluded) targetTab = nonExcluded.properties?.title;
-  }
-
-  if (!targetTab) {
-    throw new Error('No valid Rooms Inventory tab found in the Google Sheet.');
-  }
-
-  // 2. Read values from target tab
-  const valRes = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-      targetTab + '!A1:Z500'
-    )}`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    // Priority 2: Tabs with 'room' or 'hotel' that are NOT zaereen/grid/timeline/allotment/upgrades
+    if (!targetTab) {
+      targetTab = sheets.find((s) => {
+        const title = (s.properties?.title || '').toLowerCase().trim();
+        return (
+          !isExcludedRoomTab(title) &&
+          (title.includes('room') || title.includes('hotel') || title.includes('building'))
+        );
+      })?.properties?.title;
     }
-  );
 
-  if (!valRes.ok) {
-    const error = await valRes.json();
-    throw new Error(error?.error?.message || `Failed to read tab: ${targetTab}`);
-  }
+    // Priority 3: Fallback to second sheet if first is Zaereen Grid
+    if (!targetTab && sheets.length > 1) {
+      const nonExcluded = sheets.find((s) => !isExcludedRoomTab(s.properties?.title || ''));
+      if (nonExcluded) targetTab = nonExcluded.properties?.title;
+    }
+
+    // If no dedicated rooms tab is present, safely return existing rooms without throwing!
+    if (!targetTab) {
+      console.info('No dedicated Rooms Inventory tab found in Google Sheet; retaining current room inventory.');
+      return existingRooms;
+    }
+
+    // 2. Read values from target tab
+    const cleanTab = targetTab.replace(/^'|'$/g, '');
+    const valRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+        `'${cleanTab}'!A1:Z500`
+      )}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!valRes.ok) {
+      console.warn(`Could not read room tab "${targetTab}"; retaining current inventory.`);
+      return existingRooms;
+    }
 
   const valData = await valRes.json();
   const rawRows: any[][] = valData.values || [];
@@ -1145,7 +1158,11 @@ export async function fetchRoomsFromGoogleSheet(
     }
   });
 
-  return parsedRooms;
+    return parsedRooms;
+  } catch (err) {
+    console.warn('Failed to fetch rooms from Google Sheet; retaining existing rooms:', err);
+    return existingRooms;
+  }
 }
 
 /**
@@ -1289,43 +1306,7 @@ export async function fetchReservationsFromGoogleSheet(
     const arrivalDateTime = rawArr ? rawArr.replace(' ', 'T') : `${arrivalDate}T11:00:00`;
     const departureDateTime = rawDep ? rawDep.replace(' ', 'T') : `${departureDate}T01:00:00`;
 
-    // Parse Category & Idara from combined CATEGORY / IDARA cell or legacy separate columns
-    let category = 'Mumineen';
-    let idara = '';
-
-    const catCell = catIdx !== -1 && row[catIdx] ? String(row[catIdx]).trim() : '';
-    if (catCell && catCell !== '—') {
-      if (catCell.includes('•')) {
-        const parts = catCell.split('•').map((p) => p.trim());
-        category = parts[0] || 'Mumineen';
-        idara = parts[1] || '';
-      } else {
-        const isKnownCat = /mumineen|muntasbeen|qasreali|baitezainy|nizaam|category a|b to a/i.test(catCell);
-        if (isKnownCat) {
-          category = catCell;
-        } else {
-          // Cell contains only the Idara name
-          idara = catCell;
-          category = 'Mumineen';
-        }
-      }
-    }
-
-    // Also check legacy separate Idara column if present and idara not yet found
-    if (!idara && idaraIdx !== -1 && row[idaraIdx]) {
-      const rawLegacy = String(row[idaraIdx]).trim();
-      if (rawLegacy && rawLegacy !== '—' && rawLegacy.toLowerCase() !== 'n/a' && rawLegacy !== '-') {
-        idara = rawLegacy;
-      }
-    }
-
-    // User instruction: "Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
-    if (idara && /faiz|fayz|husaini|husayni/i.test(idara)) {
-      idara = '';
-    }
-
-    const hasIdaraMentioned = idara !== '' && idara !== '—' && idara.toLowerCase() !== 'n/a' && idara !== '-';
-
+    const rawCategory = catIdx !== -1 && row[catIdx] ? String(row[catIdx]).trim() : 'Mumineen';
     const rawPortal = portalIdx !== -1 && row[portalIdx] ? String(row[portalIdx]).toLowerCase() : '';
     const isUploadedToPortal = rawPortal.includes('yes') || rawPortal.includes('upload') || rawPortal.includes('true');
 
@@ -1338,6 +1319,11 @@ export async function fetchReservationsFromGoogleSheet(
 
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
+
+    // Idara detection & Special Guest / Star assignment
+    // User requirement: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
+    const rawIdara = idaraIdx !== -1 && row[idaraIdx] ? String(row[idaraIdx]).trim() : '';
+    const hasIdaraMentioned = rawIdara !== '' && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-';
 
     // Special Guest & Requirements extraction from sheet
     const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? String(row[specialIdx]).trim() : '';
@@ -1353,10 +1339,10 @@ export async function fetchReservationsFromGoogleSheet(
     const rawRemarks = remarksIdx !== -1 && row[remarksIdx] !== undefined ? String(row[remarksIdx]).trim() : '';
     let specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
     if (hasIdaraMentioned) {
-      const idaraTag = `[Idara: ${idara}]`;
+      const idaraTag = `[Idara: ${rawIdara}]`;
       if (!specialRemarksFromSheet) {
         specialRemarksFromSheet = `${idaraTag} Priority Zaer`;
-      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(idara)) {
+      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(rawIdara)) {
         specialRemarksFromSheet = `${idaraTag} ${specialRemarksFromSheet}`;
       }
     }
@@ -1422,8 +1408,8 @@ export async function fetchReservationsFromGoogleSheet(
         itsId: memberIts || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
         applicantName: memberName || existing?.applicantName || 'Zaer Guest',
         age: age || 38,
-        category: category || 'Mumineen',
-        idara: idara || '',
+        category: rawCategory,
+        idara: rawIdara || existing?.idara || 'Faiz-e-Husaini',
         gender,
         family: familyNo,
         tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',

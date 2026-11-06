@@ -13,6 +13,7 @@ export const DEFAULT_ZAEREEN_CATEGORIES = [
   'Muntasbeen',
   'Qasreali',
   'Baitezainy',
+  'Toloba',
 ];
 
 export type UserRole = 'admin' | 'receptionist';
