@@ -392,9 +392,10 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     const gender = rawGender.toLowerCase().startsWith('f') ? 'Female' : 'Male';
     
     const family = famIdx >= 0 && row[famIdx] ? String(row[famIdx]).trim() : `F-${parsedList.length + 1}`;
-    // User instruction: "Idara is in coumn I in the excel file. no other coulmn fix that."
+    // User instruction: "Idara is in coumn I in the excel file. no other coulmn fix that. Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
     const rawIdaraVal = (row.length > idaraIdx && row[idaraIdx] != null) ? String(row[idaraIdx]).trim() : '';
-    const idara = (rawIdaraVal && rawIdaraVal !== '—' && rawIdaraVal.toLowerCase() !== 'n/a' && rawIdaraVal !== '-')
+    const isFaizTrust = /faiz|fayz|husaini|husayni/i.test(rawIdaraVal);
+    const idara = (rawIdaraVal && rawIdaraVal !== '—' && rawIdaraVal.toLowerCase() !== 'n/a' && rawIdaraVal !== '-' && !isFaizTrust)
       ? rawIdaraVal
       : '';
     const hofId = hofIdx >= 0 && row[hofIdx] ? String(row[hofIdx]).trim() : '';
@@ -717,7 +718,7 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       category: 'Muntasbeen',
       gender: 'Male',
       family: 'F-1',
-      idara: 'Fayz E Husayni Trust Mumbai',
+      idara: '',
       hofId: '20304504',
       groupAdmin: 'Yes',
       groupId: '1766839506',
@@ -742,7 +743,7 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       jamaat: 'DUBAI (UAE)',
       rotationId: '',
       category: 'Qasreali',
-      idara: 'Faiz-e-Husaini',
+      idara: '',
       gender: 'Male',
       family: 'F-3',
       hofId: '40912301',
@@ -769,7 +770,7 @@ export function getSampleZaereenRows(): ParsedZaerRow[] {
       jamaat: 'NAIROBI (KENYA)',
       rotationId: '',
       category: 'Baitezainy',
-      idara: 'Faiz-e-Husaini',
+      idara: '',
       gender: 'Male',
       family: 'F-4',
       hofId: '60124982',

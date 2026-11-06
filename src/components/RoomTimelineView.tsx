@@ -476,7 +476,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       age: parseInt(instantAge) || 45,
       gender: instantGender,
       jamaat: 'Direct Booking',
-      idara: 'Faiz',
+      idara: '',
       officeName: 'Faiz E Husayni',
       groupLeadName: guestName,
       moneyGiven: 'No',

@@ -431,8 +431,7 @@ export function generateTimelineRows(
 
 /**
  * Generates rows for "Zaereen Lodging & Room Allotment Grid"
- * User Instruction: "combine category and idar in one column remove tour Id and everything else"
- * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY / IDARA
+ * Sequence: SR # | ITS | NAME | AGE | FAMILY | OFFICE NAME | TOUR ID | BUILDING | ROOM ALLOTTMENT | GENDER | GROUP LEAD | ARRIVAL | DEPARTURE | CATEGORY / IDARA
  */
 export function generateZaereenGridRows(reservations: Reservation[]): { headers: string[]; rows: any[][] } {
   const headers = [
@@ -442,6 +441,7 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
     'AGE',
     'FAMILY',
     'OFFICE NAME',
+    'TOUR ID',
     'BUILDING',
     'ROOM ALLOTTMENT',
     'GENDER',
@@ -452,13 +452,16 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
   ];
 
   const rows = reservations.map((r, index) => {
-    const rawIdara = (r.idara || '').trim();
+    let rawIdara = (r.idara || '').trim();
+    // User instruction: "Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
+    if (rawIdara && /faiz|fayz|husaini|husayni/i.test(rawIdara)) {
+      rawIdara = '';
+    }
     const hasIdara = !!(rawIdara && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-');
     const rawCat = (r.category || '').trim();
     const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
 
     // Combine category and idara in one column
-    // "When there is idara in the category just add that and if the category is other than mumineen and there is also an idara show both in the category column by default it is mumineen category and no need to show that (same as it is now)"
     let combinedCatIdara = '—';
     if (!isMumineen && hasIdara) {
       combinedCatIdara = `${rawCat} • ${rawIdara}`;
@@ -477,6 +480,7 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
       r.age ?? '',
       r.family || r.familyNumber || '',
       r.officeName || '',
+      r.tourRefNo || r.tourId || '',
       r.building || '',
       r.roomNumber || '',
       r.gender || 'Male',
@@ -590,11 +594,11 @@ export async function syncAllToGoogleSheet(
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
 
-    // Update Zaereen Lodging & Room Allotment Grid sheet (A to M: 13 columns, Tour ID & extras removed)
+    // Update Zaereen Lodging & Room Allotment Grid sheet (A to N: 14 columns including Tour ID & Category/Idara)
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      `'${ZAEREEN_GRID_TAB}'!A1:M` + (gridRows.length + 10),
+      `'${ZAEREEN_GRID_TAB}'!A1:N` + (gridRows.length + 10),
       [gridHeaders, ...gridRows]
     );
 
@@ -1313,6 +1317,11 @@ export async function fetchReservationsFromGoogleSheet(
       if (rawLegacy && rawLegacy !== '—' && rawLegacy.toLowerCase() !== 'n/a' && rawLegacy !== '-') {
         idara = rawLegacy;
       }
+    }
+
+    // User instruction: "Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
+    if (idara && /faiz|fayz|husaini|husayni/i.test(idara)) {
+      idara = '';
     }
 
     const hasIdaraMentioned = idara !== '' && idara !== '—' && idara.toLowerCase() !== 'n/a' && idara !== '-';

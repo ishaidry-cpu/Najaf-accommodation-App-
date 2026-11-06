@@ -439,7 +439,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
         category: r.category || defaultCategory || 'Mumineen',
         gender: r.gender,
         family: fam,
-        idara: 'Fayz',
+        idara: '',
         hofId: r.hofId || (r.gender === 'Male' ? its : ''),
         tourRefNo: cleanTour,
         officeName: officeName.trim() || 'Fayz E Husayni Trust Mumbai',

@@ -214,7 +214,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
       hofId: hofId.trim() || undefined,
       groupLeadName: groupLeadName.trim() || applicantName.trim(),
       category: category || 'Mumineen',
-      idara: 'Faiz-e-Husaini',
+      idara: '',
       arrivalDate,
       departureDate,
       rawArrivalStr: formattedRawArrival,

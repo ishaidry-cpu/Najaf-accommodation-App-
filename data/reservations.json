@@ -95,7 +95,7 @@
     "category": "Muntasbeen",
     "gender": "Male",
     "family": "F-1",
-    "idara": "Fayz E Husayni Trust Mumbai",
+    "idara": "",
     "hofId": "20304504",
     "groupAdmin": "Yes",
     "groupId": "1766839506",
@@ -126,7 +126,8 @@
     "isUpgradedFromBToA": true,
     "assignedCategory": "Category A (Nizaam)",
     "createdAt": "2026-09-28T08:10:00Z",
-    "updatedAt": "2026-09-28T08:10:00Z"
+    "updatedAt": "2026-09-28T08:10:00Z",
+    "isSpecialGuest": false
   },
   {
     "id": "res-sb-104",
@@ -135,7 +136,7 @@
     "age": 47,
     "jamaat": "DUBAI (UAE)",
     "category": "Qasreali",
-    "idara": "Faiz-e-Husaini",
+    "idara": "",
     "gender": "Male",
     "family": "F-3",
     "tourRefNo": "NKERP/TOUR/2026/1334",
@@ -165,7 +166,8 @@
     "isUpgradedFromBToA": true,
     "assignedCategory": "Category A (Nizaam)",
     "createdAt": "2026-09-28T08:15:00Z",
-    "updatedAt": "2026-09-28T08:15:00Z"
+    "updatedAt": "2026-09-28T08:15:00Z",
+    "isSpecialGuest": false
   },
   {
     "id": "res-sb-105",
@@ -174,7 +176,7 @@
     "age": 34,
     "jamaat": "NAIROBI (KENYA)",
     "category": "Baitezainy",
-    "idara": "Faiz-e-Husaini",
+    "idara": "",
     "gender": "Male",
     "family": "F-4",
     "tourRefNo": "NKERP/TOUR/2026/1335",
@@ -204,7 +206,8 @@
     "isUpgradedFromBToA": false,
     "assignedCategory": "Category B (Standard)",
     "createdAt": "2026-09-28T08:20:00Z",
-    "updatedAt": "2026-09-28T08:20:00Z"
+    "updatedAt": "2026-09-28T08:20:00Z",
+    "isSpecialGuest": false
   },
   {
     "id": "res-sb-106",

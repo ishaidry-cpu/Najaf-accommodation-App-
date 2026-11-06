@@ -575,7 +575,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       category: categories[0] || 'Mumineen',
       gender: 'Male',
       family: `F-${reservations.length + 1}`,
-      idara: 'Faiz-e-Husaini',
+      idara: '',
       tourRefNo: 'NKERP/TOUR/2026/1333',
       officeName: 'Fayz E Husayni Trust Mumbai',
       groupLeadName: 'Group Leader Name',
@@ -909,7 +909,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-stone-600 mt-1">
-            Sequence: <strong>ITS ➔ NAME ➔ AGE ➔ FAMILY ➔ OFFICE NAME ➔ BUILDING & ROOM ALLOTTMENT</strong> ➔ GENDER ➔ GROUP LEAD ➔ DATES ➔ CATEGORY / IDARA. Full Screen Table.
+            Sequence: <strong>ITS ➔ NAME ➔ AGE ➔ FAMILY ➔ OFFICE NAME ➔ TOUR ID ➔ BUILDING & ROOM ALLOTTMENT</strong> ➔ GENDER ➔ GROUP LEAD ➔ DATES ➔ CATEGORY / IDARA. Full Screen Table.
           </p>
         </div>
 
@@ -1520,6 +1520,20 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                 </th>
 
+                {/* 6. TOUR ID */}
+                <th
+                  onClick={() => handleSort('tourRefNo')}
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                    fitColumnsToScreen ? 'w-[120px]' : 'min-w-[190px] max-w-[260px]'
+                  }`}
+                  title="Click to sort by Tour ID"
+                >
+                  <div className="flex items-center">
+                    <span>TOUR ID</span>
+                    {renderSortIndicator('tourRefNo')}
+                  </div>
+                </th>
+
                 {/* 7. Building */}
                 <th
                   onClick={() => handleSort('building')}
@@ -1762,6 +1776,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           onChange={(e) => handleFieldChange(res.id, 'officeName', e.target.value)}
                           title={res.officeName}
                           className="w-full bg-transparent text-stone-800 text-xs font-medium border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
+                        />
+                      </td>
+
+                      {/* 6. TOUR ID */}
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[120px]' : 'min-w-[190px] max-w-[260px]'}`}>
+                        <input
+                          type="text"
+                          value={res.tourRefNo}
+                          onChange={(e) => handleFieldChange(res.id, 'tourRefNo', e.target.value)}
+                          title={res.tourRefNo}
+                          className="w-full bg-transparent font-mono font-bold text-stone-950 text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
                         />
                       </td>
 
