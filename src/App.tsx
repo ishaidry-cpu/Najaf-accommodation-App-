@@ -426,7 +426,10 @@ export default function App() {
       try {
         setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
         const [freshRooms, freshRes] = await Promise.all([
-          fetchRoomsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms),
+          fetchRoomsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms).catch((err) => {
+            console.warn('Rooms pull warning:', err);
+            return rooms;
+          }),
           fetchReservationsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms, reservations),
         ]);
 

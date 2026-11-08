@@ -46,7 +46,7 @@ import {
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
-import { hasDeparturePassed48Hours, getDepartureElapsedHours } from '../utils/turnoverTiming';
+import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -799,13 +799,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     );
   };
 
-  // Helper to render category at the end:
-  // "Remove the idara name from the list. it hides the name. When there is idara in the category just add that and if the category is other than mumineen and there is also an idara show both in the category column by default it is mumineen category and no need to show that (same as it is now)"
+  // Helper to render category at the end
   const renderCategoryBadge = (res: Reservation) => {
     const rawCat = (res.category || '').trim();
     const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
-    const hasIdara = !!(res.idara && res.idara.trim() && res.idara.trim() !== '—' && res.idara.toLowerCase() !== 'n/a' && res.idara.trim() !== '-');
-    const idaraName = hasIdara ? res.idara.trim() : '';
 
     // Category badge class for non-mumineen categories
     const lower = rawCat.toLowerCase();
@@ -839,8 +836,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       </select>
     );
 
-    // Case 1: Default Mumineen with NO Idara -> show clean dash (no need to show Mumineen)
-    if (isMumineen && !hasIdara) {
+    // Default Mumineen -> show clean dash (no need to show Mumineen)
+    if (isMumineen) {
       return (
         <div className="flex items-center justify-center relative group min-w-[50px]" title="Category: Mumineen (Default)">
           <span className="text-stone-300 font-mono text-xs select-none">—</span>
@@ -849,42 +846,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       );
     }
 
-    // Case 2: Default Mumineen WITH Idara -> show only Idara in category column
-    if (isMumineen && hasIdara) {
-      return (
-        <div className="relative group inline-flex items-center justify-center max-w-full">
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100/90 text-amber-950 border border-amber-300 shadow-2xs tracking-wide"
-            title={`Idara: ${idaraName}`}
-          >
-            <span className="text-[10px]">🏢</span>
-            <span className="truncate max-w-[120px]">{idaraName}</span>
-          </span>
-          {categorySelect}
-        </div>
-      );
-    }
-
-    // Case 3: Other than Mumineen WITH Idara -> show BOTH Category and Idara
-    if (!isMumineen && hasIdara) {
-      return (
-        <div className="relative group inline-flex flex-wrap items-center justify-center gap-1 max-w-full">
-          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black border shadow-2xs uppercase tracking-wide ${catBadgeClass}`}>
-            {rawCat}
-          </span>
-          <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100/90 text-amber-950 border border-amber-300 shadow-2xs"
-            title={`Idara: ${idaraName}`}
-          >
-            <span className="text-[9px]">🏢</span>
-            <span className="truncate max-w-[100px]">{idaraName}</span>
-          </span>
-          {categorySelect}
-        </div>
-      );
-    }
-
-    // Case 4: Other than Mumineen with NO Idara -> show Category badge
+    // Other than Mumineen -> show Category badge
     return (
       <div className="relative group inline-block">
         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black border shadow-2xs uppercase tracking-wide ${catBadgeClass}`}>
@@ -1618,16 +1580,16 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                 </th>
 
-                {/* 13. Category / Idara Sort (KEPT AT THE END!) */}
+                {/* 13. Category Sort (KEPT AT THE END!) */}
                 <th
                   onClick={() => handleSort('category')}
                   className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
                     fitColumnsToScreen ? 'w-[115px]' : 'min-w-[150px]'
                   }`}
-                  title="Click to sort by Category / Idara"
+                  title="Click to sort by Category"
                 >
                   <div className="flex items-center justify-center">
-                    <span>CATEGORY / IDARA</span>
+                    <span>CATEGORY</span>
                     {renderSortIndicator('category')}
                   </div>
                 </th>
@@ -1927,22 +1889,24 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         />
                         <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-indigo-50 text-indigo-700 font-bold text-[9px] border border-indigo-200"
-                            title="Edit Arrival Time"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[9px] border border-indigo-200"
+                            title="Exact Arrival Time (type or select)"
                           >
                             <Clock className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                            <select
+                            <input
+                              type="text"
+                              list="portal-standard-times"
                               value={res.arrivalTime || '11:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'arrivalTime', e.target.value)}
-                              className="bg-transparent text-indigo-950 font-bold text-[9px] focus:outline-none cursor-pointer"
-                            >
-                              {STANDARD_TIMES.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                              {res.arrivalTime && !STANDARD_TIMES.includes(res.arrivalTime) && (
-                                <option value={res.arrivalTime}>{res.arrivalTime}</option>
-                              )}
-                            </select>
+                              onBlur={(e) => {
+                                const formatted = extractCleanTime(e.target.value, undefined, undefined, e.target.value.trim());
+                                if (formatted && formatted !== res.arrivalTime) {
+                                  handleFieldChange(res.id, 'arrivalTime', formatted);
+                                }
+                              }}
+                              className="bg-transparent text-indigo-950 font-bold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
+                              title="Exact Arrival Time"
+                            />
                           </span>
                         </div>
                       </td>
@@ -1957,22 +1921,24 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         />
                         <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-50 text-amber-800 font-bold text-[9px] border border-amber-200"
-                            title="Edit Departure Time"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[9px] border border-amber-200"
+                            title="Exact Departure Time (type or select)"
                           >
                             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                            <select
+                            <input
+                              type="text"
+                              list="portal-standard-times"
                               value={res.departureTime || '01:00 AM'}
                               onChange={(e) => handleFieldChange(res.id, 'departureTime', e.target.value)}
-                              className="bg-transparent text-amber-950 font-bold text-[9px] focus:outline-none cursor-pointer"
-                            >
-                              {STANDARD_TIMES.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                              {res.departureTime && !STANDARD_TIMES.includes(res.departureTime) && (
-                                <option value={res.departureTime}>{res.departureTime}</option>
-                              )}
-                            </select>
+                              onBlur={(e) => {
+                                const formatted = extractCleanTime(e.target.value, undefined, undefined, e.target.value.trim());
+                                if (formatted && formatted !== res.departureTime) {
+                                  handleFieldChange(res.id, 'departureTime', formatted);
+                                }
+                              }}
+                              className="bg-transparent text-amber-950 font-bold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
+                              title="Exact Departure Time"
+                            />
                           </span>
                         </div>
                       </td>
@@ -2055,6 +2021,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               )}
             </tbody>
           </table>
+          <datalist id="portal-standard-times">
+            {STANDARD_TIMES.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </div>
 
         {/* Footer Summary Bar */}

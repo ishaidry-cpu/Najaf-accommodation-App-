@@ -6,6 +6,8 @@ import {
   normalizeItsId,
   normalizeText 
 } from '../utils/deduplication';
+import { normalizeDate } from './excelService';
+import { extractCleanTime } from '../utils/turnoverTiming';
 
 export interface SyncResult {
   success: boolean;
@@ -473,8 +475,8 @@ export function generateZaereenGridRows(reservations: Reservation[]): { headers:
       r.roomNumber || '',
       r.gender || 'Male',
       r.groupLeadName || r.applicantName || '',
-      (r.arrivalDate || r.arrivalDateTime || '').slice(0, 10),
-      (r.departureDate || r.departureDateTime || '').slice(0, 10),
+      r.arrivalDate ? `${r.arrivalDate}${r.arrivalTime ? ` ${r.arrivalTime}` : ''}` : '',
+      r.departureDate ? `${r.departureDate}${r.departureTime ? ` ${r.departureTime}` : ''}` : '',
       r.category || 'Mumineen',
       isSpecial ? '⭐ YES' : 'NO',
       cleanRemarks,
@@ -1234,15 +1236,20 @@ export async function fetchReservationsFromGoogleSheet(
   let rIdx = headerRow.findIndex((h: string) => h.includes('room allottment') || h.includes('room allotment') || h.includes('room'));
   let genderIdx = headerRow.findIndex((h: string) => h.includes('gender') || h === 'sex');
   let leaderIdx = headerRow.findIndex((h: string) => h === 'group lead' || h.includes('group lead') || h.includes('leader'));
-  let arrIdx = headerRow.findIndex((h: string) => h.includes('arrival'));
-  let depIdx = headerRow.findIndex((h: string) => h.includes('departure'));
+  let arrIdx = headerRow.findIndex((h: string) => h === 'arrival' || h === 'arrival date' || (h.includes('arrival') && !h.includes('time')));
+  if (arrIdx === -1) arrIdx = headerRow.findIndex((h: string) => h.includes('arrival'));
+  let arrTimeIdx = headerRow.findIndex((h: string) => h.includes('arrival time') || h.includes('arr time') || h.includes('time of arrival'));
+
+  let depIdx = headerRow.findIndex((h: string) => h === 'departure' || h === 'departure date' || (h.includes('departure') && !h.includes('time')));
+  if (depIdx === -1) depIdx = headerRow.findIndex((h: string) => h.includes('departure'));
+  let depTimeIdx = headerRow.findIndex((h: string) => h.includes('departure time') || h.includes('dep time') || h.includes('time of departure'));
+
   let catIdx = headerRow.findIndex((h: string) => h.includes('category'));
   let portalIdx = headerRow.findIndex((h: string) => h.includes('portal') || h.includes('upload'));
   let shiftIdx = headerRow.findIndex((h: string) => h.includes('shift') || h.includes('nizaam'));
   let moneyIdx = headerRow.findIndex((h: string) => h.includes('money') || h.includes('account'));
   let slipIdx = headerRow.findIndex((h: string) => h.includes('slip'));
   let paxIdx = headerRow.findIndex((h: string) => h.includes('pax') || h.includes('guest') || h.includes('count'));
-  let idaraIdx = headerRow.findIndex((h: string) => h === 'idara' || h.includes('idara'));
   let specialIdx = headerRow.findIndex((h: string) =>
     h.includes('special guest') ||
     h.includes('special status') ||
@@ -1274,7 +1281,11 @@ export async function fetchReservationsFromGoogleSheet(
   if (arrIdx === -1 && headerRow.length > 11) arrIdx = 11;
   if (depIdx === -1 && headerRow.length > 12) depIdx = 12;
   if (catIdx === -1 && headerRow.length > 13) catIdx = 13;
-  if (portalIdx === -1 && headerRow.length > 14) portalIdx = 14;
+  if (specialIdx === -1 && headerRow.length > 14) specialIdx = 14;
+  if (remarksIdx === -1 && headerRow.length > 15) remarksIdx = 15;
+  if (portalIdx === -1 && headerRow.length > 16) portalIdx = 16;
+  if (slipIdx === -1 && headerRow.length > 17) slipIdx = 17;
+  if (paxIdx === -1 && headerRow.length > 18) paxIdx = 18;
 
   const parsedReservations: Reservation[] = [];
   const usedExistingIds = new Set<string>();
@@ -1301,8 +1312,12 @@ export async function fetchReservationsFromGoogleSheet(
 
     const rawArr = arrIdx !== -1 && row[arrIdx] ? String(row[arrIdx]).trim() : '';
     const rawDep = depIdx !== -1 && row[depIdx] ? String(row[depIdx]).trim() : '';
-    const arrivalDate = rawArr ? rawArr.slice(0, 10) : '2026-10-01';
-    const departureDate = rawDep ? rawDep.slice(0, 10) : '2026-10-06';
+    const rawArrTime = arrTimeIdx !== -1 && row[arrTimeIdx] ? String(row[arrTimeIdx]).trim() : '';
+    const rawDepTime = depTimeIdx !== -1 && row[depTimeIdx] ? String(row[depTimeIdx]).trim() : '';
+    const arrivalDate = normalizeDate(rawArr) || '2026-10-01';
+    const departureDate = normalizeDate(rawDep) || '2026-10-06';
+    const arrivalTime = extractCleanTime(rawArrTime, rawArr, undefined, '11:00 AM');
+    const departureTime = extractCleanTime(rawDepTime, rawDep, undefined, '01:00 AM');
     const arrivalDateTime = rawArr ? rawArr.replace(' ', 'T') : `${arrivalDate}T11:00:00`;
     const departureDateTime = rawDep ? rawDep.replace(' ', 'T') : `${departureDate}T01:00:00`;
 
@@ -1320,31 +1335,18 @@ export async function fetchReservationsFromGoogleSheet(
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? String(row[slipIdx]).trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(String(row[paxIdx]))) ? parseInt(String(row[paxIdx]), 10) : 1;
 
-    // Idara detection & Special Guest / Star assignment
-    // User requirement: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
-    const rawIdara = idaraIdx !== -1 && row[idaraIdx] ? String(row[idaraIdx]).trim() : '';
-    const hasIdaraMentioned = rawIdara !== '' && rawIdara !== '—' && rawIdara.toLowerCase() !== 'n/a' && rawIdara !== '-';
-
-    // Special Guest & Requirements extraction from sheet
+    // Special Guest & Requirements extraction from sheet (only when explicitly allotted in sheet)
     const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? String(row[specialIdx]).trim() : '';
     const hasSpecialInSheet = specialIdx !== -1 && rawSpecial !== '';
     let isSpecialGuestFromSheet = hasSpecialInSheet
       ? /yes|true|⭐|vip|special|star/i.test(rawSpecial)
       : undefined;
 
-    if (hasIdaraMentioned) {
-      isSpecialGuestFromSheet = true;
-    }
-
     const rawRemarks = remarksIdx !== -1 && row[remarksIdx] !== undefined ? String(row[remarksIdx]).trim() : '';
     let specialRemarksFromSheet = rawRemarks ? rawRemarks : undefined;
-    if (hasIdaraMentioned) {
-      const idaraTag = `[Idara: ${rawIdara}]`;
-      if (!specialRemarksFromSheet) {
-        specialRemarksFromSheet = `${idaraTag} Priority Zaer`;
-      } else if (!specialRemarksFromSheet.includes(idaraTag) && !specialRemarksFromSheet.includes(rawIdara)) {
-        specialRemarksFromSheet = `${idaraTag} ${specialRemarksFromSheet}`;
-      }
+    if (specialRemarksFromSheet) {
+      specialRemarksFromSheet = specialRemarksFromSheet.replace(/\[Idara:[^\]]+\]\s*/gi, '').trim();
+      if (!specialRemarksFromSheet) specialRemarksFromSheet = undefined;
     }
 
     // Check if applicantName or rawRoomNumber contains multiple family members / rooms
@@ -1409,7 +1411,7 @@ export async function fetchReservationsFromGoogleSheet(
         applicantName: memberName || existing?.applicantName || 'Zaer Guest',
         age: age || 38,
         category: rawCategory,
-        idara: rawIdara || existing?.idara || 'Faiz-e-Husaini',
+        idara: '',
         gender,
         family: familyNo,
         tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
@@ -1417,6 +1419,10 @@ export async function fetchReservationsFromGoogleSheet(
         groupLeadName,
         arrivalDate,
         departureDate,
+        arrivalTime,
+        departureTime,
+        rawArrivalStr: rawArr,
+        rawDepartureStr: rawDep,
         shiftToCategoryA,
         accommodationCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
         requestSlipNo: requestSlipNo || existing?.requestSlipNo || undefined,

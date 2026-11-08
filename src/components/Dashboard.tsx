@@ -1508,14 +1508,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </div>
                                 <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
                                   <span>Age: {m.age} • {m.gender}</span>
-                                  {m.idara && m.idara.trim() && m.idara !== '—' && m.idara.toLowerCase() !== 'n/a' && (
-                                    <>
-                                      <span>•</span>
-                                      <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
-                                        🏢 Idara: {m.idara}
-                                      </span>
-                                    </>
-                                  )}
                                   <span>•</span>
                                   <span className="text-emerald-800 font-semibold inline-flex items-center gap-0.5">
                                     <LogIn className="w-2.5 h-2.5 text-emerald-600" />

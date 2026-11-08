@@ -206,7 +206,10 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
     try {
       const [freshRooms, freshRes] = await Promise.all([
-        fetchRoomsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms),
+        fetchRoomsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms).catch((err) => {
+          console.warn('Rooms pull warning:', err);
+          return rooms;
+        }),
         fetchReservationsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms, reservations),
       ]);
 

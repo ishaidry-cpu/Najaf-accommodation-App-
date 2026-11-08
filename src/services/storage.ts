@@ -1578,30 +1578,47 @@ export function getStoredReservations(): Reservation[] {
     const missingInitials = INITIAL_RESERVATIONS.filter((init) => !existingIds.has(init.id));
     const mergedList = missingInitials.length > 0 ? [...parsed, ...missingInitials] : parsed;
 
-    return mergedList.map((item: any) => ({
-      ...item,
-      itsId: item.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
-      applicantName: item.applicantName || item.guestLeaderName || 'Zaer Guest',
-      age: item.age || 38,
-      category: item.category || 'Mumineen',
-      jamaat: item.jamaat || '',
-      idara: item.idara || '',
-      gender: item.gender || 'Male',
-      family: item.family || item.familyNumber || 'F-1',
-      tourRefNo: item.tourRefNo || item.tourId || 'NKERP/TOUR/2026/1333',
-      officeName: item.officeName || 'Fayz E Husayni Trust Mumbai',
-      groupLeadName: item.groupLeadName || item.guestLeaderName || item.applicantName || 'Group Lead',
-      arrivalDate: item.arrivalDate || (item.arrivalDateTime ? item.arrivalDateTime.slice(0, 10) : '2026-10-01'),
-      departureDate: item.departureDate || (item.departureDateTime ? item.departureDateTime.slice(0, 10) : '2026-10-06'),
-      arrivalTime: item.arrivalTime || extractCleanTime(undefined, item.rawArrivalStr, item.arrivalDateTime, '11:00 AM'),
-      departureTime: item.departureTime || extractCleanTime(undefined, item.rawDepartureStr, item.departureDateTime, '01:00 AM'),
-      shiftToCategoryA: item.shiftToCategoryA ?? false,
-      accommodationCategory: item.accommodationCategory || (item.shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
-      moneyGiven: item.moneyGiven || 'No',
-      building: item.building || 'Saifee',
-      roomNumber: item.roomNumber || '',
-      isUploadedToPortal: item.isUploadedToPortal ?? false,
-    }));
+    return mergedList.map((item: any) => {
+      let isSpecialGuest = item.isSpecialGuest;
+      let specialRemarks = item.specialRemarks;
+      if (specialRemarks && typeof specialRemarks === 'string') {
+        const cleaned = specialRemarks.replace(/\[Idara:[^\]]+\]\s*/gi, '').trim();
+        if (cleaned === 'Priority Zaer' || cleaned === '') {
+          specialRemarks = undefined;
+          if (item.idara && item.specialRemarks.includes('[Idara:')) {
+            isSpecialGuest = false;
+          }
+        } else {
+          specialRemarks = cleaned;
+        }
+      }
+      return {
+        ...item,
+        itsId: item.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
+        applicantName: item.applicantName || item.guestLeaderName || 'Zaer Guest',
+        age: item.age || 38,
+        category: item.category || 'Mumineen',
+        jamaat: item.jamaat || '',
+        idara: '',
+        gender: item.gender || 'Male',
+        family: item.family || item.familyNumber || 'F-1',
+        tourRefNo: item.tourRefNo || item.tourId || 'NKERP/TOUR/2026/1333',
+        officeName: item.officeName || 'Fayz E Husayni Trust Mumbai',
+        groupLeadName: item.groupLeadName || item.guestLeaderName || item.applicantName || 'Group Lead',
+        arrivalDate: item.arrivalDate || (item.arrivalDateTime ? item.arrivalDateTime.slice(0, 10) : '2026-10-01'),
+        departureDate: item.departureDate || (item.departureDateTime ? item.departureDateTime.slice(0, 10) : '2026-10-06'),
+        arrivalTime: item.arrivalTime || extractCleanTime(undefined, item.rawArrivalStr, item.arrivalDateTime, '11:00 AM'),
+        departureTime: item.departureTime || extractCleanTime(undefined, item.rawDepartureStr, item.departureDateTime, '01:00 AM'),
+        shiftToCategoryA: item.shiftToCategoryA ?? false,
+        accommodationCategory: item.accommodationCategory || (item.shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
+        moneyGiven: item.moneyGiven || 'No',
+        building: item.building || 'Saifee',
+        roomNumber: item.roomNumber || '',
+        isUploadedToPortal: item.isUploadedToPortal ?? false,
+        isSpecialGuest: isSpecialGuest ?? false,
+        specialRemarks,
+      };
+    });
   } catch {
     return INITIAL_RESERVATIONS;
   }

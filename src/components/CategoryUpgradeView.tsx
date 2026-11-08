@@ -249,7 +249,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
       age: 35,
       jamaat: 'Najaf',
       family: newFamily.trim() || '1',
-      idara: 'Accommodation Office',
+      idara: '',
       tourRefNo: newTourId.trim(),
       tourId: newTourId.trim(),
       officeName: 'Faiz-e-Husaini Najaf',

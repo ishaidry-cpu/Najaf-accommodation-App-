@@ -134,7 +134,7 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
             <span>Supported Columns:</span>
           </div>
           <p className="text-stone-600 text-[11px] leading-relaxed">
-            ITS Id • Applicant Name • Age • Category • Idara • Gender • Family • Tour Reference No. • Office Name • Group Lead Name • Arrival Date • Departure Date
+            ITS Id • Applicant Name • Age • Category • Gender • Family • Tour Reference No. • Office Name • Group Lead Name • Arrival Date • Departure Date
           </p>
         </div>
 

@@ -193,12 +193,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
             <span>Family: <strong>{targetReservation.family || '—'}</strong></span>
             <span>•</span>
             <span className="truncate max-w-[200px]">Tour: <strong>{targetReservation.tourRefNo || '—'}</strong></span>
-            {targetReservation.idara && (
-              <>
-                <span>•</span>
-                <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">🏢 Idara: {targetReservation.idara}</span>
-              </>
-            )}
+
             <span>•</span>
             <span>Room: {targetReservation.roomNumber ? `${targetReservation.building} ${targetReservation.roomNumber}` : 'Not Allotted'}</span>
           </div>

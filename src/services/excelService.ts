@@ -204,6 +204,7 @@ function calculateHeaderScore(row: any[]): number {
  */
 export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]> {
   let rawRows: any[][] = [];
+  let bestWs: XLSX.WorkSheet | null = null;
 
   // 1. Try reading with SheetJS
   try {
@@ -230,6 +231,7 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
         if (sheetScore > maxScore) {
           maxScore = sheetScore;
           bestRows = cleanedRows;
+          bestWs = ws;
         }
       }
 
@@ -392,12 +394,7 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     const gender = rawGender.toLowerCase().startsWith('f') ? 'Female' : 'Male';
     
     const family = famIdx >= 0 && row[famIdx] ? String(row[famIdx]).trim() : `F-${parsedList.length + 1}`;
-    // User instruction: "Idara is in coumn I in the excel file. no other coulmn fix that. Also for idara remover faize husaini trust as it is not an idara. Idara is only those in COLUMN I in the excel sheet"
-    const rawIdaraVal = (row.length > idaraIdx && row[idaraIdx] != null) ? String(row[idaraIdx]).trim() : '';
-    const isFaizTrust = /faiz|fayz|husaini|husayni/i.test(rawIdaraVal);
-    const idara = (rawIdaraVal && rawIdaraVal !== '—' && rawIdaraVal.toLowerCase() !== 'n/a' && rawIdaraVal !== '-' && !isFaizTrust)
-      ? rawIdaraVal
-      : '';
+    const idara = ''; // Zero idara marking anywhere as requested
     const hofId = hofIdx >= 0 && row[hofIdx] ? String(row[hofIdx]).trim() : '';
     const groupAdmin = groupAdminIdx >= 0 && row[groupAdminIdx] ? String(row[groupAdminIdx]).trim() : '';
     const groupId = groupIdIdx >= 0 && row[groupIdIdx] ? String(row[groupIdIdx]).trim() : '';
@@ -407,8 +404,64 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     const officeName = officeIdx >= 0 && row[officeIdx] ? String(row[officeIdx]).trim() : 'Fayz E Husayni Trust Mumbai';
     const groupLeadName = leadIdx >= 0 && row[leadIdx] ? String(row[leadIdx]).trim() : (applicantName || 'Group Leader');
     
-    const rawArrCell = arrIdx >= 0 ? row[arrIdx] : '';
-    const rawDepCell = depIdx >= 0 ? row[depIdx] : '';
+    let rawArrCell: any = arrIdx >= 0 ? row[arrIdx] : '';
+    let rawDepCell: any = depIdx >= 0 ? row[depIdx] : '';
+
+    // Inspect underlying worksheet cell for exact formatted text or Date
+    if (bestWs && arrIdx >= 0) {
+      const cellRef = XLSX.utils.encode_cell({ r, c: arrIdx });
+      const cell = bestWs[cellRef];
+      if (cell) {
+        if (cell.w && /\d{1,2}[:.]\d{2}/.test(cell.w)) {
+          rawArrCell = cell.w;
+        } else if (cell.v instanceof Date) {
+          rawArrCell = cell.v;
+        } else if (typeof cell.v === 'number' && (cell.v - Math.floor(cell.v)) > 0.0001) {
+          rawArrCell = cell.v;
+        }
+      }
+    }
+
+    if (bestWs && depIdx >= 0) {
+      const cellRef = XLSX.utils.encode_cell({ r, c: depIdx });
+      const cell = bestWs[cellRef];
+      if (cell) {
+        if (cell.w && /\d{1,2}[:.]\d{2}/.test(cell.w)) {
+          rawDepCell = cell.w;
+        } else if (cell.v instanceof Date) {
+          rawDepCell = cell.v;
+        } else if (typeof cell.v === 'number' && (cell.v - Math.floor(cell.v)) > 0.0001) {
+          rawDepCell = cell.v;
+        }
+      }
+    }
+
+    let rawArrTimeCell: any = arrTimeIdx >= 0 ? row[arrTimeIdx] : '';
+    if (bestWs && arrTimeIdx >= 0) {
+      const cellRef = XLSX.utils.encode_cell({ r, c: arrTimeIdx });
+      const cell = bestWs[cellRef];
+      if (cell) {
+        if (cell.w && /\d{1,2}[:.]\d{2}/.test(cell.w)) {
+          rawArrTimeCell = cell.w;
+        } else if (cell.v instanceof Date || typeof cell.v === 'number') {
+          rawArrTimeCell = cell.v;
+        }
+      }
+    }
+
+    let rawDepTimeCell: any = depTimeIdx >= 0 ? row[depTimeIdx] : '';
+    if (bestWs && depTimeIdx >= 0) {
+      const cellRef = XLSX.utils.encode_cell({ r, c: depTimeIdx });
+      const cell = bestWs[cellRef];
+      if (cell) {
+        if (cell.w && /\d{1,2}[:.]\d{2}/.test(cell.w)) {
+          rawDepTimeCell = cell.w;
+        } else if (cell.v instanceof Date || typeof cell.v === 'number') {
+          rawDepTimeCell = cell.v;
+        }
+      }
+    }
+
     const rawArr = rawArrCell !== undefined && rawArrCell !== null ? String(rawArrCell).trim() : '';
     const rawDep = rawDepCell !== undefined && rawDepCell !== null ? String(rawDepCell).trim() : '';
 
@@ -417,7 +470,10 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
 
     // Extract exact time from specific time column or date cell
     let arrivalTime = '';
-    if (arrTimeIdx >= 0 && row[arrTimeIdx] !== undefined && row[arrTimeIdx] !== null && String(row[arrTimeIdx]).trim() !== '') {
+    if (rawArrTimeCell !== undefined && rawArrTimeCell !== null && String(rawArrTimeCell).trim() !== '') {
+      arrivalTime = extractTimeFromExcelValue(rawArrTimeCell);
+    }
+    if (!arrivalTime && arrTimeIdx >= 0 && row[arrTimeIdx] !== undefined && row[arrTimeIdx] !== null && String(row[arrTimeIdx]).trim() !== '') {
       arrivalTime = extractTimeFromExcelValue(row[arrTimeIdx]);
     }
     if (!arrivalTime && rawArrCell !== undefined && rawArrCell !== null) {
@@ -431,7 +487,10 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
     }
 
     let departureTime = '';
-    if (depTimeIdx >= 0 && row[depTimeIdx] !== undefined && row[depTimeIdx] !== null && String(row[depTimeIdx]).trim() !== '') {
+    if (rawDepTimeCell !== undefined && rawDepTimeCell !== null && String(rawDepTimeCell).trim() !== '') {
+      departureTime = extractTimeFromExcelValue(rawDepTimeCell);
+    }
+    if (!departureTime && depTimeIdx >= 0 && row[depTimeIdx] !== undefined && row[depTimeIdx] !== null && String(row[depTimeIdx]).trim() !== '') {
       departureTime = extractTimeFromExcelValue(row[depTimeIdx]);
     }
     if (!departureTime && rawDepCell !== undefined && rawDepCell !== null) {
@@ -500,7 +559,7 @@ export async function parseZaereenExcelFile(file: File): Promise<ParsedZaerRow[]
 
 /**
  * Downloads a pre-formatted sample Excel file matching the exact sequence and headers from user's image:
- * ITS Id | Applicant Name | Age | Jamaat | Rotation Id | Category | Gender | Family | Idara | HOF_ID | GroupAdmin | GROUP_ID | Tour Reference No. | Office Name | Group Lead Name | Arrival Date | Departure Date
+ * ITS Id | Applicant Name | Age | Jamaat | Rotation Id | Category | Gender | Family | HOF_ID | GroupAdmin | GROUP_ID | Tour Reference No. | Office Name | Group Lead Name | Arrival Date | Departure Date
  */
 export function downloadSampleExcelTemplate(): void {
   const headers = [
@@ -512,7 +571,6 @@ export function downloadSampleExcelTemplate(): void {
     'Category',
     'Gender',
     'Family',
-    'Idara',
     'HOF_ID',
     'GroupAdmin',
     'GROUP_ID',
@@ -533,7 +591,6 @@ export function downloadSampleExcelTemplate(): void {
       'Mumineen',
       'Female',
       'F-1',
-      '',
       '20304504',
       '',
       '1766839506',
@@ -552,7 +609,6 @@ export function downloadSampleExcelTemplate(): void {
       'Mumineen',
       'Female',
       'F-2',
-      '',
       '30423689',
       '',
       '1766839507',
@@ -571,7 +627,6 @@ export function downloadSampleExcelTemplate(): void {
       'Muntasbeen',
       'Male',
       'F-1',
-      '',
       '20304504',
       'Yes',
       '1766839506',
@@ -590,7 +645,6 @@ export function downloadSampleExcelTemplate(): void {
       'Qasreali',
       'Male',
       'F-3',
-      'Toloba',
       '40912301',
       '',
       '1766839508',
@@ -609,7 +663,6 @@ export function downloadSampleExcelTemplate(): void {
       'Baitezainy',
       'Male',
       'F-4',
-      'Faiz-e-Husaini',
       '60124982',
       '',
       '1766839509',
@@ -633,7 +686,6 @@ export function downloadSampleExcelTemplate(): void {
     { wch: 14 }, // Category
     { wch: 10 }, // Gender
     { wch: 10 }, // Family
-    { wch: 16 }, // Idara
     { wch: 12 }, // HOF_ID
     { wch: 12 }, // GroupAdmin
     { wch: 14 }, // GROUP_ID
@@ -853,11 +905,9 @@ export function convertRowsToReservations(
       roomNumber: row.roomNumber || '',
       isUploadedToPortal: !!row.isUploadedToPortal,
 
-      // Idara starring logic: "in sheet there is a coulmn in the export which is idara. if idara is mentioned star that zair and mention that somewhere"
-      isSpecialGuest: !!(row.idara && row.idara.trim() && row.idara.trim() !== '—' && row.idara.toLowerCase() !== 'n/a'),
-      specialRemarks: (row.idara && row.idara.trim() && row.idara.trim() !== '—' && row.idara.toLowerCase() !== 'n/a')
-        ? `[Idara: ${row.idara}] Priority Zaer`
-        : undefined,
+      // Only give star status to those star status is explicitly allotted
+      isSpecialGuest: false,
+      specialRemarks: undefined,
 
       // Synced helpers
       familyNumber: row.family,

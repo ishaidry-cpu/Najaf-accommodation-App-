@@ -30,8 +30,8 @@ export function parseTimeToMinutes(val: any, defaultMinutes: number = 720): numb
   const str = String(val).trim().replace(/^['"’‘\s]+|['"’‘\s]+$/g, '');
   if (!str) return defaultMinutes;
 
-  // 12-hour format: "11:00 AM", "01:30 pm", "1:15pm"
-  const match12 = str.match(/(\d{1,2})[:.](\d{2})\s*(AM|PM|am|pm)/i);
+  // 12-hour format: "11:00 AM", "01:30 pm", "1:15pm", "11:00:00 AM"
+  const match12 = str.match(/(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
   if (match12) {
     let hours = parseInt(match12[1], 10);
     const minutes = parseInt(match12[2], 10);
@@ -88,13 +88,16 @@ export function extractCleanTime(
       return formatMinutesToTime12(c.getHours() * 60 + c.getMinutes());
     }
     const cleaned = String(c).trim().replace(/^['"’‘\s]+|['"’‘\s]+$/g, '');
-    const match12 = cleaned.match(/(\d{1,2})[:.](\d{2})\s*(AM|PM|am|pm)/i);
+    // 12-hour format with optional seconds (e.g. "11:00 AM", "01:00:00 AM", "1:30 PM", "11:00am")
+    const match12 = cleaned.match(/(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(AM|PM|am|pm)/i);
     if (match12) {
       let h = parseInt(match12[1], 10);
       const m = match12[2];
       const ampm = match12[3].toUpperCase();
+      if (h > 12) h = h % 12 || 12;
       return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
     }
+    // 24-hour format with optional seconds (e.g. "14:30", "14:30:00", "01:00")
     const match24 = cleaned.match(/(?:^|\s|T)(\d{1,2})[:.](\d{2})(?::\d{2})?(?:\s|$)/);
     if (match24) {
       let h = parseInt(match24[1], 10);
