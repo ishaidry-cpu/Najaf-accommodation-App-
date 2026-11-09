@@ -907,8 +907,8 @@ export default function App() {
     const target = reservations.find((r) => r.id === reservationId);
     if (!target) return;
 
-    const hadPreviousRoom = !!target.roomNumber && target.roomNumber.trim() !== '';
-    const isChanged = hadPreviousRoom && target.roomNumber !== roomNumber && roomNumber !== '';
+    const hadPreviousRoom = !!target.roomNumber && String(target.roomNumber).trim() !== '';
+    const isChanged = hadPreviousRoom && String(target.roomNumber) !== String(roomNumber) && roomNumber !== '';
     const newHistory = target.roomChangeHistory ? [...target.roomChangeHistory] : [];
     if (isChanged) {
       newHistory.push({
@@ -1013,8 +1013,8 @@ export default function App() {
     const now = new Date().toISOString();
     const updated = reservations.map((r) => {
       if (matchIds.has(r.id)) {
-        const hadPreviousRoom = !!r.roomNumber && r.roomNumber.trim() !== '';
-        const isChanged = hadPreviousRoom && r.roomNumber !== roomNumber && roomNumber !== '';
+        const hadPreviousRoom = !!r.roomNumber && String(r.roomNumber).trim() !== '';
+        const isChanged = hadPreviousRoom && String(r.roomNumber) !== String(roomNumber) && roomNumber !== '';
         const newHistory = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
         if (isChanged) {
           newHistory.push({
@@ -1541,15 +1541,17 @@ export default function App() {
       />
 
       {/* Quick Room Allotment Modal (Easy Allotment with capacity and buffer) */}
-      <QuickRoomAllotModal
-        isOpen={!!quickAllotTarget}
-        onClose={() => setQuickAllotTarget(null)}
-        targetReservation={quickAllotTarget}
-        rooms={rooms}
-        reservations={reservations}
-        onAllotRoom={handleAllotRoom}
-        onBatchAllotFamily={handleBatchAllotFamily}
-      />
+      {quickAllotTarget && (
+        <QuickRoomAllotModal
+          isOpen={true}
+          onClose={() => setQuickAllotTarget(null)}
+          targetReservation={quickAllotTarget}
+          rooms={rooms}
+          reservations={reservations}
+          onAllotRoom={handleAllotRoom}
+          onBatchAllotFamily={handleBatchAllotFamily}
+        />
+      )}
 
       {/* Allocation Notice Confirmation Modal (Same-day turnover hour difference & Room not vacant force allocation notice) */}
       {allocationNotice && (

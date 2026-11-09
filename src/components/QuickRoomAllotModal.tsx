@@ -58,29 +58,30 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     return Array.from(set).sort();
   }, [rooms, reservations]);
 
-  if (!isOpen || !targetReservation) return null;
+  const arrivalDate = targetReservation ? (targetReservation.arrivalDate || targetReservation.arrivalDateTime || targetReservation.rawArrivalStr || '') : '';
+  const departureDate = targetReservation ? (targetReservation.departureDate || targetReservation.departureDateTime || targetReservation.rawDepartureStr || '') : '';
 
-  const arrivalDate = targetReservation.arrivalDate || targetReservation.arrivalDateTime || targetReservation.rawArrivalStr || '';
-  const departureDate = targetReservation.departureDate || targetReservation.departureDateTime || targetReservation.rawDepartureStr || '';
-
-  const targetFam = String(targetReservation.family || '').trim().toLowerCase();
-  const targetTour = String(targetReservation.tourRefNo || targetReservation.tourId || '').trim().toLowerCase();
+  const targetFam = targetReservation ? String(targetReservation.family || '').trim().toLowerCase() : '';
+  const targetTour = targetReservation ? String(targetReservation.tourRefNo || targetReservation.tourId || '').trim().toLowerCase() : '';
 
   // Other family members sharing the same tour and family code
-  const familyMembers = reservations.filter((r) => {
-    if (!r.family) return false;
-    const rFam = String(r.family || '').trim().toLowerCase();
-    const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
-    const matchFamily = rFam === targetFam && targetFam !== '';
-    const matchTour = !targetTour || !rTour || rTour === targetTour;
-    return matchFamily && matchTour;
-  });
+  const familyMembers = useMemo(() => {
+    if (!targetReservation || !targetFam) return [];
+    return reservations.filter((r) => {
+      if (!r.family) return false;
+      const rFam = String(r.family || '').trim().toLowerCase();
+      const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
+      const matchFamily = rFam === targetFam;
+      const matchTour = !targetTour || !rTour || rTour === targetTour;
+      return matchFamily && matchTour;
+    });
+  }, [reservations, targetReservation, targetFam, targetTour]);
 
   const isFamily = familyMembers.length > 1;
   const requestedPax =
     allotMode === 'family' && isFamily
       ? countEffectivePax(familyMembers)
-      : isInfant(targetReservation)
+      : targetReservation && isInfant(targetReservation)
       ? 0
       : 1;
 
@@ -97,6 +98,8 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
 
   // Compute room statuses & availability for target duration
   const evaluatedRooms = useMemo(() => {
+    if (!targetReservation) return [];
+
     return rooms.map((room) => {
       const baseCap = room.capacity || room.pax || 2;
       const bufCap = room.buffer || 0;
@@ -185,6 +188,8 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
 
   // Filter evaluated rooms
   const filteredRooms = useMemo(() => {
+    if (!targetReservation) return [];
+
     return evaluatedRooms.filter(({ room }) => {
       // Hotel filter
       if (hotelFilter !== 'ALL' && String(room.building || '').toLowerCase() !== hotelFilter.toLowerCase()) return false;
@@ -212,11 +217,13 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
 
       return true;
     });
-  }, [evaluatedRooms, hotelFilter, floorFilter, amenityFilter, searchQuery]);
+  }, [evaluatedRooms, hotelFilter, floorFilter, amenityFilter, searchQuery, targetReservation]);
 
   // Sort: Recommended rooms (where family is or vacant with high capacity) first
   // Note: Do not prioritize current room as top recommendation to avoid confusion
   const sortedRooms = useMemo(() => {
+    if (!targetReservation) return [];
+
     return [...filteredRooms].sort((a, b) => {
       // Rooms where other family members are already allotted (exclude current room)
       const aFam = a.familyInRoom.length > 0 && !a.isCurrent;
@@ -237,10 +244,11 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
       const numB = parseInt(String(b.room.roomNumber || ''), 10) || 999;
       return numA - numB;
     });
-  }, [filteredRooms]);
+  }, [filteredRooms, targetReservation]);
 
   // Handle single or batch allotment
   const handleSelectRoom = (bldg: string, rNum: string, isForce: boolean = false) => {
+    if (!targetReservation) return;
     const safeTour = String(targetReservation.tourRefNo || targetReservation.tourId || '');
     const safeFam = String(targetReservation.family || '');
     if (allotMode === 'family' && isFamily && onBatchAllotFamily) {
@@ -253,6 +261,8 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
 
   // Auto-recommend best available room (excluding current room to avoid confusion)
   const handleAutoRecommend = () => {
+    if (!targetReservation) return;
+
     // 1. Check if room with existing family has capacity (exclude current room)
     const familyRoom = sortedRooms.find((r) => r.familyInRoom.length > 0 && r.canFit && !r.isBlocked && !r.isCurrent);
     if (familyRoom) {
@@ -277,8 +287,10 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     alert('No suitable room found with sufficient remaining capacity for the selected dates.');
   };
 
+  if (!isOpen || !targetReservation) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
         
         {/* Header */}
