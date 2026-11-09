@@ -1774,62 +1774,88 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             </div>
                           ) : (
                             <>
-                              <select
-                                value={res.roomNumber || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (onAllotRoom) {
-                                    onAllotRoom(res.id, res.building || 'Saifee', val);
-                                  } else {
-                                    handleFieldChange(res.id, 'roomNumber', val);
-                                  }
-                                }}
-                                className={`w-full text-[11px] font-bold rounded px-1.5 py-0.5 border transition cursor-pointer shadow-2xs ${
-                                  isAllotted
-                                    ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
-                                    : 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
-                                }`}
-                              >
-                                <option value="">-- Allot Room --</option>
-                                {res.roomNumber && (
-                                  <option value={res.roomNumber}>
-                                    Rm {res.roomNumber} ({res.building || 'Saifee'}) ✓ Current
-                                  </option>
-                                )}
-                                {availableRoomsForRes.length > 0 && (
-                                  <optgroup label="Available Rooms (Capacity Not Reached)">
-                                    {availableRoomsForRes
-                                      .filter((rm) => rm.roomNumber !== res.roomNumber)
-                                      .map((rm) => (
-                                        <option key={rm.id} value={rm.roomNumber}>
-                                          Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
-                                        </option>
-                                      ))}
-                                  </optgroup>
-                                )}
-                                <optgroup label="All Rooms (Notice / Force Allot)">
-                                  {hotelRooms
-                                    .filter((rm) => rm.roomNumber !== res.roomNumber && !availableRoomSet.has(rm.roomNumber))
-                                    .map((rm) => (
-                                      <option key={rm.id} value={rm.roomNumber}>
-                                        Rm {rm.roomNumber} ({rm.status === 'blocked' ? 'Blocked' : `Cap ${rm.capacity} Pax`})
-                                      </option>
-                                    ))}
-                                </optgroup>
-                              </select>
-
-                              {/* Quick Allot Button */}
-                              {onOpenQuickAllotModal && (
+                              {!isAllotted && onOpenQuickAllotModal && (
                                 <button
                                   type="button"
                                   onClick={() => onOpenQuickAllotModal(res)}
-                                  className="flex items-center justify-center gap-1 px-1.5 py-0.5 rounded bg-stone-100 hover:bg-[#124E39] hover:text-[#EBD59E] text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition"
-                                  title="Open Quick Room Allotment modal"
+                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#124E39] text-[10px] font-extrabold shadow-xs transition cursor-pointer"
+                                  title="Open Quick Room Allotment Modal with capacity, buffer, & auto-recommendation"
                                 >
-                                  <Sparkles className="w-2.5 h-2.5 text-amber-600" />
-                                  <span>Allot Modal</span>
+                                  <Sparkles className="w-3.5 h-3.5 text-[#EBD59E]" />
+                                  <span>✨ Allot Room (Modal)</span>
                                 </button>
                               )}
+
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={res.roomNumber || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === '__OPEN_ALLOT_MODAL__') {
+                                      if (onOpenQuickAllotModal) onOpenQuickAllotModal(res);
+                                      return;
+                                    }
+                                    const matchedRoom = rooms.find((rm) => String(rm.roomNumber).trim() === String(val).trim());
+                                    const targetBldg = matchedRoom ? matchedRoom.building : (res.building || 'Saifee');
+                                    if (onAllotRoom) {
+                                      onAllotRoom(res.id, targetBldg, val);
+                                    } else {
+                                      handleFieldChange(res.id, 'roomNumber', val);
+                                      if (targetBldg !== res.building) {
+                                        handleFieldChange(res.id, 'building', targetBldg);
+                                      }
+                                    }
+                                  }}
+                                  className={`w-full flex-1 text-[11px] font-bold rounded px-1.5 py-0.5 border transition cursor-pointer shadow-2xs ${
+                                    isAllotted
+                                      ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                                      : 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
+                                  }`}
+                                >
+                                  <option value="">-- Allot Room --</option>
+                                  {onOpenQuickAllotModal && (
+                                    <option value="__OPEN_ALLOT_MODAL__">
+                                      ✨ Open Allot Modal...
+                                    </option>
+                                  )}
+                                  {res.roomNumber && (
+                                    <option value={res.roomNumber}>
+                                      Rm {res.roomNumber} ({res.building || 'Saifee'}) ✓ Current
+                                    </option>
+                                  )}
+                                  {availableRoomsForRes.length > 0 && (
+                                    <optgroup label="Available Rooms (Capacity Not Reached)">
+                                      {availableRoomsForRes
+                                        .filter((rm) => rm.roomNumber !== res.roomNumber)
+                                        .map((rm) => (
+                                          <option key={rm.id} value={rm.roomNumber}>
+                                            Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  )}
+                                  <optgroup label="All Rooms (Notice / Force Allot)">
+                                    {hotelRooms
+                                      .filter((rm) => rm.roomNumber !== res.roomNumber && !availableRoomSet.has(rm.roomNumber))
+                                      .map((rm) => (
+                                        <option key={rm.id} value={rm.roomNumber}>
+                                          Rm {rm.roomNumber} ({rm.status === 'blocked' ? 'Blocked' : `Cap ${rm.capacity} Pax`})
+                                        </option>
+                                      ))}
+                                  </optgroup>
+                                </select>
+
+                                {isAllotted && onOpenQuickAllotModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenQuickAllotModal(res)}
+                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-[#124E39] hover:text-[#EBD59E] text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    title="Open Quick Room Allotment modal"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-amber-600" />
+                                  </button>
+                                )}
+                              </div>
                             </>
                           )}
 
@@ -1843,7 +1869,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   return;
                                 }
                                 if (onBatchAllotFamily) {
-                                  onBatchAllotFamily(res.tourRefNo, res.family, res.building || 'Saifee', res.roomNumber);
+                                  const safeTour = String(res.tourRefNo || res.tourId || '');
+                                  const safeFam = String(res.family || '');
+                                  onBatchAllotFamily(safeTour, safeFam, res.building || 'Saifee', res.roomNumber);
                                 }
                               }}
                               className="flex items-center justify-center gap-0.5 px-1 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-[9px] font-extrabold shadow-2xs transition truncate"

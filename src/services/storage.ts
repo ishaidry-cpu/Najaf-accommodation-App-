@@ -9,6 +9,7 @@ import {
   getReservationEffectivePax,
   countEffectivePax
 } from '../utils/turnoverTiming';
+import { normalizeDate } from './excelService';
 
 export { isInfant, getReservationEffectivePax, countEffectivePax };
 
@@ -1071,10 +1072,10 @@ export function saveStoredCategories(categories: string[]): void {
  */
 export function doDatesOverlap(arr1?: string, dep1?: string, arr2?: string, dep2?: string): boolean {
   if (!arr1 || !dep1 || !arr2 || !dep2) return false;
-  const a1 = arr1.slice(0, 10);
-  const d1 = dep1.slice(0, 10);
-  const a2 = arr2.slice(0, 10);
-  const d2 = dep2.slice(0, 10);
+  const a1 = normalizeDate(arr1) || arr1.slice(0, 10);
+  const d1 = normalizeDate(dep1) || dep1.slice(0, 10);
+  const a2 = normalizeDate(arr2) || arr2.slice(0, 10);
+  const d2 = normalizeDate(dep2) || dep2.slice(0, 10);
 
   // If both are single-day bookings on the exact same date:
   if (a1 === d1 && a2 === d2) {
@@ -1199,22 +1200,18 @@ export function getRoomBookingsForDuration(
   excludeReservationId?: string
 ): Reservation[] {
   if (!building || !roomNumber || !arrivalDate || !departureDate) return [];
-  const bNorm = building.trim().toLowerCase();
-  const rNorm = roomNumber.trim().toLowerCase();
+  const bNorm = String(building || '').trim().toLowerCase();
+  const rNorm = String(roomNumber || '').trim().toLowerCase();
 
   return reservations.filter((res) => {
     if (excludeReservationId && res.id === excludeReservationId) return false;
-    const resB = (res.building || '').trim().toLowerCase();
-    const resR = (res.roomNumber || '').trim().toLowerCase();
+    const resB = String(res.building || '').trim().toLowerCase();
+    const resR = String(res.roomNumber || '').trim().toLowerCase();
     if (resB !== bNorm || resR !== rNorm) return false;
     return doDatesOverlap(res.arrivalDate, res.departureDate, arrivalDate, departureDate);
   });
 }
 
-/**
- * Checks whether a room can accommodate an additional guest/reservation
- * up to max capacity with buffer included.
- */
 /**
  * Checks whether a room can accommodate an additional guest/reservation
  * up to max capacity with buffer included, and verifies same-day turnover timing rules:
@@ -1240,11 +1237,11 @@ export function checkRoomAllotmentAvailability(
   candidateFamily?: string,
   candidateTour?: string
 ): RoomAllotmentCheck {
-  const bNorm = (building || '').trim().toLowerCase();
-  const rNorm = (roomNumber || '').trim().toLowerCase();
+  const bNorm = String(building || '').trim().toLowerCase();
+  const rNorm = String(roomNumber || '').trim().toLowerCase();
   
   const targetRoom = rooms.find(
-    (r) => (r.building || '').trim().toLowerCase() === bNorm && (r.roomNumber || '').trim().toLowerCase() === rNorm
+    (r) => String(r.building || '').trim().toLowerCase() === bNorm && String(r.roomNumber || '').trim().toLowerCase() === rNorm
   );
 
   if (!targetRoom) {
@@ -1283,13 +1280,13 @@ export function checkRoomAllotmentAvailability(
   // after giving a warning. When departure and arrival has more than 15 hours difference
   // means departure is late than arrival with a difference of 15 hours dont allow force allocation too"
   // =========================================================================
-  const candidateArrDate = (arrivalDate || '').slice(0, 10);
-  const candidateDepDate = (departureDate || '').slice(0, 10);
+  const candidateArrDate = normalizeDate(arrivalDate) || (arrivalDate || '').slice(0, 10);
+  const candidateDepDate = normalizeDate(departureDate) || (departureDate || '').slice(0, 10);
 
   const roomReservations = reservations.filter((res) => {
     if (excludeReservationId && res.id === excludeReservationId) return false;
-    const resB = (res.building || '').trim().toLowerCase();
-    const resR = (res.roomNumber || '').trim().toLowerCase();
+    const resB = String(res.building || '').trim().toLowerCase();
+    const resR = String(res.roomNumber || '').trim().toLowerCase();
     return resB === bNorm && resR === rNorm;
   });
 
@@ -1297,8 +1294,8 @@ export function checkRoomAllotmentAvailability(
   let conflictingReservation: Reservation | null = null;
 
   for (const existingRes of roomReservations) {
-    const existArrDate = (existingRes.arrivalDate || existingRes.arrivalDateTime || '').slice(0, 10);
-    const existDepDate = (existingRes.departureDate || existingRes.departureDateTime || '').slice(0, 10);
+    const existArrDate = normalizeDate(existingRes.arrivalDate || existingRes.arrivalDateTime || existingRes.rawArrivalStr) || '';
+    const existDepDate = normalizeDate(existingRes.departureDate || existingRes.departureDateTime || existingRes.rawDepartureStr) || '';
 
     // Scenario A: Existing reservation departs on candidate's arrival date (turnover day!)
     // Existing is departing, candidate is arriving.
@@ -1311,8 +1308,9 @@ export function checkRoomAllotmentAvailability(
         existingRes.applicantName,
         applicantName || 'New Guest'
       );
-      if (conflict.isSameDateTurnover) {
-        if (!worstTimingConflict || conflict.isDepLaterThanArr || conflict.diffHours > worstTimingConflict.diffHours) {
+      // Only record as conflict if departure is later than arrival!
+      if (conflict.isSameDateTurnover && conflict.isDepLaterThanArr) {
+        if (!worstTimingConflict || conflict.diffHours > worstTimingConflict.diffHours) {
           worstTimingConflict = conflict;
           conflictingReservation = existingRes;
         }
@@ -1330,8 +1328,9 @@ export function checkRoomAllotmentAvailability(
         applicantName || 'New Guest',
         existingRes.applicantName
       );
-      if (conflict.isSameDateTurnover) {
-        if (!worstTimingConflict || conflict.isDepLaterThanArr || conflict.diffHours > worstTimingConflict.diffHours) {
+      // Only record as conflict if departure is later than arrival!
+      if (conflict.isSameDateTurnover && conflict.isDepLaterThanArr) {
+        if (!worstTimingConflict || conflict.diffHours > worstTimingConflict.diffHours) {
           worstTimingConflict = conflict;
           conflictingReservation = existingRes;
         }
@@ -1358,6 +1357,9 @@ export function checkRoomAllotmentAvailability(
   // Check if max capacity is exceeded
   const isOverPaxLimit = currentOccupancy + requestedPax > maxCapacity;
 
+  // Same-Day Turnover Notice (Only flags when departure time is LATER than arrival time on same date!)
+  const hasTurnoverNotice = !!(worstTimingConflict && worstTimingConflict.isSameDateTurnover && worstTimingConflict.isDepLaterThanArr);
+
   if (isOverPaxLimit && !forceAllocate) {
     const occupantNames = overlappingReservations.map((r) => `${r.applicantName} (Fam #${r.family || '—'})`).join(', ');
     const reason = `Notice: Room ${roomNumber} (${building} Hotel) capacity limit reached (${currentOccupancy}/${maxCapacity} Pax occupied by ${occupantNames || 'guests'}). Adding ${requestedPax} pax exceeds max capacity. Click Okay to allow force allocation.`;
@@ -1373,15 +1375,11 @@ export function checkRoomAllotmentAvailability(
       canForceAllocate: true, // Always allow force allocation with notice!
       isSevereConflict: false,
       isOverPaxLimit: true,
-      hasTimingConflict: !!worstTimingConflict,
+      hasTimingConflict: hasTurnoverNotice,
       timingConflictDiffHours: worstTimingConflict?.diffHours,
       timingConflictMessage: worstTimingConflict?.message,
     };
   }
-
-  // 1. Same-Day Turnover Notice (Hour difference mentioned, allow allocation on okay/force)
-  // Only flags conflict when departure time is LATER than arrival time on the same date!
-  const hasTurnoverNotice = worstTimingConflict && worstTimingConflict.isSameDateTurnover && worstTimingConflict.isDepLaterThanArr;
 
   // If force allocated after notice / warning:
   if (forceAllocate) {
@@ -1399,7 +1397,7 @@ export function checkRoomAllotmentAvailability(
       remainingSlots,
       occupants: overlappingReservations,
       canForceAllocate: true,
-      hasTimingConflict: !!worstTimingConflict,
+      hasTimingConflict: hasTurnoverNotice,
       isSevereConflict: false,
       isOverPaxLimit,
       timingConflictDiffHours: worstTimingConflict?.diffHours,
@@ -1425,7 +1423,7 @@ export function checkRoomAllotmentAvailability(
     canForceAllocate: true,
     isSevereConflict: false,
     isOverPaxLimit: false,
-    hasTimingConflict: hasTurnoverNotice ? true : false,
+    hasTimingConflict: hasTurnoverNotice,
     timingConflictDiffHours: worstTimingConflict?.diffHours,
     timingConflictMessage: worstTimingConflict?.message,
     depTime: worstTimingConflict?.depTimeFormatted,

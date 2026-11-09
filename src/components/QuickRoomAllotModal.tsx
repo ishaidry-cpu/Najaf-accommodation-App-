@@ -31,8 +31,8 @@ interface QuickRoomAllotModalProps {
   targetReservation: Reservation | null;
   rooms: Room[];
   reservations: Reservation[];
-  onAllotRoom: (reservationId: string, building: string, roomNumber: string) => void;
-  onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string) => void;
+  onAllotRoom: (reservationId: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
+  onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
 }
 
 export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
@@ -53,23 +53,28 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
-    reservations.forEach((res) => { if (res.building) set.add(res.building.trim()); });
+    rooms.forEach((r) => { if (r.building) set.add(String(r.building).trim()); });
+    reservations.forEach((res) => { if (res.building) set.add(String(res.building).trim()); });
     return Array.from(set).sort();
   }, [rooms, reservations]);
 
   if (!isOpen || !targetReservation) return null;
 
-  const arrivalDate = targetReservation.arrivalDate || targetReservation.arrivalDateTime || '';
-  const departureDate = targetReservation.departureDate || targetReservation.departureDateTime || '';
+  const arrivalDate = targetReservation.arrivalDate || targetReservation.arrivalDateTime || targetReservation.rawArrivalStr || '';
+  const departureDate = targetReservation.departureDate || targetReservation.departureDateTime || targetReservation.rawDepartureStr || '';
+
+  const targetFam = String(targetReservation.family || '').trim().toLowerCase();
+  const targetTour = String(targetReservation.tourRefNo || targetReservation.tourId || '').trim().toLowerCase();
 
   // Other family members sharing the same tour and family code
-  const familyMembers = reservations.filter(
-    (r) =>
-      r.family &&
-      r.tourRefNo === targetReservation.tourRefNo &&
-      (r.family || '').trim().toLowerCase() === (targetReservation.family || '').trim().toLowerCase()
-  );
+  const familyMembers = reservations.filter((r) => {
+    if (!r.family) return false;
+    const rFam = String(r.family || '').trim().toLowerCase();
+    const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
+    const matchFamily = rFam === targetFam && targetFam !== '';
+    const matchTour = !targetTour || !rTour || rTour === targetTour;
+    return matchFamily && matchTour;
+  });
 
   const isFamily = familyMembers.length > 1;
   const requestedPax =
@@ -83,7 +88,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   const floorOptions = useMemo(() => {
     const list: string[] = [];
     rooms.forEach((r) => {
-      if (hotelFilter !== 'ALL' && r.building.toLowerCase() !== hotelFilter.toLowerCase()) return;
+      if (hotelFilter !== 'ALL' && String(r.building || '').toLowerCase() !== hotelFilter.toLowerCase()) return;
       const fl = r.floorLabel || `Floor ${r.floor}`;
       if (!list.includes(fl)) list.push(fl);
     });
@@ -116,16 +121,17 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
       const remainingSlots = Math.max(0, maxCap - currentOccupancy);
 
       // Check if family members are already in this room
-      const familyInRoom = occupants.filter(
-        (o) =>
-          o.family &&
-          o.tourRefNo === targetReservation.tourRefNo &&
-          (o.family || '').trim().toLowerCase() === (targetReservation.family || '').trim().toLowerCase()
-      );
+      const familyInRoom = occupants.filter((o) => {
+        if (!o.family || !targetFam) return false;
+        const oFam = String(o.family || '').trim().toLowerCase();
+        const oTour = String(o.tourRefNo || o.tourId || '').trim().toLowerCase();
+        return oFam === targetFam && (!targetTour || !oTour || oTour === targetTour);
+      });
 
       const isCurrent =
-        (targetReservation.building || '').toLowerCase() === room.building.toLowerCase() &&
-        (targetReservation.roomNumber || '').trim().toLowerCase() === room.roomNumber.trim().toLowerCase();
+        String(targetReservation.building || '').trim().toLowerCase() === String(room.building || '').trim().toLowerCase() &&
+        String(targetReservation.roomNumber || '').trim().toLowerCase() === String(room.roomNumber || '').trim().toLowerCase() &&
+        String(room.roomNumber || '').trim() !== '';
 
       // Check allotment availability including turnover timing rules:
       const check = checkRoomAllotmentAvailability(
@@ -175,32 +181,32 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         conflictReason,
       };
     });
-  }, [rooms, reservations, targetReservation, arrivalDate, departureDate, requestedPax, allotMode]);
+  }, [rooms, reservations, targetReservation, arrivalDate, departureDate, requestedPax, allotMode, familyMembers, targetFam, targetTour]);
 
   // Filter evaluated rooms
   const filteredRooms = useMemo(() => {
-    return evaluatedRooms.filter(({ room, isBlocked }) => {
+    return evaluatedRooms.filter(({ room }) => {
       // Hotel filter
-      if (hotelFilter !== 'ALL' && room.building.toLowerCase() !== hotelFilter.toLowerCase()) return false;
+      if (hotelFilter !== 'ALL' && String(room.building || '').toLowerCase() !== hotelFilter.toLowerCase()) return false;
 
       // Floor filter
       const fl = room.floorLabel || `Floor ${room.floor}`;
       if (floorFilter !== 'ALL' && fl !== floorFilter) return false;
 
       // Amenity filter
-      if (amenityFilter === 'western' && !(room.toiletType || '').toLowerCase().includes('western')) return false;
-      if (amenityFilter === 'indian' && !(room.toiletType || '').toLowerCase().includes('indian')) return false;
-      if (amenityFilter === 'double' && !(room.bedType || '').toLowerCase().includes('double')) return false;
-      if (amenityFilter === 'single' && !(room.bedType || '').toLowerCase().includes('single')) return false;
+      if (amenityFilter === 'western' && !String(room.toiletType || '').toLowerCase().includes('western')) return false;
+      if (amenityFilter === 'indian' && !String(room.toiletType || '').toLowerCase().includes('indian')) return false;
+      if (amenityFilter === 'double' && !String(room.bedType || '').toLowerCase().includes('double')) return false;
+      if (amenityFilter === 'single' && !String(room.bedType || '').toLowerCase().includes('single')) return false;
 
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const numMatch = room.roomNumber.toLowerCase().includes(q);
-        const bldgMatch = room.building.toLowerCase().includes(q);
+        const numMatch = String(room.roomNumber || '').toLowerCase().includes(q);
+        const bldgMatch = String(room.building || '').toLowerCase().includes(q);
         const floorMatch = (room.floorLabel || `floor ${room.floor}`).toLowerCase().includes(q);
-        const bedMatch = (room.bedType || '').toLowerCase().includes(q);
-        const toiletMatch = (room.toiletType || '').toLowerCase().includes(q);
+        const bedMatch = String(room.bedType || '').toLowerCase().includes(q);
+        const toiletMatch = String(room.toiletType || '').toLowerCase().includes(q);
         if (!numMatch && !bldgMatch && !floorMatch && !bedMatch && !toiletMatch) return false;
       }
 
@@ -227,18 +233,20 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
       if (!a.isBlocked && b.isBlocked) return -1;
 
       // By room number numerically
-      const numA = parseInt(a.room.roomNumber, 10) || 999;
-      const numB = parseInt(b.room.roomNumber, 10) || 999;
+      const numA = parseInt(String(a.room.roomNumber || ''), 10) || 999;
+      const numB = parseInt(String(b.room.roomNumber || ''), 10) || 999;
       return numA - numB;
     });
   }, [filteredRooms]);
 
   // Handle single or batch allotment
-  const handleSelectRoom = (bldg: string, rNum: string) => {
+  const handleSelectRoom = (bldg: string, rNum: string, isForce: boolean = false) => {
+    const safeTour = String(targetReservation.tourRefNo || targetReservation.tourId || '');
+    const safeFam = String(targetReservation.family || '');
     if (allotMode === 'family' && isFamily && onBatchAllotFamily) {
-      onBatchAllotFamily(targetReservation.tourRefNo, targetReservation.family, bldg, rNum);
+      onBatchAllotFamily(safeTour, safeFam, bldg, rNum, isForce);
     } else {
-      onAllotRoom(targetReservation.id, bldg, rNum);
+      onAllotRoom(targetReservation.id, bldg, rNum, isForce);
     }
     onClose();
   };
@@ -248,21 +256,21 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     // 1. Check if room with existing family has capacity (exclude current room)
     const familyRoom = sortedRooms.find((r) => r.familyInRoom.length > 0 && r.canFit && !r.isBlocked && !r.isCurrent);
     if (familyRoom) {
-      handleSelectRoom(familyRoom.room.building, familyRoom.room.roomNumber);
+      handleSelectRoom(familyRoom.room.building, familyRoom.room.roomNumber, false);
       return;
     }
 
     // 2. Find best available vacant room with capacity (exclude current room)
     const bestVacant = sortedRooms.find((r) => r.canFit && !r.isBlocked && r.currentOccupancy === 0 && !r.isCurrent);
     if (bestVacant) {
-      handleSelectRoom(bestVacant.room.building, bestVacant.room.roomNumber);
+      handleSelectRoom(bestVacant.room.building, bestVacant.room.roomNumber, false);
       return;
     }
 
     // 3. Find any partially filled room with buffer/slots (exclude current room)
     const anyAvailable = sortedRooms.find((r) => r.canFit && !r.isBlocked && !r.isCurrent);
     if (anyAvailable) {
-      handleSelectRoom(anyAvailable.room.building, anyAvailable.room.roomNumber);
+      handleSelectRoom(anyAvailable.room.building, anyAvailable.room.roomNumber, false);
       return;
     }
 
@@ -664,7 +672,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                         ) : hasTimingConflict && !canFit ? (
                           <button
                             type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber)}
+                            onClick={() => handleSelectRoom(room.building, room.roomNumber, true)}
                             className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                             title={conflictReason}
                           >
@@ -674,7 +682,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                         ) : !canFit ? (
                           <button
                             type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber)}
+                            onClick={() => handleSelectRoom(room.building, room.roomNumber, true)}
                             className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                             title={conflictReason}
                           >
@@ -684,7 +692,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber)}
+                            onClick={() => handleSelectRoom(room.building, room.roomNumber, false)}
                             className="w-full py-1.5 rounded-lg text-xs font-extrabold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <span>Allot Room {room.roomNumber}</span>

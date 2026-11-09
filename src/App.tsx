@@ -1055,9 +1055,14 @@ export default function App() {
     roomNumber: string,
     forceConfirmed: boolean = false
   ) => {
+    const safeTour = String(tourRefNo || '').trim().toLowerCase();
+    const safeFam = String(family || '').trim().toLowerCase();
+
     const matches = reservations.filter((r) => {
-      const matchFamily = (r.family || '').trim().toLowerCase() === family.trim().toLowerCase();
-      const matchTour = !tourRefNo || (r.tourRefNo || '').trim().toLowerCase() === tourRefNo.trim().toLowerCase();
+      const rFam = String(r.family || '').trim().toLowerCase();
+      const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
+      const matchFamily = rFam === safeFam;
+      const matchTour = !safeTour || rTour === safeTour;
       return matchFamily && matchTour;
     });
 
