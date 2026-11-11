@@ -204,3 +204,81 @@ export async function saveBackendSettings(settings: Partial<BackendSettings>): P
     return false;
   }
 }
+
+/**
+ * Reset backend data store back to the default attached Google Sheet (1,074 records)
+ */
+export async function resetBackendToDefaultSheet(): Promise<{
+  success: boolean;
+  count: number;
+  sheetsConfig: GoogleSheetsConfig;
+  reservations: Reservation[];
+} | null> {
+  try {
+    const res = await fetch('/api/sheets/reset-default', {
+      method: 'POST',
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] Could not reset backend to default sheet:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch default attached sheet information
+ */
+export async function fetchDefaultSheetInfo(): Promise<{
+  defaultSheetName: string;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  fileName: string;
+  recordsCount: number;
+  description: string;
+} | null> {
+  try {
+    const res = await fetch('/api/sheets/default');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] Could not fetch default sheet info:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch default reservations from the attached sheet
+ */
+export async function fetchDefaultSheetReservations(): Promise<Reservation[] | null> {
+  try {
+    const res = await fetch('/api/sheets/default-reservations');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[API] Could not fetch default sheet reservations:', err);
+    return null;
+  }
+}
+
+/**
+ * Switch active Google Sheet URL/ID on the backend
+ */
+export async function switchBackendSheet(
+  spreadsheetId: string,
+  spreadsheetUrl: string,
+  spreadsheetName?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/sheets/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spreadsheetId, spreadsheetUrl, spreadsheetName }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[API] Could not switch backend sheet:', err);
+    return false;
+  }
+}
+

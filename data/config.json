@@ -1,0 +1,19 @@
+{
+  "sheetsConfig": {
+    "spreadsheetId": "faiz_husaini_attached_default",
+    "spreadsheetUrl": "/assets/aistudio/Faiz_Husaini_Zaereen_Accommodation__Saifee___Burhani__6fba9a26",
+    "spreadsheetName": "Faiz Husaini Zaereen Accommodation (Saifee & Burhani)",
+    "autoSync": false,
+    "isSyncing": false,
+    "lastSyncedAt": "2026-11-11T09:38:53.727Z",
+    "syncError": null
+  },
+  "categories": [
+    "Mumineen",
+    "Muntasbeen",
+    "Qasreali",
+    "Baitezainy"
+  ],
+  "userRole": "admin",
+  "adminPin": "1234"
+}

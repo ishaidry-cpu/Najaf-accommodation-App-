@@ -2029,3 +2029,331 @@ export async function fetchRoomsAndBuildingsFromGoogleSheetUrl(
   );
 }
 
+/**
+ * Parses reservations from CSV text (supporting both the attached sheet and exported Google Sheet tabs)
+ */
+export function parseReservationsFromCsvText(
+  csvText: string,
+  rooms: Room[] = [],
+  existingReservations: Reservation[] = []
+): Reservation[] {
+  if (!csvText || !csvText.trim()) return existingReservations;
+
+  const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const rawRows: string[][] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cells: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === ',' && !inQuotes) {
+        cells.push(cur.trim().replace(/^["']|["']$/g, ''));
+        cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    cells.push(cur.trim().replace(/^["']|["']$/g, ''));
+    if (cells.some((cell) => cell.length > 0)) {
+      rawRows.push(cells);
+    }
+  }
+
+  if (rawRows.length <= 1) return existingReservations;
+
+  const headerRow = rawRows[0].map((h) => String(h || '').trim().toLowerCase());
+  let srIdx = headerRow.findIndex((h) => h.includes('sr') || h === '#');
+  let itsIdx = headerRow.findIndex((h) => h === 'its' || h.includes('its id') || h === 'its_id');
+  let nameIdx = headerRow.findIndex((h) => h === 'name' || h.includes('applicant') || h.includes('zaer'));
+  let ageIdx = headerRow.findIndex((h) => h === 'age');
+  let famIdx = headerRow.findIndex((h) => h === 'family' || h.includes('fam'));
+  let officeIdx = headerRow.findIndex((h) => h.includes('office'));
+  let tourIdx = headerRow.findIndex((h) => h === 'tour id' || h.includes('tour'));
+  let bIdx = headerRow.findIndex((h) => h.includes('building') || h.includes('bldg'));
+  let rIdx = headerRow.findIndex((h) => h.includes('room allottment') || h.includes('room allotment') || h.includes('room'));
+  let genderIdx = headerRow.findIndex((h) => h.includes('gender') || h === 'sex');
+  let leaderIdx = headerRow.findIndex((h) => h === 'group lead' || h.includes('group lead') || h.includes('leader'));
+  let arrIdx = headerRow.findIndex((h) => h === 'arrival' || h === 'arrival date' || (h.includes('arrival') && !h.includes('time')));
+  if (arrIdx === -1) arrIdx = headerRow.findIndex((h) => h.includes('arrival'));
+  let depIdx = headerRow.findIndex((h) => h === 'departure' || h === 'departure date' || (h.includes('departure') && !h.includes('time')));
+  if (depIdx === -1) depIdx = headerRow.findIndex((h) => h.includes('departure'));
+  let catIdx = headerRow.findIndex((h) => h.includes('category'));
+  let specialIdx = headerRow.findIndex((h) =>
+    h.includes('special guest') ||
+    h.includes('special status') ||
+    h === 'special' ||
+    h.includes('star') ||
+    h.includes('vip') ||
+    h === 'is_special_guest'
+  );
+  let remarksIdx = headerRow.findIndex((h) =>
+    h.includes('special remarks') ||
+    h.includes('special req') ||
+    h === 'remarks' ||
+    h === 'special_remarks'
+  );
+  let portalIdx = headerRow.findIndex((h) => h.includes('portal') || h.includes('upload'));
+  let slipIdx = headerRow.findIndex((h) => h.includes('slip'));
+  let paxIdx = headerRow.findIndex((h) => h.includes('pax') || h.includes('guest') || h.includes('count'));
+
+  // Positional fallbacks matching exact schema of attached sheet
+  if (srIdx === -1) srIdx = 0;
+  if (itsIdx === -1 && headerRow.length > 1) itsIdx = 1;
+  if (nameIdx === -1 && headerRow.length > 2) nameIdx = 2;
+  if (ageIdx === -1 && headerRow.length > 3) ageIdx = 3;
+  if (famIdx === -1 && headerRow.length > 4) famIdx = 4;
+  if (officeIdx === -1 && headerRow.length > 5) officeIdx = 5;
+  if (tourIdx === -1 && headerRow.length > 6) tourIdx = 6;
+  if (bIdx === -1 && headerRow.length > 7) bIdx = 7;
+  if (rIdx === -1 && headerRow.length > 8) rIdx = 8;
+  if (genderIdx === -1 && headerRow.length > 9) genderIdx = 9;
+  if (leaderIdx === -1 && headerRow.length > 10) leaderIdx = 10;
+  if (arrIdx === -1 && headerRow.length > 11) arrIdx = 11;
+  if (depIdx === -1 && headerRow.length > 12) depIdx = 12;
+  if (catIdx === -1 && headerRow.length > 13) catIdx = 13;
+  if (specialIdx === -1 && headerRow.length > 14) specialIdx = 14;
+  if (remarksIdx === -1 && headerRow.length > 15) remarksIdx = 15;
+  if (portalIdx === -1 && headerRow.length > 16) portalIdx = 16;
+  if (slipIdx === -1 && headerRow.length > 17) slipIdx = 17;
+  if (paxIdx === -1 && headerRow.length > 18) paxIdx = 18;
+
+  const parsedReservations: Reservation[] = [];
+  const usedExistingIds = new Set<string>();
+
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.length < 3) continue;
+
+    const sr = srIdx !== -1 && row[srIdx] ? row[srIdx].trim() : String(i);
+    const itsId = itsIdx !== -1 && row[itsIdx] ? row[itsIdx].trim().replace(/['"]/g, '') : '';
+    const applicantName = nameIdx !== -1 && row[nameIdx] ? row[nameIdx].trim() : '';
+
+    if (!itsId && !applicantName) continue;
+    if (itsId.toLowerCase() === 'its' || applicantName.toLowerCase() === 'name') continue;
+
+    const age = ageIdx !== -1 && !isNaN(parseInt(row[ageIdx], 10)) ? parseInt(row[ageIdx], 10) : 35;
+    const familyNo = famIdx !== -1 && row[famIdx] ? row[famIdx].trim() : `F-${i}`;
+    const officeName = officeIdx !== -1 && row[officeIdx] ? row[officeIdx].trim() : 'Faiz E Husayni';
+    const tourId = tourIdx !== -1 && row[tourIdx] ? row[tourIdx].trim() : '';
+    const building = bIdx !== -1 && row[bIdx] ? row[bIdx].trim() : '';
+    const roomNumber = rIdx !== -1 && row[rIdx] ? row[rIdx].trim().replace(/^room\s+/i, '') : '';
+    const gender = genderIdx !== -1 && row[genderIdx] ? (row[genderIdx].trim() === 'Female' ? 'Female' : 'Male') : 'Male';
+    const groupLeadName = leaderIdx !== -1 && row[leaderIdx] ? row[leaderIdx].trim() : (applicantName || 'Group Lead');
+
+    const rawArr = arrIdx !== -1 && row[arrIdx] ? row[arrIdx].trim() : '';
+    const rawDep = depIdx !== -1 && row[depIdx] ? row[depIdx].trim() : '';
+
+    // Extract exact arrival date and exact time
+    const arrParts = rawArr.split(' ');
+    const arrivalDate = normalizeDate(arrParts[0]) || '2026-11-11';
+    const arrivalTime = arrParts.slice(1).join(' ') || '11:00 AM';
+
+    // Extract exact departure date and exact time
+    const depParts = rawDep.split(' ');
+    const departureDate = normalizeDate(depParts[0]) || '2026-11-14';
+    const departureTime = depParts.slice(1).join(' ') || '01:00 AM';
+
+    const rawCategory = catIdx !== -1 && row[catIdx] ? row[catIdx].trim() : 'Mumineen';
+    const category = (!rawCategory || rawCategory === '—') ? 'Mumineen' : rawCategory;
+
+    // Special guest star status: strictly only those allotted star status
+    const rawSpecial = specialIdx !== -1 && row[specialIdx] !== undefined ? row[specialIdx].trim() : '';
+    const isSpecialGuest = /yes|true|⭐|vip|special|star/i.test(rawSpecial);
+
+    let specialRemarks = remarksIdx !== -1 && row[remarksIdx] ? row[remarksIdx].trim() : undefined;
+    if (specialRemarks) {
+      specialRemarks = specialRemarks.replace(/\[Idara:[^\]]+\]\s*/gi, '').trim();
+      if (!specialRemarks) specialRemarks = undefined;
+    }
+
+    const rawPortal = portalIdx !== -1 && row[portalIdx] ? row[portalIdx].toLowerCase() : '';
+    const isUploadedToPortal = /yes|true|uploaded/i.test(rawPortal);
+    const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? row[slipIdx].trim() : '';
+    const pax = paxIdx !== -1 && !isNaN(parseInt(row[paxIdx], 10)) ? parseInt(row[paxIdx], 10) : 1;
+
+    // Match with existing reservation to preserve IDs
+    const normIts = itsId.toLowerCase();
+    const normName = applicantName.toLowerCase();
+    const existing = existingReservations.find(
+      (r) =>
+        !usedExistingIds.has(r.id) &&
+        ((normIts && r.itsId && r.itsId.trim().toLowerCase() === normIts) ||
+          (normName && r.applicantName && r.applicantName.trim().toLowerCase() === normName))
+    );
+
+    if (existing) {
+      usedExistingIds.add(existing.id);
+    }
+
+    const id = existing ? existing.id : `res-csv-${sr}-${itsId || i}`;
+
+    parsedReservations.push({
+      id,
+      itsId: itsId || existing?.itsId || `30${100000 + i}`,
+      applicantName: applicantName || existing?.applicantName || 'Zaer Guest',
+      age,
+      family: familyNo,
+      familyNo,
+      officeName,
+      tourId,
+      tourRefNo: tourId,
+      building,
+      roomNumber,
+      gender,
+      groupLeadName,
+      guestLeaderName: groupLeadName,
+      arrivalDate,
+      departureDate,
+      arrivalTime,
+      departureTime,
+      rawArrivalStr: rawArr,
+      rawDepartureStr: rawDep,
+      arrivalDateTime: `${arrivalDate}T${arrivalTime}`,
+      departureDateTime: `${departureDate}T${departureTime}`,
+      category,
+      assignedCategory: (category.includes('Category A') || category === 'B to A') ? 'Category A (Nizaam)' : 'Category B (Standard)',
+      isSpecialGuest,
+      specialRemarks,
+      isUploadedToPortal,
+      requestSlipNo,
+      paxCount: pax,
+      pax,
+      totalGuests: pax,
+      idara: '',
+      shiftToCategoryA: category.includes('Category A') || category === 'B to A',
+      moneyGiven: 'No',
+      paymentStatus: 'Pending',
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return parsedReservations;
+}
+
+/**
+ * Universal fetch that retrieves reservations from Google Sheet URL, public link, or default attached sheet
+ */
+export async function fetchReservationsFromGoogleSheetUrl(
+  sheetUrlOrId: string,
+  accessToken?: string | null,
+  rooms: Room[] = [],
+  existingReservations: Reservation[] = []
+): Promise<Reservation[]> {
+  // 1. If it's the default attached sheet
+  if (
+    !sheetUrlOrId ||
+    sheetUrlOrId === 'faiz_husaini_attached_default' ||
+    sheetUrlOrId.includes('Faiz_Husaini') ||
+    sheetUrlOrId.startsWith('/assets/')
+  ) {
+    try {
+      const res = await fetch('/api/sheets/default-reservations');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch {
+      // fallback to fetching asset directly
+    }
+
+    try {
+      const assetRes = await fetch(
+        '/assets/aistudio/Faiz_Husaini_Zaereen_Accommodation__Saifee___Burhani__6fba9a26'
+      );
+      if (assetRes.ok) {
+        const text = await assetRes.text();
+        const parsed = parseReservationsFromCsvText(text, rooms, existingReservations);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch default attached asset:', err);
+    }
+  }
+
+  const sheetId = extractSpreadsheetId(sheetUrlOrId);
+  if (!sheetId) {
+    throw new Error('Please enter a valid Google Sheet URL or ID.');
+  }
+
+  // 2. Try Google Sheets GViz CSV export
+  try {
+    const tabCandidates = [
+      encodeURIComponent(ZAEREEN_GRID_TAB),
+      'Zaereen%20Lodging%20%26%20Room%20Allotment%20Grid',
+      'Zaereen_Lodging_%26_Room_Allotment_Grid',
+      'Sheet1',
+    ];
+
+    for (const tab of tabCandidates) {
+      try {
+        const gvizRes = await fetch(
+          `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${tab}`,
+          { cache: 'no-store' }
+        );
+        if (gvizRes.ok) {
+          const text = await gvizRes.text();
+          if (!text.includes('<!DOCTYPE html>') && !text.includes('<html') && text.length > 50) {
+            const parsed = parseReservationsFromCsvText(text, rooms, existingReservations);
+            if (parsed.length > 0) return parsed;
+          }
+        }
+      } catch {
+        // try next tab
+      }
+    }
+
+    // Try without sheet parameter
+    const generalGviz = await fetch(
+      `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`,
+      { cache: 'no-store' }
+    );
+    if (generalGviz.ok) {
+      const text = await generalGviz.text();
+      if (!text.includes('<!DOCTYPE html>') && !text.includes('<html') && text.length > 50) {
+        const parsed = parseReservationsFromCsvText(text, rooms, existingReservations);
+        if (parsed.length > 0) return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('GViz reservation CSV export failed:', err);
+  }
+
+  // 3. Try standard CSV export
+  try {
+    const exportRes = await fetch(
+      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`,
+      { cache: 'no-store' }
+    );
+    if (exportRes.ok) {
+      const text = await exportRes.text();
+      if (!text.includes('<!DOCTYPE html>') && !text.includes('<html') && text.length > 50) {
+        const parsed = parseReservationsFromCsvText(text, rooms, existingReservations);
+        if (parsed.length > 0) return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('export?format=csv reservation failed:', err);
+  }
+
+  // 4. If access token available, use official Google Sheets v4 API
+  if (accessToken) {
+    return await fetchReservationsFromGoogleSheet(accessToken, sheetId, rooms, existingReservations);
+  }
+
+  throw new Error(
+    'Unable to fetch reservations from the Google Sheet. Please ensure your Google Sheet is shared with "Anyone with the link can view", or sign in with your Google account.'
+  );
+}
+
+

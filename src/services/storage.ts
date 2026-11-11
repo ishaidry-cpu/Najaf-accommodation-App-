@@ -18,7 +18,7 @@ const RESERVATIONS_STORAGE_KEY = 'zaereen_accommodation_reservations_saifee_burh
 const SHEETS_CONFIG_KEY = 'zaereen_accommodation_sheets_config_saifee_burhani_v5';
 const CATEGORIES_STORAGE_KEY = 'zaereen_accommodation_categories_v1';
 
-export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri'];
+export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri', 'Qasr Nobola'];
 
 interface RawRoomConfig {
   building: 'BURHANI' | 'SAIFEE';
@@ -287,6 +287,21 @@ export function generateBadriRooms(): Room[] {
 export const INITIAL_ROOMS: Room[] = [
   ...generateSaifeeBurhani114Rooms(),
   ...generateBadriRooms(),
+  {
+    id: 'rm-qasr-1',
+    roomNumber: '1',
+    building: 'Qasr Nobola',
+    floor: 1,
+    floorLabel: 'Floor 1',
+    capacity: 4,
+    pax: 4,
+    buffer: 0,
+    toiletType: 'WESTERN',
+    bedType: 'Single Beds',
+    category: 'Category A (Nizaam)',
+    status: 'available',
+    amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
+  },
 ];
 
 /**
@@ -1026,11 +1041,15 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
   },
 ];
 
+export const DEFAULT_ATTACHED_SHEET_NAME = 'Faiz Husaini Zaereen Accommodation (Saifee & Burhani)';
+export const DEFAULT_ATTACHED_SHEET_URL = '/assets/aistudio/Faiz_Husaini_Zaereen_Accommodation__Saifee___Burhani__6fba9a26';
+export const DEFAULT_ATTACHED_SHEET_ID = 'faiz_husaini_attached_default';
+
 export const INITIAL_SHEETS_CONFIG: GoogleSheetsConfig = {
-  spreadsheetId: null,
-  spreadsheetUrl: null,
-  spreadsheetName: 'Faiz Husaini Zaereen Accommodation (Saifee & Burhani)',
-  lastSyncedAt: null,
+  spreadsheetId: DEFAULT_ATTACHED_SHEET_ID,
+  spreadsheetUrl: DEFAULT_ATTACHED_SHEET_URL,
+  spreadsheetName: DEFAULT_ATTACHED_SHEET_NAME,
+  lastSyncedAt: new Date().toISOString(),
   autoSync: false,
   isSyncing: false,
   syncError: null,
@@ -1638,8 +1657,19 @@ export function getStoredSheetsConfig(): GoogleSheetsConfig {
       return INITIAL_SHEETS_CONFIG;
     }
     const parsed = JSON.parse(raw);
+    const spreadsheetId = parsed.spreadsheetId || DEFAULT_ATTACHED_SHEET_ID;
+    const spreadsheetUrl =
+      parsed.spreadsheetUrl ||
+      (spreadsheetId === DEFAULT_ATTACHED_SHEET_ID
+        ? DEFAULT_ATTACHED_SHEET_URL
+        : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`);
+    const spreadsheetName = parsed.spreadsheetName || DEFAULT_ATTACHED_SHEET_NAME;
+
     return {
       ...parsed,
+      spreadsheetId,
+      spreadsheetUrl,
+      spreadsheetName,
       customCategories: parsed.customCategories || DEFAULT_ZAEREEN_CATEGORIES,
     };
   } catch {

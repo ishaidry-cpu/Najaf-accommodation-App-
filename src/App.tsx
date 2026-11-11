@@ -615,11 +615,14 @@ export default function App() {
 
   // Open Google Sheet directly
   const handleOpenGoogleSheet = () => {
-    if (sheetsConfig.spreadsheetId) {
-      const url =
-        sheetsConfig.spreadsheetUrl ||
-        `https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`;
-      window.open(url, '_blank');
+    if (sheetsConfig.spreadsheetUrl && sheetsConfig.spreadsheetUrl.startsWith('http')) {
+      window.open(sheetsConfig.spreadsheetUrl, '_blank');
+    } else if (
+      sheetsConfig.spreadsheetId &&
+      sheetsConfig.spreadsheetId !== 'faiz_husaini_attached_default' &&
+      !sheetsConfig.spreadsheetId.includes('default')
+    ) {
+      window.open(`https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`, '_blank');
     } else {
       setIsSheetsModalOpen(true);
     }
