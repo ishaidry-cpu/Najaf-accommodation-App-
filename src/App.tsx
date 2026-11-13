@@ -50,7 +50,8 @@ import {
   saveStoredAdminPin,
   checkRoomAllotmentAvailability,
   isInfant,
-  countEffectivePax
+  countEffectivePax,
+  getRoomBookingsForDuration
 } from './services/storage';
 import { 
   initAuth, 
@@ -91,6 +92,7 @@ import { PdfExportModal } from './components/PdfExportModal';
 import { PdfExportOptions } from './services/pdfExport';
 import { RoleManagementModal } from './components/RoleManagementModal';
 import { QuickRoomAllotModal } from './components/QuickRoomAllotModal';
+import { SwitchRoomModal, SwitchRoomTarget } from './components/SwitchRoomModal';
 import { AddZaerModal } from './components/AddZaerModal';
 import { AddTourGroupModal } from './components/AddTourGroupModal';
 import { AddBuildingAndRoomsModal } from './components/AddBuildingAndRoomsModal';
@@ -126,6 +128,7 @@ export default function App() {
   const [adminPin, setAdminPin] = useState<string>(() => getStoredAdminPin());
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [quickAllotTarget, setQuickAllotTarget] = useState<Reservation | null>(null);
+  const [switchRoomTarget, setSwitchRoomTarget] = useState<SwitchRoomTarget | null>(null);
 
   // Auth & Google Sheets State
   const [user, setUser] = useState<User | null>(null);
@@ -1129,6 +1132,109 @@ export default function App() {
     executeBatchFamilyAllot(tourRefNo, family, building, roomNumber, matches, matchIds);
   };
 
+  // Switch or Atomically Swap Rooms between Guest/Family A and Guest/Family B
+  const handleSwapRooms = (
+    sourceReservationIds: string[],
+    targetBuilding: string,
+    targetRoomNumber: string,
+    options: {
+      swapWithExistingOccupants: boolean;
+      reason?: string;
+    }
+  ) => {
+    const sourceIdSet = new Set(sourceReservationIds);
+    const sourceList = reservations.filter((r) => sourceIdSet.has(r.id));
+    if (sourceList.length === 0) return;
+
+    const primary = sourceList[0];
+    const originBuilding = primary.building || 'Saifee';
+    const originRoom = primary.roomNumber || '';
+    const now = new Date().toISOString();
+
+    let targetOccupantIdSet = new Set<string>();
+    if (options.swapWithExistingOccupants && originRoom) {
+      const arrivalDate = primary.arrivalDate || primary.arrivalDateTime || primary.rawArrivalStr || '';
+      const departureDate = primary.departureDate || primary.departureDateTime || primary.rawDepartureStr || '';
+      const poolWithoutSource = reservations.filter((r) => !sourceIdSet.has(r.id));
+      const overlappingOccupants = getRoomBookingsForDuration(
+        targetBuilding,
+        targetRoomNumber,
+        arrivalDate,
+        departureDate,
+        poolWithoutSource
+      );
+      targetOccupantIdSet = new Set(overlappingOccupants.map((o) => o.id));
+    }
+
+    const updated = reservations.map((r) => {
+      if (sourceIdSet.has(r.id)) {
+        const hadPrev = !!r.roomNumber && String(r.roomNumber).trim() !== '';
+        const isChanged =
+          hadPrev &&
+          (String(r.roomNumber) !== String(targetRoomNumber) ||
+            String(r.building || '').toLowerCase() !== String(targetBuilding).toLowerCase());
+        const history = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
+        if (isChanged) {
+          history.push({
+            fromRoom: r.roomNumber,
+            fromBuilding: r.building,
+            toRoom: targetRoomNumber,
+            toBuilding: targetBuilding,
+            changedAt: now,
+            reason:
+              options.reason ||
+              (options.swapWithExistingOccupants
+                ? `Swapped rooms with ${targetBuilding} Rm ${targetRoomNumber}`
+                : 'Switched room'),
+          });
+        }
+        return {
+          ...r,
+          building: targetBuilding,
+          roomNumber: targetRoomNumber,
+          isRoomChanged: r.isRoomChanged || isChanged,
+          roomChangeHistory: history,
+          updatedAt: now,
+        };
+      }
+
+      if (targetOccupantIdSet.has(r.id)) {
+        const history = r.roomChangeHistory ? [...r.roomChangeHistory] : [];
+        history.push({
+          fromRoom: r.roomNumber,
+          fromBuilding: r.building,
+          toRoom: originRoom,
+          toBuilding: originBuilding,
+          changedAt: now,
+          reason:
+            options.reason ||
+            `Swapped rooms with ${originBuilding} Rm ${originRoom}`,
+        });
+        return {
+          ...r,
+          building: originBuilding,
+          roomNumber: originRoom,
+          isRoomChanged: true,
+          roomChangeHistory: history,
+          updatedAt: now,
+        };
+      }
+
+      return r;
+    });
+
+    handleBatchUpdateReservations(updated);
+    if (options.swapWithExistingOccupants && targetOccupantIdSet.size > 0) {
+      showToast(
+        `Swapped ${originBuilding} Rm ${originRoom} (${sourceList.length} pax) ↔ ${targetBuilding} Rm ${targetRoomNumber} (${targetOccupantIdSet.size} pax)`
+      );
+    } else {
+      showToast(
+        `Switched ${sourceList.length > 1 ? `${sourceList.length} zaereen` : primary.applicantName} to ${targetBuilding} Rm ${targetRoomNumber}`
+      );
+    }
+  };
+
   // Batch shift selected zaereen or entire Tour ID to Category A (Nizaam)
   const handleBatchShiftToCategoryA = (
     reservationIds: string[],
@@ -1314,8 +1420,8 @@ export default function App() {
         }}
       />
 
-      {/* Main Container - Full Screen Width for complete visibility */}
-      <main className="w-full px-2 sm:px-4 lg:px-6 pt-3 pb-12">
+      {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
+      <main className="w-full px-2.5 sm:px-4 lg:px-6 pt-3 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <Dashboard
             reservations={reservations}
@@ -1340,6 +1446,7 @@ export default function App() {
             }}
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
+            onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
             sheetsConfig={sheetsConfig}
             onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
             onOpenGoogleSheet={handleOpenGoogleSheet}
@@ -1377,6 +1484,7 @@ export default function App() {
             onAllotRoom={handleAllotRoom}
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
+            onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
           />
         )}
 
@@ -1402,6 +1510,7 @@ export default function App() {
             onResetRoomsToSaifeeBurhani={handleResetToSaifeeBurhaniRooms}
             onAddRooms={handleAddRooms}
             onDeleteRoom={handleDeleteRoom}
+            onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
             accessToken={accessToken}
             sheetsConfig={sheetsConfig}
           />
@@ -1553,6 +1662,22 @@ export default function App() {
           reservations={reservations}
           onAllotRoom={handleAllotRoom}
           onBatchAllotFamily={handleBatchAllotFamily}
+          onOpenSwitchRoomModal={(target) => {
+            setQuickAllotTarget(null);
+            setSwitchRoomTarget(target);
+          }}
+        />
+      )}
+
+      {/* Switch or Swap Rooms Modal */}
+      {switchRoomTarget && (
+        <SwitchRoomModal
+          isOpen={true}
+          onClose={() => setSwitchRoomTarget(null)}
+          target={switchRoomTarget}
+          rooms={rooms}
+          allReservations={reservations}
+          onConfirmSwitch={handleSwapRooms}
         />
       )}
 
@@ -1851,7 +1976,7 @@ export default function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-[#124E39] border border-[#C5A059]/50 text-white rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 flex items-center gap-2 px-4 py-3 bg-[#124E39] border border-[#C5A059]/50 text-white rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
           {toast.type === 'error' ? (
             <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
           ) : (

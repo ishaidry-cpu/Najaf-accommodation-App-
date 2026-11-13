@@ -14,9 +14,11 @@ import {
   ArrowRight,
   ShieldCheck,
   Calendar,
-  Clock
+  Clock,
+  ArrowRightLeft
 } from 'lucide-react';
 import { Room, Reservation } from '../types';
+import type { SwitchRoomTarget } from './SwitchRoomModal';
 import { 
   getRoomMaxCapacity, 
   checkRoomAllotmentAvailability, 
@@ -33,6 +35,7 @@ interface QuickRoomAllotModalProps {
   reservations: Reservation[];
   onAllotRoom: (reservationId: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
   onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
+  onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
 }
 
 export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
@@ -43,6 +46,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   reservations,
   onAllotRoom,
   onBatchAllotFamily,
+  onOpenSwitchRoomModal,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [hotelFilter, setHotelFilter] = useState<string>('ALL');
@@ -320,6 +324,13 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 <span className="text-stone-400">Family: </span>
                 <strong className="text-white">{targetReservation.family}</strong> ({familyMembers.length} member{familyMembers.length > 1 ? 's' : ''})
               </div>
+              <div>
+                <span className="text-stone-400">Tour: </span>
+                <strong className="font-mono text-[#EBD59E]">{targetReservation.tourRefNo || targetReservation.tourId || '—'}</strong>
+                {targetReservation.officeName && (
+                  <span className="text-stone-200"> · {targetReservation.officeName}</span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 flex-wrap">
                 <Calendar className="w-3.5 h-3.5 text-[#EBD59E]" />
                 <span className="font-semibold text-white">Arr: {arrivalDate}</span>
@@ -341,12 +352,30 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenSwitchRoomModal && targetReservation.roomNumber && (
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenSwitchRoomModal({
+                    reservations: [targetReservation],
+                    initialScope: isFamily ? 'group' : 'single',
+                  })
+                }
+                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EBD59E] text-[#124E39] font-extrabold text-xs flex items-center gap-1.5 shadow-sm hover:bg-white transition cursor-pointer"
+                title="Switch or swap room with another room"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Switch Room</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Toolbar & Filters */}

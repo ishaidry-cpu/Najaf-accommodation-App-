@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -8,10 +9,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const portArgIndex = process.argv.indexOf('--port');
-const PORT = portArgIndex !== -1 && process.argv[portArgIndex + 1]
-  ? parseInt(process.argv[portArgIndex + 1], 10)
+const getCliArg = (flag: string): string | undefined => {
+  const eq = process.argv.find((a) => a.startsWith(`${flag}=`));
+  if (eq) return eq.slice(flag.length + 1);
+  const idx = process.argv.indexOf(flag);
+  if (idx !== -1 && process.argv[idx + 1]) return process.argv[idx + 1];
+  return undefined;
+};
+const portArg = getCliArg('--port');
+const PORT = portArg
+  ? parseInt(portArg, 10)
   : (process.env.APP_PORT ? parseInt(process.env.APP_PORT, 10) : 3000);
+const HOST = getCliArg('--host') || '0.0.0.0';
 const isDev = process.env.NODE_ENV !== 'production';
 
 app.use(express.json({ limit: '50mb' }));
@@ -521,10 +530,16 @@ app.post('/api/sheets/switch', (req, res) => {
 // VITE SPA MIDDLEWARE / STATIC ASSETS
 // ==========================================
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (isDev) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -538,9 +553,18 @@ async function startServer() {
     console.log('[Prod] Serving static build from dist directory.');
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Zaereen Accommodation Server listening on http://0.0.0.0:${PORT}`);
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`🚀 Zaereen Accommodation Server listening on http://${HOST}:${PORT}`);
   });
+
+  const shutdown = () => {
+    httpServer.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 1500).unref();
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 startServer().catch((err) => {

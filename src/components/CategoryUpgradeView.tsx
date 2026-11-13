@@ -152,7 +152,6 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           (r.itsId && r.itsId.toLowerCase().includes(q)) ||
           (r.jamaat && r.jamaat.toLowerCase().includes(q)) ||
           (r.category && r.category.toLowerCase().includes(q)) ||
-          (r.idara && r.idara.toLowerCase().includes(q)) ||
           (r.family && r.family.toLowerCase().includes(q)) ||
           (r.tourRefNo && r.tourRefNo.toLowerCase().includes(q)) ||
           (r.officeName && r.officeName.toLowerCase().includes(q));
@@ -329,7 +328,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 setFormError('');
                 setIsShiftModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
+              className="min-h-[44px] sm:min-h-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#EBD59E]" />
               <span>Shift New Zaer (B ➔ A)</span>
@@ -338,11 +337,11 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
           <div className="bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl text-center">
             <span className="text-[10px] uppercase font-bold text-emerald-800 block">Money Given: Yes</span>
-            <span className="text-lg font-extrabold text-emerald-950">{moneyGivenCount}</span>
+            <span className="text-lg font-extrabold text-emerald-950 tabular-nums">{moneyGivenCount}</span>
           </div>
           <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-center">
             <span className="text-[10px] uppercase font-bold text-amber-800 block">Pending Accounts: No</span>
-            <span className="text-lg font-extrabold text-amber-950">{moneyPendingCount}</span>
+            <span className="text-lg font-extrabold text-amber-950 tabular-nums">{moneyPendingCount}</span>
           </div>
         </div>
       </div>
@@ -351,20 +350,20 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
       <div className="bg-white border border-[#E6DFD5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[240px]">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
+            <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
             <input
               type="text"
               placeholder="Search by ITS ID, Applicant Name, Family, Tour Ref..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
           <select
             value={moneyFilter}
             onChange={(e) => setMoneyFilter(e.target.value as any)}
-            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">All Payment States</option>
             <option value="Yes">Money Given: Yes (Received)</option>
@@ -374,7 +373,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           <select
             value={hotelFilter}
             onChange={(e) => setHotelFilter(e.target.value)}
-            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">All Hotels</option>
             {distinctBuildings.map((bldg) => (
@@ -384,8 +383,83 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
         </div>
       </div>
 
-      {/* Requests Table (Fonts bigger, wrap text, complete tour id visible, interactive sort) */}
-      <div className="bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden">
+      {/* Mobile Cards View (md:hidden) */}
+      <div className="md:hidden space-y-2.5">
+        {filteredAndSortedRequests.length > 0 ? (
+          filteredAndSortedRequests.map((res) => {
+            const isPaid = res.moneyGiven === 'Yes';
+            return (
+              <div key={res.id} className="bg-white border border-[#E6DFD5] rounded-2xl p-3.5 shadow-2xs space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-extrabold text-stone-950 truncate">{res.applicantName}</h3>
+                    <div className="text-xs font-mono text-stone-600 tabular-nums mt-0.5">
+                      ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
+                    </div>
+                  </div>
+                  <span className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-[#124E39] tabular-nums">
+                    {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : 'Unassigned'}
+                  </span>
+                </div>
+
+                <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl px-3 py-2 text-xs space-y-1">
+                  <div className="font-mono font-bold text-[#124E39] break-all">
+                    Tour: {res.tourRefNo || '—'}
+                  </div>
+                  <div className="text-stone-700 font-semibold">
+                    Office: {res.officeName || '—'}
+                  </div>
+                  <div className="text-[11px] text-stone-600 tabular-nums">
+                    Stay: {res.arrivalDate?.slice(0, 10) || '—'} ({res.arrivalTime || '11:00 AM'}) ➔ {res.departureDate?.slice(0, 10) || '—'} ({res.departureTime || '01:00 AM'})
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
+                    className={`flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      isPaid
+                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                        : 'bg-amber-600 hover:bg-amber-700 text-white'
+                    }`}
+                  >
+                    {isPaid ? <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" /> : <Clock className="w-4 h-4" />}
+                    <span>{isPaid ? 'Money: Yes' : 'Money: Pending'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenAccountsSlip(res)}
+                    className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Request Slip</span>
+                  </button>
+
+                  {(onDeleteReservation || onToggleShiftToCategoryA) && (
+                    <button
+                      type="button"
+                      onClick={() => handleInitiateDelete(res)}
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 hover:bg-red-50 text-stone-500 hover:text-red-700 transition cursor-pointer"
+                      title="Delete or Revert B to A record"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-8 text-center text-stone-500 text-sm">
+            No accommodation B ➔ A shift requests found.
+          </div>
+        )}
+      </div>
+
+      {/* Requests Table (Desktop View) */}
+      <div className="hidden md:block bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm md:text-base border-collapse">
             <thead className="bg-[#124E39] text-white uppercase text-xs tracking-wider font-bold select-none">

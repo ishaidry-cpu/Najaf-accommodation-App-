@@ -33,10 +33,12 @@ import {
   Tag,
   LayoutGrid,
   ShieldAlert,
-  Star
+  Star,
+  ArrowRightLeft
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
+import { SwitchRoomTarget } from './SwitchRoomModal';
 import { 
   isRoomBookedForDuration, 
   getVacantRoomsForDuration,
@@ -70,6 +72,7 @@ interface ReservationsViewProps {
   onAllotRoom?: (reservationId: string, building: string, roomNumber: string) => void;
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
+  onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
 }
 
 const STANDARD_TIMES = [
@@ -101,6 +104,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onAllotRoom,
   userRole = 'admin',
   onOpenQuickAllotModal,
+  onOpenSwitchRoomModal,
 }) => {
   const isReadOnly = userRole === 'receptionist';
   // Deletion modal state & multi-selection state
@@ -197,6 +201,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [buildingFilter, setBuildingFilter] = useState('ALL');
   const [portalUploadFilter, setPortalUploadFilter] = useState('ALL');
   const [arrivalDateFilter, setArrivalDateFilter] = useState('ALL');
+  const [mobileVisibleCount, setMobileVisibleCount] = useState(40);
 
   // Distinct Arrival Dates for filtering and 1-click PDF download
   const distinctArrivalDates = useMemo(() => {
@@ -289,7 +294,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           (res.itsId && res.itsId.toLowerCase().includes(query)) ||
           (res.jamaat && res.jamaat.toLowerCase().includes(query)) ||
           (res.category && res.category.toLowerCase().includes(query)) ||
-          (res.idara && res.idara.toLowerCase().includes(query)) ||
           (res.family && res.family.toLowerCase().includes(query)) ||
           (res.tourRefNo && res.tourRefNo.toLowerCase().includes(query)) ||
           (res.officeName && res.officeName.toLowerCase().includes(query)) ||
@@ -348,10 +352,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         case 'category':
           valA = (a.category || '').toLowerCase();
           valB = (b.category || '').toLowerCase();
-          break;
-        case 'idara':
-          valA = (a.idara || '').toLowerCase();
-          valB = (b.idara || '').toLowerCase();
           break;
         case 'gender':
           valA = (a.gender || '').toLowerCase();
@@ -870,8 +870,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               {reservations.length} Zaereen Total
             </span>
           </div>
-          <p className="text-xs text-stone-600 mt-1">
-            Sequence: <strong>ITS ➔ NAME ➔ AGE ➔ FAMILY ➔ OFFICE NAME ➔ TOUR ID ➔ BUILDING & ROOM ALLOTTMENT</strong> ➔ GENDER ➔ GROUP LEAD ➔ DATES ➔ CATEGORY / IDARA. Full Screen Table.
+          <p className="text-xs text-stone-600 mt-1 hidden sm:block">
+            Sequence: <strong>ITS ➔ NAME ➔ AGE ➔ FAMILY ➔ OFFICE NAME ➔ TOUR ID ➔ BUILDING & ROOM ALLOTTMENT</strong> ➔ GENDER ➔ GROUP LEAD ➔ DATES ➔ CATEGORY.
           </p>
         </div>
 
@@ -1005,23 +1005,29 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
+            <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
             <input
               type="text"
               placeholder="Search ITS, Name, Family, Office, Tour ID..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setMobileVisibleCount(40);
+              }}
+              className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
           {/* Pilgrim Category Filter */}
           <div className="flex items-center gap-1">
-            <span className="text-stone-500 font-semibold">Category:</span>
+            <span className="text-stone-500 font-semibold hidden sm:inline">Category:</span>
             <select
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setMobileVisibleCount(40);
+              }}
+              className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Categories ({categories.length})</option>
               {categories.map((cat) => (
@@ -1035,8 +1041,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           {/* Hotel Filter */}
           <select
             value={buildingFilter}
-            onChange={(e) => setBuildingFilter(e.target.value)}
-            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
+            onChange={(e) => {
+              setBuildingFilter(e.target.value);
+              setMobileVisibleCount(40);
+            }}
+            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
           >
             <option value="ALL">All Hotels</option>
             {distinctBuildings.map((bldg) => (
@@ -1048,8 +1057,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           {/* Portal Upload Filter */}
           <select
             value={portalUploadFilter}
-            onChange={(e) => setPortalUploadFilter(e.target.value)}
-            className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+            onChange={(e) => {
+              setPortalUploadFilter(e.target.value);
+              setMobileVisibleCount(40);
+            }}
+            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">Portal: All</option>
             <option value="Uploaded">Uploaded ✓</option>
@@ -1060,12 +1072,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <div className="flex items-center gap-1">
             <span className="text-stone-500 font-semibold flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-[#124E39]" />
-              <span>Arrival:</span>
+              <span className="hidden sm:inline">Arrival:</span>
             </span>
             <select
               value={arrivalDateFilter}
-              onChange={(e) => setArrivalDateFilter(e.target.value)}
-              className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+              onChange={(e) => {
+                setArrivalDateFilter(e.target.value);
+                setMobileVisibleCount(40);
+              }}
+              className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Arrival Dates</option>
               {distinctArrivalDates.map(({ date, count }) => (
@@ -1388,9 +1403,213 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MAIN ZAEREEN GRID TABLE: ALL 16 COLUMNS VISIBLE ON SCREEN                 */}
+      {/* MOBILE CARD LIST (FAST CHECK & ROOM SWITCHING ON PHONES)                  */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden flex flex-col w-full">
+      <div className="md:hidden space-y-2.5">
+        <div className="flex items-center justify-between px-1 text-xs text-stone-600 font-semibold">
+          <span className="tabular-nums">
+            Showing {Math.min(mobileVisibleCount, filteredAndSortedReservations.length)} of {filteredAndSortedReservations.length} zaereen
+          </span>
+          <button
+            type="button"
+            onClick={handleToggleSelectAllVisible}
+            className="text-[#124E39] font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
+          >
+            {isAllVisibleSelected ? 'Deselect All' : 'Select All'}
+          </button>
+        </div>
+
+        {filteredAndSortedReservations.length > 0 ? (
+          <>
+            {filteredAndSortedReservations.slice(0, mobileVisibleCount).map((res, idx) => {
+              const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
+              const isShiftedToA = !!res.shiftToCategoryA;
+              const isSelected = selectedIds.has(res.id);
+              const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
+              const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
+
+              return (
+                <div
+                  key={res.id}
+                  className={`bg-white border rounded-2xl p-3.5 shadow-2xs space-y-2.5 ${
+                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-[#E6DFD5]'
+                  }`}
+                >
+                  {/* Top row: Checkbox, Name, Star, Room Status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <label className="min-w-[44px] min-h-[44px] -ml-2 -mt-2 flex items-center justify-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectRow(res.id)}
+                          className="w-4 h-4 rounded border-stone-300 accent-[#124E39]"
+                        />
+                      </label>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-mono text-stone-400 tabular-nums">#{idx + 1}</span>
+                          {res.isSpecialGuest ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSpecialGuestModal(res)}
+                              className="p-0.5 text-amber-500 cursor-pointer"
+                              title={`Special Guest: ${res.specialRemarks || 'Edit remarks'}`}
+                            >
+                              <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSpecialGuestModal(res)}
+                              className="p-0.5 text-stone-300 hover:text-amber-500 cursor-pointer"
+                              title="Mark as Star guest"
+                            >
+                              <Star className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <h3 className={`text-sm font-extrabold truncate ${res.isSpecialGuest ? 'text-amber-950' : 'text-stone-900'}`}>
+                            {res.applicantName}
+                          </h3>
+                        </div>
+                        <div className="text-xs text-stone-600 font-mono tabular-nums mt-0.5">
+                          ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <span
+                        className={`inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border tabular-nums ${
+                          isAllotted
+                            ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                            : 'bg-amber-100 text-amber-950 border-amber-300'
+                        }`}
+                      >
+                        {isAllotted ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tour ID + Office Name */}
+                  <div className="bg-[#FAF7F2] rounded-xl px-3 py-2 border border-[#E6DFD5] text-xs space-y-1">
+                    <div className="font-mono font-bold text-[#124E39] break-all">
+                      Tour: {res.tourRefNo || res.tourId || '—'}
+                    </div>
+                    <div className="text-stone-700 font-semibold">
+                      Office: {res.officeName || '—'}
+                    </div>
+                    <div className="text-[11px] text-stone-600 tabular-nums pt-0.5">
+                      Arr: <strong className="text-stone-900">{res.arrivalDate?.slice(0, 10) || '—'}</strong> ({res.arrivalTime || '11:00 AM'}) ➔ Dep:{' '}
+                      <strong className="text-stone-900">{res.departureDate?.slice(0, 10) || '—'}</strong> ({res.departureTime || '01:00 AM'})
+                    </div>
+                  </div>
+
+                  {/* Category + Portal + Actions */}
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {!isReadOnly && isAllotted && onOpenSwitchRoomModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenSwitchRoomModal({ reservations: [res], initialScope: 'single' })}
+                        className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Switch Room</span>
+                      </button>
+                    )}
+
+                    {!isReadOnly && onOpenQuickAllotModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenQuickAllotModal(res)}
+                        className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                          isAllotted
+                            ? 'bg-stone-100 text-stone-800 border border-stone-300'
+                            : 'bg-[#124E39] text-[#EBD59E] border border-[#124E39]'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{isAllotted ? 'Edit Room' : 'Allot Room'}</span>
+                      </button>
+                    )}
+
+                    {!isReadOnly && sameFamilyCount > 1 && isAllotted && onBatchAllotFamily && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onBatchAllotFamily(String(res.tourRefNo || res.tourId || ''), String(res.family || ''), res.building || 'Saifee', res.roomNumber);
+                        }}
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-emerald-100 text-emerald-950 border border-emerald-400 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Fam ({sameFamilyCount})</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)}
+                      className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border cursor-pointer ${
+                        res.isUploadedToPortal
+                          ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                          : 'bg-white text-stone-600 border-stone-300'
+                      }`}
+                    >
+                      {res.isUploadedToPortal ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                      <span>{res.isUploadedToPortal ? 'Portal ✓' : 'Portal'}</span>
+                    </button>
+
+                    {isShiftedToA && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAccountsSlip(res)}
+                        className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center justify-center cursor-pointer"
+                        title="Accounts Slip"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isBToARecord(res) && userRole !== 'admin') {
+                          setBToABlockedRecord(res);
+                        } else {
+                          setRecordToDelete(res);
+                        }
+                      }}
+                      className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-stone-50 hover:bg-red-50 text-stone-500 hover:text-red-700 border border-stone-200 flex items-center justify-center cursor-pointer"
+                      title="Delete record"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredAndSortedReservations.length > mobileVisibleCount && (
+              <button
+                type="button"
+                onClick={() => setMobileVisibleCount((c) => c + 40)}
+                className="w-full min-h-[44px] py-3 rounded-xl bg-[#FAF7F2] hover:bg-stone-100 border border-[#C5A059] text-[#124E39] font-extrabold text-xs shadow-2xs cursor-pointer"
+              >
+                Show 40 More ({filteredAndSortedReservations.length - mobileVisibleCount} remaining)
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-8 text-center text-sm text-stone-500">
+            No zaereen found matching your filter criteria.
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MAIN ZAEREEN GRID TABLE: DESKTOP FULL SCREEN TABLE                       */}
+      {/* ========================================================================= */}
+      <div className="hidden md:flex bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden flex-col w-full">
         <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
           <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2000px]'}`}>
             {/* Table Header with interactive sorting on all columns */}
@@ -1844,6 +2063,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                       ))}
                                   </optgroup>
                                 </select>
+
+                                {isAllotted && onOpenSwitchRoomModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenSwitchRoomModal({ reservations: [res], initialScope: 'single' })}
+                                    className="shrink-0 p-1 rounded bg-amber-50 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    title="Switch or swap room with another room"
+                                  >
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                  </button>
+                                )}
 
                                 {isAllotted && onOpenQuickAllotModal && (
                                   <button
@@ -2726,7 +2956,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Toast Feedback Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 md:bottom-5 right-4 md:right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div
             className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold ${
               toastMessage.type === 'success'

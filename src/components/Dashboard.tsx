@@ -46,6 +46,7 @@ import {
 } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
+import type { SwitchRoomTarget } from './SwitchRoomModal';
 
 interface DashboardProps {
   reservations: Reservation[];
@@ -65,6 +66,7 @@ interface DashboardProps {
   onToggleBlockRoom?: (roomId: string) => void;
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
+  onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
   sheetsConfig?: GoogleSheetsConfig;
   onOpenSheetsModal?: () => void;
   onOpenGoogleSheet?: () => void;
@@ -93,6 +95,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onToggleBlockRoom,
   userRole = 'admin',
   onOpenQuickAllotModal,
+  onOpenSwitchRoomModal,
   sheetsConfig,
   onOpenSheetsModal,
   onOpenGoogleSheet,
@@ -102,8 +105,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onRefreshLiveComputerData,
   onOpenPdfModal,
 }) => {
-  // Rooms View Mode: 'timeline' (Top Dates & Horizontal Rooms) vs 'buttons' (Compact Matrix)
-  const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>('timeline');
+  // Rooms View Mode: Compact Matrix by default on mobile phones, Timeline on desktop
+  const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'buttons' : 'timeline'
+  );
+  // Mobile Quick-Check search state
+  const [mobileQuickSearch, setMobileQuickSearch] = useState<string>('');
   // Deleting record confirmation state
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
   // Special Guest & Requirements modal state (Scope: Guest / Family / Tour ID)
@@ -161,10 +168,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [tourArrivalDateFilter, setTourArrivalDateFilter] = useState<string>('');
   const [tourDepartureDateFilter, setTourDepartureDateFilter] = useState<string>('');
 
-  // Rich summaries for each tour (Zaereen count, families count, arrival & departure dates, room change tracking)
+  // Rich summaries for each tour (Zaereen count, office names, families count, arrival & departure dates, room change tracking)
   const tourSummaries = useMemo(() => {
     const map = new Map<string, {
       tourId: string;
+      officeNamesSet: Set<string>;
       totalZaereen: number;
       familiesSet: Set<string>;
       arrivalDatesSet: Set<string>;
@@ -187,12 +195,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }>();
 
     reservations.forEach((r) => {
-      const tid = (r.tourRefNo || '').trim();
+      const tid = (r.tourRefNo || r.tourId || '').trim();
       if (!tid) return;
 
       if (!map.has(tid)) {
         map.set(tid, {
           tourId: tid,
+          officeNamesSet: new Set(),
           totalZaereen: 0,
           familiesSet: new Set(),
           arrivalDatesSet: new Set(),
@@ -208,6 +217,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       const item = map.get(tid)!;
       item.totalZaereen += 1;
+      if (r.officeName && r.officeName.trim()) {
+        item.officeNamesSet.add(r.officeName.trim());
+      }
       if (r.family) item.familiesSet.add(r.family.trim());
       
       const arr = (r.arrivalDate || r.arrivalDateTime || r.rawArrivalStr || '').slice(0, 10);
@@ -250,19 +262,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return Array.from(map.values())
-      .map((item) => ({
-        tourId: item.tourId,
-        totalZaereen: item.totalZaereen,
-        familiesCount: item.familiesSet.size,
-        arrivalDates: Array.from(item.arrivalDatesSet).sort(),
-        primaryArrivalDate: item.earliestArrival,
-        departureDates: Array.from(item.departureDatesSet).sort(),
-        primaryDepartureDate: item.latestDeparture || item.earliestDeparture,
-        earliestDeparture: item.earliestDeparture,
-        latestDeparture: item.latestDeparture,
-        hasRoomChange: item.hasRoomChange,
-        roomChanges: item.roomChanges,
-      }))
+      .map((item) => {
+        const officeNames = Array.from(item.officeNamesSet);
+        return {
+          tourId: item.tourId,
+          officeNames,
+          officeDisplay: officeNames.join(', '),
+          totalZaereen: item.totalZaereen,
+          familiesCount: item.familiesSet.size,
+          arrivalDates: Array.from(item.arrivalDatesSet).sort(),
+          primaryArrivalDate: item.earliestArrival,
+          departureDates: Array.from(item.departureDatesSet).sort(),
+          primaryDepartureDate: item.latestDeparture || item.earliestDeparture,
+          earliestDeparture: item.earliestDeparture,
+          latestDeparture: item.latestDeparture,
+          hasRoomChange: item.hasRoomChange,
+          roomChanges: item.roomChanges,
+        };
+      })
       .sort((a, b) => a.tourId.localeCompare(b.tourId));
   }, [reservations]);
 
@@ -271,18 +288,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return tourSummaries.map((t) => t.tourId);
   }, [tourSummaries]);
 
-  // Filtered tours matching search by Tour ID, Arrival Date, and/or Departure Date
+  // Filtered tours matching search by Tour ID or Office Name, Arrival Date, and/or Departure Date
   const filteredTourSummaries = useMemo(() => {
     return tourSummaries.filter((t) => {
-      // 1. Tour ID search query (case-insensitive substring match)
+      // 1. Tour ID or Office Name search query (case-insensitive substring match)
       if (tourSearchQuery.trim()) {
         const q = tourSearchQuery.trim().toLowerCase();
-        if (!t.tourId.toLowerCase().includes(q)) {
+        const matchTour = t.tourId.toLowerCase().includes(q);
+        const matchOffice = t.officeDisplay.toLowerCase().includes(q);
+        if (!matchTour && !matchOffice) {
           return false;
         }
       }
 
-      // 2. Arrival Date filter (checks if any Zaer in this tour arrives on or starts with the selected date)
+      // 2. Arrival Date filter
       if (tourArrivalDateFilter.trim()) {
         const targetDate = tourArrivalDateFilter.trim();
         const hasDate = t.arrivalDates.some((d) => d.startsWith(targetDate) || targetDate.startsWith(d));
@@ -291,7 +310,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
       }
 
-      // 3. Departure Date filter (checks if any Zaer in this tour departs on or starts with the selected date)
+      // 3. Departure Date filter
       if (tourDepartureDateFilter.trim()) {
         const targetDate = tourDepartureDateFilter.trim();
         const hasDate = t.departureDates.some((d) => d.startsWith(targetDate) || targetDate.startsWith(d));
@@ -358,9 +377,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       );
       const hasRoomChange = members.some((m) => m.isRoomChanged) || familyChanges.length > 0;
 
+      const famOffices = Array.from(
+        new Set(members.map((m) => (m.officeName || '').trim()).filter(Boolean))
+      ).join(', ');
+
       return {
         family: fam,
         members,
+        officeName: famOffices,
         totalCount: members.length,
         allottedCount,
         isFullyAllotted: allottedCount === members.length && members.length > 0,
@@ -375,6 +399,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
       };
     });
   }, [reservations, currentTourId, todayStr]);
+
+  // Mobile Quick-Check matching results (instant search across Name, ITS, Tour ID, Office Name, Family, Room #)
+  const mobileQuickMatches = useMemo(() => {
+    const q = mobileQuickSearch.trim().toLowerCase();
+    if (!q) return [];
+    return reservations
+      .filter((r) => {
+        return (
+          (r.applicantName || '').toLowerCase().includes(q) ||
+          (r.itsId || '').toLowerCase().includes(q) ||
+          (r.tourRefNo || r.tourId || '').toLowerCase().includes(q) ||
+          (r.officeName || '').toLowerCase().includes(q) ||
+          (r.family || '').toLowerCase().includes(q) ||
+          (r.roomNumber || '').toLowerCase().includes(q) ||
+          (r.building || '').toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 15);
+  }, [reservations, mobileQuickSearch]);
 
   // Helper to compute room matrix occupancy state on selected date:
   // - Full occupied (No space): RED
@@ -521,7 +564,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         type="button"
         onClick={() => setInspectedRoom(room)}
         title={tooltipLines.join('\n')}
-        className={`w-10 h-9 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative ${btnBg} ${
+        className={`w-11 h-11 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative tabular-nums ${btnBg} ${
           inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
         }`}
       >
@@ -579,18 +622,151 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [reservations, selectedDate]);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Top Banner / Hero - Beige & Deep Green */}
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+    <div className="space-y-4 sm:space-y-6 pb-8">
+      {/* MOBILE QUICK-CHECK PANEL (Fast instant lookup on mobile phones) */}
+      <div className="md:hidden bg-white border border-[#E6DFD5] rounded-2xl p-3.5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-extrabold text-[#124E39]">Quick Mobile Check</h2>
+            <p className="text-[11px] text-stone-500">
+              Search Guest, ITS, Tour ID, Office Name or Room #
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {onOpenAddZaer && (
+              <button
+                type="button"
+                onClick={onOpenAddZaer}
+                className="min-h-[40px] px-3 rounded-xl bg-[#124E39] text-[#EBD59E] text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Zair</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative">
+          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3.5" />
+          <input
+            type="text"
+            value={mobileQuickSearch}
+            onChange={(e) => setMobileQuickSearch(e.target.value)}
+            placeholder="Type Name, ITS, Tour ID, Office, or Room..."
+            className="w-full min-h-[44px] bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl pl-9 pr-9 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+          />
+          {mobileQuickSearch && (
+            <button
+              type="button"
+              onClick={() => setMobileQuickSearch('')}
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center absolute right-1 top-1 text-stone-400 hover:text-stone-700 cursor-pointer"
+              aria-label="Clear mobile search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {mobileQuickSearch.trim() && (
+          <div className="space-y-2 max-h-80 overflow-y-auto pt-1">
+            {mobileQuickMatches.length > 0 ? (
+              mobileQuickMatches.map((res) => (
+                <div
+                  key={res.id}
+                  className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl p-3 space-y-2 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-bold text-stone-950 flex items-center gap-1 truncate">
+                        {res.isSpecialGuest && (
+                          <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 shrink-0" />
+                        )}
+                        <span className="truncate">{res.applicantName}</span>
+                      </div>
+                      <div className="text-[11px] text-stone-600 font-mono mt-0.5 tabular-nums">
+                        ITS {res.itsId || '—'} · Fam #{res.family || '—'}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`font-extrabold text-xs tabular-nums ${res.roomNumber ? 'text-[#124E39]' : 'text-amber-700'}`}>
+                        {res.roomNumber ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-stone-700">
+                    <span className="font-mono font-bold text-[#124E39]">
+                      Tour {res.tourRefNo || res.tourId || '—'}
+                    </span>
+                    {res.officeName && (
+                      <span className="text-stone-600"> · {res.officeName}</span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-stone-500 tabular-nums">
+                    Arr: {(res.arrivalDate || '').slice(0, 10)} ({res.arrivalTime || '11:00 AM'}) ➔ Dep:{' '}
+                    {(res.departureDate || '').slice(0, 10)} ({res.departureTime || '01:00 AM'})
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {res.roomNumber && onOpenSwitchRoomModal ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenSwitchRoomModal({ reservations: [res] })}
+                        className="min-h-[44px] rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                        <span>Switch Room</span>
+                      </button>
+                    ) : (
+                      onOpenQuickAllotModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenQuickAllotModal(res)}
+                          className="min-h-[44px] rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Allot Room</span>
+                        </button>
+                      )
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tid = (res.tourRefNo || res.tourId || '').trim();
+                        if (tid) {
+                          setDashTourId(tid);
+                          setMobileQuickSearch('');
+                        }
+                      }}
+                      className="min-h-[44px] rounded-xl bg-white border border-stone-300 text-stone-800 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <span>View Tour</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-4 text-center text-xs text-stone-400">
+                No matching zaereen found for "{mobileQuickSearch}".
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Top Banner / Hero - Beige & Deep Green (Condensed on mobile) */}
+      <div className="hidden md:flex bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-5 sm:p-6 shadow-sm flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="flex items-center gap-4">
           <FaizHusainiLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+              <span className="text-xs font-bold text-[#124E39]">
                 Accommodation Operations
               </span>
               <span className="text-xs text-stone-500 hidden sm:inline">
-                {distinctBuildings.join(' & ')} Hotels ({rooms.length} Rooms)
+                · {distinctBuildings.join(' & ')} Hotels ({rooms.length} Rooms)
               </span>
             </div>
             <p className="text-xs text-stone-600 mt-1 max-w-xl">
@@ -841,192 +1017,200 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   1-Click Family Allocation
                 </span>
               </div>
-              <p className="text-xs text-stone-500 mt-1">
-                Search by Tour ID or Arrival Date to review family clusters and allot rooms to whole families in one go.
-              </p>
-            </div>
+          <p className="text-xs text-stone-500 mt-1">
+            Search by Tour ID, Office Name, or Arrival Date to review family clusters and allot or switch rooms.
+          </p>
+        </div>
 
-            {/* Tour count indicator & Reset button */}
-            <div className="flex items-center gap-2 text-xs flex-wrap">
-              {onOpenAddTourGroup && (
-                <button
-                  type="button"
-                  onClick={onOpenAddTourGroup}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
-                  title="Add a Tour ID with multiple individuals across different family IDs"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>+ Add Tour Group</span>
-                </button>
-              )}
+        {/* Tour count indicator & Reset button */}
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          {onOpenAddTourGroup && (
+            <button
+              type="button"
+              onClick={onOpenAddTourGroup}
+              className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
+              title="Add a Tour ID with multiple individuals across different family IDs"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>+ Add Tour Group</span>
+            </button>
+          )}
 
-              {tourSummaries.length > 0 && (
-                <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-stone-600 font-semibold">
-                  {filteredTourSummaries.length} of {tourSummaries.length} Tours
-                </span>
-              )}
-              {(tourSearchQuery || tourArrivalDateFilter || tourDepartureDateFilter) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTourSearchQuery('');
-                    setTourArrivalDateFilter('');
-                    setTourDepartureDateFilter('');
-                  }}
-                  className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                  title="Reset search and date filters"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Reset Search</span>
-                </button>
-              )}
-            </div>
-          </div>
+          {tourSummaries.length > 0 && (
+            <span className="text-xs font-semibold text-stone-600 tabular-nums">
+              {filteredTourSummaries.length} of {tourSummaries.length} Tours
+            </span>
+          )}
+          {(tourSearchQuery || tourArrivalDateFilter || tourDepartureDateFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setTourSearchQuery('');
+                setTourArrivalDateFilter('');
+                setTourDepartureDateFilter('');
+              }}
+              className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+              title="Reset search and date filters"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Reset Search</span>
+            </button>
+          )}
+        </div>
+      </div>
 
-          {/* Search Controls: Tour ID Search, Arrival Date Filter, Departure Date Filter, Tour Dropdown */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 pt-1">
-            {/* 1. Search by Tour ID */}
-            <div className="lg:col-span-3 relative flex items-center">
-              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search Tour ID (e.g. 101, T-2...)"
-                value={tourSearchQuery}
-                onChange={(e) => setTourSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-7 py-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl text-xs font-mono font-bold text-[#124E39] placeholder:text-stone-400 placeholder:font-sans focus:outline-none focus:ring-1 focus:ring-[#124E39] shadow-2xs"
-              />
-              {tourSearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setTourSearchQuery('')}
-                  className="absolute right-2 text-stone-400 hover:text-stone-700 p-0.5 cursor-pointer"
-                  title="Clear Tour ID search"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-
-            {/* 2. Filter by Arrival Date */}
-            <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2 py-1.5 shadow-2xs">
-              <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-              <span className="text-[10px] font-bold text-stone-600 shrink-0">Arr:</span>
-              <input
-                type="date"
-                value={tourArrivalDateFilter}
-                onChange={(e) => setTourArrivalDateFilter(e.target.value)}
-                className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full min-w-0"
-                title="Filter tours arriving on date"
-              />
-              {tourArrivalDateFilter && (
-                <button
-                  type="button"
-                  onClick={() => setTourArrivalDateFilter('')}
-                  className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
-                  title="Clear arrival date filter"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-
-            {/* 3. Filter by Departure Date */}
-            <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs">
-              <LogOut className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-              <span className="text-[10px] font-bold text-amber-900 shrink-0">Dep:</span>
-              <input
-                type="date"
-                value={tourDepartureDateFilter}
-                onChange={(e) => setTourDepartureDateFilter(e.target.value)}
-                className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer w-full min-w-0"
-                title="Filter tours departing on date"
-              />
-              {tourDepartureDateFilter && (
-                <button
-                  type="button"
-                  onClick={() => setTourDepartureDateFilter('')}
-                  className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
-                  title="Clear departure date filter"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-
-            {/* 4. Tour Selection Dropdown */}
-            <div className="lg:col-span-5 flex items-center gap-2">
-              <span className="text-xs font-bold text-stone-700 shrink-0 hidden lg:inline">Tour:</span>
-              <select
-                value={currentTourId}
-                onChange={(e) => setDashTourId(e.target.value)}
-                className="w-full bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39] cursor-pointer shadow-2xs truncate"
-              >
-                {filteredTourSummaries.length > 0 ? (
-                  filteredTourSummaries.map((t) => (
-                    <option key={t.tourId} value={t.tourId}>
-                      {t.tourId} • Arr: {t.primaryArrivalDate || '—'} • Dep: {t.primaryDepartureDate || '—'} ({t.totalZaereen} Zaereen{t.familiesCount > 0 ? `, ${t.familiesCount} Fam` : ''})
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No tours found matching search</option>
-                )}
-              </select>
-            </div>
-          </div>
-
-          {/* Quick matching tour pills if filtered with multiple matches */}
-          {filteredTourSummaries.length > 1 && filteredTourSummaries.length <= 8 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
-              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider shrink-0">Matching Tours:</span>
-              {filteredTourSummaries.map((t) => {
-                const isSelected = t.tourId === currentTourId;
-                return (
-                  <button
-                    key={t.tourId}
-                    type="button"
-                    onClick={() => setDashTourId(t.tourId)}
-                    className={`px-2 py-0.5 rounded-lg text-xs font-mono font-bold transition shrink-0 cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#124E39] text-[#EBD59E] shadow-2xs'
-                        : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200'
-                    }`}
-                  >
-                    <span>{t.tourId}</span>
-                    <span className="text-[10px] font-sans font-normal opacity-85 ml-1">
-                      ({t.primaryArrivalDate ? t.primaryArrivalDate.slice(5) : '—'} ➔ {t.primaryDepartureDate ? t.primaryDepartureDate.slice(5) : '—'})
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      {/* Search Controls: Tour ID / Office Name Search, Arrival Date Filter, Departure Date Filter, Tour Dropdown */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 pt-1">
+        {/* 1. Search by Tour ID or Office Name */}
+        <div className="lg:col-span-3 relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search Tour ID or Office Name..."
+            value={tourSearchQuery}
+            onChange={(e) => setTourSearchQuery(e.target.value)}
+            className="w-full min-h-[44px] sm:min-h-0 pl-8 pr-7 py-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl text-xs font-bold text-[#124E39] placeholder:text-stone-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-[#124E39] shadow-2xs"
+          />
+          {tourSearchQuery && (
+            <button
+              type="button"
+              onClick={() => setTourSearchQuery('')}
+              className="absolute right-2 text-stone-400 hover:text-stone-700 p-0.5 cursor-pointer"
+              title="Clear Tour ID / Office search"
+            >
+              <X className="w-3 h-3" />
+            </button>
           )}
         </div>
 
-        {/* Selected Tour Summary & Room Change History Header */}
-        {currentTourId && (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-stone-200 shadow-2xs">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-mono font-black text-sm text-[#124E39] bg-[#124E39]/10 px-2.5 py-1 rounded-lg border border-[#124E39]/20">
-                Tour ID: {currentTourId}
-              </span>
-              {(() => {
-                const tourSum = tourSummaries.find((t) => t.tourId === currentTourId);
-                const tourChanges = tourSum?.roomChanges || [];
-                return (
-                  <>
-                    {tourSum && (
-                      <div className="flex items-center gap-2 text-xs text-stone-600 font-medium flex-wrap">
-                        <span>{tourSum.totalZaereen} Zaereen • {tourSum.familiesCount} Families</span>
-                        <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          <LogIn className="w-3 h-3 text-emerald-700" />
-                          <span>Arrival: {tourSum.primaryArrivalDate || 'N/A'}</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-300">
-                          <LogOut className="w-3 h-3 text-amber-700" />
-                          <span>Departure: {tourSum.primaryDepartureDate || 'N/A'}</span>
-                        </span>
-                      </div>
-                    )}
+        {/* 2. Filter by Arrival Date */}
+        <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
+          <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+          <span className="text-[10px] font-bold text-stone-600 shrink-0">Arr:</span>
+          <input
+            type="date"
+            value={tourArrivalDateFilter}
+            onChange={(e) => setTourArrivalDateFilter(e.target.value)}
+            className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full min-w-0"
+            title="Filter tours arriving on date"
+          />
+          {tourArrivalDateFilter && (
+            <button
+              type="button"
+              onClick={() => setTourArrivalDateFilter('')}
+              className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
+              title="Clear arrival date filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* 3. Filter by Departure Date */}
+        <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
+          <LogOut className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+          <span className="text-[10px] font-bold text-amber-900 shrink-0">Dep:</span>
+          <input
+            type="date"
+            value={tourDepartureDateFilter}
+            onChange={(e) => setTourDepartureDateFilter(e.target.value)}
+            className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer w-full min-w-0"
+            title="Filter tours departing on date"
+          />
+          {tourDepartureDateFilter && (
+            <button
+              type="button"
+              onClick={() => setTourDepartureDateFilter('')}
+              className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
+              title="Clear departure date filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* 4. Tour Selection Dropdown (with Office Name + Tour ID) */}
+        <div className="lg:col-span-5 flex items-center gap-2">
+          <span className="text-xs font-bold text-stone-700 shrink-0 hidden lg:inline">Tour:</span>
+          <select
+            value={currentTourId}
+            onChange={(e) => setDashTourId(e.target.value)}
+            className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl px-3 py-1.5 text-xs font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39] cursor-pointer shadow-2xs truncate"
+          >
+            {filteredTourSummaries.length > 0 ? (
+              filteredTourSummaries.map((t) => (
+                <option key={t.tourId} value={t.tourId}>
+                  {t.tourId}{t.officeDisplay ? ` — ${t.officeDisplay}` : ''} • Arr: {t.primaryArrivalDate || '—'} • Dep: {t.primaryDepartureDate || '—'} ({t.totalZaereen} Pax)
+                </option>
+              ))
+            ) : (
+              <option value="">No tours found matching search</option>
+            )}
+          </select>
+        </div>
+      </div>
+
+      {/* Quick matching tour selector buttons if filtered with multiple matches */}
+      {filteredTourSummaries.length > 1 && filteredTourSummaries.length <= 8 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
+          <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider shrink-0">Matching Tours:</span>
+          {filteredTourSummaries.map((t) => {
+            const isSelected = t.tourId === currentTourId;
+            return (
+              <button
+                key={t.tourId}
+                type="button"
+                onClick={() => setDashTourId(t.tourId)}
+                className={`min-h-[38px] sm:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-[#124E39] text-[#EBD59E] shadow-2xs'
+                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200'
+                }`}
+              >
+                <span className="font-mono">{t.tourId}</span>
+                {t.officeDisplay && (
+                  <span className="text-[10px] font-sans opacity-90 max-w-[140px] truncate">
+                    · {t.officeDisplay}
+                  </span>
+                )}
+                <span className="text-[10px] font-sans font-normal opacity-80 tabular-nums">
+                  ({t.primaryArrivalDate ? t.primaryArrivalDate.slice(5) : '—'} ➔ {t.primaryDepartureDate ? t.primaryDepartureDate.slice(5) : '—'})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+
+    {/* Selected Tour Summary & Office Name + Room Change History Header */}
+    {currentTourId && (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="font-mono font-black text-sm text-[#124E39] bg-[#124E39]/10 px-2.5 py-1 rounded-lg border border-[#124E39]/20">
+            Tour ID: {currentTourId}
+          </span>
+          {(() => {
+            const tourSum = tourSummaries.find((t) => t.tourId === currentTourId);
+            const tourChanges = tourSum?.roomChanges || [];
+            return (
+              <>
+                {tourSum?.officeDisplay && (
+                  <span className="text-xs sm:text-sm font-extrabold text-stone-900">
+                    Office: {tourSum.officeDisplay}
+                  </span>
+                )}
+                {tourSum && (
+                  <div className="flex items-center gap-2 text-xs text-stone-600 font-medium flex-wrap tabular-nums">
+                    <span>· {tourSum.totalZaereen} Zaereen · {tourSum.familiesCount} Families</span>
+                    <span className="text-emerald-800 font-bold">
+                      · Arr: {tourSum.primaryArrivalDate || 'N/A'}
+                    </span>
+                    <span className="text-amber-900 font-bold">
+                      · Dep: {tourSum.primaryDepartureDate || 'N/A'}
+                    </span>
+                  </div>
+                )}
 
                     {/* Room Change Indicator with Interactive Hover Bubble (User requirement: mark changed room with color & hover bubble) */}
                     {tourSum?.hasRoomChange && (
@@ -1175,9 +1359,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <span className="font-mono font-black text-sm text-[#124E39]">
                           Family {famItem.family}
                         </span>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 font-bold">
-                          {famItem.totalCount} Members
+                        <span className="text-[11px] text-stone-600 font-semibold">
+                          · {famItem.totalCount} Members
                         </span>
+                        {famItem.officeName && (
+                          <span className="text-[11px] font-semibold text-emerald-900">
+                            · {famItem.officeName}
+                          </span>
+                        )}
 
                         {/* Family Special Status Button (Scope: Whole Family) */}
                         {(() => {
@@ -1414,10 +1603,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, currentRoom);
                         }
                       }}
-                      className="px-3 py-1 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-[#EBD59E] font-bold rounded-lg text-xs shadow-xs transition cursor-pointer"
+                      className="min-h-[40px] sm:min-h-0 px-3 py-1 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-[#EBD59E] font-bold rounded-lg text-xs shadow-xs transition cursor-pointer"
                     >
                       Allot Family ({famItem.totalCount})
                     </button>
+
+                    {famItem.allottedCount > 0 && onOpenSwitchRoomModal && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenSwitchRoomModal({
+                            reservations: famItem.members,
+                            initialScope: 'group',
+                          })
+                        }
+                        className="min-h-[40px] sm:min-h-0 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-[#124E39] border border-[#124E39]/30 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition"
+                        title="Switch or swap room for this family"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                        <span>Switch Room</span>
+                      </button>
+                    )}
 
                     {famItem.allottedCount > 0 && (
                       <button
@@ -1427,7 +1633,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, '');
                           }
                         }}
-                        className="px-2 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 font-semibold rounded-lg text-xs cursor-pointer"
+                        className="min-h-[40px] sm:min-h-0 px-2 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 font-semibold rounded-lg text-xs cursor-pointer"
                         title="Clear allotment for this entire family"
                       >
                         Clear
@@ -1572,11 +1778,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   )}
                                 </select>
 
+                                {onOpenSwitchRoomModal && m.roomNumber && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onOpenSwitchRoomModal({
+                                        reservations: [m],
+                                        initialScope: 'single',
+                                      })
+                                    }
+                                    className="min-h-[36px] sm:min-h-0 px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-[#124E39] border border-[#124E39]/30 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition"
+                                    title={`Switch room for ${m.applicantName}`}
+                                  >
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                    <span>Switch</span>
+                                  </button>
+                                )}
+
                                 {onDeleteReservation && (
                                   <button
                                     type="button"
                                     onClick={() => setRecordToDelete(m)}
-                                    className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                    className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
                                     title={`Delete zaer record for ${m.applicantName}`}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2097,8 +2320,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                         {/* Occupants list */}
                         <div className="space-y-1.5 pt-0.5">
-                          <div className="text-[11px] font-bold text-stone-700">
-                            Occupants in this Room ({state.occupants.length}):
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-[11px] font-bold text-stone-700">
+                              Occupants in this Room ({state.occupants.length}):
+                            </div>
+                            {onOpenSwitchRoomModal && state.occupants.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onOpenSwitchRoomModal({
+                                    reservations: state.occupants,
+                                    initialScope: 'group',
+                                  })
+                                }
+                                className="min-h-[36px] sm:min-h-0 px-2.5 py-1 rounded-lg bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] text-[11px] font-bold flex items-center gap-1 cursor-pointer transition"
+                              >
+                                <ArrowRightLeft className="w-3 h-3" />
+                                <span>Switch / Swap Room</span>
+                              </button>
+                            )}
                           </div>
                           {state.occupants.map((booking: Reservation) => (
                             <div
@@ -2110,27 +2350,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   {booking.applicantName} ({booking.gender}, {booking.age} yrs)
                                 </div>
                                 <div className="text-stone-600 text-[10px]">
-                                  Family #{booking.family} • ITS: {booking.itsId} • Tour: {booking.tourRefNo || booking.tourId || '—'}
+                                  Family #{booking.family} · ITS: {booking.itsId} · Tour: {booking.tourRefNo || booking.tourId || '—'}
                                 </div>
                                 {booking.officeName && (
                                   <div className="text-emerald-800 font-semibold text-[10px]">
                                     Office: {booking.officeName}
                                   </div>
                                 )}
-                                <div className="text-stone-500 text-[10px]">
-                                  Dates: {booking.arrivalDate} to {booking.departureDate} ({booking.category})
+                                <div className="text-stone-500 text-[10px] tabular-nums">
+                                  Dates: {booking.arrivalDate} ({booking.arrivalTime || '11:00 AM'}) to {booking.departureDate} ({booking.departureTime || '01:00 AM'}) · {booking.category}
                                 </div>
                               </div>
-                              {onDeleteReservation && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRecordToDelete(booking)}
-                                  className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition cursor-pointer"
-                                  title="Delete this Zair record"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {onOpenSwitchRoomModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onOpenSwitchRoomModal({
+                                        reservations: [booking],
+                                        initialScope: 'single',
+                                      })
+                                    }
+                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-[#124E39] border border-emerald-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    title="Switch room for this guest"
+                                  >
+                                    <ArrowRightLeft className="w-3 h-3" />
+                                    <span>Switch</span>
+                                  </button>
+                                )}
+                                {onDeleteReservation && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRecordToDelete(booking)}
+                                    className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition cursor-pointer"
+                                    title="Delete this Zair record"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -2537,7 +2795,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Toast Feedback Notification */}
       {toastFeedback && (
-        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg border bg-[#124E39] text-[#EBD59E] border-[#124E39]">
             <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
             <span>{toastFeedback}</span>
