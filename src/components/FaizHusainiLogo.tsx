@@ -25,7 +25,7 @@ export const FaizHusainiLogo: React.FC<FaizHusainiLogoProps> = ({
   const currentSize = sizeMap[size];
 
   return (
-    <div className={`flex items-center gap-3 select-none ${className}`}>
+    <div className={`flex items-center gap-2 sm:gap-3 select-none min-w-0 ${className}`}>
       {/* Official FAIze / Faiz Husaini Logo Badge */}
       <div
         className={`${currentSize.icon} rounded-full p-0.5 flex items-center justify-center shadow-md bg-gradient-to-br from-[#124E39] via-[#0E3C2C] to-[#07241A] border-2 border-[#C5A059] relative overflow-hidden flex-shrink-0`}
@@ -48,21 +48,21 @@ export const FaizHusainiLogo: React.FC<FaizHusainiLogoProps> = ({
       </div>
 
       {/* Typography */}
-      <div className="flex flex-col">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <span
-            className={`font-serif tracking-wider font-extrabold leading-tight ${currentSize.text} ${
+            className={`font-serif tracking-wider font-extrabold leading-tight truncate text-xs sm:${currentSize.text} ${
               light ? 'text-[#124E39]' : 'text-[#0E3829]'
             }`}
           >
             FAIZ-E-HUSAINI
           </span>
-          <span className="text-[10px] font-arabic px-1.5 py-0.5 rounded-md bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/20 font-bold">
+          <span className="hidden sm:inline-block text-[10px] font-arabic px-1.5 py-0.5 rounded-md bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/20 font-bold shrink-0">
             فيض حسيني
           </span>
         </div>
         {showSubtitle && (
-          <span className={`${currentSize.sub} text-stone-600 font-semibold tracking-tight`}>
+          <span className={`hidden sm:block ${currentSize.sub} text-stone-600 font-semibold tracking-tight truncate`}>
             Zaereen Lodging & Accommodation Operations
           </span>
         )}

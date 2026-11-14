@@ -70,221 +70,129 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#E6DFD5] shadow-xs">
-        <div className="w-full px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 md:h-16 gap-2 sm:gap-3">
+      <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#E6DFD5] shadow-xs w-full overflow-x-clip">
+        <div className="w-full max-w-full px-2.5 sm:px-4 lg:px-6">
+          {/* Primary Row: Brand + Navigation Tabs + Sign In + Google Sheet Connection */}
+          <div className="flex flex-wrap items-center justify-between min-h-14 py-1.5 gap-2">
             {/* Faiz Husaini Branding */}
             <div
-              className="flex items-center gap-2 sm:gap-3 cursor-pointer shrink-0"
+              className="flex items-center gap-2 cursor-pointer shrink-0 min-w-0 max-w-[46%] sm:max-w-none"
               onClick={() => setActiveTab('dashboard')}
             >
-              <FaizHusainiLogo size="md" />
+              <FaizHusainiLogo size="sm" />
             </div>
 
             {/* Navigation Tabs (Desktop) */}
-            <nav className="hidden md:flex items-center space-x-1 bg-stone-200/60 p-1 rounded-xl">
+            <nav className="hidden md:flex items-center space-x-1 bg-stone-200/60 p-1 rounded-xl shrink-0">
               <button
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'dashboard'
                     ? 'bg-[#124E39] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
-                <span>Dashboard & Rooms Overview</span>
+                <span className="hidden xl:inline">Dashboard & Rooms Overview</span>
+                <span className="xl:hidden">Dashboard</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('reservations')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'reservations'
                     ? 'bg-[#124E39] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
                 }`}
               >
                 <CalendarDays className="w-3.5 h-3.5" />
-                <span>Zaereen & Allotment Grid</span>
+                <span className="hidden xl:inline">Zaereen & Allotment Grid</span>
+                <span className="xl:hidden">Zaereen</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('upgrades')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'upgrades'
                     ? 'bg-[#124E39] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
                 }`}
               >
                 <ArrowUpRight className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>B ➔ A Shifts (Accounts)</span>
+                <span className="hidden xl:inline">B ➔ A Shifts (Accounts)</span>
+                <span className="xl:hidden">B ➔ A</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('rooms')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   activeTab === 'rooms'
                     ? 'bg-[#124E39] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
                 }`}
               >
                 <BedDouble className="w-3.5 h-3.5" />
-                <span>{roomsCount ? `${roomsCount} Hotel Rooms` : 'Hotel Rooms'}</span>
+                <span>{roomsCount ? `${roomsCount} Rooms` : 'Rooms'}</span>
               </button>
             </nav>
 
-            {/* Mobile Quick Controls (Compact, Touch-Friendly) */}
-            <div className="flex md:hidden items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onOpenRoleModal}
-                className={`min-h-[40px] px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer whitespace-nowrap ${
-                  isReceptionist
-                    ? 'bg-amber-100 text-amber-950 border-amber-300'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                }`}
-              >
-                {isReceptionist ? <Eye className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5 text-[#124E39]" />}
-                <span>{isReceptionist ? 'View' : 'Admin'}</span>
-              </button>
-
-              {!isReceptionist && hasLinkedSheet && (
+            {/* Mobile Quick Controls (All fit cleanly on one 375px screen) */}
+            <div className="flex md:hidden items-center gap-1 shrink-0">
+              {user ? (
                 <button
                   type="button"
-                  onClick={onQuickSync}
-                  disabled={sheetsConfig.isSyncing}
-                  className="min-h-[40px] px-2.5 rounded-xl text-[11px] font-bold bg-[#124E39] text-[#EBD59E] flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                  title="Sync with Google Sheet"
+                  onClick={onGoogleLogout}
+                  className="min-w-[40px] min-h-[40px] px-2 rounded-xl bg-white border border-stone-300 text-[#124E39] font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                  title={`Signed in as ${user.email || 'Google User'} (Tap to sign out)`}
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${sheetsConfig.isSyncing ? 'animate-spin' : ''}`} />
-                  <span>Sync</span>
+                  <span className="w-5 h-5 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center text-[10px] font-bold">
+                    {user.email ? user.email[0].toUpperCase() : 'U'}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onGoogleSignIn}
+                  disabled={isLoggingIn}
+                  className="min-h-[40px] px-2 rounded-xl bg-[#124E39] text-[#EBD59E] text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  title="Sign in with Google"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>{isLoggingIn ? '...' : 'Sign In'}</span>
                 </button>
               )}
 
               <button
                 type="button"
+                onClick={onOpenSheetsModal}
+                className="min-w-[40px] min-h-[40px] px-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                title="Google Sheet Connection & Sync"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
+                <span>Sheet</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="min-w-[44px] min-h-[44px] rounded-xl bg-white border border-stone-300 text-[#124E39] flex items-center justify-center cursor-pointer"
+                className="min-w-[40px] min-h-[40px] rounded-xl bg-white border border-stone-300 text-[#124E39] flex items-center justify-center cursor-pointer"
                 aria-label="Open mobile menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Desktop Action Icons / Buttons */}
-            <div className="hidden md:flex items-center gap-2">
-              {isLiveBackendConnected && (
-                <div
-                  className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-100/80 text-emerald-950 border border-emerald-300 text-xs font-bold shadow-2xs whitespace-nowrap"
-                  title="Data is stored on live backend server until deleted, and synchronizes with Google Sheets & Rooms Timeline"
-                >
-                  <span>Live Backend & Sheets</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={onOpenRoleModal}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shadow-2xs whitespace-nowrap ${
-                  isReceptionist
-                    ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
-                }`}
-                title="Click to manage access rights (View-only for Receptionist, Edit for Admin)"
-              >
-                {isReceptionist ? (
-                  <>
-                    <Eye className="w-3.5 h-3.5 text-amber-800" />
-                    <span className="hidden sm:inline">Receptionist (View Only)</span>
-                    <span className="sm:hidden">View Only</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#124E39]" />
-                    <span className="hidden sm:inline">Admin (Editable Rights)</span>
-                    <span className="sm:hidden">Admin</span>
-                  </>
-                )}
-              </button>
-
-              {!isReceptionist && onOpenAddBuildingRooms && (
-                <button
-                  type="button"
-                  onClick={onOpenAddBuildingRooms}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer whitespace-nowrap"
-                  title="Add Hotel Building & Rooms manually or sync from Google Sheet"
-                >
-                  <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span className="hidden xl:inline">+ Add Building / Rooms</span>
-                  <span className="xl:hidden">+ Building/Rooms</span>
-                </button>
-              )}
-
-              {!isReceptionist && (
-                <button
-                  onClick={onOpenUploadExcel}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer whitespace-nowrap"
-                  title="Upload Zaereen Excel Sheet"
-                >
-                  <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span className="hidden sm:inline">Upload Excel</span>
-                </button>
-              )}
-
-              {onOpenReceptionSlip && (
-                <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onOpenReceptionSlip('arrival_slip')}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
-                    title="Open Arrival Slip"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-emerald-800" />
-                    <span className="hidden sm:inline">Arrival Slip</span>
-                  </button>
-                  <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                  <button
-                    type="button"
-                    onClick={() => onOpenReceptionSlip('departure_list')}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer whitespace-nowrap"
-                    title="Open Departure List"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-amber-800" />
-                    <span className="hidden sm:inline">Departure List</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
-                <button
-                  type="button"
-                  onClick={() => onOpenPdfModal('tour_manifest')}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
-                  title="Tour ID Specific Lodging Manifest"
-                >
-                  <FileText className="w-3.5 h-3.5 text-emerald-800" />
-                  <span className="hidden sm:inline">Tour Manifest</span>
-                </button>
-                <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                <button
-                  type="button"
-                  onClick={() => onOpenPdfModal('all_reservations')}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold text-stone-700 hover:bg-stone-100 transition cursor-pointer whitespace-nowrap"
-                  title="Export Administrative PDF Reports"
-                >
-                  <Download className="w-3.5 h-3.5 text-stone-500" />
-                  <span className="hidden xl:inline">Export PDF</span>
-                </button>
-              </div>
-
+            {/* Desktop Sign In & Google Sheet Connection (Always inside screen) */}
+            <div className="hidden md:flex items-center gap-1.5 flex-wrap justify-end">
               {user ? (
                 <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-stone-200 shadow-2xs">
                   <div
-                    className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center font-bold text-[11px]"
+                    className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center font-bold text-[11px] shrink-0"
                     title={user.email || 'Google User'}
                   >
                     {user.email ? user.email[0].toUpperCase() : 'U'}
                   </div>
-                  <span className="text-xs font-semibold text-stone-700 max-w-[120px] truncate hidden xl:inline" title={user.email || ''}>
+                  <span className="text-xs font-semibold text-stone-700 max-w-[110px] truncate hidden 2xl:inline" title={user.email || ''}>
                     {user.email}
                   </span>
                   <button
@@ -301,32 +209,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                   type="button"
                   onClick={onGoogleSignIn}
                   disabled={isLoggingIn}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
                   title="Sign in with Google"
                 >
                   <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span className="hidden sm:inline">{isLoggingIn ? 'Signing in...' : 'Sign In'}</span>
+                  <span>{isLoggingIn ? 'Signing in...' : 'Sign In'}</span>
                 </button>
               )}
 
-              <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 p-1 rounded-xl shadow-2xs">
+              <div className="flex items-center gap-1 bg-emerald-50/90 border border-emerald-300 p-1 rounded-xl shadow-2xs shrink-0">
                 {hasLinkedSheet ? (
                   <>
                     <button
+                      type="button"
                       onClick={onOpenGoogleSheet || onOpenSheetsModal}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
                       title="Open synced Google Sheet in new tab"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                      <span className="hidden sm:inline">Google Sheet</span>
+                      <span>Google Sheet</span>
                       <ArrowUpRight className="w-3 h-3 text-emerald-700" />
                     </button>
 
                     {!isReceptionist && (
                       <button
+                        type="button"
                         onClick={onQuickSync}
                         disabled={sheetsConfig.isSyncing}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                           sheetsConfig.isSyncing
                             ? 'bg-amber-100 text-amber-950 border border-amber-300'
                             : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs'
@@ -340,8 +250,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                     {isReceptionist && (
                       <button
+                        type="button"
                         onClick={onOpenSheetsModal}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
                         title="Pull latest records from Google Sheet"
                       >
                         <Download className="w-3 h-3 text-[#EBD59E]" />
@@ -351,21 +262,132 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </>
                 ) : (
                   <button
+                    type="button"
                     onClick={onOpenSheetsModal}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
                     title="Connect Google Sheet"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                    <span className="hidden sm:inline">Connect Sheet</span>
+                    <span>Connect Sheet</span>
                   </button>
                 )}
 
                 <button
+                  type="button"
                   onClick={onOpenSheetsModal}
                   className="p-1 rounded-md text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
                   title="Configure or Change Google Sheet"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary Compact Operations Row (Desktop, wraps cleanly inside one screen) */}
+          <div className="hidden md:flex flex-wrap items-center justify-between gap-2 py-1.5 border-t border-[#E6DFD5]/80 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenRoleModal}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer shadow-2xs whitespace-nowrap ${
+                  isReceptionist
+                    ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                }`}
+                title="Click to manage access rights (View-only for Receptionist, Edit for Admin)"
+              >
+                {isReceptionist ? (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Receptionist (View Only)</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#124E39]" />
+                    <span>Admin (Editable Rights)</span>
+                  </>
+                )}
+              </button>
+
+              {isLiveBackendConnected && (
+                <span
+                  className="hidden lg:inline-flex items-center px-2 py-1 rounded-lg bg-emerald-100/70 text-emerald-950 border border-emerald-300 text-[11px] font-bold whitespace-nowrap"
+                  title="Data is stored on live backend server until deleted, and synchronizes with Google Sheets & Rooms Timeline"
+                >
+                  Live Backend & Sheets
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {!isReceptionist && onOpenAddBuildingRooms && (
+                <button
+                  type="button"
+                  onClick={onOpenAddBuildingRooms}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer whitespace-nowrap"
+                  title="Add Hotel Building & Rooms manually or sync from Google Sheet"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>+ Building / Rooms</span>
+                </button>
+              )}
+
+              {!isReceptionist && (
+                <button
+                  type="button"
+                  onClick={onOpenUploadExcel}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer whitespace-nowrap"
+                  title="Upload Zaereen Excel Sheet"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <span>Upload Excel</span>
+                </button>
+              )}
+
+              {onOpenReceptionSlip && (
+                <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpenReceptionSlip('arrival_slip')}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
+                    title="Open Arrival Slip"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-emerald-800" />
+                    <span>Arrival Slip</span>
+                  </button>
+                  <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => onOpenReceptionSlip('departure_list')}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer whitespace-nowrap"
+                    title="Open Departure List"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Departure List</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
+                <button
+                  type="button"
+                  onClick={() => onOpenPdfModal('tour_manifest')}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
+                  title="Tour ID Specific Lodging Manifest"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-800" />
+                  <span>Tour Manifest</span>
+                </button>
+                <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={() => onOpenPdfModal('all_reservations')}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-stone-700 hover:bg-stone-100 transition cursor-pointer whitespace-nowrap"
+                  title="Export Administrative PDF Reports"
+                >
+                  <Download className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Export PDF</span>
                 </button>
               </div>
             </div>
