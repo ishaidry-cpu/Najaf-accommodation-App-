@@ -120,22 +120,16 @@ export interface Reservation {
   rawArrivalStr?: string;   // Original raw arrival text (e.g. '01-10-2026 11:00 AM')
   rawDepartureStr?: string; // Original raw departure text (e.g. '06-10-2026 01:00 AM')
 
-  // Accommodation Shift (B to A upgrade OR A to B refund):
+  // Accommodation B to A Shift (Named Accommodation Category / B to A shift):
   shiftToCategoryA?: boolean;      // True if shifted from B to A (Nizaam)
-  shiftDirection?: 'B_TO_A' | 'A_TO_B'; // Explicit shift direction for Accounts slips
   accommodationCategory?: AccommodationCategory; // 'Category B (Standard)' or 'Category A (Nizaam)'
   requestSlipNo?: string;          // Request slip generated for Accounts department
   requestSlipDate?: string;
-  refundSlipNo?: string;           // A to B refund receipt slip number
-  refundSlipDate?: string;         // A to B refund receipt date
 
-  // Money Given / Refund Given for Accounts:
+  // Money Given: ONLY opens / editable for B to A accommodation shift!
   moneyGiven: MoneyGivenStatus;    // 'Yes' | 'No'
   moneyGivenDate?: string;
   moneyNotes?: string;
-  refundGiven?: MoneyGivenStatus;  // 'Yes' | 'No' for A to B refund
-  refundGivenDate?: string;
-  refundAmountNotes?: string;
 
   // Building & Room Allotment:
   building: string;         // 'Saifee' or 'Burhani'

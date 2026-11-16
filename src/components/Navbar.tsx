@@ -35,7 +35,6 @@ interface NavbarProps {
   onOpenPdfModal: (reportType?: any, tourId?: string) => void;
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
-  onOpenAToBReceipt?: () => void;
   onGoogleSignIn: () => void;
   onGoogleLogout: () => void;
   isLoggingIn: boolean;
@@ -57,7 +56,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPdfModal,
   onOpenUploadExcel,
   onOpenReceptionSlip,
-  onOpenAToBReceipt,
   onGoogleSignIn,
   onGoogleLogout,
   isLoggingIn,
@@ -368,20 +366,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Printer className="w-3.5 h-3.5 text-amber-800" />
                     <span>Departure List</span>
                   </button>
-                  {onOpenAToBReceipt && (
-                    <>
-                      <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                      <button
-                        type="button"
-                        onClick={onOpenAToBReceipt}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-amber-800 hover:bg-amber-50 transition cursor-pointer whitespace-nowrap"
-                        title="Open Category A to B Refund Receipt (with shifted pax names, ITS & age)"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-amber-700" />
-                        <span>A ➔ B Receipt</span>
-                      </button>
-                    </>
-                  )}
                 </div>
               )}
 
@@ -555,19 +539,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <span>Departure List</span>
                     </button>
                   </>
-                )}
-                {onOpenAToBReceipt && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onOpenAToBReceipt();
-                    }}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4 text-amber-800" />
-                    <span>A ➔ B Refund Receipt (Select Pax)</span>
-                  </button>
                 )}
                 <button
                   type="button"

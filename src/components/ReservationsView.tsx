@@ -61,7 +61,7 @@ interface ReservationsViewProps {
   onBatchDeleteReservations?: (ids: string[]) => void;
   onOpenUploadExcel: () => void;
   onDownloadTemplate: () => void;
-  onOpenAccountsSlip: (reservation: Reservation | null, direction?: 'B_TO_A' | 'A_TO_B', selectedIds?: string[]) => void;
+  onOpenAccountsSlip: (reservation: Reservation) => void;
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenAddZaer?: () => void;
   onOpenAddTourGroup?: () => void;
@@ -934,23 +934,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </button>
           )}
 
-          {/* A to B Refund Receipt Button */}
-          <button
-            type="button"
-            onClick={() => onOpenAccountsSlip(null, 'A_TO_B')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
-            title="Generate Category A to B Refund Receipt with full list of shifted pax (Name, ITS, Age)"
-          >
-            <FileText className="w-3.5 h-3.5 text-amber-200" />
-            <span>A ➔ B Refund Receipt</span>
-          </button>
-
           {/* B to A Shifts Button */}
           {onNavigateToShifts && (
             <button
               onClick={onNavigateToShifts}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs transition cursor-pointer whitespace-nowrap"
-              title="Manage B to A and A to B accommodation shifts, accounts receipts, and slips"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs transition"
+              title="Manage B to A accommodation shifts, accounts money given, and slips"
             >
               <ArrowUpRight className="w-3.5 h-3.5 text-amber-700" />
               <span>B ➔ A Shifts (Accounts)</span>
@@ -1371,17 +1360,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => onOpenAccountsSlip(null, 'A_TO_B', Array.from(selectedIds))}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
-              title="Create Category A to B Refund Receipt for all selected zaereen"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>A ➔ B Receipt ({selectedIds.size})</span>
-            </button>
-
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => handleBulkMarkSelectedPortal(true)}
@@ -1580,19 +1559,16 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       <span>{res.isUploadedToPortal ? 'Portal ✓' : 'Portal'}</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => onOpenAccountsSlip(res, isShiftedToA ? 'B_TO_A' : 'A_TO_B')}
-                      className={`min-h-[44px] min-w-[44px] px-2.5 rounded-xl border flex items-center justify-center gap-1 text-xs font-bold cursor-pointer ${
-                        isShiftedToA
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                          : 'bg-amber-50 text-amber-900 border-amber-300'
-                      }`}
-                      title={isShiftedToA ? 'B ➔ A Accounts Slip' : 'A ➔ B Refund Receipt'}
-                    >
-                      <FileText className="w-4 h-4" />
-                      <span>{isShiftedToA ? 'B➔A' : 'A➔B'}</span>
-                    </button>
+                    {isShiftedToA && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAccountsSlip(res)}
+                        className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center justify-center cursor-pointer"
+                        title="Accounts Slip"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -2259,20 +2235,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[56px]' : 'w-16'}`}>
+                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[40px]' : 'w-12'}`}>
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onOpenAccountsSlip(res, isShiftedToA ? 'B_TO_A' : 'A_TO_B')}
-                            className={`p-1 rounded transition cursor-pointer ${
-                              isShiftedToA
-                                ? 'text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50'
-                                : 'text-amber-700 hover:text-amber-950 hover:bg-amber-50'
-                            }`}
-                            title={isShiftedToA ? 'Print B ➔ A Accounts Slip' : 'Open A ➔ B Refund Receipt (with Pax List, ITS & Age)'}
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </button>
+                          {isShiftedToA && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenAccountsSlip(res)}
+                              className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50 rounded transition cursor-pointer"
+                              title="Print Accounts Slip"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {

@@ -30,8 +30,7 @@ interface CategoryUpgradeViewProps {
   reservations: Reservation[];
   rooms?: Room[];
   onToggleMoneyGiven: (reservationId: string, status: MoneyGivenStatus) => void;
-  onToggleRefundGiven?: (reservationId: string, status: MoneyGivenStatus) => void;
-  onOpenAccountsSlip: (reservation: Reservation | null, direction?: 'B_TO_A' | 'A_TO_B') => void;
+  onOpenAccountsSlip: (reservation: Reservation) => void;
   onToggleShiftToCategoryA?: (reservationId: string, willShift: boolean) => void;
   onAddZaer?: (newZaer: Reservation) => boolean | void;
   onDeleteReservation?: (id: string) => void;
@@ -42,7 +41,6 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   reservations,
   rooms = [],
   onToggleMoneyGiven,
-  onToggleRefundGiven,
   onOpenAccountsSlip,
   onToggleShiftToCategoryA,
   onAddZaer,
@@ -50,7 +48,6 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   userRole = 'admin',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [directionFilter, setDirectionFilter] = useState<'ALL' | 'B_TO_A' | 'A_TO_B'>('ALL');
   const [moneyFilter, setMoneyFilter] = useState<'ALL' | 'Yes' | 'No'>('ALL');
   const [hotelFilter, setHotelFilter] = useState<string>('ALL');
 
@@ -138,23 +135,16 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     }
   };
 
-  // Filter B to A AND A to B accommodation shift requests
+  // Filter only B to A accommodation shift requests
+  // All zaereen in this portal are A category; when b to A is pressed, new zair is added who is shifted from B
   const shiftRequests = useMemo(() => {
     return reservations.filter(
-      (r) =>
-        r.shiftToCategoryA ||
-        r.shiftDirection === 'A_TO_B' ||
-        r.category === 'B to A' ||
-        (r.category && r.category.toLowerCase().includes('b to a'))
+      (r) => r.shiftToCategoryA || r.category === 'B to A' || (r.category && r.category.toLowerCase().includes('b to a'))
     );
   }, [reservations]);
 
   const filteredAndSortedRequests = useMemo(() => {
     const filtered = shiftRequests.filter((r) => {
-      const isRecordAToB = r.shiftDirection === 'A_TO_B';
-      if (directionFilter === 'A_TO_B' && !isRecordAToB) return false;
-      if (directionFilter === 'B_TO_A' && isRecordAToB) return false;
-
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
         const match =
@@ -168,8 +158,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
         if (!match) return false;
       }
 
-      const settledStatus = isRecordAToB ? (r.refundGiven || 'No') : r.moneyGiven;
-      if (moneyFilter !== 'ALL' && settledStatus !== moneyFilter) return false;
+      if (moneyFilter !== 'ALL' && r.moneyGiven !== moneyFilter) return false;
       if (hotelFilter !== 'ALL' && r.building !== hotelFilter) return false;
 
       return true;
@@ -219,15 +208,11 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     });
 
     return filtered;
-  }, [shiftRequests, directionFilter, searchTerm, moneyFilter, hotelFilter, sortColumn, sortDirection]);
+  }, [shiftRequests, searchTerm, moneyFilter, hotelFilter, sortColumn, sortDirection]);
 
   const totalShifts = shiftRequests.length;
-  const bToACount = shiftRequests.filter((r) => r.shiftDirection !== 'A_TO_B').length;
-  const aToBCount = shiftRequests.filter((r) => r.shiftDirection === 'A_TO_B').length;
-  const moneyGivenCount = shiftRequests.filter((r) =>
-    r.shiftDirection === 'A_TO_B' ? r.refundGiven === 'Yes' : r.moneyGiven === 'Yes'
-  ).length;
-  const moneyPendingCount = totalShifts - moneyGivenCount;
+  const moneyGivenCount = shiftRequests.filter((r) => r.moneyGiven === 'Yes').length;
+  const moneyPendingCount = shiftRequests.filter((r) => r.moneyGiven === 'No').length;
 
   const renderSortIndicator = (column: string) => {
     if (sortColumn !== column) {
@@ -321,53 +306,49 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
       {/* Top Banner */}
       <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-[#124E39] tracking-tight">
-            Accommodation Shifts (B ➔ A & A ➔ B) & Accounts Slips
-          </h2>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl tabular-nums">
-            {totalShifts} Shift Records ({bToACount} B ➔ A · {aToBCount} A ➔ B Refund) · Generate B ➔ A collection slips or A ➔ B refund receipts with full Zaer names, ITS IDs & ages.
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#124E39]" />
+            <h2 className="text-lg font-bold text-[#124E39] tracking-tight">
+              Accommodation B ➔ A Shift Requests & Accounts Slips
+            </h2>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+              {totalShifts} Total Shift Requests
+            </span>
+          </div>
+          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
+            All zaereen in this portal are Category A. When a new Zaer arrives from Category B and shifts to Category A, click below to add them and generate the official 7-detail Accounts Slip.
           </p>
         </div>
 
         {/* Quick Actions & Counters */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => onOpenAccountsSlip(null, 'A_TO_B')}
-            className="min-h-[44px] sm:min-h-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition cursor-pointer whitespace-nowrap"
-          >
-            <Receipt className="w-4 h-4 text-amber-200" />
-            <span>A ➔ B Refund Receipt (Select Pax)</span>
-          </button>
-
+        <div className="flex flex-wrap items-center gap-3">
           {(onAddZaer || onToggleShiftToCategoryA) && (
             <button
-              type="button"
               onClick={() => {
                 setFormError('');
                 setIsShiftModalOpen(true);
               }}
-              className="min-h-[44px] sm:min-h-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="min-h-[44px] sm:min-h-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#EBD59E]" />
               <span>Shift New Zaer (B ➔ A)</span>
             </button>
           )}
 
-          <div className="bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl text-center">
-            <span className="text-[10px] uppercase font-bold text-emerald-800 block">Settled: Yes</span>
-            <span className="text-base font-extrabold text-emerald-950 tabular-nums">{moneyGivenCount}</span>
+          <div className="bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl text-center">
+            <span className="text-[10px] uppercase font-bold text-emerald-800 block">Money Given: Yes</span>
+            <span className="text-lg font-extrabold text-emerald-950 tabular-nums">{moneyGivenCount}</span>
           </div>
-          <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl text-center">
-            <span className="text-[10px] uppercase font-bold text-amber-800 block">Pending: No</span>
-            <span className="text-base font-extrabold text-amber-950 tabular-nums">{moneyPendingCount}</span>
+          <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-center">
+            <span className="text-[10px] uppercase font-bold text-amber-800 block">Pending Accounts: No</span>
+            <span className="text-lg font-extrabold text-amber-950 tabular-nums">{moneyPendingCount}</span>
           </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-white border border-[#E6DFD5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[240px]">
+        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[240px]">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
             <input
@@ -380,23 +361,13 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           </div>
 
           <select
-            value={directionFilter}
-            onChange={(e) => setDirectionFilter(e.target.value as any)}
-            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
-          >
-            <option value="ALL">All Shift Directions</option>
-            <option value="B_TO_A">B ➔ A (Category Upgrade)</option>
-            <option value="A_TO_B">A ➔ B (Refund Shift)</option>
-          </select>
-
-          <select
             value={moneyFilter}
             onChange={(e) => setMoneyFilter(e.target.value as any)}
             className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
-            <option value="ALL">All Accounts States</option>
-            <option value="Yes">Settled / Paid / Refunded: Yes</option>
-            <option value="No">Pending Accounts: No</option>
+            <option value="ALL">All Payment States</option>
+            <option value="Yes">Money Given: Yes (Received)</option>
+            <option value="No">Money Given: No (Pending)</option>
           </select>
 
           <select
@@ -416,20 +387,12 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
       <div className="md:hidden space-y-2.5">
         {filteredAndSortedRequests.length > 0 ? (
           filteredAndSortedRequests.map((res) => {
-            const isRecordAToB = res.shiftDirection === 'A_TO_B';
-            const isSettled = isRecordAToB ? res.refundGiven === 'Yes' : res.moneyGiven === 'Yes';
+            const isPaid = res.moneyGiven === 'Yes';
             return (
               <div key={res.id} className="bg-white border border-[#E6DFD5] rounded-2xl p-3.5 shadow-2xs space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="text-sm font-extrabold text-stone-950 truncate">{res.applicantName}</h3>
-                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                        isRecordAToB ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'
-                      }`}>
-                        {isRecordAToB ? 'A ➔ B' : 'B ➔ A'}
-                      </span>
-                    </div>
+                    <h3 className="text-sm font-extrabold text-stone-950 truncate">{res.applicantName}</h3>
                     <div className="text-xs font-mono text-stone-600 tabular-nums mt-0.5">
                       ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
                     </div>
@@ -454,39 +417,27 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 <div className="flex flex-wrap items-center gap-2 pt-0.5">
                   <button
                     type="button"
-                    onClick={() =>
-                      isRecordAToB && onToggleRefundGiven
-                        ? onToggleRefundGiven(res.id, isSettled ? 'No' : 'Yes')
-                        : onToggleMoneyGiven(res.id, isSettled ? 'No' : 'Yes')
-                    }
+                    onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
                     className={`flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      isSettled
+                      isPaid
                         ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                         : 'bg-amber-600 hover:bg-amber-700 text-white'
                     }`}
                   >
-                    {isSettled ? <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" /> : <Clock className="w-4 h-4" />}
-                    <span>
-                      {isRecordAToB
-                        ? isSettled
-                          ? 'Refunded: Yes'
-                          : 'Refund: Pending'
-                        : isSettled
-                        ? 'Money: Yes'
-                        : 'Money: Pending'}
-                    </span>
+                    {isPaid ? <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" /> : <Clock className="w-4 h-4" />}
+                    <span>{isPaid ? 'Money: Yes' : 'Money: Pending'}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => onOpenAccountsSlip(res, isRecordAToB ? 'A_TO_B' : 'B_TO_A')}
+                    onClick={() => onOpenAccountsSlip(res)}
                     className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition cursor-pointer"
                   >
                     <FileText className="w-4 h-4" />
-                    <span>{isRecordAToB ? 'A ➔ B Receipt' : 'B ➔ A Slip'}</span>
+                    <span>Request Slip</span>
                   </button>
 
-                  {(onDeleteReservation || onToggleShiftToCategoryA) && !isRecordAToB && (
+                  {(onDeleteReservation || onToggleShiftToCategoryA) && (
                     <button
                       type="button"
                       onClick={() => handleInitiateDelete(res)}
@@ -599,11 +550,10 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
             <tbody className="divide-y divide-stone-100 text-stone-900 text-sm md:text-base">
               {filteredAndSortedRequests.length > 0 ? (
                 filteredAndSortedRequests.map((res) => {
-                  const isRecordAToB = res.shiftDirection === 'A_TO_B';
-                  const isPaid = isRecordAToB ? res.refundGiven === 'Yes' : res.moneyGiven === 'Yes';
+                  const isPaid = res.moneyGiven === 'Yes';
                   return (
                     <tr key={res.id} className="hover:bg-[#FAF7F2] transition">
-                      <td className="py-3.5 px-3 font-mono font-bold text-stone-950 text-sm md:text-base tabular-nums">
+                      <td className="py-3.5 px-3 font-mono font-bold text-stone-950 text-sm md:text-base">
                         {res.itsId}
                       </td>
 
@@ -614,24 +564,22 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         )}
                       </td>
 
-                      <td className="py-3.5 px-2 text-center text-stone-700 font-semibold text-xs md:text-sm tabular-nums">
+                      <td className="py-3.5 px-2 text-center text-stone-700 font-semibold text-xs md:text-sm">
                         {res.age} / {res.gender === 'Female' ? 'F' : 'M'}
                       </td>
 
+                      {/* Pilgrim Category: Mumineen, Muntasbeen, Qasreali, Baitezainy */}
                       <td className="py-3.5 px-3">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold border ${
-                          isRecordAToB
-                            ? 'bg-amber-100 text-amber-950 border-amber-300'
-                            : 'bg-emerald-100 text-emerald-950 border-emerald-300'
-                        }`}>
-                          {isRecordAToB ? 'A ➔ B Refund' : (res.category || 'B to A')}
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-950 border border-emerald-300">
+                          {res.category || 'Mumineen'}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-3 font-mono font-extrabold text-emerald-900 text-sm md:text-base tabular-nums">
+                      <td className="py-3.5 px-3 font-mono font-extrabold text-emerald-900 text-sm md:text-base">
                         {res.family}
                       </td>
 
+                      {/* Complete Tour ID Visible, wrap text, font bold */}
                       <td className="py-3.5 px-3.5 whitespace-normal break-words break-all font-mono font-bold text-stone-950 text-sm md:text-base min-w-[230px] max-w-[320px] leading-relaxed">
                         {res.tourRefNo}
                       </td>
@@ -640,45 +588,41 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         {res.officeName}
                       </td>
 
-                      <td className="py-3.5 px-3 text-stone-800 text-xs md:text-sm font-medium tabular-nums">
-                        <div>{res.arrivalDate} ({res.arrivalTime || '11:00 AM'})</div>
-                        <div className="text-[11px] text-stone-500">to {res.departureDate} ({res.departureTime || '01:00 AM'})</div>
+                      <td className="py-3.5 px-3 text-stone-800 text-xs md:text-sm font-medium">
+                        <div>{res.arrivalDate}</div>
+                        <div className="text-[11px] text-stone-500">to {res.departureDate}</div>
                       </td>
 
                       <td className="py-3.5 px-3">
                         <span className="font-bold text-[#124E39] text-xs md:text-sm">
                           {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : '(Unassigned)'}
                         </span>
-                        <div className={`text-[10px] font-bold mt-0.5 ${isRecordAToB ? 'text-amber-800' : 'text-emerald-800'}`}>
-                          {isRecordAToB ? 'Shifted A ➔ Standard (B)' : 'Shifted to Nizaam (A)'}
+                        <div className="text-[10px] text-amber-800 font-bold mt-0.5">
+                          Shifted to Nizaam (A)
                         </div>
                       </td>
 
-                      {/* Accounts Status Toggle */}
+                      {/* Money Given Toggle */}
                       <td className="py-3.5 px-3 text-center bg-stone-50/60">
                         <button
                           type="button"
-                          onClick={() =>
-                            isRecordAToB && onToggleRefundGiven
-                              ? onToggleRefundGiven(res.id, isPaid ? 'No' : 'Yes')
-                              : onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')
-                          }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition shadow-2xs cursor-pointer ${
+                          onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold transition shadow-2xs ${
                             isPaid
                               ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                               : 'bg-amber-600 hover:bg-amber-700 text-white'
                           }`}
-                          title="Click to toggle Accounts settlement status"
+                          title="Click to toggle Money Given status for accounts"
                         >
                           {isPaid ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5 text-[#EBD59E]" />
-                              <span>{isRecordAToB ? 'Refunded ✓' : 'Yes (Received)'}</span>
+                              <span>Yes (Received)</span>
                             </>
                           ) : (
                             <>
                               <Clock className="w-3.5 h-3.5" />
-                              <span>{isRecordAToB ? 'Refund Pending' : 'No (Pending)'}</span>
+                              <span>No (Pending)</span>
                             </>
                           )}
                         </button>
@@ -688,29 +632,25 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       <td className="py-3.5 px-3 text-center">
                         <button
                           type="button"
-                          onClick={() => onOpenAccountsSlip(res, isRecordAToB ? 'A_TO_B' : 'B_TO_A')}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition shadow-2xs cursor-pointer whitespace-nowrap"
+                          onClick={() => onOpenAccountsSlip(res)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition shadow-2xs"
                         >
                           <FileText className="w-3.5 h-3.5" />
-                          <span>{isRecordAToB ? 'A ➔ B Receipt' : 'Request Slip'}</span>
+                          <span>Request Slip</span>
                         </button>
                       </td>
 
                       {/* Remove / Revert Action (Admin Protected) */}
                       {(onDeleteReservation || onToggleShiftToCategoryA) && (
                         <td className="py-3.5 px-2 text-center">
-                          {!isRecordAToB ? (
-                            <button
-                              type="button"
-                              onClick={() => handleInitiateDelete(res)}
-                              className="p-1.5 rounded hover:bg-red-50 text-stone-400 hover:text-red-700 transition cursor-pointer"
-                              title="Delete or Revert B to A record"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-stone-400">—</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleInitiateDelete(res)}
+                            className="p-1.5 rounded hover:bg-red-50 text-stone-400 hover:text-red-700 transition cursor-pointer"
+                            title="Delete or Revert B to A record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       )}
                     </tr>
