@@ -2447,7 +2447,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {inspectAllotMode === 'family' ? (
                         <div className="space-y-2.5 pt-1">
                           <p className="text-[11px] text-emerald-900">
-                            Allot {inspectedRoom.building} Room {inspectedRoom.roomNumber} (Capacity: {inspectedRoom.capacity}) to an entire family for their Tour ID in one go.
+                            Allot {inspectedRoom.building} Room {inspectedRoom.roomNumber} (Capacity: {inspectedRoom.capacity}{inspectedRoom.buffer ? `+${inspectedRoom.buffer} Buffer` : ''}) to an entire family for their Tour ID in one go.
                           </p>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

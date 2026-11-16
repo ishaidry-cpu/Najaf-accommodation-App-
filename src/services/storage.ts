@@ -116,7 +116,7 @@ export function deduplicateRooms(rooms: Room[]): Room[] {
     const parsedCap = Number(raw.capacity || raw.pax || 3);
     const safeCap = !isNaN(parsedCap) && parsedCap > 0 && parsedCap <= 20 ? parsedCap : 3;
     const parsedBuffer = raw.buffer !== undefined ? Number(raw.buffer) : 0;
-    const safeBuffer = !isNaN(parsedBuffer) && parsedBuffer >= 0 ? parsedBuffer : 0;
+    const safeBuffer = !isNaN(parsedBuffer) && parsedBuffer >= 0 && parsedBuffer <= 10 ? parsedBuffer : 0;
 
     if (!existing) {
       const generatedId = `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -133,12 +133,30 @@ export function deduplicateRooms(rooms: Room[]): Room[] {
         amenities: Array.from(new Set((Array.isArray(raw.amenities) ? raw.amenities : ['Air Conditioning', 'Wi-Fi']).filter(Boolean))),
       });
     } else {
-      // Merge duplicate entry into the canonical record without creating a second entry
-      const preferredId = isCanonicalBuiltInRoomId(existing.id)
-        ? existing.id
-        : isCanonicalBuiltInRoomId(raw.id)
-        ? raw.id
-        : existing.id || raw.id;
+      // Merge duplicate entry into the canonical record without creating a second entry.
+      // Give structural precedence to canonical built-in records (rm-bh-*, rm-sf-*, rm-bd-*, rm-qasr-*).
+      const existingCanonical = isCanonicalBuiltInRoomId(existing.id);
+      const rawCanonical = isCanonicalBuiltInRoomId(raw.id);
+      const primary = rawCanonical && !existingCanonical ? raw : existing;
+      const secondary = primary === raw ? existing : raw;
+
+      const primaryCap = Number(primary.capacity || primary.pax || 0);
+      const secondaryCap = Number(secondary.capacity || secondary.pax || 0);
+      const mergedCap =
+        !isNaN(primaryCap) && primaryCap > 0 && primaryCap <= 20
+          ? primaryCap
+          : !isNaN(secondaryCap) && secondaryCap > 0 && secondaryCap <= 20
+          ? secondaryCap
+          : safeCap;
+
+      const primaryBuf = primary.buffer !== undefined ? Number(primary.buffer) : NaN;
+      const secondaryBuf = secondary.buffer !== undefined ? Number(secondary.buffer) : NaN;
+      const mergedBuffer =
+        !isNaN(primaryBuf) && primaryBuf >= 0 && primaryBuf <= 10
+          ? primaryBuf
+          : !isNaN(secondaryBuf) && secondaryBuf >= 0 && secondaryBuf <= 10
+          ? secondaryBuf
+          : 0;
 
       const isBlocked = existing.status === 'blocked' || raw.status === 'blocked';
       const mergedStatus = isBlocked
@@ -149,25 +167,25 @@ export function deduplicateRooms(rooms: Room[]): Room[] {
 
       const mergedAmenities = Array.from(
         new Set([
-          ...(Array.isArray(existing.amenities) ? existing.amenities : []),
-          ...(Array.isArray(raw.amenities) ? raw.amenities : []),
+          ...(Array.isArray(primary.amenities) ? primary.amenities : []),
+          ...(Array.isArray(secondary.amenities) ? secondary.amenities : []),
         ].filter(Boolean))
       );
 
       roomMap.set(key, {
-        ...raw,
-        ...existing,
-        id: preferredId,
+        ...secondary,
+        ...primary,
+        id: primary.id || secondary.id,
         building,
         roomNumber,
-        capacity: existing.capacity || safeCap,
-        pax: existing.capacity || safeCap,
-        buffer: Math.max(existing.buffer || 0, safeBuffer),
-        floor: existing.floor ?? raw.floor ?? 1,
-        floorLabel: existing.floorLabel || raw.floorLabel || `Floor ${existing.floor ?? 1}`,
-        toiletType: existing.toiletType || raw.toiletType,
-        bedType: existing.bedType || raw.bedType,
-        category: existing.category || raw.category,
+        capacity: mergedCap,
+        pax: mergedCap,
+        buffer: mergedBuffer,
+        floor: primary.floor ?? secondary.floor ?? 1,
+        floorLabel: primary.floorLabel || secondary.floorLabel || `Floor ${primary.floor ?? 1}`,
+        toiletType: primary.toiletType || secondary.toiletType,
+        bedType: primary.bedType || secondary.bedType,
+        category: primary.category || secondary.category,
         status: mergedStatus,
         blockedReason: isBlocked ? (existing.blockedReason || raw.blockedReason) : undefined,
         blockedSince: isBlocked ? (existing.blockedSince || raw.blockedSince) : undefined,
@@ -417,6 +435,72 @@ export function generateSaifeeBurhani114Rooms(): Room[] {
       amenities,
     };
   });
+}
+
+/**
+ * Reconciles the official 114 rooms across Burhani (44) & Saifee (70) so their canonical
+ * capacities, buffers, floors, toilet types, and bed types always match RAW_ROOM_SPECS
+ * while preserving operational status (blocked/available/cleaning), block details, and notes.
+ * Any additional custom rooms/buildings remain untouched.
+ */
+export function reconcileOfficialSaifeeBurhaniRooms(rooms: Room[]): Room[] {
+  const deduped = deduplicateRooms(Array.isArray(rooms) ? rooms : []);
+  const existingByKey = new Map<string, Room>();
+  deduped.forEach((r) => {
+    const key = getCanonicalRoomKey(r.building, r.roomNumber);
+    if (key) existingByKey.set(key, r);
+  });
+
+  const official114 = generateSaifeeBurhani114Rooms();
+  const officialKeys = new Set<string>();
+
+  const reconciledOfficial = official114.map((specRoom) => {
+    const key = getCanonicalRoomKey(specRoom.building, specRoom.roomNumber);
+    officialKeys.add(key);
+    const existing = existingByKey.get(key);
+    if (!existing) return specRoom;
+
+    const cleanExistingAmenities = (existing.amenities || []).filter(
+      (a) => !/^buffer[:\s]*\d+/i.test(String(a || '').trim())
+    );
+    const baseAmenities = cleanExistingAmenities.length > 0
+      ? cleanExistingAmenities
+      : specRoom.amenities.filter((a) => !/^buffer[:\s]*\d+/i.test(a));
+    const mergedAmenities = specRoom.buffer && specRoom.buffer > 0
+      ? Array.from(new Set([...baseAmenities, `Buffer: ${specRoom.buffer}`]))
+      : baseAmenities;
+
+    const status = existing.status || specRoom.status || 'available';
+    const isBlocked = status === 'blocked';
+
+    return {
+      ...existing,
+      id: specRoom.id,
+      roomNumber: specRoom.roomNumber,
+      building: specRoom.building,
+      floor: specRoom.floor,
+      floorLabel: specRoom.floorLabel,
+      capacity: specRoom.capacity,
+      pax: specRoom.pax,
+      buffer: specRoom.buffer,
+      toiletType: specRoom.toiletType,
+      bedType: specRoom.bedType,
+      category: specRoom.category,
+      status,
+      blockedReason: isBlocked ? (existing.blockedReason || specRoom.blockedReason) : undefined,
+      blockedSince: isBlocked ? (existing.blockedSince || specRoom.blockedSince) : undefined,
+      expectedUnblockDate: isBlocked ? (existing.expectedUnblockDate || specRoom.expectedUnblockDate) : undefined,
+      notes: existing.notes ?? specRoom.notes,
+      amenities: mergedAmenities,
+    };
+  });
+
+  const nonOfficialRooms = deduped.filter((r) => {
+    const key = getCanonicalRoomKey(r.building, r.roomNumber);
+    return key && !officialKeys.has(key);
+  });
+
+  return deduplicateRooms([...reconciledOfficial, ...nonOfficialRooms]);
 }
 
 export const BADRI_OFFICIAL_ROOM_NUMBERS = ['103', '104', '105', '106', '107', '201'] as const;
@@ -1758,10 +1842,16 @@ export function getStoredRooms(): Room[] {
     if (hasLegacyOrMissingBadri) {
       deduped = pruneLegacyBadriRooms(deduped);
     }
-    if (deduped.length !== parsed.length || hasLegacyOrMissingBadri) {
-      saveRooms(deduped);
+
+    const reconciled = reconcileOfficialSaifeeBurhaniRooms(deduped);
+    const needsSave =
+      reconciled.length !== parsed.length ||
+      hasLegacyOrMissingBadri ||
+      JSON.stringify(reconciled) !== JSON.stringify(deduped);
+    if (needsSave) {
+      saveRooms(reconciled);
     }
-    return deduped;
+    return reconciled;
   } catch {
     return INITIAL_ROOMS;
   }
@@ -1769,7 +1859,7 @@ export function getStoredRooms(): Room[] {
 
 export function saveRooms(rooms: Room[]): void {
   try {
-    const deduped = deduplicateRooms(rooms);
+    const deduped = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(rooms));
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(deduped));
   } catch (err) {
     console.error('Failed to save rooms to localStorage', err);
@@ -1777,7 +1867,25 @@ export function saveRooms(rooms: Room[]): void {
 }
 
 export function resetToSaifeeBurhani114Rooms(): Room[] {
-  const rooms = generateSaifeeBurhani114Rooms();
+  const rooms = deduplicateRooms([
+    ...generateSaifeeBurhani114Rooms(),
+    ...generateBadriRooms(),
+    {
+      id: 'rm-qasr-1',
+      roomNumber: '1',
+      building: 'Qasr Nobola',
+      floor: 1,
+      floorLabel: 'Floor 1',
+      capacity: 4,
+      pax: 4,
+      buffer: 0,
+      toiletType: 'WESTERN',
+      bedType: 'Single Beds',
+      category: 'Category A (Nizaam)',
+      status: 'available',
+      amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
+    },
+  ]);
   saveRooms(rooms);
   return rooms;
 }

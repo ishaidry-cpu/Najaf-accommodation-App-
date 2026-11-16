@@ -3,7 +3,7 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, pruneLegacyBadriRooms, BADRI_OFFICIAL_ROOM_NUMBERS } from './src/services/storage';
+import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, pruneLegacyBadriRooms, BADRI_OFFICIAL_ROOM_NUMBERS, reconcileOfficialSaifeeBurhaniRooms } from './src/services/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -248,8 +248,9 @@ function initializeData() {
         },
       ]);
     }
+    updated = reconcileOfficialSaifeeBurhaniRooms(updated);
     if (updated.length !== existingRooms.length || JSON.stringify(updated) !== JSON.stringify(existingRooms)) {
-      console.log(`[Server] Cleaned & deduplicated room inventory: ${existingRooms.length} -> ${updated.length} rooms.`);
+      console.log(`[Server] Reconciled & deduplicated room inventory: ${existingRooms.length} -> ${updated.length} rooms.`);
       writeJsonFile(ROOMS_FILE, updated);
     }
   }
@@ -405,11 +406,11 @@ app.post('/api/reservations/batch-delete', (req, res) => {
 // GET all rooms
 app.get('/api/rooms', (req, res) => {
   const rawRooms = readJsonFile<any[]>(ROOMS_FILE, []);
-  const deduped = deduplicateRooms(rawRooms);
-  if (deduped.length !== rawRooms.length) {
-    writeJsonFile(ROOMS_FILE, deduped);
+  const cleanRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(rawRooms));
+  if (cleanRooms.length !== rawRooms.length || JSON.stringify(cleanRooms) !== JSON.stringify(rawRooms)) {
+    writeJsonFile(ROOMS_FILE, cleanRooms);
   }
-  res.json(deduped);
+  res.json(cleanRooms);
 });
 
 // POST all rooms (Bulk update)
@@ -418,10 +419,10 @@ app.post('/api/rooms', (req, res) => {
   if (!Array.isArray(rooms)) {
     return res.status(400).json({ error: 'Expected array of rooms in { rooms: [...] }' });
   }
-  const deduped = deduplicateRooms(rooms);
-  writeJsonFile(ROOMS_FILE, deduped);
+  const cleanRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(rooms));
+  writeJsonFile(ROOMS_FILE, cleanRooms);
   broadcastLiveChange('ROOMS_UPDATED');
-  res.json({ success: true, count: deduped.length });
+  res.json({ success: true, count: cleanRooms.length });
 });
 
 // PUT update individual room
@@ -433,7 +434,7 @@ app.put('/api/rooms/:id', (req, res) => {
 
   if (index >= 0) {
     rooms[index] = { ...rooms[index], ...updates };
-    const cleaned = deduplicateRooms(rooms);
+    const cleaned = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(rooms));
     writeJsonFile(ROOMS_FILE, cleaned);
     broadcastLiveChange('ROOMS_UPDATED', { roomId: id });
     res.json({ success: true, room: cleaned.find((r) => r.id === id) || rooms[index] });
@@ -442,11 +443,31 @@ app.put('/api/rooms/:id', (req, res) => {
   }
 });
 
-// POST reset rooms to official 114
+// POST reset rooms to official inventory (Saifee 70, Burhani 44, Badri 6, Qasr Nobola 1)
 app.post('/api/rooms/reset', (req, res) => {
-  const freshRooms = generateSaifeeBurhani114Rooms();
+  const freshRooms = reconcileOfficialSaifeeBurhaniRooms(
+    deduplicateRooms([
+      ...generateSaifeeBurhani114Rooms(),
+      ...generateBadriRooms(),
+      {
+        id: 'rm-qasr-1',
+        roomNumber: '1',
+        building: 'Qasr Nobola',
+        floor: 1,
+        floorLabel: 'Floor 1',
+        capacity: 4,
+        pax: 4,
+        buffer: 0,
+        toiletType: 'WESTERN',
+        bedType: 'Single Beds',
+        category: 'Category A (Nizaam)',
+        status: 'available',
+        amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
+      },
+    ])
+  );
   writeJsonFile(ROOMS_FILE, freshRooms);
-  console.log('[API] Reset rooms to official 114 inventory.');
+  console.log('[API] Reset rooms to official inventory (121 rooms).');
   broadcastLiveChange('ROOMS_UPDATED');
   res.json({ success: true, rooms: freshRooms });
 });

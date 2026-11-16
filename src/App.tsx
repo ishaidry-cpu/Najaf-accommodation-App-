@@ -53,7 +53,8 @@ import {
   countEffectivePax,
   getRoomBookingsForDuration,
   deduplicateRooms,
-  getCanonicalRoomKey
+  getCanonicalRoomKey,
+  reconcileOfficialSaifeeBurhaniRooms
 } from './services/storage';
 import { 
   initAuth, 
@@ -262,10 +263,10 @@ export default function App() {
         }
 
         if (backendRooms && Array.isArray(backendRooms)) {
-          const cleanBackendRooms = deduplicateRooms(backendRooms);
+          const cleanBackendRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(backendRooms));
           setRooms(cleanBackendRooms);
           saveRooms(cleanBackendRooms);
-          if (cleanBackendRooms.length !== backendRooms.length) {
+          if (cleanBackendRooms.length !== backendRooms.length || JSON.stringify(cleanBackendRooms) !== JSON.stringify(backendRooms)) {
             saveBackendRooms(cleanBackendRooms);
           }
         } else if (localRooms.length > 0) {
@@ -443,7 +444,7 @@ export default function App() {
         ]);
 
         if (freshRooms && freshRooms.length > 0) {
-          const cleanFreshRooms = deduplicateRooms(freshRooms);
+          const cleanFreshRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(freshRooms));
           setRooms(cleanFreshRooms);
           saveRooms(cleanFreshRooms);
           saveBackendRooms(cleanFreshRooms);
@@ -1378,7 +1379,7 @@ export default function App() {
         const existing = roomMap.get(key);
         roomMap.set(key, existing ? { ...nr, id: existing.id } : nr);
       });
-      finalRooms = deduplicateRooms(Array.from(roomMap.values()));
+      finalRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(roomMap.values())));
     }
 
     setRooms(finalRooms);
@@ -1606,12 +1607,12 @@ export default function App() {
         rooms={rooms}
         userRole={userRole}
         onRoomsFetched={(newRooms) => {
-          const cleanRooms = deduplicateRooms(newRooms);
+          const cleanRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(newRooms));
           setRooms(cleanRooms);
           saveRooms(cleanRooms);
           saveBackendRooms(cleanRooms);
           broadcastLiveSync({ type: 'ROOMS_UPDATED' });
-          showToast(`Imported ${cleanRooms.length} unique rooms from Google Sheet! (Blocked & unblocked rooms synchronized)`);
+          showToast(`Imported ${cleanRooms.length} unique rooms from Google Sheet! (Verified Burhani & Saifee capacities and blocked status)`);
         }}
         onReservationsFetched={(newRes) => {
           const uniqueRes = deduplicateReservationList(newRes);
