@@ -419,46 +419,67 @@ export function generateSaifeeBurhani114Rooms(): Room[] {
   });
 }
 
+export const BADRI_OFFICIAL_ROOM_NUMBERS = ['103', '104', '105', '106', '107', '201'] as const;
+
 /**
- * Generates Badri Hotel rooms: 30 rooms across Floors 1 to 3 (101-110, 201-210, 301-310)
+ * Generates Badri Hotel rooms: 6 official rooms (103, 104, 105, 106, 107 on Floor 1; 201 on Floor 2)
  */
 export function generateBadriRooms(): Room[] {
-  const rooms: Room[] = [];
-  const floors = [1, 2, 3];
-  floors.forEach((floor) => {
-    for (let r = 1; r <= 10; r++) {
-      const roomNumber = `${floor}${r < 10 ? '0' : ''}${r}`;
-      const isEven = r % 2 === 0;
-      const pax = isEven ? 4 : 3;
-      const buffer = isEven ? 1 : 0;
-      const toiletType = isEven ? 'Both WESTERN & INDIAN' : 'WESTERN';
-      const bedType = isEven ? 'Both Single Bed & double Bed' : 'Single Beds';
-      const category: RoomCategory = isEven ? 'Category A (Nizaam)' : 'Category B (Standard)';
-      rooms.push({
-        id: `rm-bd-${roomNumber.toLowerCase()}`,
-        roomNumber,
-        building: 'Badri',
-        floor,
-        floorLabel: `Floor ${floor}`,
-        capacity: pax,
-        pax,
-        buffer,
-        toiletType,
+  const specs: Array<{ roomNumber: string; floor: number }> = [
+    { roomNumber: '103', floor: 1 },
+    { roomNumber: '104', floor: 1 },
+    { roomNumber: '105', floor: 1 },
+    { roomNumber: '106', floor: 1 },
+    { roomNumber: '107', floor: 1 },
+    { roomNumber: '201', floor: 2 },
+  ];
+
+  return specs.map(({ roomNumber, floor }) => {
+    const num = parseInt(roomNumber, 10);
+    const isEven = num % 2 === 0;
+    const pax = isEven ? 4 : 3;
+    const buffer = isEven ? 1 : 0;
+    const toiletType = isEven ? 'Both WESTERN & INDIAN' : 'WESTERN';
+    const bedType = isEven ? 'Both Single Bed & double Bed' : 'Single Beds';
+    const category: RoomCategory = isEven ? 'Category A (Nizaam)' : 'Category B (Standard)';
+
+    return {
+      id: `rm-bd-${roomNumber.toLowerCase()}`,
+      roomNumber,
+      building: 'Badri',
+      floor,
+      floorLabel: `Floor ${floor}`,
+      capacity: pax,
+      pax,
+      buffer,
+      toiletType,
+      bedType,
+      category,
+      status: 'available',
+      amenities: [
+        `${toiletType} Toilet`,
         bedType,
-        category,
-        status: 'available',
-        amenities: [
-          `${toiletType} Toilet`,
-          bedType,
-          'Air Conditioning',
-          'Wi-Fi',
-          'Prayer Mats',
-          ...(buffer > 0 ? [`Buffer: ${buffer}`] : []),
-        ],
-      });
-    }
+        'Air Conditioning',
+        'Wi-Fi',
+        'Prayer Mats',
+        ...(buffer > 0 ? [`Buffer: ${buffer}`] : []),
+      ],
+    };
   });
-  return rooms;
+}
+
+/**
+ * Removes legacy auto-generated Badri rooms (e.g. 101, 102, 108-110, 202-210, 301-310)
+ * so Badri strictly contains rooms 103, 104, 105, 106, 107, 201.
+ */
+export function pruneLegacyBadriRooms(rooms: Room[]): Room[] {
+  const allowedSet = new Set<string>(BADRI_OFFICIAL_ROOM_NUMBERS);
+  const filtered = rooms.filter((r) => {
+    if (normalizeBuildingName(r.building).toLowerCase() !== 'badri') return true;
+    const num = normalizeRoomNumber(r.roomNumber);
+    return allowedSet.has(num);
+  });
+  return deduplicateRooms([...filtered, ...generateBadriRooms()]);
 }
 
 export const INITIAL_ROOMS: Room[] = deduplicateRooms([
@@ -1729,11 +1750,15 @@ export function getStoredRooms(): Room[] {
       return INITIAL_ROOMS;
     }
     let deduped = deduplicateRooms(parsed);
-    const hasBadri = deduped.some((r: Room) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
-    if (!hasBadri) {
-      deduped = deduplicateRooms([...deduped, ...generateBadriRooms()]);
+    const badriRooms = deduped.filter((r: Room) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
+    const allowedBadriSet = new Set<string>(BADRI_OFFICIAL_ROOM_NUMBERS);
+    const hasLegacyOrMissingBadri =
+      badriRooms.length !== BADRI_OFFICIAL_ROOM_NUMBERS.length ||
+      badriRooms.some((r: Room) => !allowedBadriSet.has(normalizeRoomNumber(r.roomNumber)));
+    if (hasLegacyOrMissingBadri) {
+      deduped = pruneLegacyBadriRooms(deduped);
     }
-    if (deduped.length !== parsed.length) {
+    if (deduped.length !== parsed.length || hasLegacyOrMissingBadri) {
       saveRooms(deduped);
     }
     return deduped;

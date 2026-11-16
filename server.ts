@@ -3,7 +3,7 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName } from './src/services/storage';
+import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, pruneLegacyBadriRooms, BADRI_OFFICIAL_ROOM_NUMBERS } from './src/services/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -217,11 +217,15 @@ function initializeData() {
   } else {
     const existingRooms = readJsonFile<any[]>(ROOMS_FILE, []);
     let updated = deduplicateRooms(existingRooms);
-    const hasBadri = updated.some((r) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
+    const allowedBadriSet = new Set<string>(BADRI_OFFICIAL_ROOM_NUMBERS);
+    const currentBadri = updated.filter((r) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
+    const needsBadriSync =
+      currentBadri.length !== BADRI_OFFICIAL_ROOM_NUMBERS.length ||
+      currentBadri.some((r) => !allowedBadriSet.has(normalizeRoomNumber(r.roomNumber)));
     const hasQasr = updated.some((r) => normalizeBuildingName(r.building).toLowerCase() === 'qasr nobola');
-    if (!hasBadri) {
-      console.log('Adding Badri rooms to server rooms storage...');
-      updated = deduplicateRooms([...updated, ...generateBadriRooms()]);
+    if (needsBadriSync) {
+      console.log('Synchronizing Badri rooms to official 6 rooms (103, 104, 105, 106, 107, 201)...');
+      updated = pruneLegacyBadriRooms(updated);
     }
     if (!hasQasr) {
       console.log('Adding Qasr Nobola room to server rooms storage...');
