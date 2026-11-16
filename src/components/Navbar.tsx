@@ -17,15 +17,20 @@ import {
   Eye,
   UploadCloud,
   Menu,
-  X
+  X,
+  RefreshCcw
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { GoogleSheetsConfig, UserRole } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
+import { SyncToNkerpButton } from './SyncToNkerpButton';
+import type { NkerpSyncState } from '../hooks/useNkerpSync';
+
+export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'reservations' | 'upgrades' | 'rooms';
-  setActiveTab: (tab: 'dashboard' | 'reservations' | 'upgrades' | 'rooms') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
   user: User | null;
   sheetsConfig: GoogleSheetsConfig;
   userRole: UserRole;
@@ -43,6 +48,7 @@ interface NavbarProps {
   isLiveBackendConnected?: boolean;
   roomsCount?: number;
   onOpenAddBuildingRooms?: () => void;
+  nkerpSync: NkerpSyncState;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -65,6 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isLiveBackendConnected = true,
   roomsCount,
   onOpenAddBuildingRooms,
+  nkerpSync,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isReceptionist = userRole === 'receptionist';
@@ -136,6 +143,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <BedDouble className="w-3.5 h-3.5" />
                 <span>{roomsCount ? `${roomsCount} Rooms` : 'Rooms'}</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('sync')}
+                className={`relative flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeTab === 'sync'
+                    ? 'bg-[#124E39] text-white shadow-xs'
+                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
+                }`}
+              >
+                <RefreshCcw className={`w-3.5 h-3.5 ${nkerpSync.running ? 'animate-spin' : ''}`} />
+                <span>Sync</span>
+                {nkerpSync.attentionCount > 0 && !nkerpSync.running && (
+                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center">{nkerpSync.attentionCount}</span>
+                )}
+              </button>
             </nav>
 
             {/* Mobile Quick Controls (All fit cleanly on one 375px screen) */}
@@ -164,6 +186,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
+              <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} compact />
+
               <button
                 type="button"
                 onClick={onOpenSheetsModal}
@@ -186,6 +210,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Desktop Sign In & Google Sheet Connection (Always inside screen) */}
             <div className="hidden md:flex items-center gap-1.5 flex-wrap justify-end">
+              <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} />
               {user ? (
                 <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-stone-200 shadow-2xs">
                   <div
@@ -412,7 +437,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       {/* Fixed Mobile Bottom Navigation Bar (<= 56px, thumb friendly) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden h-14 bg-[#FAF7F2]/95 backdrop-blur-md border-t border-[#E6DFD5] grid grid-cols-5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden h-14 bg-[#FAF7F2]/95 backdrop-blur-md border-t border-[#E6DFD5] grid grid-cols-6 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
         <button
           type="button"
           onClick={() => setActiveTab('dashboard')}
@@ -455,6 +480,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <ArrowUpRight className={`w-4 h-4 ${activeTab === 'upgrades' ? 'text-[#124E39]' : 'text-stone-500'}`} />
           <span className="whitespace-nowrap">B ➔ A</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('sync')}
+          className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
+            activeTab === 'sync' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
+          }`}
+        >
+          <RefreshCcw className={`w-4 h-4 ${activeTab === 'sync' ? 'text-[#124E39]' : 'text-stone-500'} ${nkerpSync.running ? 'animate-spin' : ''}`} />
+          <span className="whitespace-nowrap">Sync</span>
+          {nkerpSync.attentionCount > 0 && !nkerpSync.running && (
+            <span className="absolute top-1 right-[22%] min-w-3.5 h-3.5 px-0.5 rounded-full bg-rose-600 text-white text-[8px] leading-[14px] text-center">{nkerpSync.attentionCount}</span>
+          )}
         </button>
 
         <button

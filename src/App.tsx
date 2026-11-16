@@ -80,7 +80,10 @@ import {
   subscribeToMultiWindowSync 
 } from './utils/multiWindowSync';
 
-import { Navbar } from './components/Navbar';
+import { Navbar, type AppTab } from './components/Navbar';
+import { NkerpSyncView } from './components/NkerpSyncView';
+import { SyncAccessKeyModal } from './components/SyncAccessKeyModal';
+import { useNkerpSync } from './hooks/useNkerpSync';
 import { Dashboard } from './components/Dashboard';
 import { ReservationsView } from './components/ReservationsView';
 import { CategoryUpgradeView } from './components/CategoryUpgradeView';
@@ -115,7 +118,7 @@ import {
 
 export default function App() {
   // Navigation tabs: dashboard | reservations | upgrades | rooms
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'reservations' | 'upgrades' | 'rooms'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
 
   // Core Data
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -215,6 +218,9 @@ export default function App() {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 4000);
   };
+
+  // Sync to NKERP: one live connection to the server-side sync engine, shared by the top-bar button and the Sync tab
+  const nkerpSync = useNkerpSync(showToast);
 
   const handleSaveRoleSettings = (newRole: UserRole, newPin: string) => {
     setUserRole(newRole);
@@ -1428,7 +1434,9 @@ export default function App() {
           setAddBuildingRoomsInitialTab('manual');
           setIsAddBuildingRoomsOpen(true);
         }}
+        nkerpSync={nkerpSync}
       />
+      <SyncAccessKeyModal sync={nkerpSync} />
 
       {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
       <main className="w-full px-2.5 sm:px-4 lg:px-6 pt-3 pb-24 md:pb-12">
@@ -1510,6 +1518,8 @@ export default function App() {
             userRole={userRole}
           />
         )}
+
+        {activeTab === 'sync' && <NkerpSyncView sync={nkerpSync} />}
 
         {activeTab === 'rooms' && (
           <RoomsManagementView

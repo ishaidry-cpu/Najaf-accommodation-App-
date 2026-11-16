@@ -3,6 +3,7 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createNkerpSyncRouter } from './server/nkerp-sync/routes';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, pruneLegacyBadriRooms, BADRI_OFFICIAL_ROOM_NUMBERS } from './src/services/storage';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -539,6 +540,15 @@ app.post('/api/sheets/switch', (req, res) => {
   broadcastLiveChange('CONFIG_UPDATED', { config: currentConfig });
   res.json({ success: true, sheetsConfig: currentConfig.sheetsConfig });
 });
+
+// ==========================================
+// SYNC TO NKERP (Najaf accommodation allocation engine, runs entirely on this server)
+// ==========================================
+const nkerpSync = createNkerpSyncRouter({
+  dataDir: DATA_DIR,
+  adminPin: () => readJsonFile<any>(CONFIG_FILE, {}).adminPin,
+});
+app.use('/api/nkerp-sync', nkerpSync.router);
 
 // ==========================================
 // VITE SPA MIDDLEWARE / STATIC ASSETS
