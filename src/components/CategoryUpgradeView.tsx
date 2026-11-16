@@ -25,6 +25,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus, UserRole } from '../types';
+import { normalizeBuildingName } from '../services/storage';
 
 interface CategoryUpgradeViewProps {
   reservations: Reservation[];
@@ -54,8 +55,8 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
-    reservations.forEach((res) => { if (res.building) set.add(res.building.trim()); });
+    rooms.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
+    reservations.forEach((res) => { const nb = normalizeBuildingName(res.building); if (nb) set.add(nb); });
     return Array.from(set).sort();
   }, [rooms, reservations]);
 

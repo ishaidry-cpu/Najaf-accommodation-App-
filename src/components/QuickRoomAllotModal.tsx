@@ -24,7 +24,8 @@ import {
   checkRoomAllotmentAvailability, 
   getRoomBookingsForDuration,
   isInfant,
-  countEffectivePax
+  countEffectivePax,
+  normalizeBuildingName
 } from '../services/storage';
 
 interface QuickRoomAllotModalProps {
@@ -57,8 +58,8 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   // Dynamic distinct buildings list
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(String(r.building).trim()); });
-    reservations.forEach((res) => { if (res.building) set.add(String(res.building).trim()); });
+    rooms.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
+    reservations.forEach((res) => { const nb = normalizeBuildingName(res.building); if (nb) set.add(nb); });
     return Array.from(set).sort();
   }, [rooms, reservations]);
 

@@ -43,6 +43,7 @@ import {
   getRoomBookingsOnDate,
   countEffectivePax,
   getVacantRoomsForDuration,
+  normalizeBuildingName,
 } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
@@ -141,11 +142,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Dynamic distinct buildings list
+  // Dynamic distinct buildings list (normalized so casing/suffix variants never duplicate)
   const distinctBuildings = useMemo(() => {
     const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building && r.building.trim()) bSet.add(r.building.trim()); });
-    reservations.forEach((res) => { if (res.building && res.building.trim()) bSet.add(res.building.trim()); });
+    rooms.forEach((r) => {
+      const nb = normalizeBuildingName(r.building);
+      if (nb) bSet.add(nb);
+    });
+    reservations.forEach((res) => {
+      const nb = normalizeBuildingName(res.building);
+      if (nb) bSet.add(nb);
+    });
     return Array.from(bSet).sort();
   }, [rooms, reservations]);
 
@@ -1858,7 +1865,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Hotel Rooms Allotment & Turnover Overview
             </h3>
             <span className="text-[11px] text-stone-500">
-              114 Rooms Inventory across Saifee (70) and Burhani (44)
+              {rooms.length} Rooms Inventory across {distinctBuildings.join(', ')}
             </span>
           </div>
         </div>
@@ -1921,7 +1928,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 Hotel Room Vacancy & Allocation Overview
               </h3>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-600">
-                114 Rooms Inventory
+                {rooms.length} Rooms Inventory
               </span>
             </div>
             <p className="text-xs text-stone-500 mt-0.5">

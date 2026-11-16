@@ -21,7 +21,7 @@ import {
   Users
 } from 'lucide-react';
 import { Room, RoomStatus, RoomCategory, Reservation, GoogleSheetsConfig } from '../types';
-import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate } from '../services/storage';
+import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { SwitchRoomTarget } from './SwitchRoomModal';
 
@@ -63,16 +63,19 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalTab, setAddModalTab] = useState<'manual' | 'sheet'>('manual');
 
-  // Dynamic distinct buildings list
+  // Canonical deduplicated rooms list
+  const cleanRooms = useMemo(() => deduplicateRooms(rooms), [rooms]);
+
+  // Dynamic distinct buildings list (normalized to prevent case/suffix duplicates)
   const distinctBuildings = useMemo(() => {
-    const list = Array.from(new Set(rooms.map((r) => r.building).filter(Boolean)));
+    const list = Array.from(new Set(cleanRooms.map((r) => normalizeBuildingName(r.building)).filter(Boolean)));
     return list.sort();
-  }, [rooms]);
+  }, [cleanRooms]);
 
   // Available floors for current building
   const availableFloorLabels = useMemo(() => {
-    const relevant = rooms.filter(
-      (r) => selectedBuilding === 'ALL' || r.building.toLowerCase() === selectedBuilding.toLowerCase()
+    const relevant = cleanRooms.filter(
+      (r) => selectedBuilding === 'ALL' || normalizeBuildingName(r.building).toLowerCase() === selectedBuilding.toLowerCase()
     );
     const labels: string[] = [];
     relevant.forEach((r) => {
@@ -82,11 +85,11 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
       }
     });
     return ['ALL', ...labels];
-  }, [rooms, selectedBuilding]);
+  }, [cleanRooms, selectedBuilding]);
 
   // Filtered rooms
-  const filteredRooms = rooms.filter((room) => {
-    if (selectedBuilding !== 'ALL' && room.building.toLowerCase() !== selectedBuilding.toLowerCase()) return false;
+  const filteredRooms = cleanRooms.filter((room) => {
+    if (selectedBuilding !== 'ALL' && normalizeBuildingName(room.building).toLowerCase() !== selectedBuilding.toLowerCase()) return false;
     
     const flLabel = room.floorLabel || `Floor ${room.floor}`;
     if (selectedFloorLabel !== 'ALL' && flLabel !== selectedFloorLabel) return false;
@@ -107,8 +110,8 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
     return true;
   });
 
-  const totalCount = rooms.length;
-  const blockedCount = rooms.filter((r) => r.status === 'blocked').length;
+  const totalCount = cleanRooms.length;
+  const blockedCount = cleanRooms.filter((r) => r.status === 'blocked').length;
 
   return (
     <div className="space-y-5">
@@ -122,7 +125,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
             </h2>
             <div className="flex items-center gap-1.5 flex-wrap">
               {distinctBuildings.map((bldg) => {
-                const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
                 return (
                   <span
                     key={bldg}
@@ -206,7 +209,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               All Buildings ({totalCount})
             </button>
             {distinctBuildings.map((bldg) => {
-              const bCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+              const bCount = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
               return (
                 <button
                   key={bldg}
@@ -592,7 +595,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
         <AddBuildingAndRoomsModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
-          existingRooms={rooms}
+          existingRooms={cleanRooms}
           onAddRooms={(newRooms, replace) => {
             if (onAddRooms) {
               onAddRooms(newRooms, replace);

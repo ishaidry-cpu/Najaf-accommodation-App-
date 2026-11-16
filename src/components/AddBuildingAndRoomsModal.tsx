@@ -23,6 +23,12 @@ import {
   fetchRoomsAndBuildingsFromGoogleSheetUrl, 
   parseRoomsFromCsvText 
 } from '../services/googleSheets';
+import {
+  deduplicateRooms,
+  normalizeBuildingName,
+  normalizeRoomNumber,
+  getCanonicalRoomKey,
+} from '../services/storage';
 
 interface AddBuildingAndRoomsModalProps {
   isOpen: boolean;
@@ -52,9 +58,9 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
     }
   }, [isOpen, initialTab]);
 
-  // Existing distinct building names
+  // Existing distinct building names (normalized)
   const existingBuildingNames = useMemo(() => {
-    const list = Array.from(new Set(existingRooms.map((r) => r.building).filter(Boolean)));
+    const list = existingRooms.map((r) => normalizeBuildingName(r.building)).filter(Boolean);
     const defaults = ['Saifee', 'Burhani', 'Badri'];
     const combined = Array.from(new Set([...defaults, ...list]));
     return combined.sort();
@@ -96,15 +102,24 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   const [batchBedType, setBatchBedType] = useState<string>('Single Beds');
   const [batchCategory, setBatchCategory] = useState<RoomCategory>('Category B (Standard)');
 
-  // Compute preview of manual rooms to be added
+  // Compute preview of manual rooms to be added (normalized & deduplicated)
   const previewManualRooms = useMemo(() => {
-    const building = activeBuildingName || 'Saifee';
+    const building = normalizeBuildingName(activeBuildingName) || 'Saifee';
+    const existingIdMap = new Map<string, string>();
+    existingRooms.forEach((er) => {
+      const k = getCanonicalRoomKey(er.building, er.roomNumber);
+      if (k && er.id) existingIdMap.set(k, er.id);
+    });
+
     const result: Room[] = [];
 
     if (manualMode === 'single') {
-      if (!singleRoomNumber.trim()) return [];
-      const cleanNum = singleRoomNumber.trim();
-      const id = `rm-${building.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${cleanNum.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+      const cleanNum = normalizeRoomNumber(singleRoomNumber);
+      if (!cleanNum) return [];
+      const key = getCanonicalRoomKey(building, cleanNum);
+      const id =
+        existingIdMap.get(key) ||
+        `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${cleanNum.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
       result.push({
         id,
         roomNumber: cleanNum,
@@ -132,21 +147,29 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
           roomNumbers.push(String(num));
         }
       } else {
-        const parts = roomListInput.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
-        roomNumbers.push(...parts);
+        const parts = roomListInput
+          .split(/[,;\n]+/)
+          .map((s) => normalizeRoomNumber(s))
+          .filter(Boolean);
+        roomNumbers.push(...Array.from(new Set(parts)));
       }
 
       roomNumbers.forEach((rNum) => {
+        const cleanNum = normalizeRoomNumber(rNum);
+        if (!cleanNum) return;
         let floor = batchFixedFloor;
         if (batchFloorMode === 'auto') {
-          const m = rNum.match(/^(\d)/);
+          const m = cleanNum.match(/^(\d)/);
           floor = m ? parseInt(m[1], 10) : 1;
         }
 
-        const id = `rm-${building.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${rNum.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+        const key = getCanonicalRoomKey(building, cleanNum);
+        const id =
+          existingIdMap.get(key) ||
+          `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${cleanNum.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
         result.push({
           id,
-          roomNumber: rNum,
+          roomNumber: cleanNum,
           building,
           floor,
           floorLabel: `Floor ${floor}`,
@@ -162,7 +185,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
       });
     }
 
-    return result;
+    return deduplicateRooms(result);
   }, [
     manualMode,
     activeBuildingName,
@@ -253,10 +276,12 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
     setParsedSheetRooms(null);
 
     try {
-      const fetched = await fetchRoomsAndBuildingsFromGoogleSheetUrl(
-        sheetUrlInput.trim(),
-        accessToken,
-        existingRooms
+      const fetched = deduplicateRooms(
+        await fetchRoomsAndBuildingsFromGoogleSheetUrl(
+          sheetUrlInput.trim(),
+          accessToken,
+          existingRooms
+        )
       );
 
       if (fetched.length === 0) {

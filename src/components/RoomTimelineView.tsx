@@ -31,7 +31,8 @@ import {
   getRoomMaxCapacity, 
   getRoomBookingsOnDate, 
   getRoomStatusOnDate,
-  checkRoomAllotmentAvailability
+  checkRoomAllotmentAvailability,
+  normalizeBuildingName
 } from '../services/storage';
 import { checkTurnoverTimingConflict } from '../utils/turnoverTiming';
 
@@ -82,11 +83,17 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Number of days to display in the top row: 7, 14, 21, or 30 days
   const [dayRange, setDayRange] = useState<number>(14);
 
-  // Dynamic distinct buildings list
+  // Dynamic distinct buildings list (normalized)
   const distinctBuildings = useMemo(() => {
     const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building && r.building.trim()) bSet.add(r.building.trim()); });
-    reservations.forEach((res) => { if (res.building && res.building.trim()) bSet.add(res.building.trim()); });
+    rooms.forEach((r) => {
+      const nb = normalizeBuildingName(r.building);
+      if (nb) bSet.add(nb);
+    });
+    reservations.forEach((res) => {
+      const nb = normalizeBuildingName(res.building);
+      if (nb) bSet.add(nb);
+    });
     return Array.from(bSet).sort();
   }, [rooms, reservations]);
 

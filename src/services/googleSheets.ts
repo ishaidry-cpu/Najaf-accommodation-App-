@@ -8,6 +8,12 @@ import {
 } from '../utils/deduplication';
 import { normalizeDate } from './excelService';
 import { extractCleanTime } from '../utils/turnoverTiming';
+import {
+  deduplicateRooms,
+  normalizeBuildingName,
+  normalizeRoomNumber,
+  getCanonicalRoomKey,
+} from './storage';
 
 export interface SyncResult {
   success: boolean;
@@ -513,6 +519,7 @@ export async function syncAllToGoogleSheet(
     // User Request: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
     // User Request: "When append dont append duplicates only unique should be added"
     const uniqueReservations = deduplicateReservationList(reservations);
+    const uniqueRooms = deduplicateRooms(rooms);
     const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(uniqueReservations);
 
     // 2. Prepare Rooms Header and Rows
@@ -531,7 +538,7 @@ export async function syncAllToGoogleSheet(
       'Notes',
     ];
 
-    const roomRows = rooms.map((rm) => {
+    const roomRows = uniqueRooms.map((rm) => {
       const isBlocked = rm.status === 'blocked';
       const bufferAmenity = rm.buffer && rm.buffer > 0 ? `Buffer: ${rm.buffer}` : '';
       const baseAmenities = (rm.amenities || []).filter((a) => !a.toLowerCase().includes('buffer'));
@@ -553,8 +560,8 @@ export async function syncAllToGoogleSheet(
 
     // 3. Prepare Rooms Availability & Departure Timeline Header and Rows
     const { headers: timelineHeaders, rows: timelineRows } = generateTimelineRows(
-      rooms,
-      reservations
+      uniqueRooms,
+      uniqueReservations
     );
 
     // 4. Prepare Category B to A Upgrades & Balances Header and Rows
@@ -611,6 +618,21 @@ export async function syncAllToGoogleSheet(
       );
     } catch {
       // Ignore clear failure if sheet is narrower
+    }
+
+    // Clear stale trailing rows in Rooms_Inventory before updating so old duplicates never remain
+    try {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+          'Rooms_Inventory!A1:Z2000'
+        )}:clear`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+    } catch {
+      // Ignore clear failure
     }
 
     // Update Rooms_Inventory sheet
@@ -762,30 +784,35 @@ export async function twoWaySyncWithGoogleSheet(
 
   const mergedReservations = deduplicateReservationList(Array.from(mergedResMap.values()));
 
-  // 4. Merge rooms: accurately sync blocked and unblocked status, capacity, and buffer
+  // 4. Merge rooms by canonical (building, roomNumber) key to avoid ID/casing duplicates
   const mergedRoomsMap = new Map<string, Room>();
-  currentRooms.forEach((rm) => mergedRoomsMap.set(rm.id, rm));
-  sheetRooms.forEach((srm) => {
-    const match = currentRooms.find(
-      (rm) => rm.roomNumber.toLowerCase() === srm.roomNumber.toLowerCase() && rm.building.toLowerCase() === srm.building.toLowerCase()
-    );
+  deduplicateRooms(currentRooms).forEach((rm) => {
+    const key = getCanonicalRoomKey(rm.building, rm.roomNumber);
+    if (key) mergedRoomsMap.set(key, rm);
+  });
+  deduplicateRooms(sheetRooms).forEach((srm) => {
+    const key = getCanonicalRoomKey(srm.building, srm.roomNumber);
+    if (!key) return;
+    const match = mergedRoomsMap.get(key);
     if (match) {
       const isBlocked = srm.status === 'blocked';
-      mergedRoomsMap.set(match.id, {
+      mergedRoomsMap.set(key, {
         ...match,
+        building: match.building,
+        roomNumber: match.roomNumber,
         status: srm.status,
         capacity: srm.capacity || match.capacity,
-        pax: srm.pax || match.pax || match.capacity,
+        pax: srm.pax || srm.capacity || match.pax || match.capacity,
         buffer: srm.buffer !== undefined ? srm.buffer : match.buffer,
         blockedReason: isBlocked ? (srm.blockedReason || match.blockedReason || 'Blocked by administrator') : undefined,
         expectedUnblockDate: isBlocked ? (srm.expectedUnblockDate || match.expectedUnblockDate) : undefined,
         notes: srm.notes ?? match.notes,
       });
     } else {
-      mergedRoomsMap.set(srm.id, srm);
+      mergedRoomsMap.set(key, srm);
     }
   });
-  const mergedRooms = Array.from(mergedRoomsMap.values());
+  const mergedRooms = deduplicateRooms(Array.from(mergedRoomsMap.values()));
 
   // 5. Write back complete updated state to Google Sheets & remove obsolete present tabs
   const pushRes = await syncAllToGoogleSheet(
@@ -1002,23 +1029,31 @@ export async function fetchRoomsFromGoogleSheet(
   if (amIdx === -1 && headerRow.length > 8) amIdx = 8;
   if (nIdx === -1 && headerRow.length > 9) nIdx = 9;
 
-  const parsedRooms: Room[] = [];
+  const cleanExisting = deduplicateRooms(existingRooms);
+  const existingByKey = new Map<string, Room>();
+  cleanExisting.forEach((er) => {
+    const k = getCanonicalRoomKey(er.building, er.roomNumber);
+    if (k) existingByKey.set(k, er);
+  });
+
+  const parsedRoomMap = new Map<string, Room>();
 
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i];
     if (!row || row.length === 0) continue;
 
-    const building = String(row[bIdx >= 0 ? bIdx : 0] || '').trim();
-    let roomNumber = String(row[rIdx >= 0 ? rIdx : 1] || '').trim().replace(/^room\s+/i, '');
+    const building = normalizeBuildingName(String(row[bIdx >= 0 ? bIdx : 0] || ''));
+    const roomNumber = normalizeRoomNumber(String(row[rIdx >= 0 ? rIdx : 1] || ''));
 
     // Skip empty lines or duplicated headers
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
 
+    const canonicalKey = getCanonicalRoomKey(building, roomNumber);
+    if (!canonicalKey) continue;
+
     // Look for matching existing room ID to maintain consistency
-    const existing = existingRooms.find(
-      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
-    );
+    const existing = existingByKey.get(canonicalKey) || parsedRoomMap.get(canonicalKey);
 
     let floor = fIdx >= 0 ? parseInt(String(row[fIdx] || '1'), 10) : (existing ? existing.floor : 1);
     if (isNaN(floor) || floor <= 0) {
@@ -1124,9 +1159,9 @@ export async function fetchRoomsFromGoogleSheet(
 
     const id = existing
       ? existing.id
-      : `rm-${building.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+      : `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-    parsedRooms.push({
+    parsedRoomMap.set(canonicalKey, {
       id,
       roomNumber,
       building,
@@ -1147,23 +1182,17 @@ export async function fetchRoomsFromGoogleSheet(
   }
 
   // Preserve any existing rooms (e.g. Badri rooms or others) that were not present in this specific sheet
-  existingRooms.forEach((er) => {
-    if (
-      !parsedRooms.some(
-        (pr) =>
-          pr.id === er.id ||
-          (pr.roomNumber.toLowerCase() === er.roomNumber.toLowerCase() &&
-            pr.building.toLowerCase() === er.building.toLowerCase())
-      )
-    ) {
-      parsedRooms.push(er);
+  cleanExisting.forEach((er) => {
+    const key = getCanonicalRoomKey(er.building, er.roomNumber);
+    if (key && !parsedRoomMap.has(key)) {
+      parsedRoomMap.set(key, er);
     }
   });
 
-    return parsedRooms;
+    return deduplicateRooms(Array.from(parsedRoomMap.values()));
   } catch (err) {
     console.warn('Failed to fetch rooms from Google Sheet; retaining existing rooms:', err);
-    return existingRooms;
+    return deduplicateRooms(existingRooms);
   }
 }
 
@@ -1786,8 +1815,19 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   if (rawRows.length <= 1) return [];
 
   const headerRow = rawRows[0].map((h) => String(h || '').trim().toLowerCase());
+
+  // CRITICAL: Do NOT parse Zaereen / Guest Reservation sheets as Room Inventory!
+  // Otherwise every zaer row creates duplicate room entries.
+  const looksLikeReservationSheet =
+    headerRow.some((h) => h === 'its' || h.includes('its id') || h.includes('room allottment') || h.includes('room allotment') || h === 'tour id' || h.includes('applicant') || h.includes('sr #'));
+  const hasRoomInventoryColumns =
+    headerRow.some((h) => h.includes('capacity') || h === 'floor' || h.includes('toilet') || h.includes('bed type'));
+  if (looksLikeReservationSheet && !hasRoomInventoryColumns) {
+    return [];
+  }
+
   let bIdx = headerRow.findIndex((h) => h.includes('building') || h.includes('hotel'));
-  let rIdx = headerRow.findIndex((h) => h === 'room' || h.includes('room') || h.includes('number') || h === 'roomno');
+  let rIdx = headerRow.findIndex((h) => h === 'room' || h === 'room number' || h === 'roomno' || (h.includes('room') && !h.includes('allot')));
   let fIdx = headerRow.findIndex((h) => h.includes('floor'));
   let cIdx = headerRow.findIndex((h) => h.includes('capacity') || h.includes('bed') || h.includes('pax'));
   let bufIdx = headerRow.findIndex((h) => h.includes('buffer'));
@@ -1803,21 +1843,29 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   if (fIdx === -1) fIdx = 2;
   if (cIdx === -1) cIdx = 3;
 
-  const parsedRooms: Room[] = [];
+  const cleanExisting = deduplicateRooms(existingRooms);
+  const existingByKey = new Map<string, Room>();
+  cleanExisting.forEach((er) => {
+    const k = getCanonicalRoomKey(er.building, er.roomNumber);
+    if (k) existingByKey.set(k, er);
+  });
+
+  const parsedRoomMap = new Map<string, Room>();
 
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i];
     if (!row || row.length === 0) continue;
 
-    const building = String(row[bIdx] || '').trim();
-    let roomNumber = String(row[rIdx] || '').trim().replace(/^room\s+/i, '');
+    const building = normalizeBuildingName(String(row[bIdx] || ''));
+    const roomNumber = normalizeRoomNumber(String(row[rIdx] || ''));
 
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
 
-    const existing = existingRooms.find(
-      (er) => er.roomNumber.toLowerCase() === roomNumber.toLowerCase() && er.building.toLowerCase() === building.toLowerCase()
-    );
+    const canonicalKey = getCanonicalRoomKey(building, roomNumber);
+    if (!canonicalKey) continue;
+
+    const existing = existingByKey.get(canonicalKey) || parsedRoomMap.get(canonicalKey);
 
     let floor = parseInt(String(row[fIdx] || '1'), 10);
     if (isNaN(floor) || floor <= 0) {
@@ -1902,9 +1950,9 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
 
     const id = existing
       ? existing.id
-      : `rm-${building.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+      : `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-    parsedRooms.push({
+    parsedRoomMap.set(canonicalKey, {
       id,
       roomNumber,
       building,
@@ -1923,21 +1971,20 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
     });
   }
 
+  // If no valid inventory rows were found in this CSV, return empty array
+  if (parsedRoomMap.size === 0) {
+    return [];
+  }
+
   // Preserve existing rooms not in CSV
-  existingRooms.forEach((er) => {
-    if (
-      !parsedRooms.some(
-        (pr) =>
-          pr.id === er.id ||
-          (pr.roomNumber.toLowerCase() === er.roomNumber.toLowerCase() &&
-            pr.building.toLowerCase() === er.building.toLowerCase())
-      )
-    ) {
-      parsedRooms.push(er);
+  cleanExisting.forEach((er) => {
+    const key = getCanonicalRoomKey(er.building, er.roomNumber);
+    if (key && !parsedRoomMap.has(key)) {
+      parsedRoomMap.set(key, er);
     }
   });
 
-  return parsedRooms;
+  return deduplicateRooms(Array.from(parsedRoomMap.values()));
 }
 
 /**

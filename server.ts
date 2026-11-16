@@ -3,7 +3,7 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS } from './src/services/storage';
+import { generateSaifeeBurhani114Rooms, generateBadriRooms, INITIAL_RESERVATIONS, deduplicateRooms, normalizeBuildingName } from './src/services/storage';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -194,7 +194,7 @@ export function parseAttachedCsvReservations(): any[] {
 function initializeData() {
   if (!fs.existsSync(ROOMS_FILE)) {
     console.log('Seeding initial rooms across Saifee, Burhani, Badri, and Qasr Nobola...');
-    const initialRooms = [
+    const initialRooms = deduplicateRooms([
       ...generateSaifeeBurhani114Rooms(),
       ...generateBadriRooms(),
       {
@@ -212,36 +212,40 @@ function initializeData() {
         status: 'available',
         amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
       },
-    ];
+    ]);
     writeJsonFile(ROOMS_FILE, initialRooms);
   } else {
     const existingRooms = readJsonFile<any[]>(ROOMS_FILE, []);
-    const hasBadri = existingRooms.some((r) => (r.building || '').toLowerCase() === 'badri');
-    const hasQasr = existingRooms.some((r) => (r.building || '').toLowerCase() === 'qasr nobola');
-    let updated = [...existingRooms];
+    let updated = deduplicateRooms(existingRooms);
+    const hasBadri = updated.some((r) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
+    const hasQasr = updated.some((r) => normalizeBuildingName(r.building).toLowerCase() === 'qasr nobola');
     if (!hasBadri) {
       console.log('Adding Badri rooms to server rooms storage...');
-      updated = [...updated, ...generateBadriRooms()];
+      updated = deduplicateRooms([...updated, ...generateBadriRooms()]);
     }
     if (!hasQasr) {
       console.log('Adding Qasr Nobola room to server rooms storage...');
-      updated.push({
-        id: 'rm-qasr-1',
-        roomNumber: '1',
-        building: 'Qasr Nobola',
-        floor: 1,
-        floorLabel: 'Floor 1',
-        capacity: 4,
-        pax: 4,
-        buffer: 0,
-        toiletType: 'WESTERN',
-        bedType: 'Single Beds',
-        category: 'Category A (Nizaam)',
-        status: 'available',
-        amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-      });
+      updated = deduplicateRooms([
+        ...updated,
+        {
+          id: 'rm-qasr-1',
+          roomNumber: '1',
+          building: 'Qasr Nobola',
+          floor: 1,
+          floorLabel: 'Floor 1',
+          capacity: 4,
+          pax: 4,
+          buffer: 0,
+          toiletType: 'WESTERN',
+          bedType: 'Single Beds',
+          category: 'Category A (Nizaam)',
+          status: 'available',
+          amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
+        },
+      ]);
     }
-    if (updated.length !== existingRooms.length) {
+    if (updated.length !== existingRooms.length || JSON.stringify(updated) !== JSON.stringify(existingRooms)) {
+      console.log(`[Server] Cleaned & deduplicated room inventory: ${existingRooms.length} -> ${updated.length} rooms.`);
       writeJsonFile(ROOMS_FILE, updated);
     }
   }
@@ -396,8 +400,12 @@ app.post('/api/reservations/batch-delete', (req, res) => {
 
 // GET all rooms
 app.get('/api/rooms', (req, res) => {
-  const rooms = readJsonFile<any[]>(ROOMS_FILE, []);
-  res.json(rooms);
+  const rawRooms = readJsonFile<any[]>(ROOMS_FILE, []);
+  const deduped = deduplicateRooms(rawRooms);
+  if (deduped.length !== rawRooms.length) {
+    writeJsonFile(ROOMS_FILE, deduped);
+  }
+  res.json(deduped);
 });
 
 // POST all rooms (Bulk update)
@@ -406,23 +414,25 @@ app.post('/api/rooms', (req, res) => {
   if (!Array.isArray(rooms)) {
     return res.status(400).json({ error: 'Expected array of rooms in { rooms: [...] }' });
   }
-  writeJsonFile(ROOMS_FILE, rooms);
+  const deduped = deduplicateRooms(rooms);
+  writeJsonFile(ROOMS_FILE, deduped);
   broadcastLiveChange('ROOMS_UPDATED');
-  res.json({ success: true, count: rooms.length });
+  res.json({ success: true, count: deduped.length });
 });
 
 // PUT update individual room
 app.put('/api/rooms/:id', (req, res) => {
   const { id } = req.params;
   const updates = req.body;
-  const rooms = readJsonFile<any[]>(ROOMS_FILE, []);
+  const rooms = deduplicateRooms(readJsonFile<any[]>(ROOMS_FILE, []));
   const index = rooms.findIndex((r) => r.id === id);
 
   if (index >= 0) {
     rooms[index] = { ...rooms[index], ...updates };
-    writeJsonFile(ROOMS_FILE, rooms);
+    const cleaned = deduplicateRooms(rooms);
+    writeJsonFile(ROOMS_FILE, cleaned);
     broadcastLiveChange('ROOMS_UPDATED', { roomId: id });
-    res.json({ success: true, room: rooms[index] });
+    res.json({ success: true, room: cleaned.find((r) => r.id === id) || rooms[index] });
   } else {
     res.status(404).json({ error: `Room ${id} not found` });
   }

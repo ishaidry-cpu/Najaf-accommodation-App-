@@ -44,7 +44,8 @@ import {
   getVacantRoomsForDuration,
   checkRoomAllotmentAvailability,
   isInfant,
-  countEffectivePax
+  countEffectivePax,
+  normalizeBuildingName
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
@@ -231,8 +232,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // Distinct buildings from rooms and reservations
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(r.building); });
-    reservations.forEach((r) => { if (r.building) set.add(r.building); });
+    rooms.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
+    reservations.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
     return Array.from(set).sort();
   }, [rooms, reservations]);
 

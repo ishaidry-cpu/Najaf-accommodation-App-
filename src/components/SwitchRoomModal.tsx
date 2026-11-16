@@ -19,6 +19,7 @@ import {
   getRoomBookingsForDuration,
   countEffectivePax,
   isInfant,
+  normalizeBuildingName,
 } from '../services/storage';
 
 export interface SwitchRoomTarget {
@@ -123,7 +124,8 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
     rooms.forEach((r) => {
-      if (r.building) set.add(String(r.building).trim());
+      const nb = normalizeBuildingName(r.building);
+      if (nb) set.add(nb);
     });
     return Array.from(set).sort();
   }, [rooms]);

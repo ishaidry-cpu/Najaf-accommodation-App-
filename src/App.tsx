@@ -51,7 +51,9 @@ import {
   checkRoomAllotmentAvailability,
   isInfant,
   countEffectivePax,
-  getRoomBookingsForDuration
+  getRoomBookingsForDuration,
+  deduplicateRooms,
+  getCanonicalRoomKey
 } from './services/storage';
 import { 
   initAuth, 
@@ -260,8 +262,12 @@ export default function App() {
         }
 
         if (backendRooms && Array.isArray(backendRooms)) {
-          setRooms(backendRooms);
-          saveRooms(backendRooms);
+          const cleanBackendRooms = deduplicateRooms(backendRooms);
+          setRooms(cleanBackendRooms);
+          saveRooms(cleanBackendRooms);
+          if (cleanBackendRooms.length !== backendRooms.length) {
+            saveBackendRooms(cleanBackendRooms);
+          }
         } else if (localRooms.length > 0) {
           saveBackendRooms(localRooms);
         }
@@ -437,9 +443,10 @@ export default function App() {
         ]);
 
         if (freshRooms && freshRooms.length > 0) {
-          setRooms(freshRooms);
-          saveRooms(freshRooms);
-          saveBackendRooms(freshRooms);
+          const cleanFreshRooms = deduplicateRooms(freshRooms);
+          setRooms(cleanFreshRooms);
+          saveRooms(cleanFreshRooms);
+          saveBackendRooms(cleanFreshRooms);
         }
 
         if (freshRes && freshRes.length > 0) {
@@ -1354,32 +1361,35 @@ export default function App() {
 
   // Add or sync rooms / buildings
   const handleAddRooms = (newRoomsToAdd: Room[], replaceExisting: boolean = false) => {
+    const cleanIncoming = deduplicateRooms(newRoomsToAdd);
     let finalRooms: Room[];
     if (replaceExisting) {
-      finalRooms = newRoomsToAdd;
+      finalRooms = cleanIncoming;
     } else {
-      // Merge by building + roomNumber
+      // Merge by canonical (building, roomNumber), preserving existing canonical IDs
       const roomMap = new Map<string, Room>();
-      rooms.forEach((r) => {
-        const key = `${(r.building || '').toLowerCase()}_${(r.roomNumber || '').toLowerCase()}`;
-        roomMap.set(key, r);
+      deduplicateRooms(rooms).forEach((r) => {
+        const key = getCanonicalRoomKey(r.building, r.roomNumber);
+        if (key) roomMap.set(key, r);
       });
-      newRoomsToAdd.forEach((nr) => {
-        const key = `${(nr.building || '').toLowerCase()}_${(nr.roomNumber || '').toLowerCase()}`;
-        roomMap.set(key, nr);
+      cleanIncoming.forEach((nr) => {
+        const key = getCanonicalRoomKey(nr.building, nr.roomNumber);
+        if (!key) return;
+        const existing = roomMap.get(key);
+        roomMap.set(key, existing ? { ...nr, id: existing.id } : nr);
       });
-      finalRooms = Array.from(roomMap.values());
+      finalRooms = deduplicateRooms(Array.from(roomMap.values()));
     }
 
     setRooms(finalRooms);
     saveRooms(finalRooms);
     saveBackendRooms(finalRooms);
     triggerAutoSync(reservations, finalRooms);
-    broadcastLiveSync({ type: 'ROOMS_ADDED', count: newRoomsToAdd.length });
+    broadcastLiveSync({ type: 'ROOMS_ADDED', count: cleanIncoming.length });
 
-    const distinctNewBuildings = Array.from(new Set(newRoomsToAdd.map((r) => r.building)));
+    const distinctNewBuildings = Array.from(new Set(cleanIncoming.map((r) => r.building)));
     showToast(
-      `Saved ${newRoomsToAdd.length} room(s) across building(s): ${distinctNewBuildings.join(', ')}!`
+      `Saved ${cleanIncoming.length} unique room(s) across building(s): ${distinctNewBuildings.join(', ')}! Total inventory: ${finalRooms.length} rooms.`
     );
   };
 
@@ -1596,11 +1606,12 @@ export default function App() {
         rooms={rooms}
         userRole={userRole}
         onRoomsFetched={(newRooms) => {
-          setRooms(newRooms);
-          saveRooms(newRooms);
-          saveBackendRooms(newRooms);
+          const cleanRooms = deduplicateRooms(newRooms);
+          setRooms(cleanRooms);
+          saveRooms(cleanRooms);
+          saveBackendRooms(cleanRooms);
           broadcastLiveSync({ type: 'ROOMS_UPDATED' });
-          showToast(`Imported ${newRooms.length} rooms from Google Sheet! (Blocked & unblocked rooms synchronized)`);
+          showToast(`Imported ${cleanRooms.length} unique rooms from Google Sheet! (Blocked & unblocked rooms synchronized)`);
         }}
         onReservationsFetched={(newRes) => {
           const uniqueRes = deduplicateReservationList(newRes);

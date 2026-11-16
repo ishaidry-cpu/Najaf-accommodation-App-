@@ -20,6 +20,183 @@ const CATEGORIES_STORAGE_KEY = 'zaereen_accommodation_categories_v1';
 
 export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri', 'Qasr Nobola'];
 
+/**
+ * Normalizes hotel/building names to prevent duplicate building sections or duplicate room keys
+ * (e.g. "Saifee Hotel", "SAIFEE", "saifee " -> "Saifee").
+ */
+export function normalizeBuildingName(building?: string): string {
+  if (!building) return '';
+  let cleaned = String(building).trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+
+  const lower = cleaned.toLowerCase();
+  if (lower === 'saifee' || lower === 'saifee hotel' || lower === 'saifi' || lower === 'saifi hotel') {
+    return 'Saifee';
+  }
+  if (lower === 'burhani' || lower === 'burhani hotel') {
+    return 'Burhani';
+  }
+  if (lower === 'badri' || lower === 'badri hotel' || lower === 'badri manzil') {
+    return 'Badri';
+  }
+  if (
+    lower === 'qasr nobola' ||
+    lower === 'qasr-e-nobola' ||
+    lower === 'qasr e nobola' ||
+    lower === 'qasre nobola' ||
+    lower === 'qasr nobola hotel'
+  ) {
+    return 'Qasr Nobola';
+  }
+
+  // Strip trailing redundant " Hotel" on other custom buildings unless the entire name is "Hotel"
+  if (/\s+hotel$/i.test(cleaned) && cleaned.length > 6) {
+    cleaned = cleaned.replace(/\s+hotel$/i, '').trim();
+  }
+  return cleaned;
+}
+
+/**
+ * Normalizes a room number string (e.g. "Room 101" -> "101", "g1" -> "G1").
+ */
+export function normalizeRoomNumber(roomNumber?: string): string {
+  if (!roomNumber) return '';
+  let cleaned = String(roomNumber)
+    .trim()
+    .replace(/^(?:room|rm)\s*#?\s*/i, '')
+    .replace(/^#/, '')
+    .trim();
+  if (!cleaned) return '';
+  if (/^[a-z]\d+$/i.test(cleaned)) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  return cleaned;
+}
+
+/**
+ * Canonical deduplication key for a room (building + roomNumber, case/whitespace insensitive).
+ */
+export function getCanonicalRoomKey(building?: string, roomNumber?: string): string {
+  const b = normalizeBuildingName(building).toLowerCase();
+  const n = normalizeRoomNumber(roomNumber).toLowerCase();
+  if (!b || !n) return '';
+  return `${b}::${n}`;
+}
+
+const isCanonicalBuiltInRoomId = (id?: string): boolean =>
+  !!id && /^rm-(?:bh|sf|bd|qasr)-/i.test(id);
+
+/**
+ * Removes duplicate rooms across buildings/room numbers (including ID prefix mismatches
+ * like rm-sf-101 vs rm-saifee-101 or casing variants like "SAIFEE" vs "Saifee Hotel"),
+ * merging useful metadata and ensuring unique IDs.
+ */
+export function deduplicateRooms(rooms: Room[]): Room[] {
+  if (!Array.isArray(rooms)) return [];
+
+  const roomMap = new Map<string, Room>();
+
+  for (const raw of rooms) {
+    if (!raw) continue;
+    const building = normalizeBuildingName(raw.building);
+    const roomNumber = normalizeRoomNumber(raw.roomNumber);
+    if (!building || !roomNumber) continue;
+
+    // Ignore stray CSV header rows
+    if (
+      building.toLowerCase() === 'building' &&
+      roomNumber.toLowerCase().includes('room')
+    ) {
+      continue;
+    }
+
+    const key = `${building.toLowerCase()}::${roomNumber.toLowerCase()}`;
+    const existing = roomMap.get(key);
+
+    const parsedCap = Number(raw.capacity || raw.pax || 3);
+    const safeCap = !isNaN(parsedCap) && parsedCap > 0 && parsedCap <= 20 ? parsedCap : 3;
+    const parsedBuffer = raw.buffer !== undefined ? Number(raw.buffer) : 0;
+    const safeBuffer = !isNaN(parsedBuffer) && parsedBuffer >= 0 ? parsedBuffer : 0;
+
+    if (!existing) {
+      const generatedId = `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      roomMap.set(key, {
+        ...raw,
+        id: raw.id && String(raw.id).trim() ? String(raw.id).trim() : generatedId,
+        building,
+        roomNumber,
+        capacity: safeCap,
+        pax: safeCap,
+        buffer: safeBuffer,
+        floor: typeof raw.floor === 'number' && !isNaN(raw.floor) ? raw.floor : (parseInt(String(raw.floor || '1'), 10) || 1),
+        floorLabel: raw.floorLabel || `Floor ${typeof raw.floor === 'number' ? raw.floor : 1}`,
+        amenities: Array.from(new Set((Array.isArray(raw.amenities) ? raw.amenities : ['Air Conditioning', 'Wi-Fi']).filter(Boolean))),
+      });
+    } else {
+      // Merge duplicate entry into the canonical record without creating a second entry
+      const preferredId = isCanonicalBuiltInRoomId(existing.id)
+        ? existing.id
+        : isCanonicalBuiltInRoomId(raw.id)
+        ? raw.id
+        : existing.id || raw.id;
+
+      const isBlocked = existing.status === 'blocked' || raw.status === 'blocked';
+      const mergedStatus = isBlocked
+        ? 'blocked'
+        : existing.status && existing.status !== 'available'
+        ? existing.status
+        : raw.status || existing.status || 'available';
+
+      const mergedAmenities = Array.from(
+        new Set([
+          ...(Array.isArray(existing.amenities) ? existing.amenities : []),
+          ...(Array.isArray(raw.amenities) ? raw.amenities : []),
+        ].filter(Boolean))
+      );
+
+      roomMap.set(key, {
+        ...raw,
+        ...existing,
+        id: preferredId,
+        building,
+        roomNumber,
+        capacity: existing.capacity || safeCap,
+        pax: existing.capacity || safeCap,
+        buffer: Math.max(existing.buffer || 0, safeBuffer),
+        floor: existing.floor ?? raw.floor ?? 1,
+        floorLabel: existing.floorLabel || raw.floorLabel || `Floor ${existing.floor ?? 1}`,
+        toiletType: existing.toiletType || raw.toiletType,
+        bedType: existing.bedType || raw.bedType,
+        category: existing.category || raw.category,
+        status: mergedStatus,
+        blockedReason: isBlocked ? (existing.blockedReason || raw.blockedReason) : undefined,
+        blockedSince: isBlocked ? (existing.blockedSince || raw.blockedSince) : undefined,
+        expectedUnblockDate: isBlocked ? (existing.expectedUnblockDate || raw.expectedUnblockDate) : undefined,
+        notes: existing.notes || raw.notes,
+        amenities: mergedAmenities.length > 0 ? mergedAmenities : ['Air Conditioning', 'Wi-Fi'],
+      });
+    }
+  }
+
+  // Ensure every room in the returned list also has a strictly unique id
+  const seenIds = new Set<string>();
+  const finalRooms: Room[] = [];
+  for (const room of roomMap.values()) {
+    let uniqueId = room.id;
+    if (!uniqueId || seenIds.has(uniqueId)) {
+      uniqueId = `rm-${room.building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${room.roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    }
+    let suffix = 2;
+    while (seenIds.has(uniqueId)) {
+      uniqueId = `${room.id}-${suffix++}`;
+    }
+    seenIds.add(uniqueId);
+    finalRooms.push(uniqueId === room.id ? room : { ...room, id: uniqueId });
+  }
+
+  return finalRooms;
+}
+
 interface RawRoomConfig {
   building: 'BURHANI' | 'SAIFEE';
   roomNumber: string;
@@ -284,7 +461,7 @@ export function generateBadriRooms(): Room[] {
   return rooms;
 }
 
-export const INITIAL_ROOMS: Room[] = [
+export const INITIAL_ROOMS: Room[] = deduplicateRooms([
   ...generateSaifeeBurhani114Rooms(),
   ...generateBadriRooms(),
   {
@@ -302,7 +479,7 @@ export const INITIAL_ROOMS: Room[] = [
     status: 'available',
     amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
   },
-];
+]);
 
 /**
  * Initial Zaereen matching user's exact work process fields and user's Excel sheet screenshot:
@@ -1551,13 +1728,15 @@ export function getStoredRooms(): Room[] {
       saveRooms(INITIAL_ROOMS);
       return INITIAL_ROOMS;
     }
-    const hasBadri = parsed.some((r: Room) => (r.building || '').toLowerCase() === 'badri');
+    let deduped = deduplicateRooms(parsed);
+    const hasBadri = deduped.some((r: Room) => normalizeBuildingName(r.building).toLowerCase() === 'badri');
     if (!hasBadri) {
-      const merged = [...parsed, ...generateBadriRooms()];
-      saveRooms(merged);
-      return merged;
+      deduped = deduplicateRooms([...deduped, ...generateBadriRooms()]);
     }
-    return parsed;
+    if (deduped.length !== parsed.length) {
+      saveRooms(deduped);
+    }
+    return deduped;
   } catch {
     return INITIAL_ROOMS;
   }
@@ -1565,7 +1744,8 @@ export function getStoredRooms(): Room[] {
 
 export function saveRooms(rooms: Room[]): void {
   try {
-    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+    const deduped = deduplicateRooms(rooms);
+    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(deduped));
   } catch (err) {
     console.error('Failed to save rooms to localStorage', err);
   }
