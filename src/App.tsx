@@ -150,7 +150,29 @@ export default function App() {
     setReceptionSlipInitialTab(tab);
     setIsReceptionSlipOpen(true);
   };
-  const [activeAccountsSlipReservation, setActiveAccountsSlipReservation] = useState<Reservation | null>(null);
+  const [accountsSlipModalState, setAccountsSlipModalState] = useState<{
+    isOpen: boolean;
+    reservation: Reservation | null;
+    direction: 'B_TO_A' | 'A_TO_B';
+    selectedIds?: string[];
+  }>({
+    isOpen: false,
+    reservation: null,
+    direction: 'B_TO_A',
+  });
+
+  const handleOpenAccountsSlip = (
+    reservation: Reservation | null,
+    direction: 'B_TO_A' | 'A_TO_B' = 'B_TO_A',
+    selectedIds?: string[]
+  ) => {
+    setAccountsSlipModalState({
+      isOpen: true,
+      reservation,
+      direction,
+      selectedIds,
+    });
+  };
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -871,6 +893,28 @@ export default function App() {
     showToast(`Money Given status updated to "${status}" for ${target.applicantName}`);
   };
 
+  // Toggle Refund Given for A to B accounts refund
+  const handleToggleRefundGiven = (reservationId: string, status: MoneyGivenStatus) => {
+    const target = reservations.find((r) => r.id === reservationId);
+    if (!target) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const updated: Reservation = {
+      ...target,
+      shiftDirection: 'A_TO_B',
+      shiftToCategoryA: false,
+      accommodationCategory: 'Category B (Standard)',
+      refundSlipNo: target.refundSlipNo || `REF-A2B-${Date.now().toString().slice(-4)}`,
+      refundSlipDate: target.refundSlipDate || today,
+      refundGiven: status,
+      refundGivenDate: status === 'Yes' ? today : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    handleUpdateReservation(updated);
+    showToast(`A ➔ B Refund status updated to "${status}" for ${target.applicantName}`);
+  };
+
   // Toggle Shift to Category A (Nizaam) - Reverting or removing requires Admin role
   const handleToggleShiftToCategoryA = (reservationId: string, willShift: boolean) => {
     const target = reservations.find((r) => r.id === reservationId);
@@ -1271,6 +1315,44 @@ export default function App() {
     );
   };
 
+  // Batch shift selected zaereen from Category A to Category B (Refund Receipt)
+  const handleBatchShiftToCategoryB = (
+    reservationIds: string[],
+    refundGiven: MoneyGivenStatus = 'No',
+    notes?: string
+  ) => {
+    const slipDate = new Date().toISOString().slice(0, 10);
+    const idSet = new Set(reservationIds);
+    const sharedSlipNo = `REF-A2B-${Date.now().toString().slice(-4)}`;
+    const updated = reservations.map((r) => {
+      if (idSet.has(r.id)) {
+        const slipNo = r.refundSlipNo || sharedSlipNo;
+        return {
+          ...r,
+          shiftDirection: 'A_TO_B' as const,
+          shiftToCategoryA: false,
+          accommodationCategory: 'Category B (Standard)' as const,
+          refundGiven,
+          refundGivenDate: refundGiven === 'Yes' ? slipDate : undefined,
+          refundAmountNotes: notes !== undefined ? notes : r.refundAmountNotes,
+          refundSlipNo: slipNo,
+          refundSlipDate: slipDate,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+
+    setReservations(updated);
+    saveReservations(updated);
+    saveBackendReservations(updated);
+    triggerAutoSync(updated, rooms);
+    broadcastLiveSync({ type: 'RESERVATIONS_BATCH_UPDATED', count: reservationIds.length });
+    showToast(
+      `Recorded A ➔ B Refund Shift for ${reservationIds.length} zaer(een) (Refund status: ${refundGiven === 'Yes' ? 'Refunded' : 'Pending Accounts'})`
+    );
+  };
+
   // Import from Excel Sheet (User request: "When append dont append duplicates only unique should be added")
   const handleImportFromExcel = (
     imported: Reservation[],
@@ -1408,6 +1490,7 @@ export default function App() {
         onOpenPdfModal={handleOpenPdfModal}
         onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
         onOpenReceptionSlip={handleOpenReceptionSlip}
+        onOpenAToBReceipt={() => handleOpenAccountsSlip(null, 'A_TO_B')}
         onGoogleSignIn={handleGoogleSignIn}
         onGoogleLogout={handleGoogleLogout}
         isLoggingIn={isLoggingIn}
@@ -1473,7 +1556,7 @@ export default function App() {
             onBatchDeleteReservations={handleBatchDeleteReservations}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
-            onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
+            onOpenAccountsSlip={(res, dir = 'B_TO_A', ids) => handleOpenAccountsSlip(res, dir, ids)}
             onOpenReceptionSlip={handleOpenReceptionSlip}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
@@ -1493,7 +1576,8 @@ export default function App() {
             reservations={reservations}
             rooms={rooms}
             onToggleMoneyGiven={handleToggleMoneyGiven}
-            onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
+            onToggleRefundGiven={handleToggleRefundGiven}
+            onOpenAccountsSlip={(res, dir = 'B_TO_A') => handleOpenAccountsSlip(res, dir)}
             onToggleShiftToCategoryA={handleToggleShiftToCategoryA}
             onAddZaer={handleAddReservation}
             onDeleteReservation={handleDeleteReservation}
@@ -1563,14 +1647,23 @@ export default function App() {
         />
       )}
 
-      {/* Category B to A Accounts Request Slip Modal */}
-      <AccountsRequestSlipModal
-        reservation={activeAccountsSlipReservation}
-        allReservations={reservations}
-        onClose={() => setActiveAccountsSlipReservation(null)}
-        onToggleMoneyGiven={handleToggleMoneyGiven}
-        onBatchShiftToCategoryA={handleBatchShiftToCategoryA}
-      />
+      {/* Category B to A & A to B Accounts Receipt Modal */}
+      {accountsSlipModalState.isOpen && (
+        <AccountsRequestSlipModal
+          isOpen={accountsSlipModalState.isOpen}
+          reservation={accountsSlipModalState.reservation}
+          initialDirection={accountsSlipModalState.direction}
+          initialSelectedIds={accountsSlipModalState.selectedIds}
+          allReservations={reservations}
+          onClose={() =>
+            setAccountsSlipModalState({ isOpen: false, reservation: null, direction: 'B_TO_A' })
+          }
+          onToggleMoneyGiven={handleToggleMoneyGiven}
+          onToggleRefundGiven={handleToggleRefundGiven}
+          onBatchShiftToCategoryA={handleBatchShiftToCategoryA}
+          onBatchShiftToCategoryB={handleBatchShiftToCategoryB}
+        />
+      )}
 
       {/* Google Sheets Categories Modal */}
       <GoogleSheetCategoriesModal
@@ -1976,7 +2069,7 @@ export default function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 flex items-center gap-2 px-4 py-3 bg-[#124E39] border border-[#C5A059]/50 text-white rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-[70] flex items-center gap-2 px-4 py-3 bg-[#124E39] border border-[#C5A059]/50 text-white rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
           {toast.type === 'error' ? (
             <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
           ) : (
