@@ -121,7 +121,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
         description={`${totalCount} rooms across ${distinctBuildings.length} buildings. Block a room, edit its details or add new ones.`}
         meta={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
-            {distinctBuildings.map((bldg) => {
+            {distinctBuildings.slice(0, 8).map((bldg) => {
               const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
               return (
                 <span key={bldg}>

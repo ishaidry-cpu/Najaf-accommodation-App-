@@ -74,6 +74,22 @@ export function normalizeRoomNumber(roomNumber?: string): string {
 }
 
 /**
+ * True when a building + room pair looks like a real hotel room.
+ * Guards against rows from the Zaereen list being read as rooms
+ * (e.g. SR # "121" as the building and ITS "50498613" as the room number).
+ */
+export function isPlausibleRoom(building?: string, roomNumber?: string): boolean {
+  const b = normalizeBuildingName(building);
+  const n = normalizeRoomNumber(roomNumber);
+  if (!b || !n) return false;
+  // A building name always has letters (Saifee, Burhani, Badri, Qasr Nobola, ...).
+  if (!/[a-z]/i.test(b)) return false;
+  // Room numbers are short (1, 101, G1, M101). Long digit runs are ITS numbers or serials.
+  if (n.length > 6 || /\d{5,}/.test(n)) return false;
+  return true;
+}
+
+/**
  * Canonical deduplication key for a room (building + roomNumber, case/whitespace insensitive).
  */
 export function getCanonicalRoomKey(building?: string, roomNumber?: string): string {
@@ -101,6 +117,7 @@ export function deduplicateRooms(rooms: Room[]): Room[] {
     const building = normalizeBuildingName(raw.building);
     const roomNumber = normalizeRoomNumber(raw.roomNumber);
     if (!building || !roomNumber) continue;
+    if (!isPlausibleRoom(building, roomNumber)) continue;
 
     // Ignore stray CSV header rows
     if (

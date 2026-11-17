@@ -14,6 +14,7 @@ import {
   normalizeRoomNumber,
   getCanonicalRoomKey,
   reconcileOfficialSaifeeBurhaniRooms,
+  isPlausibleRoom,
 } from './storage';
 
 export interface SyncResult {
@@ -644,6 +645,21 @@ export async function syncAllToGoogleSheet(
       [roomHeaders, ...roomRows]
     );
 
+    // Clear the timeline tab first so rows from an older, longer push never linger
+    try {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+          'Rooms_Availability_&_Timeline!A1:Z20000'
+        )}:clear`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+    } catch {
+      // Ignore clear failure
+    }
+
     // Update Rooms_Availability_&_Timeline sheet
     await updateSheetRange(
       accessToken,
@@ -1026,6 +1042,15 @@ export async function fetchRoomsFromGoogleSheet(
   let bufIdx = headerRow.findIndex((h: string) => h === 'buffer' || h.includes('buffer'));
   let nIdx = headerRow.findIndex((h: string) => h.includes('note'));
 
+  // A tab without Building / Room headers is not the room inventory (e.g. the Zaereen list).
+  const looksLikeReservationTab = headerRow.some(
+    (h: string) => h === 'its' || h.includes('its id') || h === 'sr #' || h.includes('applicant') || h.includes('room allot')
+  );
+  if (looksLikeReservationTab || (bIdx === -1 && rIdx === -1)) {
+    console.warn(`Tab "${targetTab}" does not look like a room inventory; keeping current rooms.`);
+    return existingRooms;
+  }
+
   // Fallback if headers were not explicitly matched (only when positional column isn't clearly another field)
   if (bIdx === -1) bIdx = 0;
   if (rIdx === -1) rIdx = 1;
@@ -1062,6 +1087,7 @@ export async function fetchRoomsFromGoogleSheet(
     // Skip empty lines or duplicated headers
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
+    if (!isPlausibleRoom(building, roomNumber)) continue;
 
     const canonicalKey = getCanonicalRoomKey(building, roomNumber);
     if (!canonicalKey) continue;
@@ -1839,6 +1865,13 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   if (looksLikeReservationSheet && !hasRoomInventoryColumns) {
     return [];
   }
+  // The Rooms_Availability_&_Timeline tab is an output of the app, not the room inventory.
+  const looksLikeTimelineSheet = headerRow.some(
+    (h) => h.includes('occupancy status') || h.includes('zaer guest') || h.includes('days remaining')
+  );
+  if (looksLikeTimelineSheet) {
+    return [];
+  }
 
   let bIdx = headerRow.findIndex((h) => h.includes('building') || h.includes('hotel'));
   let rIdx = headerRow.findIndex((h) => h === 'room' || h === 'room number' || h === 'roomno' || (h.includes('room') && !h.includes('allot')));
@@ -1886,6 +1919,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
 
     if (!building || !roomNumber) continue;
     if (building.toLowerCase() === 'building' && roomNumber.toLowerCase().includes('room')) continue;
+    if (!isPlausibleRoom(building, roomNumber)) continue;
 
     const canonicalKey = getCanonicalRoomKey(building, roomNumber);
     if (!canonicalKey) continue;
