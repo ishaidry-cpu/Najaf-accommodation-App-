@@ -60,9 +60,9 @@ const StatusPill: React.FC<{ status: JobStatus }> = ({ status }) => (
 );
 
 const Card: React.FC<{ title: React.ReactNode; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, right, children, className = '' }) => (
-  <section className={`bg-white rounded-2xl border border-[#E6DFD5] shadow-2xs overflow-hidden ${className}`}>
-    <header className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-[#EFE9DF] bg-[#FDFBF7]">
-      <h2 className="flex items-center gap-2 text-xs font-extrabold text-[#124E39] uppercase tracking-wide">{icon}{title}</h2>
+  <section className={`bg-white rounded-2xl border border-[#e2e8e5] shadow-2xs overflow-hidden ${className}`}>
+    <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-stone-100">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-900 [&>svg]:text-stone-400">{icon}{title}</h2>
       {right}
     </header>
     {children}
@@ -85,10 +85,10 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-[#EFE9DF]">
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-[#eef2f0]">
         {(['all', 'problems'] as const).map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${filter === f ? 'bg-[#124E39] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${filter === f ? 'bg-[#0f4a37] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
             {f === 'all' ? 'Everything' : 'Warnings & errors'}
           </button>
         ))}
@@ -100,7 +100,7 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="bg-[#0F1F1A] font-mono text-[11px] leading-relaxed h-64 overflow-y-auto px-3 py-2" role="log" aria-live={live ? 'polite' : 'off'}>
+      className="bg-[#101a16] font-mono text-[11px] leading-relaxed h-64 overflow-y-auto px-3 py-2" role="log" aria-live={live ? 'polite' : 'off'}>
         {shown.length === 0 && <div className="text-stone-500">No log lines yet.</div>}
         {shown.map((e) => (
           <div key={e.seq} className={`whitespace-pre-wrap break-words ${LEVEL_STYLE[e.level]}`}>
@@ -117,7 +117,7 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
 // ------------------------------------------------------------------------------------------------ results
 
 const EntryRow: React.FC<{ e: ReportEntry }> = ({ e }) => (
-  <li className="px-3.5 py-2 border-t border-[#F3EEE6] first:border-t-0">
+  <li className="px-3.5 py-2 border-t border-[#eef2f0] first:border-t-0">
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
       <span className="text-xs font-bold text-stone-900">{e.group}</span>
       {e.from && e.from.length > 0 && <span className="text-[11px] text-stone-500">from {e.from.join(', ')}</span>}
@@ -142,7 +142,7 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
         const entries = list.filter((e) => e.action === a);
         const people = entries.reduce((n, e) => n + e.people.length, 0);
         return (
-          <div key={a} className="border-b border-[#EFE9DF] last:border-b-0">
+          <div key={a} className="border-b border-[#eef2f0] last:border-b-0">
             <button type="button" onClick={() => setOpen((o) => ({ ...o, [a]: !o[a] }))}
               className="w-full flex items-center justify-between px-3.5 py-2 text-left cursor-pointer hover:bg-stone-50">
               <span className="flex items-center gap-1.5 text-xs font-bold text-stone-800">
@@ -155,7 +155,7 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
           </div>
         );
       })}
-      <div className="px-3.5 py-2 text-[11px] text-stone-500 space-y-0.5 bg-[#FDFBF7]">
+      <div className="px-3.5 py-2 text-[11px] text-stone-500 space-y-0.5 bg-[#fbfcfb]">
         {skipped.length > 0 && <div>Skipped: {skipped.map(([k, v]) => `${v} ${k}`).join(' · ')}</div>}
         {report.history?.rows_written !== undefined && <div>Sync History: {report.history.rows_written} rows logged.</div>}
         {report.history?.rows_planned !== undefined && <div>Sync History: {report.history.rows_planned} rows would be logged (preview logs nothing).</div>}
@@ -183,7 +183,7 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
     </div>;
   }
   const render = (it: AttentionItem) => (
-    <li key={it.id} className="px-3.5 py-2.5 border-t border-[#F3EEE6] first:border-t-0">
+    <li key={it.id} className="px-3.5 py-2.5 border-t border-[#eef2f0] first:border-t-0">
       <div className="flex gap-2">
         {SEVERITY_ICON[it.severity]}
         <div className="min-w-0 flex-1 space-y-1">
@@ -192,11 +192,11 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
           </div>
           {it.people.length > 0 && <div className="text-[11px] text-stone-700">{it.people.join(', ')}</div>}
           <div className="text-[11px] text-stone-600 break-words">{it.detail}</div>
-          {it.hint && <div className="text-[11px] text-[#124E39] bg-emerald-50/70 border border-emerald-100 rounded-lg px-2 py-1">{it.hint}</div>}
+          {it.hint && <div className="text-[11px] text-[#0f4a37] bg-emerald-50/70 border border-emerald-100 rounded-lg px-2 py-1">{it.hint}</div>}
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {it.suggestion && (
               <button type="button" disabled={disabled} onClick={() => onSend(it.suggestion!)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-[#124E39] text-[#EBD59E] disabled:opacity-50 cursor-pointer">
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-[#0f4a37] text-white disabled:opacity-50 cursor-pointer">
                 <ArrowRight className="w-3 h-3" />{it.suggestion}
               </button>
             )}
@@ -213,7 +213,7 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
     <div>
       {main.length > 0 ? <ul>{main.map(render)}</ul> : <div className="px-3.5 py-3 text-xs text-stone-600">No problems; only notes.</div>}
       {notes.length > 0 && (
-        <div className="border-t border-[#EFE9DF]">
+        <div className="border-t border-[#eef2f0]">
           <button type="button" onClick={() => setShowNotes((v) => !v)} className="w-full flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-stone-700 cursor-pointer hover:bg-stone-50">
             {showNotes ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}Notes ({notes.length})
           </button>
@@ -249,7 +249,7 @@ const ProposalCard: React.FC<{ m: ChatMessage; onConfirm: () => void; onDismiss:
           <span className="ml-auto flex gap-1.5">
             <button type="button" onClick={onDismiss} className="px-2 py-0.5 rounded-lg font-bold text-stone-700 hover:bg-stone-200 cursor-pointer">Dismiss</button>
             <button type="button" onClick={onConfirm} disabled={running}
-              className="px-2 py-0.5 rounded-lg font-bold bg-[#124E39] text-[#EBD59E] disabled:opacity-50 cursor-pointer">Confirm and run</button>
+              className="px-2 py-0.5 rounded-lg font-bold bg-[#0f4a37] text-white disabled:opacity-50 cursor-pointer">Confirm and run</button>
           </span>
         )}
       </div>
@@ -278,7 +278,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
 
   return (
     <div className="flex flex-col">
-      <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-[#FDFBF7]">
+      <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-[#fbfcfb]">
         {sync.messages.length === 0 && (
           <div className="text-xs text-stone-600 leading-relaxed">
             Type what should be done in plain words: <em>"preview tomorrow"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
@@ -287,9 +287,9 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
         )}
         {sync.messages.map((m) => (
           <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
-            {m.role === 'assistant' && <Bot className="w-5 h-5 text-[#124E39] shrink-0 mt-0.5" />}
+            {m.role === 'assistant' && <Bot className="w-5 h-5 text-[#0f4a37] shrink-0 mt-0.5" />}
             <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${m.role === 'user'
-              ? 'bg-[#124E39] text-white rounded-br-sm' : 'bg-white border border-[#E6DFD5] text-stone-800 rounded-bl-sm'}`}>
+              ? 'bg-[#0f4a37] text-white rounded-br-sm' : 'bg-white border border-[#e2e8e5] text-stone-800 rounded-bl-sm'}`}>
               <div className="whitespace-pre-wrap break-words">{m.text}</div>
               {m.proposal && (m.proposal.intent === 'sync' || m.proposal.intent === 'preview') && (
                 <ProposalCard m={m} running={sync.running} onConfirm={() => void sync.confirm(m.id)} onDismiss={() => void sync.dismiss(m.id)} />
@@ -302,7 +302,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
           </div>
         ))}
       </div>
-      <div className="border-t border-[#EFE9DF] p-2.5 space-y-2">
+      <div className="border-t border-[#eef2f0] p-2.5 space-y-2">
         <div className="flex flex-wrap gap-1.5">
           {EXAMPLES.map((x) => (
             <button key={x} type="button" onClick={() => void submit(x)} disabled={sending}
@@ -327,10 +327,10 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
             maxLength={2000}
             placeholder="Tell the sync what to do…"
             aria-label="Instruction for the sync"
-            className="flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#124E39]/40"
+            className="flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40"
           />
           <button type="submit" disabled={!draft.trim() || sending}
-            className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#124E39] text-[#EBD59E] disabled:opacity-40 cursor-pointer" aria-label="Send">
+            className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#0f4a37] text-white disabled:opacity-40 cursor-pointer" aria-label="Send">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
@@ -386,13 +386,32 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
     return (
       <div className="max-w-xl mx-auto mt-6 space-y-3">
         {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
+        {!config && (
+          <div className="rounded-2xl bg-white ring-1 ring-stone-200 shadow-xs p-8 text-center">
+            <div className="mx-auto w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-stone-500">
+              {sync.connected ? <Loader2 className="w-5 h-5 animate-spin" /> : <WifiOff className="w-5 h-5" />}
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-stone-950">
+              {sync.connected ? 'Connecting to the sync…' : 'The sync server is not reachable'}
+            </h2>
+            <p className="mt-1 text-sm text-stone-500 max-w-sm mx-auto">
+              {sync.connected
+                ? 'Loading the sync settings from the server.'
+                : 'Sync to NKERP runs on the app server. Check the internet connection, then reload this page. If it keeps happening, the server may need its NKERP and Google settings.'}
+            </p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-5 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 cursor-pointer">
+              <RefreshCcw className="w-4 h-4 text-stone-500" />
+              Reload
+            </button>
+          </div>
+        )}
         <Setup sync={sync} />
         {config?.keySource === 'env' && (
           <Card title="Sync to NKERP" icon={<KeyRound className="w-4 h-4" />}>
             <div className="p-4 text-xs text-stone-700 space-y-3">
               <p>The sync is protected with an access key. Enter it once on this device to open the log, history and instructions.</p>
               <button type="button" onClick={sync.requestKey}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] text-[#EBD59E] cursor-pointer">Enter access key</button>
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] text-white cursor-pointer">Enter access key</button>
             </div>
           </Card>
         )}
@@ -408,39 +427,39 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-extrabold text-[#124E39] flex items-center gap-2"><RefreshCcw className="w-5 h-5" />Sync to NKERP</h1>
-          <p className="text-[11px] text-stone-600">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3 pb-1">
+        <div className="min-w-0">
+          <h1 className="text-[22px] md:text-[26px] leading-tight font-semibold tracking-[-0.02em] text-stone-950">NKERP sync</h1>
+          <p className="mt-1 text-sm text-stone-500 max-w-2xl">
             Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Karbala and other tabs are never touched.
             {active ? ' Keep this page open while it runs.' : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <span title={sync.connected ? 'The sync is reachable on the server' : 'The sync is not reachable on the server'}
-            className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border ${sync.connected ? 'text-emerald-800 border-emerald-200 bg-emerald-50' : 'text-stone-600 border-stone-300 bg-stone-100'}`}>
+            className={`flex items-center gap-1.5 text-[13px] px-2 h-9 ${sync.connected ? 'text-emerald-700' : 'text-stone-500'}`}>
             {sync.connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{sync.connected ? 'Online' : 'Offline'}
           </span>
           {config && (
             <a href={config.sheetUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-emerald-900 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100">
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-200/60">
               <FileSpreadsheet className="w-3.5 h-3.5" />Sheet<ExternalLink className="w-3 h-3" />
             </a>
           )}
           {sync.running ? (
             <button type="button" onClick={sync.cancel} disabled={sync.stopping}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60 cursor-pointer">
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60 cursor-pointer">
               {sync.stopping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
               {sync.stopping ? 'Stopping…' : 'Stop after current save'}
             </button>
           ) : (
             <>
               <button type="button" onClick={() => void sync.startPreview()} disabled={sync.busy || !config?.configured}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 hover:bg-stone-100 disabled:opacity-50 cursor-pointer">
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 shadow-xs disabled:opacity-50 cursor-pointer">
                 <Eye className="w-3.5 h-3.5" />Preview
               </button>
               <button type="button" onClick={() => void sync.startSync()} disabled={sync.busy || !config?.configured}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#0E3C2C] hover:bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 disabled:opacity-50 cursor-pointer">
+                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs disabled:opacity-50 cursor-pointer">
                 {sync.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}Sync to NKERP
               </button>
             </>
@@ -464,7 +483,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
           icon={<Terminal className="w-4 h-4" />}
           right={<StatusPill status={shownJob.status} />}
         >
-          <div className="px-3.5 py-2.5 space-y-2 border-b border-[#EFE9DF]">
+          <div className="px-3.5 py-2.5 space-y-2 border-b border-[#eef2f0]">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-600">
               <span className="font-bold text-stone-800">{shownJob.options.apply ? 'Sync' : 'Preview (nothing saved)'}</span>
               <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(shownJob.startedAt)}{shownJob.durationMs ? ` · ${fmtDuration(shownJob.durationMs)}` : ''}</span>
@@ -481,7 +500,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                   {progress && <span>{progress.current} / {progress.total}</span>}
                 </div>
                 <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden mt-1">
-                  <div className={`h-full bg-[#124E39] transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
+                  <div className={`h-full bg-[#0f4a37] transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
                 </div>
               </div>
             )}
@@ -546,7 +565,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                 <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in the Sheet's Sync History yet.</li>
               )}
               {sync.history.map((h) => (
-                <li key={h.runId} className="px-3.5 py-2 border-t border-[#F3EEE6] first:border-t-0">
+                <li key={h.runId} className="px-3.5 py-2 border-t border-[#eef2f0] first:border-t-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                       <RefreshCcw className="w-3 h-3" />Sync <span className="font-normal text-stone-500">{h.runAt}</span>
@@ -561,7 +580,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                 </li>
               ))}
             </ul>
-            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-[#EFE9DF]">Previews save nothing, so they appear only on the device that ran them.</div>
+            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-[#eef2f0]">Previews save nothing, so they appear only on the device that ran them.</div>
           </Card>
         </div>
       </div>

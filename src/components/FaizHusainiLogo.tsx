@@ -7,6 +7,10 @@ interface FaizHusainiLogoProps {
   light?: boolean;
 }
 
+/**
+ * Brand lockup: the seal, the Latin wordmark and the Arabic name in shrine gold.
+ * `light` renders for dark (emerald) backgrounds.
+ */
 export const FaizHusainiLogo: React.FC<FaizHusainiLogoProps> = ({
   className = '',
   size = 'md',
@@ -16,58 +20,52 @@ export const FaizHusainiLogo: React.FC<FaizHusainiLogoProps> = ({
   const [imgError, setImgError] = useState(false);
 
   const sizeMap = {
-    sm: { icon: 'w-8 h-8', text: 'text-sm', sub: 'text-[9px]' },
-    md: { icon: 'w-10 h-10', text: 'text-base', sub: 'text-[10px]' },
-    lg: { icon: 'w-12 h-12', text: 'text-lg', sub: 'text-xs' },
-    xl: { icon: 'w-16 h-16', text: 'text-xl', sub: 'text-xs' },
+    sm: { icon: 'w-8 h-8', text: 'text-[15px]', ar: 'text-[15px]', sub: 'text-[11px]' },
+    md: { icon: 'w-10 h-10', text: 'text-base', ar: 'text-base', sub: 'text-xs' },
+    lg: { icon: 'w-12 h-12', text: 'text-lg', ar: 'text-lg', sub: 'text-xs' },
+    xl: { icon: 'w-16 h-16', text: 'text-xl', ar: 'text-xl', sub: 'text-sm' },
   };
-
-  const currentSize = sizeMap[size];
+  const s = sizeMap[size];
 
   return (
-    <div className={`flex items-center gap-2 sm:gap-3 select-none min-w-0 ${className}`}>
-      {/* Official FAIze / Faiz Husaini Logo Badge */}
-      <div
-        className={`${currentSize.icon} rounded-full p-0.5 flex items-center justify-center shadow-md bg-gradient-to-br from-[#124E39] via-[#0E3C2C] to-[#07241A] border-2 border-[#C5A059] relative overflow-hidden flex-shrink-0`}
-      >
+    <div className={`flex items-center gap-2.5 select-none min-w-0 ${className}`}>
+      <div className={`${s.icon} shrink-0 rounded-full p-[2px] bg-gradient-to-b from-gold-200 to-gold-600`}>
         {!imgError ? (
           <img
             src="/faize-logo.png"
-            alt="Faiz-e-Husaini Logo"
-            className="w-full h-full object-cover rounded-full"
-            onError={() => {
-              // Try fallback path if needed
-              setImgError(true);
-            }}
+            alt=""
+            className="w-full h-full object-cover rounded-full bg-brand-800"
+            onError={() => setImgError(true)}
           />
         ) : (
-          <div className="w-full h-full rounded-full bg-[#124E39] flex items-center justify-center text-[#EBD59E] font-bold text-xs">
+          <div className="w-full h-full rounded-full bg-brand-700 flex items-center justify-center text-gold-200 font-semibold text-xs">
             FH
           </div>
         )}
       </div>
 
-      {/* Typography */}
-      <div className="flex flex-col min-w-0">
-        <div className="flex items-center gap-1.5 sm:gap-2">
+      <div className="flex flex-col min-w-0 leading-none">
+        <div className="flex items-baseline gap-2 min-w-0">
           <span
-            className={`font-serif tracking-wider font-extrabold leading-tight truncate text-xs sm:${currentSize.text} ${
-              light ? 'text-[#124E39]' : 'text-[#0E3829]'
-            }`}
+            className={`${s.text} font-semibold tracking-[-0.01em] truncate ${light ? 'text-white' : 'text-stone-950'}`}
+            style={{ fontStretch: '92%' }}
           >
-            FAIZ-E-HUSAINI
+            Faiz-e-Husaini
           </span>
-          <span className="hidden sm:inline-block text-[10px] font-arabic px-1.5 py-0.5 rounded-md bg-[#124E39]/10 text-[#124E39] border border-[#124E39]/20 font-bold shrink-0">
+          <span
+            lang="ar"
+            dir="rtl"
+            className={`${s.ar} font-arabic font-bold shrink-0 ${light ? 'text-gold-200' : 'text-gold-600'}`}
+          >
             فيض حسيني
           </span>
         </div>
         {showSubtitle && (
-          <span className={`hidden sm:block ${currentSize.sub} text-stone-600 font-semibold tracking-tight truncate`}>
-            Zaereen Lodging & Accommodation Operations
+          <span className={`${s.sub} mt-1 truncate ${light ? 'text-brand-100' : 'text-stone-500'}`}>
+            Zaereen accommodation, Najaf
           </span>
         )}
       </div>
     </div>
   );
 };
-

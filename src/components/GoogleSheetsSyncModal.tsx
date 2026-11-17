@@ -418,8 +418,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative text-xs my-8 text-stone-800 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative text-xs my-8 text-stone-800 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-stone-500 hover:text-stone-800 p-1 rounded-lg hover:bg-stone-200/60 transition"
@@ -428,9 +428,9 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         </button>
 
         {/* Title */}
-        <div className="flex items-center gap-2 mb-1 text-[#124E39]">
+        <div className="flex items-center gap-2 mb-1 text-[#0f4a37]">
           <FileSpreadsheet className="w-5 h-5" />
-          <h3 className="text-base font-bold text-[#124E39]">
+          <h3 className="text-base font-bold text-[#0f4a37]">
             Google Sheets Integration & Sheet Management
           </h3>
         </div>
@@ -536,13 +536,13 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         </div>
 
         {/* SECTION 2: CURRENT ACTIVE SHEET STATUS */}
-        <div className="p-4 bg-white border border-[#E6DFD5] rounded-xl space-y-3 mb-4 shadow-2xs">
+        <div className="p-4 bg-white border border-[#e2e8e5] rounded-xl space-y-3 mb-4 shadow-2xs">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <div className="text-[10px] text-stone-500 uppercase font-bold tracking-wider">
                 Currently Active Google Sheet
               </div>
-              <div className="text-sm font-bold text-[#124E39] flex items-center gap-1.5 mt-0.5">
+              <div className="text-sm font-bold text-[#0f4a37] flex items-center gap-1.5 mt-0.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>{sheetsConfig.spreadsheetName || DEFAULT_ATTACHED_SHEET_NAME}</span>
                 {isCurrentDefaultAttachedSheet && (
@@ -616,10 +616,10 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 type="button"
                 onClick={handlePushToSheet}
                 disabled={isProcessing || isPulling}
-                className="w-full py-2.5 px-3 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
+                className="w-full py-2.5 px-3 bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
                 title="Push latest app state, Zaereen grid, and room allotments to Google Sheet"
               >
-                <UploadCloud className={`w-4 h-4 text-[#EBD59E] ${isProcessing ? 'animate-pulse' : ''}`} />
+                <UploadCloud className={`w-4 h-4 text-[#ecdcae] ${isProcessing ? 'animate-pulse' : ''}`} />
                 <span>{isProcessing ? 'Pushing to Sheet...' : 'Push to Sheet (Export App to Google Sheet)'}</span>
               </button>
             ) : (
@@ -637,7 +637,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               className="w-full py-2.5 px-3 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition text-xs shadow-sm cursor-pointer"
               title="Pull and import all data from Google Sheet with confirmation"
             >
-              <DownloadCloud className={`w-4 h-4 text-[#EBD59E] ${isPulling ? 'animate-bounce' : ''}`} />
+              <DownloadCloud className={`w-4 h-4 text-[#ecdcae] ${isPulling ? 'animate-bounce' : ''}`} />
               <span>Pull from Sheet (Import Allotments, Rooms & Zaereen)</span>
             </button>
           </div>
@@ -665,7 +665,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit..."
               value={customSheetInput}
               onChange={(e) => setCustomSheetInput(e.target.value)}
-              className="w-full bg-[#FAF7F2] text-stone-900 px-3 py-2 rounded-lg border border-stone-300 text-xs focus:outline-none focus:border-emerald-700 font-mono"
+              className="w-full bg-[#f6f8f7] text-stone-900 px-3 py-2 rounded-lg border border-stone-300 text-xs focus:outline-none focus:border-emerald-700 font-mono"
             />
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -684,10 +684,10 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                 type="button"
                 onClick={() => handleSwitchGoogleSheet()}
                 disabled={isProcessing || !customSheetInput.trim()}
-                className="px-4 py-1.5 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-white rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer text-xs"
+                className="px-4 py-1.5 bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer text-xs"
                 title="Save and switch active sheet to this URL"
               >
-                <Check className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <Check className="w-3.5 h-3.5 text-[#ecdcae]" />
                 <span>{isProcessing ? 'Switching Sheet...' : 'Switch to this Sheet'}</span>
               </button>
 
@@ -725,9 +725,9 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             {!user ? (
               <button
                 onClick={onGoogleSignIn}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#124E39] hover:bg-[#0E3C2C] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
               >
-                <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <LogIn className="w-3.5 h-3.5 text-[#ecdcae]" />
                 <span>Sign In with Google</span>
               </button>
             ) : (
@@ -745,7 +745,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             <button
               onClick={handleCreateNewSheet}
               disabled={isProcessing || !user}
-              className="px-2.5 py-1 bg-white hover:bg-stone-100 text-[#124E39] border border-stone-300 disabled:opacity-50 rounded font-bold text-[11px] transition flex items-center gap-1"
+              className="px-2.5 py-1 bg-white hover:bg-stone-100 text-[#0f4a37] border border-stone-300 disabled:opacity-50 rounded font-bold text-[11px] transition flex items-center gap-1"
             >
               <Plus className="w-3 h-3 text-emerald-700" />
               <span>Create New Sheet in Drive</span>
@@ -757,8 +757,8 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         <div className="pt-2 border-t border-stone-200 mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1.5">
-              <Tag className="w-4 h-4 text-[#124E39]" />
-              <span className="font-bold text-[#124E39] text-xs">
+              <Tag className="w-4 h-4 text-[#0f4a37]" />
+              <span className="font-bold text-[#0f4a37] text-xs">
                 Zaereen Categories ({categories.length}):
               </span>
             </div>
@@ -789,9 +789,9 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           <div className="pt-2 border-t border-stone-200 mb-4">
             <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
               <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-[#124E39] shrink-0" />
+                <Building2 className="w-4 h-4 text-[#0f4a37] shrink-0" />
                 <div>
-                  <div className="font-bold text-[#124E39] text-xs">
+                  <div className="font-bold text-[#0f4a37] text-xs">
                     Hotel Buildings & Rooms Inventory ({rooms.length} Rooms)
                   </div>
                   <div className="text-[11px] text-stone-600">
@@ -805,7 +805,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                   onClose();
                   onOpenAddBuildingRoomsModal();
                 }}
-                className="px-3 py-1.5 rounded-lg bg-[#124E39] text-[#EBD59E] hover:bg-[#0E3C2C] text-xs font-bold transition flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#0f4a37] text-white hover:bg-[#0b3a2b] text-xs font-bold transition flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Manage Rooms</span>

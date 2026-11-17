@@ -305,18 +305,18 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
+      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
         
         {/* Top Header */}
-        <div className="bg-[#124E39] text-white p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
+        <div className="bg-[#0f4a37] text-white p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Building2 className="w-5 h-5 text-[#EBD59E]" />
+              <Building2 className="w-5 h-5 text-[#ecdcae]" />
               <h2 className="text-base sm:text-lg font-bold font-serif tracking-wide text-white">
                 Add Hotel Buildings & Rooms
               </h2>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#EBD59E]/20 text-[#EBD59E] border border-[#EBD59E]/40 font-semibold">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#ecdcae]/20 text-[#ecdcae] border border-[#ecdcae]/40 font-semibold">
                 Inventory Setup
               </span>
             </div>
@@ -342,11 +342,11 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               onClick={() => setActiveTab('manual')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'manual'
-                  ? 'bg-[#124E39] text-white shadow-xs'
+                  ? 'bg-[#0f4a37] text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
-              <Plus className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
               <span>Add Manually</span>
             </button>
             <button
@@ -354,7 +354,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               onClick={() => setActiveTab('sheet')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'sheet'
-                  ? 'bg-[#124E39] text-white shadow-xs'
+                  ? 'bg-[#0f4a37] text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
@@ -364,7 +364,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
           </div>
 
           <div className="text-xs text-stone-600 font-semibold hidden sm:block">
-            Current Inventory: <strong className="text-[#124E39]">{existingRooms.length} Rooms</strong> across {existingBuildingNames.length} Building(s)
+            Current Inventory: <strong className="text-[#0f4a37]">{existingRooms.length} Rooms</strong> across {existingBuildingNames.length} Building(s)
           </div>
         </div>
 
@@ -387,7 +387,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       onClick={() => setManualMode('single')}
                       className={`px-3 py-1 rounded-md transition cursor-pointer ${
                         manualMode === 'single'
-                          ? 'bg-[#124E39] text-white font-bold shadow-2xs'
+                          ? 'bg-[#0f4a37] text-white font-bold shadow-2xs'
                           : 'text-stone-700 hover:text-stone-900'
                       }`}
                     >
@@ -398,7 +398,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       onClick={() => setManualMode('batch')}
                       className={`px-3 py-1 rounded-md transition cursor-pointer ${
                         manualMode === 'batch'
-                          ? 'bg-[#124E39] text-white font-bold shadow-2xs'
+                          ? 'bg-[#0f4a37] text-white font-bold shadow-2xs'
                           : 'text-stone-700 hover:text-stone-900'
                       }`}
                     >
@@ -416,7 +416,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4 text-[#124E39]" />
+                    <Building2 className="w-4 h-4 text-[#0f4a37]" />
                     <span>Target Hotel / Building:</span>
                   </label>
                   <div className="flex items-center gap-2 text-xs">
@@ -426,7 +426,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         name="buildingType"
                         checked={buildingType === 'existing'}
                         onChange={() => setBuildingType('existing')}
-                        className="text-[#124E39] focus:ring-[#124E39]"
+                        className="text-[#0f4a37] focus:ring-[#0f4a37]"
                       />
                       <span>Existing Building</span>
                     </label>
@@ -436,9 +436,9 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         name="buildingType"
                         checked={buildingType === 'new'}
                         onChange={() => setBuildingType('new')}
-                        className="text-[#124E39] focus:ring-[#124E39]"
+                        className="text-[#0f4a37] focus:ring-[#0f4a37]"
                       />
-                      <span className="font-bold text-[#124E39]">+ Create New Building</span>
+                      <span className="font-bold text-[#0f4a37]">+ Create New Building</span>
                     </label>
                   </div>
                 </div>
@@ -452,7 +452,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         onClick={() => setSelectedBuildingName(bldg)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
                           selectedBuildingName === bldg
-                            ? 'bg-[#124E39] text-white border-[#124E39] shadow-xs'
+                            ? 'bg-[#0f4a37] text-white border-[#0f4a37] shadow-xs'
                             : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
                         }`}
                       >
@@ -467,7 +467,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       placeholder="e.g. Al-Rawda Hotel, Najaf Grand, Building C..."
                       value={newBuildingNameInput}
                       onChange={(e) => setNewBuildingNameInput(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-stone-50 border border-stone-300 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full px-3 py-2 rounded-xl bg-stone-50 border border-stone-300 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                     />
                     <p className="text-[11px] text-stone-500 mt-1">
                       This will create a brand new hotel building in the system.
@@ -479,7 +479,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               {/* Single Room Form */}
               {manualMode === 'single' ? (
                 <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-4">
-                  <h4 className="text-xs font-bold text-[#124E39] uppercase tracking-wider pb-1 border-b border-stone-100">
+                  <h4 className="text-xs font-bold text-[#0f4a37] uppercase tracking-wider pb-1 border-b border-stone-100">
                     Room Specifications
                   </h4>
 
@@ -491,7 +491,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         placeholder="e.g. 105, 201, G1"
                         value={singleRoomNumber}
                         onChange={(e) => setSingleRoomNumber(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                     <div>
@@ -506,7 +506,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                           setSingleFloor(fl);
                           setSingleFloorLabel(`Floor ${fl}`);
                         }}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                     <div>
@@ -516,7 +516,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         placeholder="e.g. Floor 1, Ground, Mezzanine"
                         value={singleFloorLabel}
                         onChange={(e) => setSingleFloorLabel(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                   </div>
@@ -530,7 +530,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         max="12"
                         value={singleCapacity}
                         onChange={(e) => setSingleCapacity(parseInt(e.target.value, 10) || 3)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                     <div>
@@ -541,7 +541,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         max="5"
                         value={singleBuffer}
                         onChange={(e) => setSingleBuffer(parseInt(e.target.value, 10) || 0)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                     <div>
@@ -549,7 +549,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={singleToiletType}
                         onChange={(e) => setSingleToiletType(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Western Toilet">Western Toilet</option>
                         <option value="Indian Toilet">Indian Toilet</option>
@@ -560,7 +560,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={singleBedType}
                         onChange={(e) => setSingleBedType(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Single Beds">Single Beds</option>
                         <option value="Double Bed">Double Bed</option>
@@ -576,7 +576,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={singleCategory}
                         onChange={(e) => setSingleCategory(e.target.value as RoomCategory)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Category B (Standard)">Category B (Standard)</option>
                         <option value="Category A (Nizaam)">Category A (Nizaam)</option>
@@ -588,7 +588,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={singleStatus}
                         onChange={(e) => setSingleStatus(e.target.value as RoomStatus)}
-                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="available">Available (Vacant Ready)</option>
                         <option value="blocked">Blocked (Hold)</option>
@@ -600,7 +600,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               ) : (
                 /* Batch Rooms Form */
                 <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-4">
-                  <h4 className="text-xs font-bold text-[#124E39] uppercase tracking-wider pb-1 border-b border-stone-100 flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-[#0f4a37] uppercase tracking-wider pb-1 border-b border-stone-100 flex items-center justify-between">
                     <span>Batch Room Generator</span>
                     <span className="text-[11px] text-stone-500 font-normal">
                       Will generate <strong className="text-stone-900">{previewManualRooms.length} Rooms</strong>
@@ -616,7 +616,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                           name="batchMethod"
                           checked={batchMethod === 'range'}
                           onChange={() => setBatchMethod('range')}
-                          className="text-[#124E39] focus:ring-[#124E39]"
+                          className="text-[#0f4a37] focus:ring-[#0f4a37]"
                         />
                         <span>Sequential Range (e.g. 101 to 110)</span>
                       </label>
@@ -626,7 +626,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                           name="batchMethod"
                           checked={batchMethod === 'list'}
                           onChange={() => setBatchMethod('list')}
-                          className="text-[#124E39] focus:ring-[#124E39]"
+                          className="text-[#0f4a37] focus:ring-[#0f4a37]"
                         />
                         <span>Custom List (Comma / Space separated)</span>
                       </label>
@@ -640,7 +640,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                             type="number"
                             value={rangeFrom}
                             onChange={(e) => setRangeFrom(parseInt(e.target.value, 10) || 101)}
-                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                           />
                         </div>
                         <div>
@@ -649,7 +649,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                             type="number"
                             value={rangeTo}
                             onChange={(e) => setRangeTo(parseInt(e.target.value, 10) || 110)}
-                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                            className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                           />
                         </div>
                       </div>
@@ -663,7 +663,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                           value={roomListInput}
                           onChange={(e) => setRoomListInput(e.target.value)}
                           placeholder="e.g. 101, 102, 103, 104, 201, 202, 203, 204..."
-                          className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold text-xs focus:ring-1 focus:ring-[#124E39]"
+                          className="w-full px-3 py-1.5 rounded-lg border border-stone-300 font-bold text-xs focus:ring-1 focus:ring-[#0f4a37]"
                         />
                       </div>
                     )}
@@ -676,7 +676,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={batchFloorMode}
                         onChange={(e) => setBatchFloorMode(e.target.value as any)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="auto">Auto (from 1st digit: 101➔Fl 1)</option>
                         <option value="fixed">Fixed Floor</option>
@@ -692,7 +692,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                           max="25"
                           value={batchFixedFloor}
                           onChange={(e) => setBatchFixedFloor(parseInt(e.target.value, 10) || 1)}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                         />
                       </div>
                     )}
@@ -705,7 +705,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         max="12"
                         value={batchCapacity}
                         onChange={(e) => setBatchCapacity(parseInt(e.target.value, 10) || 3)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
 
@@ -717,7 +717,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         max="5"
                         value={batchBuffer}
                         onChange={(e) => setBatchBuffer(parseInt(e.target.value, 10) || 0)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       />
                     </div>
                   </div>
@@ -728,7 +728,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={batchToiletType}
                         onChange={(e) => setBatchToiletType(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Western Toilet">Western Toilet</option>
                         <option value="Indian Toilet">Indian Toilet</option>
@@ -740,7 +740,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={batchBedType}
                         onChange={(e) => setBatchBedType(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Single Beds">Single Beds</option>
                         <option value="Double Bed">Double Bed</option>
@@ -754,7 +754,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <select
                         value={batchCategory}
                         onChange={(e) => setBatchCategory(e.target.value as RoomCategory)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#124E39]"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-bold focus:ring-1 focus:ring-[#0f4a37]"
                       >
                         <option value="Category B (Standard)">Category B (Standard)</option>
                         <option value="Category A (Nizaam)">Category A (Nizaam)</option>
@@ -766,13 +766,13 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               )}
 
               {/* Live Preview Bar */}
-              <div className="bg-[#FAF7F2] p-3 rounded-xl border border-[#E6DFD5] space-y-2">
+              <div className="bg-[#f6f8f7] p-3 rounded-xl border border-[#e2e8e5] space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-stone-800">
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                     <span>Live Preview of Rooms to be Added:</span>
                   </span>
-                  <span className="text-[#124E39] bg-emerald-100 px-2.5 py-0.5 rounded-full font-mono">
+                  <span className="text-[#0f4a37] bg-emerald-100 px-2.5 py-0.5 rounded-full font-mono">
                     {previewManualRooms.length} Room(s) for {activeBuildingName || 'Building'}
                   </span>
                 </div>
@@ -809,7 +809,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                   type="button"
                   onClick={handleSaveManualRooms}
                   disabled={previewManualRooms.length === 0}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-[#EBD59E] shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Save {previewManualRooms.length} Room(s) to Inventory</span>
@@ -827,7 +827,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               {/* Google Sheet Sync Explainer */}
               <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs">
                 <div>
-                  <div className="flex items-center gap-2 font-bold text-sm text-[#124E39]">
+                  <div className="flex items-center gap-2 font-bold text-sm text-[#0f4a37]">
                     <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
                     <span>Sync Hotel Buildings & Rooms from Google Sheets</span>
                   </div>
@@ -853,7 +853,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       <button
                         type="button"
                         onClick={handleCopySample}
-                        className="flex items-center gap-1 text-[11px] font-bold text-[#124E39] hover:text-[#0E3C2C] bg-stone-100 hover:bg-stone-200 px-2 py-1 rounded transition cursor-pointer"
+                        className="flex items-center gap-1 text-[11px] font-bold text-[#0f4a37] hover:text-[#0b3a2b] bg-stone-100 hover:bg-stone-200 px-2 py-1 rounded transition cursor-pointer"
                       >
                         {copiedSample ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                         <span>{copiedSample ? 'Copied CSV!' : 'Copy Sample CSV'}</span>
@@ -870,7 +870,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                   </div>
                   <div className="overflow-x-auto border border-stone-200 rounded-lg">
                     <table className="w-full text-left text-[11px] border-collapse">
-                      <thead className="bg-stone-100 text-stone-700 font-bold">
+                      <thead className="bg-stone-100 text-stone-700 font-medium">
                         <tr>
                           <th className="p-1.5 border-b">Building</th>
                           <th className="p-1.5 border-b">Room</th>
@@ -942,7 +942,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         const url = sheetsConfig.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`;
                         setSheetUrlInput(url);
                       }}
-                      className="px-2.5 py-1 rounded bg-[#124E39] text-[#EBD59E] font-bold text-[11px] hover:bg-[#0E3C2C] transition shrink-0 cursor-pointer shadow-2xs"
+                      className="px-2.5 py-1 rounded bg-[#0f4a37] text-white font-bold text-[11px] hover:bg-[#0b3a2b] transition shrink-0 cursor-pointer shadow-2xs"
                     >
                       Use Connected Sheet
                     </button>
@@ -958,18 +958,18 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     value={sheetUrlInput}
                     onChange={(e) => setSheetUrlInput(e.target.value)}
                     placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs font-mono font-medium focus:ring-2 focus:ring-[#124E39] focus:outline-none"
+                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs font-mono font-medium focus:ring-2 focus:ring-[#0f4a37] focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleFetchRoomsFromSheet}
                     disabled={isFetchingSheet}
-                    className="w-full sm:w-auto px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-50 text-[#EBD59E] shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="w-full sm:w-auto px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     {isFetchingSheet ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Sparkles className="w-4 h-4 text-[#EBD59E]" />
+                      <Sparkles className="w-4 h-4 text-[#ecdcae]" />
                     )}
                     <span>{isFetchingSheet ? 'Fetching...' : 'Fetch & Preview Rooms'}</span>
                   </button>
@@ -990,7 +990,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span className="font-bold text-xs text-stone-900">
-                        Parsed from Google Sheet: <strong className="text-[#124E39]">{parsedSheetRooms.length} Rooms</strong>
+                        Parsed from Google Sheet: <strong className="text-[#0f4a37]">{parsedSheetRooms.length} Rooms</strong>
                       </span>
                       <span className="text-[11px] font-semibold text-stone-500">
                         across {Array.from(new Set(parsedSheetRooms.map((r) => r.building))).length} Building(s):{' '}
@@ -1015,7 +1015,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                   {/* Room Preview Table */}
                   <div className="max-h-60 overflow-y-auto border border-stone-200 rounded-lg">
                     <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#124E39] text-white uppercase text-[10px] font-bold sticky top-0">
+                      <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[10px] font-medium sticky top-0">
                         <tr>
                           <th className="py-2 px-2.5">Building</th>
                           <th className="py-2 px-2.5">Room #</th>
@@ -1038,7 +1038,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                               <td className="py-1.5 px-2.5 font-bold text-stone-900">
                                 {rm.building}
                               </td>
-                              <td className="py-1.5 px-2.5 font-mono font-black text-[#124E39]">
+                              <td className="py-1.5 px-2.5 font-mono font-black text-[#0f4a37]">
                                 Room {rm.roomNumber}
                               </td>
                               <td className="py-1.5 px-2.5 text-stone-600">
@@ -1085,9 +1085,9 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     <button
                       type="button"
                       onClick={handleConfirmSheetSync}
-                      className="px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
+                      <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
                       <span>Confirm & Sync {parsedSheetRooms.length} Rooms to Inventory</span>
                     </button>
                   </div>

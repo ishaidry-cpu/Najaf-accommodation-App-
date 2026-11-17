@@ -1,10 +1,154 @@
 @import "tailwindcss";
 
+/*
+ * Faiz-e-Husaini design tokens
+ * Najaf emerald + shrine gold on a cool porcelain canvas. Gold is reserved for the
+ * brand mark and the active-navigation marker; everything else stays quiet.
+ */
+@theme {
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Data labels (ITS, room no., tour IDs) use the UI face with tabular figures, not a code font. */
+  --font-mono: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Amiri", "Noto Naskh Arabic", serif;
+
+  /* Calmer weight scale: heavy weights read as shouting in dense tables. */
+  --font-weight-semibold: 560;
+  --font-weight-bold: 620;
+  --font-weight-extrabold: 660;
+  --font-weight-black: 700;
+
+  /* Cool, faintly green neutrals replace the warm stone scale app-wide. */
+  --color-stone-50: #f6f8f7;
+  --color-stone-100: #eef2f0;
+  --color-stone-200: #e2e8e5;
+  --color-stone-300: #cdd5d1;
+  --color-stone-400: #9aa6a0;
+  --color-stone-500: #6d7a74;
+  --color-stone-600: #535f59;
+  --color-stone-700: #3d4843;
+  --color-stone-800: #28322d;
+  --color-stone-900: #18211d;
+  --color-stone-950: #0e1512;
+
+  /* Status greens and ambers retuned toward the brand emerald and shrine gold. */
+  --color-emerald-50: #eef7f2;
+  --color-emerald-100: #d8eee2;
+  --color-emerald-200: #b4dcc7;
+  --color-emerald-300: #86c3a6;
+  --color-emerald-400: #55a682;
+  --color-emerald-500: #2f8a65;
+  --color-emerald-600: #1f7253;
+  --color-emerald-700: #175c43;
+  --color-emerald-800: #124a37;
+  --color-emerald-900: #0e3c2d;
+  --color-emerald-950: #082419;
+
+  --color-amber-50: #fbf7ec;
+  --color-amber-100: #f6ecd0;
+  --color-amber-200: #eedaa5;
+  --color-amber-300: #e3c274;
+  --color-amber-400: #d6a648;
+  --color-amber-500: #c48a2a;
+  --color-amber-600: #a86f1f;
+  --color-amber-700: #87561c;
+  --color-amber-800: #6d451b;
+  --color-amber-900: #5a3a19;
+  --color-amber-950: #331e0a;
+
+  /* Brand */
+  --color-brand-50: #eef6f2;
+  --color-brand-100: #d7ebe1;
+  --color-brand-600: #136048;
+  --color-brand-700: #0f4a37;
+  --color-brand-800: #0b3a2b;
+  --color-gold-200: #ecdcae;
+  --color-gold-400: #c9a85a;
+  --color-gold-600: #a6853a;
+
+  --color-canvas: #f3f6f4;
+  --color-line: #e2e8e5;
+  --color-ink: #16201b;
+
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.875rem;
+
+  /* One soft, low elevation family instead of heavy drop shadows. */
+  --shadow-2xs: 0 1px 0 rgb(16 32 26 / 0.03);
+  --shadow-xs: 0 1px 2px rgb(16 32 26 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(16 32 26 / 0.04), 0 1px 1px rgb(16 32 26 / 0.03);
+  --shadow-md: 0 2px 6px -1px rgb(16 32 26 / 0.07), 0 1px 2px rgb(16 32 26 / 0.04);
+  --shadow-lg: 0 8px 20px -6px rgb(16 32 26 / 0.12), 0 2px 4px rgb(16 32 26 / 0.04);
+  --shadow-xl: 0 16px 32px -10px rgb(16 32 26 / 0.16), 0 3px 6px rgb(16 32 26 / 0.05);
+  --shadow-2xl: 0 28px 60px -18px rgb(16 32 26 / 0.28), 0 4px 10px rgb(16 32 26 / 0.06);
+}
+
 @layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    background-color: #FAF7F2;
-    color: #1A2E26;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+
+  input, select, textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: var(--color-brand-700);
+    color: var(--color-gold-200);
+  }
+}
+
+/* Unlayered on purpose: these must win over Tailwind utilities. */
+/* Numbers line up in tables and counters. */
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* On screen, labels read in sentence/title case. Printed slips keep their caps. */
+.uppercase {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.reception-slip-modal-card .uppercase,
+#accounts-slip-print-area .uppercase,
+.keep-caps {
+  text-transform: uppercase;
+}
+
+.tracking-wider,
+.tracking-widest {
+  letter-spacing: 0.01em;
+}
+
+.app-scroll-x {
+  scrollbar-width: none;
+}
+.app-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

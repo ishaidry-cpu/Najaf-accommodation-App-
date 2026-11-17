@@ -191,6 +191,9 @@ export default function App() {
     totalZaereen: number;
   } | null>(null);
   const promptedAllottedDatesRef = useRef<Set<string>>(new Set());
+  // Dates already fully allotted when the data first loads are not prompted again;
+  // only a date that becomes fully allotted during this session asks to sync.
+  const allottedDatesSeededRef = useRef(false);
 
   // Post-Excel upload sync prompt
   const [afterExcelSyncPrompt, setAfterExcelSyncPrompt] = useState<{
@@ -362,12 +365,16 @@ export default function App() {
       }
     });
 
+    const isSeeding = !allottedDatesSeededRef.current;
+    allottedDatesSeededRef.current = true;
+
     dateMap.forEach((resList, dateKey) => {
       if (resList.length > 0) {
         const allAllotted = resList.every((r) => !!r.roomNumber && r.roomNumber.trim() !== '');
         if (allAllotted) {
           if (!promptedAllottedDatesRef.current.has(dateKey)) {
             promptedAllottedDatesRef.current.add(dateKey);
+            if (isSeeding) return;
             setDateFullyAllottedSyncPrompt({
               date: dateKey,
               totalZaereen: resList.length,
@@ -1411,7 +1418,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#1A2E26] font-sans selection:bg-[#124E39] selection:text-[#EBD59E]">
+    <div className="min-h-screen bg-canvas text-ink font-sans">
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
@@ -1440,7 +1447,7 @@ export default function App() {
       <SyncAccessKeyModal sync={nkerpSync} />
 
       {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
-      <main className="w-full px-2.5 sm:px-4 lg:px-6 pt-3 pb-24 md:pb-12">
+      <main className="mx-auto w-full max-w-[1680px] px-3 sm:px-4 lg:px-6 pt-3 md:pt-5 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <Dashboard
             reservations={reservations}
@@ -1705,7 +1712,7 @@ export default function App() {
 
       {/* Allocation Notice Confirmation Modal (Same-day turnover hour difference & Room not vacant force allocation notice) */}
       {allocationNotice && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
@@ -1752,7 +1759,7 @@ export default function App() {
             </div>
 
             <p className="text-[11px] text-stone-500">
-              Operational confirmation: Clicking <strong>Okay — Allow Allocation</strong> will confirm this room allotment and update the hotel lodging grid.
+              Allotting will save this room and update the room grid.
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
@@ -1766,10 +1773,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={allocationNotice.onConfirm}
-                className="px-5 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
-                <span>Okay — Allow Allocation</span>
+                <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
+                <span>Allot anyway</span>
               </button>
             </div>
           </div>
@@ -1777,116 +1784,109 @@ export default function App() {
       )}
 
       {/* User request: "when the app is opened first ask to upload excel and then sync the document" */}
-      {isStartupPromptOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-[#FAF7F2] rounded-2xl border border-[#C5A059]/40 shadow-2xl max-w-lg w-full overflow-hidden text-stone-800">
-            <div className="bg-[#124E39] text-white p-5 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-white/10 border border-[#C5A059]/40 text-[#EBD59E]">
-                  <Upload className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-[#EBD59E] tracking-tight">
-                    Welcome to Faiz-e-Husaini Reception Desk
-                  </h3>
-                  <p className="text-xs text-emerald-100">
-                    Daily Accommodation & Lodging Operations
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsStartupPromptOpen(false);
-                  try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
-                }}
-                className="text-emerald-200 hover:text-white p-1 rounded-lg cursor-pointer"
-                title="Dismiss"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <p className="text-xs text-stone-700 leading-relaxed font-medium">
-                To begin your reception shift with the latest pilgrim data, please follow the initial sequence:
-              </p>
-
-              <div className="space-y-2.5">
-                {/* Step 1: Upload Excel */}
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                    1
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-xs text-stone-900">Upload Zaereen Excel Sheet</div>
-                    <div className="text-[11px] text-stone-600">
-                      Import your primary Excel sheet with ITS, Name, Family #, Tour ID, and dates.
-                    </div>
+      {isStartupPromptOpen && (() => {
+        const dismissStartup = () => {
+          setIsStartupPromptOpen(false);
+          try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
+        };
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-3 sm:p-4 animate-in fade-in"
+            onClick={dismissStartup}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="startup-title"
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 pt-6 pb-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 id="startup-title" className="text-xl font-semibold tracking-[-0.01em] text-stone-950">
+                      Start your shift
+                    </h3>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Bring in today's zaereen list, then sync it so everyone works from the same data.
+                    </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsStartupPromptOpen(false);
-                      try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
-                      setIsExcelUploadOpen(true);
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
+                    onClick={dismissStartup}
+                    className="-mr-2 -mt-1 p-2 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 cursor-pointer"
+                    aria-label="Close"
                   >
-                    <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
-                    <span>Upload Excel</span>
-                  </button>
-                </div>
-
-                {/* Step 2: Sync Document */}
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-white border border-stone-200 shadow-2xs">
-                  <div className="w-6 h-6 rounded-full bg-emerald-700 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                    2
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-xs text-stone-900">Sync with Google Sheets</div>
-                    <div className="text-[11px] text-stone-600">
-                      Sync and update the document with latest room availability and pilgrim roster.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsStartupPromptOpen(false);
-                      try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
-                      handleQuickSync();
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-stone-50 text-[#124E39] border border-emerald-400 shadow-2xs transition cursor-pointer flex items-center gap-1 shrink-0"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5 text-[#124E39]" />
-                    <span>Sync Document</span>
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-stone-200 text-xs">
-                <span className="text-[11px] text-stone-500">
-                  {reservations.length} Zaereen loaded • {rooms.length} Rooms available
+              <ol className="px-3 py-3 space-y-1">
+                {[
+                  {
+                    n: 1,
+                    title: 'Upload the zaereen Excel',
+                    body: 'ITS, name, family, tour ID and dates.',
+                    action: 'Upload',
+                    icon: Upload,
+                    primary: true,
+                    onClick: () => { dismissStartup(); setIsExcelUploadOpen(true); },
+                  },
+                  {
+                    n: 2,
+                    title: 'Sync with Google Sheets',
+                    body: 'Update the sheet with rooms and the latest list.',
+                    action: 'Sync',
+                    icon: RefreshCw,
+                    primary: false,
+                    onClick: () => { dismissStartup(); handleQuickSync(); },
+                  },
+                ].map((step) => (
+                  <li key={step.n} className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-stone-50">
+                    <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center justify-center shrink-0 tabular-nums">
+                      {step.n}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-stone-900">{step.title}</div>
+                      <div className="text-[13px] text-stone-500">{step.body}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={step.onClick}
+                      className={`h-9 px-3 rounded-lg text-[13px] font-medium flex items-center gap-1.5 shrink-0 cursor-pointer transition ${
+                        step.primary
+                          ? 'bg-brand-700 hover:bg-brand-800 text-white shadow-xs'
+                          : 'bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50'
+                      }`}
+                    >
+                      <step.icon className={`w-4 h-4 ${step.primary ? 'text-gold-200' : 'text-stone-500'}`} />
+                      {step.action}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="flex items-center justify-between gap-3 px-6 py-4 bg-stone-50 border-t border-stone-100">
+                <span className="text-[13px] text-stone-500 tabular-nums">
+                  {reservations.length} zaereen, {rooms.length} rooms loaded
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsStartupPromptOpen(false);
-                    try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
-                  }}
-                  className="px-3 py-1.5 rounded-lg font-semibold text-stone-700 hover:text-stone-950 hover:bg-stone-200/60 transition cursor-pointer"
+                  onClick={dismissStartup}
+                  className="text-[13px] font-medium text-stone-700 hover:text-stone-950 cursor-pointer"
                 >
-                  Continue to Lodging Grid
+                  Skip for now
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again" */}
       {dateFullyAllottedSyncPrompt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
@@ -1895,10 +1895,10 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-stone-900 text-base leading-tight">
-                    All Rooms Allotted for {dateFullyAllottedSyncPrompt.date}
+                    Rooms allotted for {dateFullyAllottedSyncPrompt.date}
                   </h3>
                   <p className="text-xs text-stone-500">
-                    {dateFullyAllottedSyncPrompt.totalZaereen} Zaereen arriving on this date are 100% allotted
+                    All {dateFullyAllottedSyncPrompt.totalZaereen} zaereen arriving that day have rooms
                   </p>
                 </div>
               </div>
@@ -1912,8 +1912,7 @@ export default function App() {
             </div>
 
             <p className="text-xs text-stone-700 leading-relaxed">
-              All zaereen for arrival date <strong>{dateFullyAllottedSyncPrompt.date}</strong> now have room allotments confirmed!
-              Would you like to sync now with Google Sheets so that when the app is opened again the list is updated and ready to be synced again?
+              Every zair arriving on <strong>{dateFullyAllottedSyncPrompt.date}</strong> now has a room. Sync with Google Sheets now so the sheet shows these rooms next time the app opens.
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
@@ -1930,10 +1929,10 @@ export default function App() {
                   setDateFullyAllottedSyncPrompt(null);
                   handleQuickSync();
                 }}
-                className="px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>Sync with Google Sheet</span>
+                <RefreshCw className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <span>Sync now</span>
               </button>
             </div>
           </div>
@@ -1942,7 +1941,7 @@ export default function App() {
 
       {/* Post-Excel upload follow-up sync prompt */}
       {afterExcelSyncPrompt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
@@ -1951,10 +1950,10 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="font-bold text-stone-900 text-base leading-tight">
-                    Excel Sheet Imported Successfully
+                    Excel imported
                   </h3>
                   <p className="text-xs text-stone-500">
-                    {afterExcelSyncPrompt.count} Zaereen records in database
+                    {afterExcelSyncPrompt.count} zaereen saved
                   </p>
                 </div>
               </div>
@@ -1968,8 +1967,7 @@ export default function App() {
             </div>
 
             <p className="text-xs text-stone-700 leading-relaxed">
-              Your Excel file was imported and saved to the backend database.
-              Would you like to sync this document with Google Sheets now so that your changes are backed up and updated?
+              The list is saved. Sync with Google Sheets now to back it up and share it.
             </p>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
@@ -1978,7 +1976,7 @@ export default function App() {
                 onClick={() => setAfterExcelSyncPrompt(null)}
                 className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
               >
-                Skip / Later
+                Later
               </button>
               <button
                 type="button"
@@ -1986,10 +1984,10 @@ export default function App() {
                   setAfterExcelSyncPrompt(null);
                   handleQuickSync();
                 }}
-                className="px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>Sync with Google Sheet</span>
+                <RefreshCw className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <span>Sync now</span>
               </button>
             </div>
           </div>
@@ -1998,16 +1996,17 @@ export default function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 flex items-center gap-2 px-4 py-3 bg-[#124E39] border border-[#C5A059]/50 text-white rounded-xl shadow-2xl text-xs animate-in fade-in slide-in-from-bottom-2">
+        <div role="status" className="fixed bottom-20 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-xl shadow-2xl text-[13px] leading-snug animate-in fade-in slide-in-from-bottom-2">
           {toast.type === 'error' ? (
-            <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
+            <AlertCircle className="w-4 h-4 mt-px text-rose-300 shrink-0" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
+            <CheckCircle2 className="w-4 h-4 mt-px text-emerald-300 shrink-0" />
           )}
-          <span className="font-medium">{toast.message}</span>
+          <span className="flex-1">{toast.message}</span>
           <button
             onClick={() => setToast(null)}
-            className="ml-2 text-stone-300 hover:text-white p-0.5"
+            aria-label="Dismiss"
+            className="-mr-1 -mt-0.5 p-1 rounded text-stone-400 hover:text-white cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>

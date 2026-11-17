@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus, UserRole } from '../types';
 import { normalizeBuildingName } from '../services/storage';
+import { PageHeader, btn } from './ui';
 
 interface CategoryUpgradeViewProps {
   reservations: Reservation[];
@@ -220,9 +221,9 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
       return <ArrowUpDown className="w-3.5 h-3.5 text-emerald-200/50 inline ml-1 opacity-40 hover:opacity-100" />;
     }
     return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-[#EBD59E] inline ml-1 font-bold" />
+      <ArrowUp className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
     ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-[#EBD59E] inline ml-1 font-bold" />
+      <ArrowDown className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
     );
   };
 
@@ -304,51 +305,35 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Top Banner */}
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#124E39]" />
-            <h2 className="text-lg font-bold text-[#124E39] tracking-tight">
-              Accommodation B ➔ A Shift Requests & Accounts Slips
-            </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold">
-              {totalShifts} Total Shift Requests
-            </span>
+      <PageHeader
+        title="B→A shifts"
+        description="Zaereen moving from category B to A. Record payment and print the accounts slip."
+        meta={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
+            <span><span className="font-semibold text-stone-950 tabular-nums">{totalShifts}</span> shifts</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /><span className="font-semibold text-stone-950 tabular-nums">{moneyGivenCount}</span> paid</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /><span className="font-semibold text-stone-950 tabular-nums">{moneyPendingCount}</span> awaiting payment</span>
           </div>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            All zaereen in this portal are Category A. When a new Zaer arrives from Category B and shifts to Category A, click below to add them and generate the official 7-detail Accounts Slip.
-          </p>
-        </div>
-
-        {/* Quick Actions & Counters */}
-        <div className="flex flex-wrap items-center gap-3">
-          {(onAddZaer || onToggleShiftToCategoryA) && (
+        }
+        actions={
+          (onAddZaer || onToggleShiftToCategoryA) ? (
             <button
+              type="button"
               onClick={() => {
                 setFormError('');
                 setIsShiftModalOpen(true);
               }}
-              className="min-h-[44px] sm:min-h-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
+              className={btn.primary}
             >
-              <Plus className="w-4 h-4 text-[#EBD59E]" />
-              <span>Shift New Zaer (B ➔ A)</span>
+              <Plus className="w-4 h-4 text-gold-200" />
+              Add B→A shift
             </button>
-          )}
-
-          <div className="bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-xl text-center">
-            <span className="text-[10px] uppercase font-bold text-emerald-800 block">Money Given: Yes</span>
-            <span className="text-lg font-extrabold text-emerald-950 tabular-nums">{moneyGivenCount}</span>
-          </div>
-          <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-center">
-            <span className="text-[10px] uppercase font-bold text-amber-800 block">Pending Accounts: No</span>
-            <span className="text-lg font-extrabold text-amber-950 tabular-nums">{moneyPendingCount}</span>
-          </div>
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-[#E6DFD5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white border border-[#e2e8e5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[240px]">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
@@ -357,14 +342,14 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
               placeholder="Search by ITS ID, Applicant Name, Family, Tour Ref..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
           <select
             value={moneyFilter}
             onChange={(e) => setMoneyFilter(e.target.value as any)}
-            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">All Payment States</option>
             <option value="Yes">Money Given: Yes (Received)</option>
@@ -374,7 +359,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           <select
             value={hotelFilter}
             onChange={(e) => setHotelFilter(e.target.value)}
-            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">All Hotels</option>
             {distinctBuildings.map((bldg) => (
@@ -390,7 +375,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           filteredAndSortedRequests.map((res) => {
             const isPaid = res.moneyGiven === 'Yes';
             return (
-              <div key={res.id} className="bg-white border border-[#E6DFD5] rounded-2xl p-3.5 shadow-2xs space-y-2.5">
+              <div key={res.id} className="bg-white border border-[#e2e8e5] rounded-2xl p-3.5 shadow-2xs space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="text-sm font-extrabold text-stone-950 truncate">{res.applicantName}</h3>
@@ -398,13 +383,13 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
                     </div>
                   </div>
-                  <span className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-[#124E39] tabular-nums">
+                  <span className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-[#0f4a37] tabular-nums">
                     {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : 'Unassigned'}
                   </span>
                 </div>
 
-                <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl px-3 py-2 text-xs space-y-1">
-                  <div className="font-mono font-bold text-[#124E39] break-all">
+                <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl px-3 py-2 text-xs space-y-1">
+                  <div className="font-mono font-bold text-[#0f4a37] break-all">
                     Tour: {res.tourRefNo || '—'}
                   </div>
                   <div className="text-stone-700 font-semibold">
@@ -425,14 +410,14 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         : 'bg-amber-600 hover:bg-amber-700 text-white'
                     }`}
                   >
-                    {isPaid ? <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" /> : <Clock className="w-4 h-4" />}
+                    {isPaid ? <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" /> : <Clock className="w-4 h-4" />}
                     <span>{isPaid ? 'Money: Yes' : 'Money: Pending'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => onOpenAccountsSlip(res)}
-                    className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition cursor-pointer"
+                    className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#f6f8f7] hover:bg-stone-200/80 text-[#0f4a37] border border-[#0f4a37]/30 transition cursor-pointer"
                   >
                     <FileText className="w-4 h-4" />
                     <span>Request Slip</span>
@@ -453,21 +438,21 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
             );
           })
         ) : (
-          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-8 text-center text-stone-500 text-sm">
+          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-8 text-center text-stone-500 text-sm">
             No accommodation B ➔ A shift requests found.
           </div>
         )}
       </div>
 
       {/* Requests Table (Desktop View) */}
-      <div className="hidden md:block bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden">
+      <div className="hidden md:block bg-white border border-[#e2e8e5] rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm md:text-base border-collapse">
-            <thead className="bg-[#124E39] text-white uppercase text-xs tracking-wider font-bold select-none">
+            <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-xs tracking-wider font-medium select-none">
               <tr>
                 <th
                   onClick={() => handleSort('itsId')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[120px]"
+                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[120px]"
                 >
                   <div className="flex items-center">
                     <span>ITS ID</span>
@@ -477,7 +462,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
                 <th
                   onClick={() => handleSort('applicantName')}
-                  className="py-3.5 px-3.5 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[190px]"
+                  className="py-3.5 px-3.5 cursor-pointer hover:bg-stone-100 transition min-w-[190px]"
                 >
                   <div className="flex items-center">
                     <span>Applicant Name</span>
@@ -489,7 +474,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
                 <th
                   onClick={() => handleSort('category')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[130px]"
+                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[130px]"
                 >
                   <div className="flex items-center">
                     <span>Category</span>
@@ -499,7 +484,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
                 <th 
                   onClick={() => handleSort('family')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[90px]"
+                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[90px]"
                 >
                   <div className="flex items-center">
                     <span>Family</span>
@@ -510,7 +495,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 {/* Complete Tour ID Visible, Bigger font, wrap text */}
                 <th
                   onClick={() => handleSort('tourRefNo')}
-                  className="py-3.5 px-3.5 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[230px] max-w-[320px]"
+                  className="py-3.5 px-3.5 cursor-pointer hover:bg-stone-100 transition min-w-[230px] max-w-[320px]"
                 >
                   <div className="flex items-center">
                     <span>Tour Reference No.</span>
@@ -522,7 +507,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 <th className="py-3.5 px-3 min-w-[130px]">Stay Dates</th>
                 <th 
                   onClick={() => handleSort('building')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-[#0E3C2C] transition min-w-[140px]"
+                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[140px]"
                 >
                   <div className="flex items-center">
                     <span>Hotel & Room</span>
@@ -532,7 +517,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
                 <th
                   onClick={() => handleSort('moneyGiven')}
-                  className="py-3.5 px-3 text-center bg-[#0E3C2C] cursor-pointer hover:bg-[#08281D] transition min-w-[140px]"
+                  className="py-3.5 px-3 text-center bg-stone-100 cursor-pointer hover:bg-stone-100 transition min-w-[140px]"
                 >
                   <div className="flex items-center justify-center">
                     <span>Money Given</span>
@@ -553,7 +538,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 filteredAndSortedRequests.map((res) => {
                   const isPaid = res.moneyGiven === 'Yes';
                   return (
-                    <tr key={res.id} className="hover:bg-[#FAF7F2] transition">
+                    <tr key={res.id} className="hover:bg-[#f6f8f7] transition">
                       <td className="py-3.5 px-3 font-mono font-bold text-stone-950 text-sm md:text-base">
                         {res.itsId}
                       </td>
@@ -595,7 +580,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       </td>
 
                       <td className="py-3.5 px-3">
-                        <span className="font-bold text-[#124E39] text-xs md:text-sm">
+                        <span className="font-bold text-[#0f4a37] text-xs md:text-sm">
                           {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : '(Unassigned)'}
                         </span>
                         <div className="text-[10px] text-amber-800 font-bold mt-0.5">
@@ -617,7 +602,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         >
                           {isPaid ? (
                             <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-[#EBD59E]" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#ecdcae]" />
                               <span>Yes (Received)</span>
                             </>
                           ) : (
@@ -634,7 +619,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenAccountsSlip(res)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold bg-[#FAF7F2] hover:bg-stone-200/80 text-[#124E39] border border-[#124E39]/30 transition shadow-2xs"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs md:text-sm font-bold bg-[#f6f8f7] hover:bg-stone-200/80 text-[#0f4a37] border border-[#0f4a37]/30 transition shadow-2xs"
                         >
                           <FileText className="w-3.5 h-3.5" />
                           <span>Request Slip</span>
@@ -671,17 +656,17 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
       {/* Modal to Add New Zaer Shifting B to A */}
       {isShiftModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px]">
+          <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
             {/* Modal Header */}
-            <div className="bg-[#124E39] text-white p-4 sm:p-5 flex items-center justify-between">
+            <div className="bg-[#0f4a37] text-white p-4 sm:p-5 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-emerald-800/80 rounded-xl">
-                  <ArrowUpRight className="w-5 h-5 text-[#EBD59E]" />
+                  <ArrowUpRight className="w-5 h-5 text-[#ecdcae]" />
                 </div>
                 <div>
                   <h3 className="font-bold text-base sm:text-lg">Add New Zaer (Shift B ➔ A)</h3>
-                  <p className="text-xs text-[#EBD59E]/90 mt-0.5">
+                  <p className="text-xs text-[#ecdcae]/90 mt-0.5">
                     Register a new Zaer shifting from Standard (B) to Category A and generate Accounts Slip
                   </p>
                 </div>
@@ -710,7 +695,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
               {/* CORE 7 DETAILS FIELDS */}
               <div className="space-y-3.5">
-                <div className="text-xs font-bold text-[#124E39] uppercase tracking-wider border-b border-stone-200 pb-1">
+                <div className="text-xs font-bold text-[#0f4a37] uppercase tracking-wider border-b border-stone-200 pb-1">
                   1. Official Slip Details (Required)
                 </div>
 
@@ -726,7 +711,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="e.g. NZ-2026-TOUR-44"
                       value={newTourId}
                       onChange={(e) => handleTourIdChange(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                       required
                     />
                     <datalist id="b2a-tour-ids">
@@ -750,7 +735,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       max={100}
                       value={newPaxCount}
                       onChange={(e) => setNewPaxCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                       required
                     />
                     <span className="text-[10px] text-stone-500 mt-0.5 block">
@@ -767,7 +752,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       type="date"
                       value={newArrivalDate}
                       onChange={(e) => setNewArrivalDate(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                       required
                     />
                   </div>
@@ -781,7 +766,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       type="date"
                       value={newDepartureDate}
                       onChange={(e) => setNewDepartureDate(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                       required
                     />
                   </div>
@@ -795,7 +780,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       Calculated automatically from arrival & departure dates.
                     </span>
                   </div>
-                  <div className="text-base font-extrabold text-[#124E39] bg-white px-3 py-1 rounded-lg border border-amber-300 shadow-2xs font-mono">
+                  <div className="text-base font-extrabold text-[#0f4a37] bg-white px-3 py-1 rounded-lg border border-amber-300 shadow-2xs font-mono">
                     {calculatedNights} Nights
                   </div>
                 </div>
@@ -812,7 +797,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         setNewBuilding(e.target.value);
                         setNewRoomNumber('');
                       }}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-semibold focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                     >
                       {distinctBuildings.map((bldg) => (
                         <option key={bldg} value={bldg}>{bldg} Hotel</option>
@@ -831,7 +816,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                         placeholder="Select room or type room number (e.g. 204)"
                         value={newRoomNumber}
                         onChange={(e) => setNewRoomNumber(e.target.value)}
-                        className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                        className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
                         required
                       />
                       <datalist id="available-rooms-list">
@@ -865,7 +850,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="e.g. Murtaza Bhai (or leave blank for Tour Zaer)"
                       value={newApplicantName}
                       onChange={(e) => setNewApplicantName(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                     />
                   </div>
 
@@ -878,7 +863,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="e.g. 30482910"
                       value={newItsId}
                       onChange={(e) => setNewItsId(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-mono focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-mono focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                     />
                   </div>
 
@@ -891,7 +876,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="e.g. 1"
                       value={newFamily}
                       onChange={(e) => setNewFamily(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                     />
                   </div>
 
@@ -904,7 +889,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="+964 / +91 ..."
                       value={newPhone}
                       onChange={(e) => setNewPhone(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                     />
                   </div>
 
@@ -917,7 +902,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       placeholder="Accounts note or request..."
                       value={newNotes}
                       onChange={(e) => setNewNotes(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                      className="w-full bg-white border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                     />
                   </div>
                 </div>
@@ -934,9 +919,9 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-white font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
                 >
-                  <FileText className="w-4 h-4 text-[#EBD59E]" />
+                  <FileText className="w-4 h-4 text-[#ecdcae]" />
                   <span>Save & Generate B ➔ A Slip</span>
                 </button>
               </div>
@@ -947,7 +932,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
       {/* B to A Entry Deletion Modal */}
       {bToARecordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
@@ -988,7 +973,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                   <div className="font-bold text-stone-900 text-sm">{bToARecordToDelete.applicantName}</div>
                   <div className="font-mono text-stone-500 text-[11px]">ITS ID: {bToARecordToDelete.itsId}</div>
                 </div>
-                <span className="font-mono text-xs font-bold text-[#124E39]">Tour: {bToARecordToDelete.tourRefNo}</span>
+                <span className="font-mono text-xs font-bold text-[#0f4a37]">Tour: {bToARecordToDelete.tourRefNo}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-stone-600 text-[11px] pt-1">
                 <div>Room: <strong className="text-stone-900">{bToARecordToDelete.building} Rm {bToARecordToDelete.roomNumber || 'Unassigned'}</strong></div>
@@ -1027,7 +1012,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
       {/* Blocked Modal for Non-Admin */}
       {bToABlockedNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">

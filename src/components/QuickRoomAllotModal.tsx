@@ -295,18 +295,18 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   if (!isOpen || !targetReservation) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
+      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#124E39] to-[#0E3C2C] text-white p-4 sm:p-5 flex items-start justify-between gap-3 flex-shrink-0">
+        <div className="bg-gradient-to-r from-[#0f4a37] to-[#0b3a2b] text-white p-4 sm:p-5 flex items-start justify-between gap-3 flex-shrink-0">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <DoorClosed className="w-5 h-5 text-[#EBD59E]" />
+              <DoorClosed className="w-5 h-5 text-[#ecdcae]" />
               <h2 className="text-base sm:text-lg font-bold font-serif tracking-wide">
                 Quick Room Allotment
               </h2>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#EBD59E]/20 text-[#EBD59E] border border-[#EBD59E]/40 font-semibold">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#ecdcae]/20 text-[#ecdcae] border border-[#ecdcae]/40 font-semibold">
                 Capacity + Buffer Enabled
               </span>
             </div>
@@ -319,7 +319,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
               </div>
               <div>
                 <span className="text-stone-400">ITS: </span>
-                <span className="font-mono text-[#EBD59E] font-bold">{targetReservation.itsId}</span>
+                <span className="font-mono text-[#ecdcae] font-bold">{targetReservation.itsId}</span>
               </div>
               <div>
                 <span className="text-stone-400">Family: </span>
@@ -327,16 +327,16 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
               </div>
               <div>
                 <span className="text-stone-400">Tour: </span>
-                <strong className="font-mono text-[#EBD59E]">{targetReservation.tourRefNo || targetReservation.tourId || '—'}</strong>
+                <strong className="font-mono text-[#ecdcae]">{targetReservation.tourRefNo || targetReservation.tourId || '—'}</strong>
                 {targetReservation.officeName && (
                   <span className="text-stone-200"> · {targetReservation.officeName}</span>
                 )}
               </div>
               <div className="flex items-center gap-1.5 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 flex-wrap">
-                <Calendar className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <Calendar className="w-3.5 h-3.5 text-[#ecdcae]" />
                 <span className="font-semibold text-white">Arr: {arrivalDate}</span>
                 {targetReservation.arrivalTime && (
-                  <span className="inline-flex items-center gap-1 bg-[#124E39] text-[#EBD59E] px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#C5A059]/40">
+                  <span className="inline-flex items-center gap-1 bg-[#0f4a37] text-white px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#c9a85a]/40">
                     <Clock className="w-2.5 h-2.5" />
                     {targetReservation.arrivalTime}
                   </span>
@@ -344,7 +344,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 <span className="text-stone-400 mx-1">➔</span>
                 <span className="font-semibold text-white">Dep: {departureDate}</span>
                 {targetReservation.departureTime && (
-                  <span className="inline-flex items-center gap-1 bg-[#124E39] text-[#EBD59E] px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#C5A059]/40">
+                  <span className="inline-flex items-center gap-1 bg-[#0f4a37] text-white px-1.5 py-0.2 rounded text-[10px] font-bold border border-[#c9a85a]/40">
                     <Clock className="w-2.5 h-2.5" />
                     {targetReservation.departureTime}
                   </span>
@@ -363,7 +363,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                     initialScope: isFamily ? 'group' : 'single',
                   })
                 }
-                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#EBD59E] text-[#124E39] font-extrabold text-xs flex items-center gap-1.5 shadow-sm hover:bg-white transition cursor-pointer"
+                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#ecdcae] text-[#0f4a37] font-extrabold text-xs flex items-center gap-1.5 shadow-sm hover:bg-white transition cursor-pointer"
                 title="Switch or swap room with another room"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -380,7 +380,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         </div>
 
         {/* Toolbar & Filters */}
-        <div className="p-3 sm:p-4 border-b border-[#E6DFD5] bg-[#F5F1E9] space-y-3 flex-shrink-0">
+        <div className="p-3 sm:p-4 border-b border-[#e2e8e5] bg-[#f1f4f2] space-y-3 flex-shrink-0">
           
           {/* Top row: Allotment Scope (Single vs Entire Family) & Auto-Recommend */}
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -391,7 +391,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                   onClick={() => setAllotMode('single')}
                   className={`px-3 py-1.5 rounded-lg transition ${
                     allotMode === 'single'
-                      ? 'bg-[#124E39] text-white shadow-xs'
+                      ? 'bg-[#0f4a37] text-white shadow-xs'
                       : 'text-stone-700 hover:text-stone-900'
                   }`}
                 >
@@ -402,7 +402,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                   onClick={() => setAllotMode('family')}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${
                     allotMode === 'family'
-                      ? 'bg-[#124E39] text-white shadow-xs'
+                      ? 'bg-[#0f4a37] text-white shadow-xs'
                       : 'text-stone-700 hover:text-stone-900'
                   }`}
                 >
@@ -419,9 +419,9 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
             <button
               type="button"
               onClick={handleAutoRecommend}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-700 to-[#124E39] hover:from-emerald-800 hover:to-[#0E3C2C] text-white shadow-sm transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-700 to-[#0f4a37] hover:from-emerald-800 hover:to-[#0b3a2b] text-white shadow-sm transition"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#EBD59E]" />
+              <Sparkles className="w-3.5 h-3.5 text-[#ecdcae]" />
               <span>⚡ Auto-Recommend Best Room</span>
             </button>
           </div>
@@ -436,7 +436,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search Room # (e.g. 101, 203) or floor..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-[#D5CDBD] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-[#cdd5d1] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                 autoFocus
               />
               {searchQuery && (
@@ -455,7 +455,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 type="button"
                 onClick={() => setHotelFilter('ALL')}
                 className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
-                  hotelFilter === 'ALL' ? 'bg-white text-[#124E39] shadow-xs font-bold' : 'text-stone-600'
+                  hotelFilter === 'ALL' ? 'bg-white text-[#0f4a37] shadow-xs font-bold' : 'text-stone-600'
                 }`}
               >
                 All ({rooms.length})
@@ -469,7 +469,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                     onClick={() => setHotelFilter(bldg)}
                     className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
                       hotelFilter.toLowerCase() === bldg.toLowerCase()
-                        ? 'bg-white text-[#124E39] shadow-xs font-bold'
+                        ? 'bg-white text-[#0f4a37] shadow-xs font-bold'
                         : 'text-stone-600'
                     }`}
                   >
@@ -484,7 +484,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
               <select
                 value={floorFilter}
                 onChange={(e) => setFloorFilter(e.target.value)}
-                className="w-full py-1.5 px-2.5 text-xs bg-white border border-[#D5CDBD] rounded-xl text-stone-700 font-medium"
+                className="w-full py-1.5 px-2.5 text-xs bg-white border border-[#cdd5d1] rounded-xl text-stone-700 font-medium"
               >
                 {floorOptions.map((fl) => (
                   <option key={fl} value={fl}>
@@ -511,7 +511,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                 onClick={() => setAmenityFilter(chip.id as any)}
                 className={`px-2 py-0.5 rounded-full border transition font-medium ${
                   amenityFilter === chip.id
-                    ? 'bg-[#124E39] text-white border-[#124E39] font-bold'
+                    ? 'bg-[#0f4a37] text-white border-[#0f4a37] font-bold'
                     : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
                 }`}
               >
@@ -534,7 +534,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                   setFloorFilter('ALL');
                   setAmenityFilter('ALL');
                 }}
-                className="text-xs text-[#124E39] underline font-bold"
+                className="text-xs text-[#0f4a37] underline font-bold"
               >
                 Reset filters
               </button>
@@ -570,7 +570,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           : isBlocked
                           ? 'bg-stone-100 border-stone-300 opacity-60'
                           : canFit
-                          ? 'bg-white hover:bg-[#FAF7F2] border-[#E6DFD5] hover:border-[#124E39]/60 shadow-xs'
+                          ? 'bg-white hover:bg-[#f6f8f7] border-[#e2e8e5] hover:border-[#0f4a37]/60 shadow-xs'
                           : 'bg-stone-50 border-stone-200 opacity-75'
                       }`}
                     >
@@ -578,7 +578,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-1 mb-1">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-serif font-extrabold text-base text-[#124E39]">
+                            <span className="font-serif font-extrabold text-base text-[#0f4a37]">
                               Room {room.roomNumber}
                             </span>
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 font-bold text-stone-600">
@@ -735,10 +735,10 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleSelectRoom(room.building, room.roomNumber, false)}
-                            className="w-full py-1.5 rounded-lg text-xs font-extrabold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                            className="w-full py-1.5 rounded-lg text-xs font-extrabold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <span>Allot Room {room.roomNumber}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#EBD59E]" />
+                            <ArrowRight className="w-3.5 h-3.5 text-[#ecdcae]" />
                           </button>
                         )}
                       </div>
@@ -751,7 +751,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         </div>
 
         {/* Footer info */}
-        <div className="p-3 bg-[#FAF7F2] border-t border-[#E6DFD5] flex items-center justify-between text-xs text-stone-500 flex-shrink-0">
+        <div className="p-3 bg-[#f6f8f7] border-t border-[#e2e8e5] flex items-center justify-between text-xs text-stone-500 flex-shrink-0">
           <div>
             Showing <strong className="text-stone-700">{sortedRooms.length}</strong> rooms • Saifee (70) & Burhani (44)
           </div>

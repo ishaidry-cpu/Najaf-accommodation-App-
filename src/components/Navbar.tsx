@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
-import { 
-  Building2, 
-  CalendarDays, 
-  FileSpreadsheet, 
-  FileText, 
-  BedDouble, 
-  ArrowUpRight, 
-  BarChart3, 
-  LogIn, 
-  LogOut, 
-  RefreshCw, 
+import React, { useEffect, useState } from 'react';
+import {
+  Building2,
+  CalendarDays,
+  FileSpreadsheet,
+  FileText,
+  BedDouble,
+  ArrowUpRight,
+  LayoutGrid,
+  LogIn,
+  LogOut,
+  RefreshCcw,
   Printer,
   Upload,
   Download,
@@ -18,12 +18,16 @@ import {
   UploadCloud,
   Menu,
   X,
-  RefreshCcw
+  ChevronDown,
+  Settings2,
+  Repeat2,
+  ExternalLink,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { GoogleSheetsConfig, UserRole } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { SyncToNkerpButton } from './SyncToNkerpButton';
+import { Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 
 export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync';
@@ -51,6 +55,21 @@ interface NavbarProps {
   nkerpSync: NkerpSyncState;
 }
 
+type NavItem = { tab: AppTab; label: string; short: string; icon: React.ElementType };
+
+const NAV_ITEMS: NavItem[] = [
+  { tab: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutGrid },
+  { tab: 'reservations', label: 'Zaereen', short: 'Zaereen', icon: CalendarDays },
+  { tab: 'rooms', label: 'Rooms', short: 'Rooms', icon: BedDouble },
+  { tab: 'upgrades', label: 'B→A shifts', short: 'B→A', icon: Repeat2 },
+  { tab: 'sync', label: 'NKERP sync', short: 'Sync', icon: RefreshCcw },
+];
+
+const ghostTrigger = (open: boolean) =>
+  `flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-[13px] font-medium transition ${
+    open ? 'bg-stone-100 text-stone-900' : 'text-stone-700 hover:bg-stone-100 hover:text-stone-900'
+  }`;
+
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
@@ -76,636 +95,324 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isReceptionist = userRole === 'receptionist';
   const hasLinkedSheet = Boolean(sheetsConfig.spreadsheetId);
+  const lastSynced = sheetsConfig.lastSyncedAt
+    ? new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const initial = user?.email ? user.email[0].toUpperCase() : null;
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsMobileMenuOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isMobileMenuOpen]);
+
+  const syncBadge =
+    nkerpSync.attentionCount > 0 && !nkerpSync.running ? nkerpSync.attentionCount : 0;
+
+  /* Shared menu bodies (desktop dropdowns and mobile drawer use the same actions). */
+  const printItems = (close: () => void) => (
+    <>
+      {onOpenReceptionSlip && (
+        <>
+          <MenuItem icon={Printer} onClick={() => { close(); onOpenReceptionSlip('arrival_slip'); }} hint="Today's arrivals with rooms">
+            Arrival slip
+          </MenuItem>
+          <MenuItem icon={Printer} onClick={() => { close(); onOpenReceptionSlip('departure_list'); }} hint="Rooms freeing up today">
+            Departure list
+          </MenuItem>
+        </>
+      )}
+      <MenuItem icon={FileText} onClick={() => { close(); onOpenPdfModal('tour_manifest'); }} hint="Lodging list for one tour">
+        Tour manifest
+      </MenuItem>
+      {onOpenAToBReceipt && (
+        <MenuItem icon={FileText} onClick={() => { close(); onOpenAToBReceipt(); }}>
+          A→B refund receipt
+        </MenuItem>
+      )}
+      <MenuDivider />
+      <MenuItem icon={Download} onClick={() => { close(); onOpenPdfModal('all_reservations'); }}>
+        Export PDF reports
+      </MenuItem>
+    </>
+  );
+
+  const sheetItems = (close: () => void) => (
+    <>
+      <div className="px-2.5 pt-1.5 pb-2">
+        <div className="text-[13px] font-semibold text-stone-900 leading-snug">
+          {sheetsConfig.spreadsheetName || (hasLinkedSheet ? 'Google Sheet' : 'No sheet connected')}
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
+          <span className={`w-1.5 h-1.5 rounded-full ${hasLinkedSheet ? 'bg-emerald-500' : 'bg-stone-300'}`} />
+          {hasLinkedSheet ? (lastSynced ? `Last synced ${lastSynced}` : 'Connected') : 'Connect a sheet to back up data'}
+        </div>
+      </div>
+      <MenuDivider />
+      {hasLinkedSheet ? (
+        <>
+          <MenuItem icon={ExternalLink} onClick={() => { close(); (onOpenGoogleSheet || onOpenSheetsModal)(); }}>
+            Open in Google Sheets
+          </MenuItem>
+          {isReceptionist ? (
+            <MenuItem icon={Download} onClick={() => { close(); onOpenSheetsModal(); }} hint="Get the latest zaereen and rooms">
+              Pull from sheet
+            </MenuItem>
+          ) : (
+            <MenuItem
+              icon={UploadCloud}
+              disabled={sheetsConfig.isSyncing}
+              onClick={() => { close(); onQuickSync(); }}
+              hint="Send this app's records to the sheet"
+            >
+              {sheetsConfig.isSyncing ? 'Pushing…' : 'Push to sheet'}
+            </MenuItem>
+          )}
+          <MenuItem icon={Settings2} onClick={() => { close(); onOpenSheetsModal(); }}>
+            Sheet settings
+          </MenuItem>
+        </>
+      ) : (
+        <MenuItem icon={FileSpreadsheet} onClick={() => { close(); onOpenSheetsModal(); }}>
+          Connect Google Sheet
+        </MenuItem>
+      )}
+    </>
+  );
+
+  const accountItems = (close: () => void) => (
+    <>
+      <div className="px-2.5 pt-1.5 pb-2">
+        <div className="text-[13px] font-semibold text-stone-900 truncate">{user?.email || 'Not signed in'}</div>
+        <div className="mt-0.5 text-xs text-stone-500">
+          {isReceptionist ? 'Receptionist · view only' : 'Admin · can edit'}
+        </div>
+      </div>
+      <MenuDivider />
+      <MenuItem
+        icon={isReceptionist ? ShieldCheck : Eye}
+        onClick={() => { close(); onOpenRoleModal(); }}
+        hint={isReceptionist ? 'Enter the admin PIN to edit' : 'Limit this device to viewing'}
+      >
+        {isReceptionist ? 'Switch to admin' : 'Switch to receptionist'}
+      </MenuItem>
+      {!isReceptionist && (
+        <>
+          <MenuDivider />
+          <MenuHeading>Data</MenuHeading>
+          <MenuItem icon={Upload} onClick={() => { close(); onOpenUploadExcel(); }}>
+            Upload zaereen Excel
+          </MenuItem>
+          {onOpenAddBuildingRooms && (
+            <MenuItem icon={Building2} onClick={() => { close(); onOpenAddBuildingRooms(); }}>
+              Add building or rooms
+            </MenuItem>
+          )}
+        </>
+      )}
+      <MenuDivider />
+      {user ? (
+        <MenuItem icon={LogOut} tone="danger" onClick={() => { close(); onGoogleLogout(); }}>
+          Sign out
+        </MenuItem>
+      ) : (
+        <MenuItem icon={LogIn} disabled={isLoggingIn} onClick={() => { close(); onGoogleSignIn(); }}>
+          {isLoggingIn ? 'Signing in…' : 'Sign in with Google'}
+        </MenuItem>
+      )}
+    </>
+  );
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#E6DFD5] shadow-xs w-full overflow-x-clip">
-        <div className="w-full max-w-full px-2.5 sm:px-4 lg:px-6">
-          {/* Primary Row: Brand + Navigation Tabs + Sign In + Google Sheet Connection */}
-          <div className="flex flex-wrap items-center justify-between min-h-14 py-1.5 gap-2">
-            {/* Faiz Husaini Branding */}
-            <div
-              className="flex items-center gap-2 cursor-pointer shrink-0 min-w-0 max-w-[46%] sm:max-w-none"
-              onClick={() => setActiveTab('dashboard')}
-            >
-              <FaizHusainiLogo size="sm" />
+      <header className="sticky top-0 z-40 w-full border-b border-stone-200 bg-white/90 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+        <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center gap-3 px-4 lg:px-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className="shrink-0 rounded-lg cursor-pointer"
+            aria-label="Go to overview"
+          >
+            <FaizHusainiLogo size="sm" showSubtitle={false} />
+          </button>
+
+          {/* Desktop navigation */}
+          <nav aria-label="Main" className="hidden md:flex h-full items-stretch gap-0.5 ml-2 lg:ml-6 min-w-0 overflow-x-auto app-scroll-x">
+            {NAV_ITEMS.map(({ tab, label, icon: Icon }) => {
+              const active = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative flex items-center gap-1.5 px-2.5 lg:px-3 text-[13px] whitespace-nowrap transition cursor-pointer ${
+                    active ? 'text-stone-950 font-semibold' : 'text-stone-500 font-medium hover:text-stone-900'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${active ? 'text-brand-700' : ''} ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''}`} />
+                  <span>{label}</span>
+                  {tab === 'rooms' && roomsCount ? (
+                    <span className="text-xs text-stone-400 tabular-nums font-normal">{roomsCount}</span>
+                  ) : null}
+                  {tab === 'sync' && syncBadge > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[18px] text-center font-semibold tabular-nums">
+                      {syncBadge}
+                    </span>
+                  )}
+                  <span
+                    aria-hidden
+                    className={`absolute left-2.5 right-2.5 lg:left-3 lg:right-3 -bottom-px h-[2px] rounded-full transition-colors ${
+                      active ? 'bg-gold-400' : 'bg-transparent'
+                    }`}
+                  />
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-1">
+            {/* Desktop utilities */}
+            <div className="hidden md:flex items-center gap-1">
+              <Dropdown
+                label="Google Sheet"
+                width="w-72"
+                trigger={(open) => (
+                  <span className={ghostTrigger(open)} title={isLiveBackendConnected ? 'Data is saved on the server and synced with the Google Sheet' : undefined}>
+                    <span className="relative flex">
+                      <FileSpreadsheet className="w-4 h-4 text-stone-500" />
+                      <span
+                        className={`absolute -right-0.5 -top-0.5 w-2 h-2 rounded-full ring-2 ring-white ${
+                          sheetsConfig.isSyncing ? 'bg-amber-500 animate-pulse' : hasLinkedSheet ? 'bg-emerald-500' : 'bg-stone-300'
+                        }`}
+                      />
+                    </span>
+                    <span className="hidden lg:inline">Sheet</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
+                  </span>
+                )}
+              >
+                {sheetItems}
+              </Dropdown>
+
+              <Dropdown
+                label="Print and export"
+                trigger={(open) => (
+                  <span className={ghostTrigger(open)}>
+                    <Printer className="w-4 h-4 text-stone-500" />
+                    <span className="hidden lg:inline">Print</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
+                  </span>
+                )}
+              >
+                {printItems}
+              </Dropdown>
+
+              <div className="mx-1.5 h-5 w-px bg-stone-200" />
+
+              <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} />
+
+              <Dropdown
+                label="Account"
+                trigger={(open) => (
+                  <span
+                    className={`ml-1 flex items-center gap-1.5 h-9 pl-1 pr-2 rounded-full border transition ${
+                      open ? 'border-stone-300 bg-stone-50' : 'border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <span className="w-7 h-7 rounded-full bg-brand-700 text-gold-200 flex items-center justify-center text-xs font-semibold">
+                      {initial ?? <LogIn className="w-3.5 h-3.5" />}
+                    </span>
+                    <span className="text-xs font-medium text-stone-700">{isReceptionist ? 'Reception' : 'Admin'}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
+                  </span>
+                )}
+              >
+                {accountItems}
+              </Dropdown>
             </div>
 
-            {/* Navigation Tabs (Desktop) */}
-            <nav className="hidden md:flex items-center space-x-1 bg-stone-200/60 p-1 rounded-xl shrink-0">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'dashboard'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Dashboard & Rooms Overview</span>
-                <span className="xl:hidden">Dashboard</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('reservations')}
-                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'reservations'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
-                }`}
-              >
-                <CalendarDays className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">Zaereen & Allotment Grid</span>
-                <span className="xl:hidden">Zaereen</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('upgrades')}
-                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'upgrades'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
-                }`}
-              >
-                <ArrowUpRight className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span className="hidden xl:inline">B ➔ A Shifts (Accounts)</span>
-                <span className="xl:hidden">B ➔ A</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('rooms')}
-                className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'rooms'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
-                }`}
-              >
-                <BedDouble className="w-3.5 h-3.5" />
-                <span>{roomsCount ? `${roomsCount} Rooms` : 'Rooms'}</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('sync')}
-                className={`relative flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'sync'
-                    ? 'bg-[#124E39] text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-200/80'
-                }`}
-              >
-                <RefreshCcw className={`w-3.5 h-3.5 ${nkerpSync.running ? 'animate-spin' : ''}`} />
-                <span>Sync</span>
-                {nkerpSync.attentionCount > 0 && !nkerpSync.running && (
-                  <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center">{nkerpSync.attentionCount}</span>
-                )}
-              </button>
-            </nav>
-
-            {/* Mobile Quick Controls (All fit cleanly on one 375px screen) */}
-            <div className="flex md:hidden items-center gap-1 shrink-0">
-              {user ? (
-                <button
-                  type="button"
-                  onClick={onGoogleLogout}
-                  className="min-w-[40px] min-h-[40px] px-2 rounded-xl bg-white border border-stone-300 text-[#124E39] font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-                  title={`Signed in as ${user.email || 'Google User'} (Tap to sign out)`}
-                >
-                  <span className="w-5 h-5 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center text-[10px] font-bold">
-                    {user.email ? user.email[0].toUpperCase() : 'U'}
-                  </span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onGoogleSignIn}
-                  disabled={isLoggingIn}
-                  className="min-h-[40px] px-2 rounded-xl bg-[#124E39] text-[#EBD59E] text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                  title="Sign in with Google"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>{isLoggingIn ? '...' : 'Sign In'}</span>
-                </button>
-              )}
-
+            {/* Mobile utilities */}
+            <div className="flex md:hidden items-center gap-1">
               <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} compact />
-
-              <button
-                type="button"
-                onClick={onOpenSheetsModal}
-                className="min-w-[40px] min-h-[40px] px-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                title="Google Sheet Connection & Sync"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                <span>Sheet</span>
-              </button>
-
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="min-w-[40px] min-h-[40px] rounded-xl bg-white border border-stone-300 text-[#124E39] flex items-center justify-center cursor-pointer"
-                aria-label="Open mobile menu"
+                className="w-10 h-10 rounded-lg text-stone-700 hover:bg-stone-100 flex items-center justify-center cursor-pointer"
+                aria-label="Open menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
-            </div>
-
-            {/* Desktop Sign In & Google Sheet Connection (Always inside screen) */}
-            <div className="hidden md:flex items-center gap-1.5 flex-wrap justify-end">
-              <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} />
-              {user ? (
-                <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-stone-200 shadow-2xs">
-                  <div
-                    className="w-6 h-6 rounded-full bg-[#124E39] text-[#EBD59E] flex items-center justify-center font-bold text-[11px] shrink-0"
-                    title={user.email || 'Google User'}
-                  >
-                    {user.email ? user.email[0].toUpperCase() : 'U'}
-                  </div>
-                  <span className="text-xs font-semibold text-stone-700 max-w-[110px] truncate hidden 2xl:inline" title={user.email || ''}>
-                    {user.email}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={onGoogleLogout}
-                    className="p-1 text-stone-500 hover:text-rose-700 hover:bg-stone-100 rounded-lg transition cursor-pointer"
-                    title="Sign out of Google"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onGoogleSignIn}
-                  disabled={isLoggingIn}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
-                  title="Sign in with Google"
-                >
-                  <LogIn className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>{isLoggingIn ? 'Signing in...' : 'Sign In'}</span>
-                </button>
-              )}
-
-              <div className="flex items-center gap-1 bg-emerald-50/90 border border-emerald-300 p-1 rounded-xl shadow-2xs shrink-0">
-                {hasLinkedSheet ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={onOpenGoogleSheet || onOpenSheetsModal}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
-                      title="Open synced Google Sheet in new tab"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                      <span>Google Sheet</span>
-                      <ArrowUpRight className="w-3 h-3 text-emerald-700" />
-                    </button>
-
-                    {!isReceptionist && (
-                      <button
-                        type="button"
-                        onClick={onQuickSync}
-                        disabled={sheetsConfig.isSyncing}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                          sheetsConfig.isSyncing
-                            ? 'bg-amber-100 text-amber-950 border border-amber-300'
-                            : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs'
-                        }`}
-                        title="Push to Google Sheet"
-                      >
-                        <UploadCloud className="w-3 h-3 text-[#EBD59E]" />
-                        <span>{sheetsConfig.isSyncing ? 'Pushing...' : 'Push'}</span>
-                      </button>
-                    )}
-
-                    {isReceptionist && (
-                      <button
-                        type="button"
-                        onClick={onOpenSheetsModal}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
-                        title="Pull latest records from Google Sheet"
-                      >
-                        <Download className="w-3 h-3 text-[#EBD59E]" />
-                        <span>Pull</span>
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenSheetsModal}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold text-emerald-950 hover:bg-emerald-100 transition cursor-pointer whitespace-nowrap"
-                    title="Connect Google Sheet"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                    <span>Connect Sheet</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={onOpenSheetsModal}
-                  className="p-1 rounded-md text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 transition cursor-pointer"
-                  title="Configure or Change Google Sheet"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Secondary Compact Operations Row (Desktop, wraps cleanly inside one screen) */}
-          <div className="hidden md:flex flex-wrap items-center justify-between gap-2 py-1.5 border-t border-[#E6DFD5]/80 text-xs">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={onOpenRoleModal}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer shadow-2xs whitespace-nowrap ${
-                  isReceptionist
-                    ? 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
-                }`}
-                title="Click to manage access rights (View-only for Receptionist, Edit for Admin)"
-              >
-                {isReceptionist ? (
-                  <>
-                    <Eye className="w-3.5 h-3.5 text-amber-800" />
-                    <span>Receptionist (View Only)</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#124E39]" />
-                    <span>Admin (Editable Rights)</span>
-                  </>
-                )}
-              </button>
-
-              {isLiveBackendConnected && (
-                <span
-                  className="hidden lg:inline-flex items-center px-2 py-1 rounded-lg bg-emerald-100/70 text-emerald-950 border border-emerald-300 text-[11px] font-bold whitespace-nowrap"
-                  title="Data is stored on live backend server until deleted, and synchronizes with Google Sheets & Rooms Timeline"
-                >
-                  Live Backend & Sheets
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              {!isReceptionist && onOpenAddBuildingRooms && (
-                <button
-                  type="button"
-                  onClick={onOpenAddBuildingRooms}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-xs transition cursor-pointer whitespace-nowrap"
-                  title="Add Hotel Building & Rooms manually or sync from Google Sheet"
-                >
-                  <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>+ Building / Rooms</span>
-                </button>
-              )}
-
-              {!isReceptionist && (
-                <button
-                  type="button"
-                  onClick={onOpenUploadExcel}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer whitespace-nowrap"
-                  title="Upload Zaereen Excel Sheet"
-                >
-                  <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>Upload Excel</span>
-                </button>
-              )}
-
-              {onOpenReceptionSlip && (
-                <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onOpenReceptionSlip('arrival_slip')}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
-                    title="Open Arrival Slip"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-emerald-800" />
-                    <span>Arrival Slip</span>
-                  </button>
-                  <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                  <button
-                    type="button"
-                    onClick={() => onOpenReceptionSlip('departure_list')}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer whitespace-nowrap"
-                    title="Open Departure List"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-amber-800" />
-                    <span>Departure List</span>
-                  </button>
-                  {onOpenAToBReceipt && (
-                    <>
-                      <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                      <button
-                        type="button"
-                        onClick={onOpenAToBReceipt}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-amber-800 hover:bg-amber-50 transition cursor-pointer whitespace-nowrap"
-                        title="Open Category A to B Refund Receipt (with shifted pax names, ITS & age)"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-amber-700" />
-                        <span>A ➔ B Receipt</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center rounded-lg border border-stone-300 bg-white shadow-2xs p-0.5">
-                <button
-                  type="button"
-                  onClick={() => onOpenPdfModal('tour_manifest')}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer whitespace-nowrap"
-                  title="Tour ID Specific Lodging Manifest"
-                >
-                  <FileText className="w-3.5 h-3.5 text-emerald-800" />
-                  <span>Tour Manifest</span>
-                </button>
-                <div className="w-[1px] h-4 bg-stone-300 mx-0.5" />
-                <button
-                  type="button"
-                  onClick={() => onOpenPdfModal('all_reservations')}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold text-stone-700 hover:bg-stone-100 transition cursor-pointer whitespace-nowrap"
-                  title="Export Administrative PDF Reports"
-                >
-                  <Download className="w-3.5 h-3.5 text-stone-500" />
-                  <span>Export PDF</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Fixed Mobile Bottom Navigation Bar (<= 56px, thumb friendly) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden h-14 bg-[#FAF7F2]/95 backdrop-blur-md border-t border-[#E6DFD5] grid grid-cols-6 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-        <button
-          type="button"
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
-            activeTab === 'dashboard' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
-          }`}
-        >
-          <BarChart3 className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-[#124E39]' : 'text-stone-500'}`} />
-          <span className="whitespace-nowrap">Dashboard</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('reservations')}
-          className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
-            activeTab === 'reservations' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
-          }`}
-        >
-          <CalendarDays className={`w-4 h-4 ${activeTab === 'reservations' ? 'text-[#124E39]' : 'text-stone-500'}`} />
-          <span className="whitespace-nowrap">Zaereen</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('rooms')}
-          className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
-            activeTab === 'rooms' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
-          }`}
-        >
-          <BedDouble className={`w-4 h-4 ${activeTab === 'rooms' ? 'text-[#124E39]' : 'text-stone-500'}`} />
-          <span className="whitespace-nowrap">Rooms</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('upgrades')}
-          className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
-            activeTab === 'upgrades' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
-          }`}
-        >
-          <ArrowUpRight className={`w-4 h-4 ${activeTab === 'upgrades' ? 'text-[#124E39]' : 'text-stone-500'}`} />
-          <span className="whitespace-nowrap">B ➔ A</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('sync')}
-          className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition cursor-pointer ${
-            activeTab === 'sync' ? 'text-[#124E39] bg-emerald-50/70' : 'text-stone-600'
-          }`}
-        >
-          <RefreshCcw className={`w-4 h-4 ${activeTab === 'sync' ? 'text-[#124E39]' : 'text-stone-500'} ${nkerpSync.running ? 'animate-spin' : ''}`} />
-          <span className="whitespace-nowrap">Sync</span>
-          {nkerpSync.attentionCount > 0 && !nkerpSync.running && (
-            <span className="absolute top-1 right-[22%] min-w-3.5 h-3.5 px-0.5 rounded-full bg-rose-600 text-white text-[8px] leading-[14px] text-center">{nkerpSync.attentionCount}</span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onOpenReceptionSlip?.('arrival_slip')}
-          className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold text-[#124E39] cursor-pointer"
-        >
-          <Printer className="w-4 h-4 text-[#124E39]" />
-          <span className="whitespace-nowrap">Slips</span>
-        </button>
+      {/* Mobile bottom navigation */}
+      <nav
+        aria-label="Main"
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="grid grid-cols-5 h-14">
+          {NAV_ITEMS.map(({ tab, short, icon: Icon }) => {
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                aria-current={active ? 'page' : undefined}
+                className={`relative flex flex-col items-center justify-center gap-1 text-[11px] transition cursor-pointer ${
+                  active ? 'text-brand-700 font-semibold' : 'text-stone-500 font-medium'
+                }`}
+              >
+                <span aria-hidden className={`absolute top-0 h-[2px] w-8 rounded-full ${active ? 'bg-gold-400' : 'bg-transparent'}`} />
+                <Icon className={`w-5 h-5 ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''}`} strokeWidth={active ? 2.2 : 1.8} />
+                <span>{short}</span>
+                {tab === 'sync' && syncBadge > 0 && (
+                  <span className="absolute top-1.5 left-1/2 ml-2 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center font-semibold">
+                    {syncBadge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
-      {/* Mobile Slide-Over / Action Sheet Drawer */}
+      {/* Mobile drawer */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex justify-end bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-[88%] max-w-sm bg-[#FAF7F2] h-full shadow-2xl border-l border-[#E6DFD5] flex flex-col overflow-hidden">
-            <div className="bg-[#124E39] text-white px-4 py-3.5 flex items-center justify-between">
-              <div>
-                <div className="font-bold text-sm text-[#EBD59E]">Reception Tools & Sheets</div>
-                <div className="text-[11px] text-emerald-100">
-                  {user?.email || (isReceptionist ? 'Receptionist Mode' : 'Admin Mode')}
-                </div>
-              </div>
+        <div
+          className="fixed inset-0 z-50 md:hidden flex justify-end bg-stone-950/40 backdrop-blur-[2px] animate-in fade-in duration-150"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-label="Menu"
+            className="w-[86%] max-w-sm h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 h-14 border-b border-stone-100">
+              <FaizHusainiLogo size="sm" showSubtitle={false} />
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-xl text-emerald-100 hover:text-white cursor-pointer"
-                aria-label="Close mobile menu"
+                className="w-10 h-10 -mr-2 rounded-lg flex items-center justify-center text-stone-500 hover:bg-stone-100 cursor-pointer"
+                aria-label="Close menu"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
-              {/* Google Sheets Section */}
-              <div className="bg-white rounded-xl border border-[#E6DFD5] p-3 space-y-2">
-                <div className="font-bold text-[#124E39] text-xs">
-                  Google Sheet: {sheetsConfig.spreadsheetName || 'Not Connected'}
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  {hasLinkedSheet && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        (onOpenGoogleSheet || onOpenSheetsModal)();
-                      }}
-                      className="min-h-[44px] w-full px-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold flex items-center justify-between cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2">
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-800" />
-                        <span>Open Google Sheet</span>
-                      </span>
-                      <ArrowUpRight className="w-4 h-4" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onOpenSheetsModal();
-                    }}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-[#124E39] text-[#EBD59E] font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Change / Sync Google Sheet</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Operational Slips & Reports */}
-              <div className="bg-white rounded-xl border border-[#E6DFD5] p-3 space-y-2">
-                <div className="font-bold text-stone-700 text-[11px] uppercase tracking-wider">
-                  Daily Slips & PDF Reports
-                </div>
-                {onOpenReceptionSlip && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        onOpenReceptionSlip('arrival_slip');
-                      }}
-                      className="min-h-[44px] w-full px-3 rounded-xl bg-[#FAF7F2] border border-stone-200 text-[#124E39] font-bold flex items-center gap-2 cursor-pointer"
-                    >
-                      <Printer className="w-4 h-4" />
-                      <span>Arrival Slip</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        onOpenReceptionSlip('departure_list');
-                      }}
-                      className="min-h-[44px] w-full px-3 rounded-xl bg-[#FAF7F2] border border-stone-200 text-amber-900 font-bold flex items-center gap-2 cursor-pointer"
-                    >
-                      <Printer className="w-4 h-4" />
-                      <span>Departure List</span>
-                    </button>
-                  </>
-                )}
-                {onOpenAToBReceipt && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onOpenAToBReceipt();
-                    }}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4 text-amber-800" />
-                    <span>A ➔ B Refund Receipt (Select Pax)</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    onOpenPdfModal('tour_manifest');
-                  }}
-                  className="min-h-[44px] w-full px-3 rounded-xl bg-[#FAF7F2] border border-stone-200 text-[#124E39] font-bold flex items-center gap-2 cursor-pointer"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>Tour Manifest</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    onOpenPdfModal('all_reservations');
-                  }}
-                  className="min-h-[44px] w-full px-3 rounded-xl bg-[#FAF7F2] border border-stone-200 text-stone-800 font-bold flex items-center gap-2 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Export PDF Reports</span>
-                </button>
-              </div>
-
-              {/* Admin Data Tools */}
-              {!isReceptionist && (
-                <div className="bg-white rounded-xl border border-[#E6DFD5] p-3 space-y-2">
-                  <div className="font-bold text-stone-700 text-[11px] uppercase tracking-wider">
-                    Data & Inventory Actions
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onOpenUploadExcel();
-                    }}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-[#124E39] text-white font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <Upload className="w-4 h-4 text-[#EBD59E]" />
-                    <span>Upload Zaereen Excel</span>
-                  </button>
-                  {onOpenAddBuildingRooms && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        onOpenAddBuildingRooms();
-                      }}
-                      className="min-h-[44px] w-full px-3 rounded-xl bg-emerald-50 border border-emerald-300 text-[#124E39] font-bold flex items-center gap-2 cursor-pointer"
-                    >
-                      <Building2 className="w-4 h-4" />
-                      <span>Add Building / Rooms</span>
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Account & Role */}
-              <div className="bg-white rounded-xl border border-[#E6DFD5] p-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    onOpenRoleModal();
-                  }}
-                  className="min-h-[44px] w-full px-3 rounded-xl bg-stone-100 text-stone-900 font-bold flex items-center gap-2 cursor-pointer"
-                >
-                  {isReceptionist ? <Eye className="w-4 h-4 text-amber-700" /> : <ShieldCheck className="w-4 h-4 text-[#124E39]" />}
-                  <span>Switch Role ({isReceptionist ? 'Receptionist' : 'Admin'})</span>
-                </button>
-
-                {user ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onGoogleLogout();
-                    }}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sign Out ({user.email})</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onGoogleSignIn();
-                    }}
-                    disabled={isLoggingIn}
-                    className="min-h-[44px] w-full px-3 rounded-xl bg-[#124E39] text-[#EBD59E] font-bold flex items-center gap-2 cursor-pointer"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    <span>{isLoggingIn ? 'Signing in...' : 'Sign In with Google'}</span>
-                  </button>
-                )}
-              </div>
+            <div className="flex-1 overflow-y-auto p-2 pb-8">
+              <MenuHeading>Print</MenuHeading>
+              {printItems(() => setIsMobileMenuOpen(false))}
+              <MenuDivider />
+              <MenuHeading>Google Sheet</MenuHeading>
+              {sheetItems(() => setIsMobileMenuOpen(false))}
+              <MenuDivider />
+              <MenuHeading>Account</MenuHeading>
+              {accountItems(() => setIsMobileMenuOpen(false))}
             </div>
           </div>
         </div>
@@ -713,4 +420,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </>
   );
 };
-

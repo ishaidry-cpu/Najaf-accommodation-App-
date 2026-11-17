@@ -509,35 +509,29 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   };
 
   return (
-    <div className={`bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden flex flex-col transition-all ${
+    <div className={`bg-white border border-[#e2e8e5] rounded-2xl shadow-sm overflow-hidden flex flex-col transition-all ${
       isExpanded ? 'fixed inset-3 z-50 rounded-xl max-h-[96vh]' : 'space-y-4 p-4 sm:p-5'
     }`}>
       {/* ========================================================================= */}
       {/* TIMELINE CONTROLS & HEADER                                                */}
       {/* ========================================================================= */}
-      <div className={`flex flex-col gap-3 pb-3 border-b border-stone-200 ${isExpanded ? 'p-4 bg-[#FAF7F2]' : ''}`}>
+      <div className={`flex flex-col gap-3 pb-3 border-b border-stone-200 ${isExpanded ? 'p-4 bg-[#f6f8f7]' : ''}`}>
         
         {/* Title & Quick Statistics */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1 rounded-lg bg-[#124E39] text-[#EBD59E]">
-                <Calendar className="w-4 h-4" />
-              </span>
-              <h2 className="text-base font-bold text-[#124E39] tracking-tight">
-                Rooms Availability & Departure Timeline
+              <h2 className="text-lg font-semibold tracking-[-0.01em] text-stone-950">
+                Room timeline
               </h2>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
-                Live Occupancy & Turnover Schedule
-              </span>
               {isReadOnly && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                  Receptionist View-Only
+                <span className="text-xs px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
+                  View only
                 </span>
               )}
             </div>
-            <p className="text-xs text-stone-500 mt-1">
-              Top row shows dates with daily arrivals and departures. Horizontal rows represent each hotel room, highlighting exactly <strong className="text-stone-800">when each room becomes vacant as per guest departures</strong>.
+            <p className="text-[13px] text-stone-500 mt-0.5">
+              Each row is a room, each column a day. See who is in, who leaves, and when a room frees up.
             </p>
           </div>
 
@@ -548,7 +542,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenReceptionSlip('arrival_slip')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FAF7F2] hover:bg-emerald-50 text-[#124E39] border border-emerald-700/30 shadow-2xs transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#f6f8f7] hover:bg-emerald-50 text-[#0f4a37] border border-emerald-700/30 shadow-2xs transition cursor-pointer"
                   title="Open Simple Arrival Slip"
                 >
                   <LogIn className="w-3.5 h-3.5 text-emerald-700" />
@@ -557,7 +551,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenReceptionSlip('departure_list')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#FAF7F2] hover:bg-amber-50 text-amber-900 border border-amber-600/30 shadow-2xs transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#f6f8f7] hover:bg-amber-50 text-amber-900 border border-amber-600/30 shadow-2xs transition cursor-pointer"
                   title="Open Simple Departure List"
                 >
                   <LogOut className="w-3.5 h-3.5 text-amber-600" />
@@ -581,7 +575,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
         {/* Date Navigation & Range Selector */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           {/* Navigation buttons */}
-          <div className="flex items-center gap-1.5 bg-[#FAF7F2] p-1 rounded-xl border border-[#E6DFD5] shadow-2xs">
+          <div className="flex items-center gap-1.5 bg-[#f6f8f7] p-1 rounded-xl border border-[#e2e8e5] shadow-2xs">
             <button
               type="button"
               onClick={() => handleShiftDays(-dayRange)}
@@ -603,8 +597,8 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               onClick={handleResetToToday}
               className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
                 startDateStr === todayStr
-                  ? 'bg-[#124E39] text-white shadow-2xs'
-                  : 'bg-white text-[#124E39] hover:bg-emerald-50 border border-[#124E39]/20'
+                  ? 'bg-[#0f4a37] text-white shadow-2xs'
+                  : 'bg-white text-[#0f4a37] hover:bg-emerald-50 border border-[#0f4a37]/20'
               }`}
             >
               Today
@@ -641,10 +635,10 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               type="button"
               onClick={handleRefreshTimeline}
               disabled={isRefreshingTimeline}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-[#124E39] hover:bg-emerald-50 border border-[#124E39]/30 transition cursor-pointer"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-[#0f4a37] hover:bg-emerald-50 border border-[#0f4a37]/30 transition cursor-pointer"
               title="Refresh Timeline: Pulls all rooms & zaereen data fed in this computer without changing the timeline date"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#124E39] ${isRefreshingTimeline ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#0f4a37] ${isRefreshingTimeline ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">{isRefreshingTimeline ? 'Refreshing...' : 'Refresh'}</span>
             </button>
           </div>
@@ -659,7 +653,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 onClick={() => setDayRange(num)}
                 className={`px-2.5 py-1 rounded-lg transition ${
                   dayRange === num
-                    ? 'bg-[#124E39] text-white shadow-2xs font-bold'
+                    ? 'bg-[#0f4a37] text-white shadow-2xs font-bold'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
@@ -677,7 +671,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 onClick={() => setHotelFilter('ALL')}
                 className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                   hotelFilter === 'ALL'
-                    ? 'bg-[#124E39] text-white shadow-2xs'
+                    ? 'bg-[#0f4a37] text-white shadow-2xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
@@ -692,7 +686,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                     onClick={() => setHotelFilter(bldg)}
                     className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                       hotelFilter.toLowerCase() === bldg.toLowerCase()
-                        ? 'bg-[#124E39] text-white shadow-2xs'
+                        ? 'bg-[#0f4a37] text-white shadow-2xs'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
@@ -706,11 +700,11 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenAddBuildingRooms}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-2xs transition cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white border border-[#c9a85a]/40 shadow-2xs transition cursor-pointer"
                 title="Add Hotel Building & Rooms manually or sync from Google Sheet"
               >
-                <Plus className="w-3.5 h-3.5 text-[#EBD59E]" />
-                <span>+ Add Rooms</span>
+                <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <span>Add Rooms</span>
               </button>
             )}
 
@@ -718,7 +712,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
             <select
               value={floorFilter}
               onChange={(e) => setFloorFilter(e.target.value)}
-              className="bg-[#FAF7F2] border border-stone-300 rounded-xl px-2.5 py-1 text-xs font-semibold text-stone-700 cursor-pointer shadow-2xs"
+              className="bg-[#f6f8f7] border border-stone-300 rounded-xl px-2.5 py-1 text-xs font-semibold text-stone-700 cursor-pointer shadow-2xs"
             >
               {floorOptions.map((fl) => (
                 <option key={fl} value={fl}>
@@ -736,7 +730,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={() => setCapacityFilter('ALL')}
                 className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === 'ALL' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                  capacityFilter === 'ALL' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
                 All
@@ -745,7 +739,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={() => setCapacityFilter('2')}
                 className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '2' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                  capacityFilter === '2' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
                 }`}
                 title="Filter 2 Pax rooms"
               >
@@ -755,7 +749,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={() => setCapacityFilter('3')}
                 className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '3' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                  capacityFilter === '3' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
                 }`}
                 title="Filter 3 Pax rooms"
               >
@@ -765,7 +759,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={() => setCapacityFilter('4')}
                 className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '4' ? 'bg-[#124E39] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                  capacityFilter === '4' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
                 }`}
                 title="Filter 4 Pax rooms"
               >
@@ -814,7 +808,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search Room #, Zaer, ITS..."
-                className="pl-8 pr-2.5 py-1 rounded-xl border border-stone-300 bg-white text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-[#124E39] shadow-2xs w-44"
+                className="pl-8 pr-2.5 py-1 rounded-xl border border-stone-300 bg-white text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-[#0f4a37] shadow-2xs w-44"
               />
               {searchQuery && (
                 <button
@@ -873,7 +867,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
         )}
 
         {/* Legend */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-[#FAF7F2] px-3 py-2 rounded-xl border border-[#E6DFD5]">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-[#f6f8f7] px-3 py-2 rounded-xl border border-[#e2e8e5]">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-1.5">
               <span className="w-3.5 h-3.5 rounded bg-emerald-600 border border-emerald-700 flex items-center justify-center text-[9px] text-white font-bold">
@@ -884,7 +878,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded bg-[#124E39] border border-[#0E3C2C] flex items-center justify-center text-[9px] text-[#EBD59E] font-bold">
+              <span className="w-3.5 h-3.5 rounded bg-[#0f4a37] border border-[#0b3a2b] flex items-center justify-center text-[9px] text-white font-bold">
                 ●
               </span>
               <span className="font-bold text-stone-900">Occupied (In-house)</span>
@@ -929,17 +923,17 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       {/* ========================================================================= */}
       {/* TIMELINE MATRIX: TOP ROW OF DATES + HORIZONTAL ROOMS                      */}
       {/* ========================================================================= */}
-      <div className="overflow-auto border border-[#E6DFD5] rounded-xl relative max-h-[68vh] shadow-inner bg-stone-50">
+      <div className="overflow-auto border border-[#e2e8e5] rounded-xl relative max-h-[68vh] shadow-inner bg-stone-50">
         <table className="w-full border-collapse text-left min-w-[950px]">
           
           {/* TOP ROW OF DATES (Sticky Header) */}
-          <thead className="sticky top-0 z-30 bg-[#FAF7F2] shadow-xs">
-            <tr className="border-b border-[#E6DFD5]">
+          <thead className="sticky top-0 z-30 bg-[#f6f8f7] shadow-xs">
+            <tr className="border-b border-[#e2e8e5]">
               
               {/* Top-Left Corner: Room Details & When Vacant Column */}
-              <th className="sticky left-0 z-40 bg-[#FAF7F2] p-2.5 text-xs font-bold text-stone-700 border-r border-[#E6DFD5] min-w-[210px] w-[210px]">
+              <th className="sticky left-0 z-40 bg-[#f6f8f7] p-2.5 text-xs font-bold text-stone-700 border-r border-[#e2e8e5] min-w-[210px] w-[210px]">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-[#124E39]">
+                  <div className="flex items-center gap-1.5 text-[#0f4a37]">
                     <Building2 className="w-4 h-4" />
                     <span>Room & Availability</span>
                   </div>
@@ -950,8 +944,8 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               </th>
 
               {/* Status & Next Vacant Column */}
-              <th className="sticky left-[210px] z-40 bg-[#FAF7F2] p-2.5 text-xs font-bold text-stone-700 border-r border-[#E6DFD5] min-w-[150px] w-[150px]">
-                <div className="flex items-center gap-1 text-[#124E39]">
+              <th className="sticky left-[210px] z-40 bg-[#f6f8f7] p-2.5 text-xs font-bold text-stone-700 border-r border-[#e2e8e5] min-w-[150px] w-[150px]">
+                <div className="flex items-center gap-1 text-[#0f4a37]">
                   <Clock className="w-3.5 h-3.5 text-amber-600" />
                   <span>When Vacant</span>
                 </div>
@@ -1042,11 +1036,11 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                   <tr key={room.id} className="hover:bg-amber-50/20 transition-colors group">
                     
                     {/* Sticky Room Identity Column */}
-                    <td className="sticky left-0 z-20 bg-white group-hover:bg-[#FAF7F2] p-2.5 border-r border-[#E6DFD5] shadow-xs">
+                    <td className="sticky left-0 z-20 bg-white group-hover:bg-[#f6f8f7] p-2.5 border-r border-[#e2e8e5] shadow-xs">
                       <div className="flex items-start justify-between gap-1.5">
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-extrabold text-sm font-mono text-[#124E39]">
+                            <span className="font-extrabold text-sm font-mono text-[#0f4a37]">
                               Rm {room.roomNumber}
                             </span>
                             <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
@@ -1080,7 +1074,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                     </td>
 
                     {/* Sticky "When Vacant" Column */}
-                    <td className="sticky left-[210px] z-20 bg-white group-hover:bg-[#FAF7F2] p-2 border-r border-[#E6DFD5] text-[11px]">
+                    <td className="sticky left-[210px] z-20 bg-white group-hover:bg-[#f6f8f7] p-2 border-r border-[#e2e8e5] text-[11px]">
                       {room.status === 'blocked' ? (
                         <div className="flex items-center gap-1 text-stone-500 font-medium">
                           <ShieldAlert className="w-3.5 h-3.5 text-stone-400" />
@@ -1118,13 +1112,11 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                         return (
                           <td
                             key={dateStr}
-                            className={`p-1 border-r border-stone-200 text-center bg-stone-100 text-stone-400 text-[10px] select-none ${
-                              isToday ? 'border-l-2 border-r-2 border-emerald-500/40' : ''
-                            }`}
+                            className="p-1 border-r border-stone-100 text-center bg-[repeating-linear-gradient(135deg,var(--color-stone-100)_0_6px,var(--color-stone-50)_6px_12px)] text-stone-400 text-[11px] select-none"
                           >
-                            <div className="p-1 rounded bg-stone-200/70 border border-stone-300 flex items-center justify-center gap-1">
-                              <ShieldAlert className="w-3 h-3 text-stone-500" />
-                              <span className="font-semibold text-stone-600">Blocked</span>
+                            <div className="p-1 flex items-center justify-center gap-1">
+                              <ShieldAlert className="w-3 h-3 text-stone-400" />
+                              <span className="text-stone-500">Blocked</span>
                             </div>
                           </td>
                         );
@@ -1149,14 +1141,15 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                           <td
                             key={dateStr}
                             onClick={() => handleCellClick(room, dateStr)}
-                            className={`p-1 border-r border-stone-200 text-center transition-colors select-none ${
-                              isToday ? 'bg-emerald-50/80 font-bold' : 'bg-emerald-50/30'
-                            } hover:bg-emerald-100/70 cursor-pointer`}
-                            title={`Room ${room.roomNumber} is VACANT on ${dateStr}. Click to allot!`}
+                            className={`group p-1 border-r border-stone-100 text-center transition-colors select-none ${
+                              isToday ? 'bg-brand-50/60' : 'bg-white'
+                            } hover:bg-emerald-50 cursor-pointer`}
+                            title={`Room ${room.roomNumber} is vacant on ${dateStr}. Click to allot.`}
                           >
-                            <div className="py-1 px-1 rounded-md border border-emerald-300/80 bg-white/70 text-emerald-800 flex items-center justify-center gap-1 text-[10px] font-semibold hover:border-emerald-600 hover:shadow-2xs">
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                              <span>Vacant</span>
+                            <div className="py-1 px-1 rounded-md flex items-center justify-center gap-1 text-[11px] text-stone-300 group-hover:text-emerald-800 group-hover:bg-white group-hover:ring-1 group-hover:ring-emerald-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/70 group-hover:hidden" />
+                              <span className="hidden group-hover:inline font-medium">Allot</span>
+                              <span className="group-hover:hidden">Vacant</span>
                             </div>
                           </td>
                         );
@@ -1294,7 +1287,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                           <div className={`p-1 rounded border flex flex-col items-center shadow-2xs ${
                             isBufferUsed
                               ? 'bg-amber-50 border-amber-300 text-amber-950'
-                              : 'bg-[#124E39]/10 border-[#124E39]/30 text-[#0E3C2C]'
+                              : 'bg-[#0f4a37]/10 border-[#0f4a37]/30 text-[#0b3a2b]'
                           }`}>
                             <span className="text-[9px] font-bold truncate max-w-[85px] leading-tight">
                               {primaryOccupant.applicantName.split(' ')[0]}
@@ -1332,14 +1325,14 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       {/* RESERVATION DETAIL HOVER / INSPECT MODAL (Guest Stay & Room Details)       */}
       {/* ========================================================================= */}
       {hoveredReservation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
+          <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-stone-200 shrink-0">
               <div className="flex items-center gap-2">
-                <span className="p-1 rounded bg-[#124E39] text-[#EBD59E]">
+                <span className="p-1 rounded bg-[#0f4a37] text-white">
                   <Users className="w-4 h-4" />
                 </span>
-                <h3 className="text-sm font-bold text-[#124E39]">
+                <h3 className="text-sm font-bold text-[#0f4a37]">
                   Guest Stay & Room Details
                 </h3>
               </div>
@@ -1353,7 +1346,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
             </div>
 
             <div className="space-y-3 mt-4 text-xs overflow-y-auto pr-1 flex-1">
-              <div className="p-3 rounded-xl bg-white border border-[#E6DFD5] space-y-1.5 shadow-2xs">
+              <div className="p-3 rounded-xl bg-white border border-[#e2e8e5] space-y-1.5 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm text-stone-900">
                     {hoveredReservation.applicantName}
@@ -1410,13 +1403,13 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               </div>
 
               {/* Current Room & Direct Change Room Controls (User requirement: I should be able to change room in Guest Stay & Room Details) */}
-              <div className="p-3.5 rounded-xl bg-white border border-[#E6DFD5] space-y-3 shadow-2xs">
+              <div className="p-3.5 rounded-xl bg-white border border-[#e2e8e5] space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-[10px] text-stone-500 uppercase font-bold tracking-wider">
                       Current Allotted Room
                     </span>
-                    <div className="font-extrabold text-sm text-[#124E39]">
+                    <div className="font-extrabold text-sm text-[#0f4a37]">
                       {hoveredReservation.building || 'Saifee'} Hotel — Room {hoveredReservation.roomNumber || 'Unallotted'}
                     </div>
                   </div>
@@ -1432,7 +1425,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                   <div className="pt-2.5 border-t border-stone-200 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-stone-800 text-xs flex items-center gap-1">
-                        <ArrowRightLeft className="w-3.5 h-3.5 text-[#124E39]" />
+                        <ArrowRightLeft className="w-3.5 h-3.5 text-[#0f4a37]" />
                         <span>Change Room Directly:</span>
                       </span>
                       {onOpenQuickAllotModal && (
@@ -1443,7 +1436,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             setHoveredReservation(null);
                             onOpenQuickAllotModal(res);
                           }}
-                          className="text-[11px] text-[#124E39] font-bold hover:underline cursor-pointer"
+                          className="text-[11px] text-[#0f4a37] font-bold hover:underline cursor-pointer"
                         >
                           Advanced Reassignment ↗
                         </button>
@@ -1463,7 +1456,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             setModalRoomChangeSuccess(null);
                             setModalRoomChangeError(null);
                           }}
-                          className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2 py-1.5 text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer"
+                          className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2 py-1.5 text-xs font-bold text-[#0f4a37] focus:outline-none cursor-pointer"
                         >
                           {distinctBuildings.map((b) => (
                             <option key={b} value={b}>{b} Hotel</option>
@@ -1482,7 +1475,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             setModalRoomChangeSuccess(null);
                             setModalRoomChangeError(null);
                           }}
-                          className="w-full bg-white border border-[#124E39]/40 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
+                          className="w-full bg-white border border-[#0f4a37]/40 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
                         >
                           <option value="">-- Select Room Number --</option>
                           {rooms
@@ -1520,7 +1513,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             type="checkbox"
                             checked={modalChangeApplyToFamily}
                             onChange={(e) => setModalChangeApplyToFamily(e.target.checked)}
-                            className="rounded text-[#124E39] focus:ring-[#124E39]"
+                            className="rounded text-[#0f4a37] focus:ring-[#0f4a37]"
                           />
                           <span>
                             Also change room for other {famMembers.length} member{famMembers.length > 1 ? 's' : ''} of Family {hoveredReservation.family}
@@ -1571,7 +1564,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             prev ? { ...prev, building: targetBldg, roomNumber: targetRoom } : null
                           );
                         }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-[#EBD59E] shadow-2xs transition cursor-pointer flex items-center gap-1.5"
+                        className="px-4 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white shadow-2xs transition cursor-pointer flex items-center gap-1.5"
                       >
                         <Check className="w-3.5 h-3.5" />
                         <span>Confirm Room Change</span>
@@ -1599,14 +1592,14 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       {/* ROOM INSPECTION MODAL (When clicking room title)                          */}
       {/* ========================================================================= */}
       {inspectedRoomTimeline && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
+          <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-stone-200 shrink-0">
               <div className="flex items-center gap-2">
-                <span className="p-1 rounded bg-[#124E39] text-[#EBD59E]">
+                <span className="p-1 rounded bg-[#0f4a37] text-white">
                   <DoorClosed className="w-4 h-4" />
                 </span>
-                <h3 className="text-sm font-bold text-[#124E39]">
+                <h3 className="text-sm font-bold text-[#0f4a37]">
                   {inspectedRoomTimeline.building} Hotel — Room {inspectedRoomTimeline.roomNumber}
                 </h3>
               </div>
@@ -1621,19 +1614,19 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
 
             <div className="space-y-3 mt-4 text-xs overflow-y-auto pr-1 flex-1">
               <div className="grid grid-cols-3 gap-2">
-                <div className="p-2 rounded-xl bg-white border border-[#E6DFD5] text-center">
+                <div className="p-2 rounded-xl bg-white border border-[#e2e8e5] text-center">
                   <div className="text-[10px] text-stone-500 font-bold">Floor</div>
                   <div className="font-extrabold text-stone-900 mt-0.5">
                     {inspectedRoomTimeline.floorLabel || `Floor ${inspectedRoomTimeline.floor}`}
                   </div>
                 </div>
-                <div className="p-2 rounded-xl bg-white border border-[#E6DFD5] text-center">
+                <div className="p-2 rounded-xl bg-white border border-[#e2e8e5] text-center">
                   <div className="text-[10px] text-stone-500 font-bold">Capacity</div>
-                  <div className="font-extrabold text-[#124E39] mt-0.5">
+                  <div className="font-extrabold text-[#0f4a37] mt-0.5">
                     {inspectedRoomTimeline.capacity || 2} + {inspectedRoomTimeline.buffer || 0} Buffer
                   </div>
                 </div>
-                <div className="p-2 rounded-xl bg-white border border-[#E6DFD5] text-center">
+                <div className="p-2 rounded-xl bg-white border border-[#e2e8e5] text-center">
                   <div className="text-[10px] text-stone-500 font-bold">Toilet Type</div>
                   <div className="font-extrabold text-stone-900 mt-0.5 truncate" title={inspectedRoomTimeline.toiletType}>
                     {inspectedRoomTimeline.toiletType || 'Standard'}
@@ -1654,7 +1647,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       setInspectedRoomTimeline(null);
                       handleCellClick(r, todayStr);
                     }}
-                    className="text-[11px] font-bold text-[#124E39] hover:underline cursor-pointer"
+                    className="text-[11px] font-bold text-[#0f4a37] hover:underline cursor-pointer"
                   >
                     + Book This Room Directly
                   </button>
@@ -1679,7 +1672,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       {bList.map((res) => (
                         <div
                           key={res.id}
-                          className="p-2.5 rounded-lg bg-white border border-[#E6DFD5] flex items-center justify-between gap-2 shadow-2xs"
+                          className="p-2.5 rounded-lg bg-white border border-[#e2e8e5] flex items-center justify-between gap-2 shadow-2xs"
                         >
                           <div>
                             <div className="font-bold text-stone-900">
@@ -1724,16 +1717,16 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       {/* INSTANT ROOM BOOKING & ALLOTMENT MODAL (Clicking on Vacant slot)          */}
       {/* ========================================================================= */}
       {instantBookingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
-          <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
+          <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden p-5 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-stone-200 shrink-0">
               <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-[#124E39] text-[#EBD59E]">
+                <span className="p-1.5 rounded-lg bg-[#0f4a37] text-white">
                   <DoorClosed className="w-4 h-4" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-bold text-[#124E39]">
+                  <h3 className="text-sm font-bold text-[#0f4a37]">
                     Instant Room Booking & Allotment
                   </h3>
                   <p className="text-[11px] text-stone-500 font-medium">
@@ -1753,7 +1746,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
             {/* Modal Body */}
             <form onSubmit={handleInstantBookingSubmit} className="space-y-3 mt-3 text-xs overflow-y-auto pr-1 flex-1">
               {/* Tour ID input - User requirement: even if tour id is not in database, book instantly */}
-              <div className="p-3 rounded-xl bg-white border border-[#E6DFD5] space-y-1 shadow-2xs">
+              <div className="p-3 rounded-xl bg-white border border-[#e2e8e5] space-y-1 shadow-2xs">
                 <label className="block text-xs font-bold text-stone-900">
                   Tour ID <span className="text-red-500">*</span>
                 </label>
@@ -1768,7 +1761,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       setInstantTourId(e.target.value);
                       setInstantError(null);
                     }}
-                    className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl text-xs font-mono font-bold text-[#124E39] placeholder:text-stone-400 placeholder:font-sans focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                    className="w-full px-3 py-2 bg-[#f6f8f7] border border-[#0f4a37]/40 rounded-xl text-xs font-mono font-bold text-[#0f4a37] placeholder:text-stone-400 placeholder:font-sans focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                   />
                   <datalist id="timeline-existing-tours">
                     {existingTourIds.map((t) => (
@@ -1849,7 +1842,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               </div>
 
               {/* Remarks / Notes - User requirement: book room instantly with remarks */}
-              <div className="p-3 rounded-xl bg-white border border-[#E6DFD5] space-y-1 shadow-2xs">
+              <div className="p-3 rounded-xl bg-white border border-[#e2e8e5] space-y-1 shadow-2xs">
                 <label className="block text-xs font-bold text-stone-900">
                   Booking Remarks & Instructions
                 </label>
@@ -1858,12 +1851,12 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                   placeholder="Enter remarks, accounts comments, special VIP requests, direct allotment notes..."
                   value={instantRemarks}
                   onChange={(e) => setInstantRemarks(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-[#FAF7F2] border border-stone-300 rounded-xl text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                  className="w-full px-3 py-1.5 bg-[#f6f8f7] border border-stone-300 rounded-xl text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                 />
               </div>
 
               {/* Optional Guest Name & Family Number - User requirement: optional adding names and family numbers */}
-              <div className="p-3 rounded-xl bg-white border border-[#E6DFD5] space-y-2 shadow-2xs">
+              <div className="p-3 rounded-xl bg-white border border-[#e2e8e5] space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5 text-stone-600" />
@@ -1882,7 +1875,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       placeholder="e.g. Husain Bhai (or leave blank)"
                       value={instantApplicantName}
                       onChange={(e) => setInstantApplicantName(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#FAF7F2] border border-stone-300 rounded-lg text-xs font-medium text-stone-800 focus:outline-none"
+                      className="w-full px-2.5 py-1.5 bg-[#f6f8f7] border border-stone-300 rounded-lg text-xs font-medium text-stone-800 focus:outline-none"
                     />
                   </div>
 
@@ -1895,7 +1888,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       placeholder="e.g. F-1, 101, Fam-A..."
                       value={instantFamilyNumber}
                       onChange={(e) => setInstantFamilyNumber(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-[#FAF7F2] border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-800 focus:outline-none"
+                      className="w-full px-2.5 py-1.5 bg-[#f6f8f7] border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-800 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1911,7 +1904,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       max={10}
                       value={instantPax}
                       onChange={(e) => setInstantPax(parseInt(e.target.value) || 1)}
-                      className="w-full px-2.5 py-1 bg-[#FAF7F2] border border-stone-300 rounded-lg text-xs font-bold text-stone-800 focus:outline-none"
+                      className="w-full px-2.5 py-1 bg-[#f6f8f7] border border-stone-300 rounded-lg text-xs font-bold text-stone-800 focus:outline-none"
                     />
                   </div>
                   <div>
@@ -1921,7 +1914,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                     <select
                       value={instantCategory}
                       onChange={(e) => setInstantCategory(e.target.value)}
-                      className="w-full px-2.5 py-1 bg-[#FAF7F2] border border-stone-300 rounded-lg text-xs font-bold text-stone-800 focus:outline-none"
+                      className="w-full px-2.5 py-1 bg-[#f6f8f7] border border-stone-300 rounded-lg text-xs font-bold text-stone-800 focus:outline-none"
                     >
                       <option value="Category A (Nizaam)">Category A (Nizaam)</option>
                       <option value="Category B (Standard)">Category B (Standard)</option>
@@ -1971,7 +1964,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl text-xs font-black bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl text-xs font-black bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>⚡ Book & Allot Room Instantly</span>

@@ -548,7 +548,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               {/* Scrollable Pax Table */}
               <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-slate-800">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 bg-slate-900 text-slate-300 font-bold border-b border-slate-800 text-[11px] shadow-xs">
+                  <thead className="sticky top-0 bg-stone-50 text-stone-600 font-medium border-b border-stone-200 text-[11px] shadow-xs">
                     <tr>
                       <th className="py-2 px-2.5 w-10 text-center">#</th>
                       <th className="py-2 px-3">Pax / Zair Full Name</th>

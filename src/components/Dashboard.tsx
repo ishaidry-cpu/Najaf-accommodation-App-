@@ -631,12 +631,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-4 sm:space-y-6 pb-8">
       {/* MOBILE QUICK-CHECK PANEL (Fast instant lookup on mobile phones) */}
-      <div className="md:hidden bg-white border border-[#E6DFD5] rounded-2xl p-3.5 shadow-sm space-y-3">
+      <div className="md:hidden bg-white ring-1 ring-stone-200 rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-extrabold text-[#124E39]">Quick Mobile Check</h2>
+            <h2 className="text-lg font-semibold tracking-[-0.01em] text-stone-950">Find a zair</h2>
             <p className="text-[11px] text-stone-500">
-              Search Guest, ITS, Tour ID, Office Name or Room #
+              Search by name, ITS, tour, office or room
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -644,7 +644,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 onClick={onOpenAddZaer}
-                className="min-h-[40px] px-3 rounded-xl bg-[#124E39] text-[#EBD59E] text-xs font-bold flex items-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-3 rounded-xl bg-[#0f4a37] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Zair</span>
@@ -659,8 +659,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             type="text"
             value={mobileQuickSearch}
             onChange={(e) => setMobileQuickSearch(e.target.value)}
-            placeholder="Type Name, ITS, Tour ID, Office, or Room..."
-            className="w-full min-h-[44px] bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl pl-9 pr-9 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+            placeholder="Name, ITS, tour ID or room"
+            className="w-full min-h-[44px] bg-stone-50 border border-stone-200 rounded-xl pl-9 pr-9 text-[15px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
           />
           {mobileQuickSearch && (
             <button
@@ -680,7 +680,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               mobileQuickMatches.map((res) => (
                 <div
                   key={res.id}
-                  className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl p-3 space-y-2 text-xs"
+                  className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl p-3 space-y-2 text-xs"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -695,14 +695,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className={`font-extrabold text-xs tabular-nums ${res.roomNumber ? 'text-[#124E39]' : 'text-amber-700'}`}>
+                      <div className={`font-extrabold text-xs tabular-nums ${res.roomNumber ? 'text-[#0f4a37]' : 'text-amber-700'}`}>
                         {res.roomNumber ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-[11px] text-stone-700">
-                    <span className="font-mono font-bold text-[#124E39]">
+                    <span className="font-mono font-bold text-[#0f4a37]">
                       Tour {res.tourRefNo || res.tourId || '—'}
                     </span>
                     {res.officeName && (
@@ -720,7 +720,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => onOpenSwitchRoomModal({ reservations: [res] })}
-                        className="min-h-[44px] rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="min-h-[44px] rounded-xl bg-[#0f4a37] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <ArrowRightLeft className="w-3.5 h-3.5" />
                         <span>Switch Room</span>
@@ -730,7 +730,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => onOpenQuickAllotModal(res)}
-                          className="min-h-[44px] rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="min-h-[44px] rounded-xl bg-[#0f4a37] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
                           <span>Allot Room</span>
@@ -763,269 +763,177 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
       </div>
 
-      {/* Top Banner / Hero - Beige & Deep Green (Condensed on mobile) */}
-      <div className="hidden md:flex bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-5 sm:p-6 shadow-sm flex-col md:flex-row md:items-center justify-between gap-5">
-        <div className="flex items-center gap-4">
-          <FaizHusainiLogo size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#124E39]">
-                Accommodation Operations
-              </span>
-              <span className="text-xs text-stone-500 hidden sm:inline">
-                · {distinctBuildings.join(' & ')} Hotels ({rooms.length} Rooms)
-              </span>
-            </div>
-            <p className="text-xs text-stone-600 mt-1 max-w-xl">
-              Minimalist room occupancy overview, daily reception manager departure slips, Excel batch allocation, and B ➔ A shift requests.
-            </p>
+      {/* Page header: title, today's context, sheet status and the main actions */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3">
+        <div className="min-w-0">
+          <h1 className="hidden md:block text-[26px] leading-tight font-semibold tracking-[-0.02em] text-stone-950">
+            Reception overview
+          </h1>
+          <p className="hidden md:block mt-1 text-sm text-stone-500">
+            {new Date(selectedDate + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
+            {', '}
+            {rooms.length} rooms in {distinctBuildings.join(', ')}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+            <span className="inline-flex items-center gap-1.5 text-stone-600">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  sheetsConfig?.isSyncing ? 'bg-amber-500 animate-pulse' : sheetsConfig?.spreadsheetId ? 'bg-emerald-500' : 'bg-stone-300'
+                }`}
+              />
+              {sheetsConfig?.isSyncing
+                ? 'Syncing with Google Sheet…'
+                : sheetsConfig?.spreadsheetId
+                  ? sheetsConfig?.lastSyncedAt
+                    ? `Google Sheet synced at ${new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Google Sheet connected'
+                  : 'No Google Sheet connected'}
+            </span>
+            {sheetsConfig?.spreadsheetId ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenGoogleSheet || onOpenSheetsModal}
+                  className="inline-flex items-center gap-1 font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer"
+                >
+                  Open sheet
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+                {userRole === 'admin' ? (
+                  <button
+                    type="button"
+                    onClick={onQuickSync}
+                    disabled={sheetsConfig?.isSyncing}
+                    className="font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer disabled:opacity-50"
+                  >
+                    Push now
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenSheetsModal}
+                    className="font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer"
+                  >
+                    Pull latest
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenSheetsModal}
+                className="font-medium text-brand-700 hover:underline underline-offset-2 cursor-pointer"
+              >
+                Connect sheet
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          {onOpenAddBuildingRooms && (
-            <button
-              onClick={onOpenAddBuildingRooms}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
-              title="Add Hotel Building & Rooms manually or sync from Google Sheet"
-            >
-              <Building2 className="w-3.5 h-3.5 text-[#EBD59E]" />
-              <span>+ Add Building & Rooms</span>
-            </button>
-          )}
-
-          {onOpenAddZaer && (
-            <button
-              onClick={onOpenAddZaer}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition cursor-pointer"
-              title="Manually add all details of a Zair with duplicate check"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Zair</span>
-            </button>
-          )}
-
+        <div className="hidden md:flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onDownloadTemplate}
+            className="h-9 px-3 rounded-lg text-[13px] font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition cursor-pointer"
+            title="Download a blank Excel file with the required columns"
+          >
+            Excel template
+          </button>
+          <button
+            type="button"
+            onClick={onOpenUploadExcel}
+            className="h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:ring-stone-300 hover:bg-stone-50 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+          >
+            <Upload className="w-4 h-4 text-stone-500" />
+            Upload Excel
+          </button>
           {onOpenAddTourGroup && (
             <button
+              type="button"
               onClick={onOpenAddTourGroup}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
-              title="Add a Tour ID with different family IDs and multiple individuals with same arrival and departure dates"
+              className="h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:ring-stone-300 hover:bg-stone-50 shadow-xs transition cursor-pointer flex items-center gap-1.5"
+              title="Add several zaereen who share a tour ID and dates"
             >
-              <Users className="w-3.5 h-3.5 text-[#EBD59E]" />
-              <span>Add Tour Group</span>
+              <Users className="w-4 h-4 text-stone-500" />
+              Add tour group
             </button>
           )}
-
-          <button
-            onClick={onOpenUploadExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-sm transition"
-          >
-            <Upload className="w-3.5 h-3.5 text-[#EBD59E]" />
-            <span>Upload Excel</span>
-          </button>
-
-          <button
-            onClick={onDownloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
-            title="Download sample Excel template with required columns"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Template</span>
-          </button>
+          {onOpenAddZaer && (
+            <button
+              type="button"
+              onClick={onOpenAddZaer}
+              className="h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4 text-gold-200" />
+              Add zair
+            </button>
+          )}
         </div>
       </div>
 
-      {/* GOOGLE SHEETS & LIVE BACKEND REAL-TIME SYNC BAR (User Request: "syced with rooms Availability & Departure Timeline, live website with backhand data until delted") */}
-      <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-100/90 text-emerald-900 flex items-center justify-center shrink-0 border border-emerald-300 shadow-2xs">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-800" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-xs font-bold text-stone-900">
-                {sheetsConfig?.spreadsheetName ? `Google Sheet: ${sheetsConfig.spreadsheetName}` : 'Google Sheets Two-Way Synchronization'}
-              </h4>
-              {isLiveBackendConnected && (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 text-[10px] font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                  Live Backend Persistent Data
-                </span>
+      {/* Key numbers: one quiet strip, colour only where it means something */}
+      <section aria-label="Key numbers" className="rounded-2xl bg-white ring-1 ring-stone-200 shadow-xs overflow-hidden">
+        <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-stone-100">
+          {[
+            {
+              label: 'Zaereen',
+              value: totalZaereen,
+              note: unallottedZaereen.length > 0 ? `${unallottedZaereen.length} need a room` : 'All have rooms',
+              noteClass: unallottedZaereen.length > 0 ? 'text-amber-700' : 'text-emerald-700',
+            },
+            { label: 'Vacant rooms', value: vacantCount, note: 'Ready to allot', dot: 'bg-emerald-500' },
+            { label: 'Occupied rooms', value: occupiedCount, note: 'Zaereen in house', dot: 'bg-amber-500' },
+            { label: 'Blocked rooms', value: blockedCount, note: 'Maintenance or VIP', dot: 'bg-stone-400' },
+            {
+              label: 'B→A shifts',
+              value: bToACount,
+              note: `${bToAPaidCount} paid, ${bToACount - bToAPaidCount} pending`,
+            },
+            {
+              label: 'Uploaded to portal',
+              value: uploadedCount,
+              suffix: `of ${totalZaereen}`,
+              progress: totalZaereen > 0 ? Math.round((uploadedCount / totalZaereen) * 100) : 0,
+            },
+          ].map((k: { label: string; value: number; note?: string; noteClass?: string; dot?: string; suffix?: string; progress?: number }) => (
+            <div key={k.label} className="bg-white px-4 py-3.5 sm:px-5 sm:py-4">
+              <dt className="flex items-center gap-1.5 text-[13px] text-stone-500">
+                {k.dot && <span className={`w-1.5 h-1.5 rounded-full ${k.dot}`} />}
+                {k.label}
+              </dt>
+              <dd className="mt-1.5 flex items-baseline gap-1.5">
+                <span className="text-[28px] leading-none font-semibold tracking-[-0.02em] text-stone-950 tabular-nums">{k.value}</span>
+                {k.suffix && <span className="text-[13px] text-stone-400 tabular-nums">{k.suffix}</span>}
+              </dd>
+              {typeof k.progress === 'number' ? (
+                <div className="mt-2.5 flex items-center gap-2">
+                  <div className="h-1 flex-1 rounded-full bg-stone-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-brand-600" style={{ width: `${k.progress}%` }} />
+                  </div>
+                  <span className="text-xs text-stone-500 tabular-nums">{k.progress}%</span>
+                </div>
+              ) : (
+                <div className={`mt-1.5 text-xs ${k.noteClass || 'text-stone-500'}`}>{k.note}</div>
               )}
             </div>
-            <p className="text-[11px] text-stone-500 mt-0.5">
-              Synced with <strong>Rooms Availability & Departure Timeline</strong>, Zaereen Allotments, 114 Rooms & Accounts Slips. Data remains on backend until deleted.
-              {sheetsConfig?.lastSyncedAt && (
-                <span className="ml-2 font-medium text-emerald-800">
-                  • Last Synced: {new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
-          {sheetsConfig?.spreadsheetId ? (
-            <>
-              {/* Access Google Sheet in New Tab */}
-              <button
-                onClick={onOpenGoogleSheet || onOpenSheetsModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs transition cursor-pointer"
-                title="Open Google Sheet in new browser tab"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-800" />
-                <span>Open Google Sheet</span>
-                <ArrowUpRight className="w-3 h-3 text-emerald-700" />
-              </button>
-
-              {/* Push to Sheet Button (Admin Only) or Pull from Sheet (Receptionist) */}
-              {userRole === 'admin' ? (
-                <button
-                  onClick={onQuickSync}
-                  disabled={sheetsConfig?.isSyncing}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
-                    sheetsConfig?.isSyncing
-                      ? 'bg-amber-100 text-amber-950 border border-amber-300 animate-pulse'
-                      : 'bg-[#124E39] hover:bg-[#0E3C2C] text-white'
-                  }`}
-                  title="Push to Google Sheet: Pushes latest Zaereen records, 114 Rooms & Rooms Availability Timeline to Google Sheet"
-                >
-                  <UploadCloud className={`w-3.5 h-3.5 text-[#EBD59E] ${sheetsConfig?.isSyncing ? 'animate-pulse' : ''}`} />
-                  <span>{sheetsConfig?.isSyncing ? 'Pushing...' : 'Push to Sheet'}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={onOpenSheetsModal}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition cursor-pointer"
-                  title="Receptionist View: Click to Pull latest Zaereen records & 114 Rooms from Google Sheet"
-                >
-                  <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
-                  <span>Pull from Sheet</span>
-                </button>
-              )}
-            </>
-          ) : (
-            <button
-              onClick={onOpenSheetsModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-xs transition cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-[#EBD59E]" />
-              <span>Connect Google Sheet</span>
-            </button>
-          )}
-
-          {onOpenSheetsModal && (
-            <button
-              onClick={onOpenSheetsModal}
-              className="p-1.5 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition cursor-pointer"
-              title="Sheet settings & configuration"
-            >
-              <Filter className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Total Zaereen */}
-        <div className="bg-white p-3.5 rounded-xl border border-[#E6DFD5] shadow-xs">
-          <div className="flex items-center justify-between text-stone-500 text-[11px] font-semibold">
-            <span>Total Zaereen</span>
-            <Users className="w-3.5 h-3.5 text-stone-400" />
-          </div>
-          <div className="mt-1 text-xl font-bold text-stone-900">{totalZaereen}</div>
-          <div className="text-[10px] text-stone-500 mt-0.5">
-            {unallottedZaereen.length} unallotted
-          </div>
-        </div>
-
-        {/* Vacant Rooms */}
-        <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200 shadow-xs">
-          <div className="flex items-center justify-between text-emerald-800 text-[11px] font-semibold">
-            <span>Vacant (On Date)</span>
-            <BedDouble className="w-3.5 h-3.5 text-emerald-600" />
-          </div>
-          <div className="mt-1 text-xl font-bold text-emerald-800">{vacantCount}</div>
-          <div className="text-[10px] text-emerald-700 mt-0.5">
-            Ready to allot
-          </div>
-        </div>
-
-        {/* Occupied Rooms */}
-        <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 shadow-xs">
-          <div className="flex items-center justify-between text-amber-800 text-[11px] font-semibold">
-            <span>Occupied (On Date)</span>
-            <Building2 className="w-3.5 h-3.5 text-amber-600" />
-          </div>
-          <div className="mt-1 text-xl font-bold text-amber-800">{occupiedCount}</div>
-          <div className="text-[10px] text-amber-700 mt-0.5">
-            In-house zaereen
-          </div>
-        </div>
-
-        {/* Blocked Rooms */}
-        <div className="bg-stone-100 p-3.5 rounded-xl border border-stone-300 shadow-xs">
-          <div className="flex items-center justify-between text-stone-700 text-[11px] font-semibold">
-            <span>Blocked Inventory</span>
-            <ShieldAlert className="w-3.5 h-3.5 text-stone-500" />
-          </div>
-          <div className="mt-1 text-xl font-bold text-stone-800">{blockedCount}</div>
-          <div className="text-[10px] text-stone-500 mt-0.5">
-            Maintenance / VIP
-          </div>
-        </div>
-
-        {/* B to A Shifts */}
-        <div className="bg-white p-3.5 rounded-xl border border-[#E6DFD5] shadow-xs">
-          <div className="flex items-center justify-between text-stone-500 text-[11px] font-semibold">
-            <span>B ➔ A Shifts</span>
-            <span className="text-[10px] font-bold text-[#124E39]">Nizaam</span>
-          </div>
-          <div className="mt-1 text-xl font-bold text-[#124E39]">{bToACount}</div>
-          <div className="text-[10px] text-stone-500 mt-0.5">
-            {bToAPaidCount} paid • {bToACount - bToAPaidCount} pending
-          </div>
-        </div>
-
-        {/* Uploaded to Portal */}
-        <div className="bg-white p-3.5 rounded-xl border border-[#E6DFD5] shadow-xs">
-          <div className="flex items-center justify-between text-stone-500 text-[11px] font-semibold">
-            <span>Main Portal Upload</span>
-            <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
-          </div>
-          <div className="mt-1 text-xl font-bold text-stone-900">
-            {uploadedCount} <span className="text-xs text-stone-500 font-normal">/ {totalZaereen}</span>
-          </div>
-          <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
-            {totalZaereen > 0 ? Math.round((uploadedCount / totalZaereen) * 100) : 0}% synced
-          </div>
-        </div>
-      </div>
+          ))}
+        </dl>
+      </section>
 
       {/* ========================================================================= */}
       {/* DASHBOARD TOUR & FAMILY ROOM ALLOTMENT OVERVIEW                           */}
       {/* "the dasborad and overview I should be able to allot to family members     */}
       {/* for respective tour IDs"                                                  */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-[#E6DFD5] rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="bg-white border border-[#e2e8e5] rounded-2xl p-5 shadow-sm space-y-4">
         <div className="space-y-3 pb-3 border-b border-stone-200">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded bg-[#124E39] text-[#EBD59E]">
-                  <Users className="w-4 h-4" />
-                </span>
-                <h3 className="text-sm font-bold text-[#124E39] tracking-tight">
-                  Tour & Family Room Allotment Overview
-                </h3>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-950 border border-emerald-300">
-                  1-Click Family Allocation
-                </span>
-              </div>
-          <p className="text-xs text-stone-500 mt-1">
-            Search by Tour ID, Office Name, or Arrival Date to review family clusters and allot or switch rooms.
+              <h2 className="text-lg font-semibold tracking-[-0.01em] text-stone-950">
+                Tours and families
+              </h2>
+          <p className="text-[13px] text-stone-500 mt-0.5">
+            Find a tour by ID, office or date, then allot or switch rooms for a whole family at once.
           </p>
         </div>
 
@@ -1035,11 +943,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <button
               type="button"
               onClick={onOpenAddTourGroup}
-              className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-2xs transition cursor-pointer"
+              className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
               title="Add a Tour ID with multiple individuals across different family IDs"
             >
               <Users className="w-3.5 h-3.5" />
-              <span>+ Add Tour Group</span>
+              <span>Add Tour Group</span>
             </button>
           )}
 
@@ -1056,7 +964,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 setTourArrivalDateFilter('');
                 setTourDepartureDateFilter('');
               }}
-              className="text-xs text-[#124E39] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+              className="text-xs text-[#0f4a37] hover:underline font-bold flex items-center gap-1 cursor-pointer"
               title="Reset search and date filters"
             >
               <RefreshCw className="w-3 h-3" />
@@ -1076,7 +984,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             placeholder="Search Tour ID or Office Name..."
             value={tourSearchQuery}
             onChange={(e) => setTourSearchQuery(e.target.value)}
-            className="w-full min-h-[44px] sm:min-h-0 pl-8 pr-7 py-1.5 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl text-xs font-bold text-[#124E39] placeholder:text-stone-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-[#124E39] shadow-2xs"
+            className="w-full min-h-[44px] sm:min-h-0 pl-8 pr-7 py-1.5 bg-[#f6f8f7] border border-[#0f4a37]/30 rounded-xl text-xs font-bold text-[#0f4a37] placeholder:text-stone-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-[#0f4a37] shadow-2xs"
           />
           {tourSearchQuery && (
             <button
@@ -1091,14 +999,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* 2. Filter by Arrival Date */}
-        <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-[#124E39]/30 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
+        <div className="lg:col-span-2 flex items-center gap-1 bg-[#f6f8f7] border border-[#0f4a37]/30 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
           <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
           <span className="text-[10px] font-bold text-stone-600 shrink-0">Arr:</span>
           <input
             type="date"
             value={tourArrivalDateFilter}
             onChange={(e) => setTourArrivalDateFilter(e.target.value)}
-            className="bg-transparent text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer w-full min-w-0"
+            className="bg-transparent text-xs font-bold text-[#0f4a37] focus:outline-none cursor-pointer w-full min-w-0"
             title="Filter tours arriving on date"
           />
           {tourArrivalDateFilter && (
@@ -1114,7 +1022,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* 3. Filter by Departure Date */}
-        <div className="lg:col-span-2 flex items-center gap-1 bg-[#FAF7F2] border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
+        <div className="lg:col-span-2 flex items-center gap-1 bg-[#f6f8f7] border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
           <LogOut className="w-3.5 h-3.5 text-amber-700 shrink-0" />
           <span className="text-[10px] font-bold text-amber-900 shrink-0">Dep:</span>
           <input
@@ -1142,7 +1050,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <select
             value={currentTourId}
             onChange={(e) => setDashTourId(e.target.value)}
-            className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-[#124E39]/40 rounded-xl px-3 py-1.5 text-xs font-bold text-[#124E39] focus:outline-none focus:ring-1 focus:ring-[#124E39] cursor-pointer shadow-2xs truncate"
+            className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-[#0f4a37]/40 rounded-xl px-3 py-1.5 text-xs font-bold text-[#0f4a37] focus:outline-none focus:ring-1 focus:ring-[#0f4a37] cursor-pointer shadow-2xs truncate"
           >
             {filteredTourSummaries.length > 0 ? (
               filteredTourSummaries.map((t) => (
@@ -1170,7 +1078,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onClick={() => setDashTourId(t.tourId)}
                 className={`min-h-[38px] sm:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-[#124E39] text-[#EBD59E] shadow-2xs'
+                    ? 'bg-[#0f4a37] text-white shadow-2xs'
                     : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200'
                 }`}
               >
@@ -1194,7 +1102,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     {currentTourId && (
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="font-mono font-black text-sm text-[#124E39] bg-[#124E39]/10 px-2.5 py-1 rounded-lg border border-[#124E39]/20">
+          <span className="font-mono font-black text-sm text-[#0f4a37] bg-[#0f4a37]/10 px-2.5 py-1 rounded-lg border border-[#0f4a37]/20">
             Tour ID: {currentTourId}
           </span>
           {(() => {
@@ -1274,10 +1182,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenPdfModal('tour_manifest', currentTourId)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border bg-[#124E39] text-[#EBD59E] hover:bg-[#0E3C2C] border-[#C5A059]/50 shadow-2xs"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border bg-[#0f4a37] text-white hover:bg-[#0b3a2b] border-[#c9a85a]/50 shadow-2xs"
                   title={`Open Tour ID Specific Lodging Manifest for Tour ${currentTourId} (Search, Pax Names, Allotments & PDF)`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <FileText className="w-3.5 h-3.5 text-[#ecdcae]" />
                   <span>Tour Manifest</span>
                 </button>
               )}
@@ -1354,16 +1262,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className={`p-4 rounded-xl border transition shadow-2xs ${
                     famItem.isFullyAllotted
                       ? famItem.hasRoomChange
-                        ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300'
-                        : 'bg-[#FAF7F2]/60 border-emerald-300'
-                      : 'bg-white border-amber-300/80 ring-1 ring-amber-200'
+                        ? 'bg-amber-50/40 border-amber-200'
+                        : 'bg-white border-stone-200'
+                      : 'bg-white border-stone-200 border-l-[3px] border-l-amber-400'
                   }`}
                 >
                   {/* Family Header */}
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-black text-sm text-[#124E39]">
+                        <span className="font-semibold text-[15px] text-stone-950 tabular-nums">
                           Family {famItem.family}
                         </span>
                         <span className="text-[11px] text-stone-600 font-semibold">
@@ -1538,7 +1446,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           [famItem.family]: { building: newB, roomNumber: '' },
                         }));
                       }}
-                      className="bg-[#FAF7F2] border border-stone-300 rounded-lg px-2 py-1 text-xs font-bold text-[#124E39] focus:outline-none cursor-pointer"
+                      className="bg-[#f6f8f7] border border-stone-300 rounded-lg px-2 py-1 text-xs font-bold text-[#0f4a37] focus:outline-none cursor-pointer"
                     >
                       {distinctBuildings.map((bldg) => (
                         <option key={bldg} value={bldg}>
@@ -1610,7 +1518,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, currentRoom);
                         }
                       }}
-                      className="min-h-[40px] sm:min-h-0 px-3 py-1 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-[#EBD59E] font-bold rounded-lg text-xs shadow-xs transition cursor-pointer"
+                      className="min-h-[40px] sm:min-h-0 px-3 py-1 bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition cursor-pointer"
                     >
                       Allot Family ({famItem.totalCount})
                     </button>
@@ -1624,7 +1532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             initialScope: 'group',
                           })
                         }
-                        className="min-h-[40px] sm:min-h-0 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-[#124E39] border border-[#124E39]/30 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition"
+                        className="min-h-[40px] sm:min-h-0 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-[#0f4a37] border border-[#0f4a37]/30 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition"
                         title="Switch or swap room for this family"
                       >
                         <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -1740,7 +1648,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   onChange={(e) => {
                                     onAllotRoom(m.id, e.target.value, m.roomNumber || '');
                                   }}
-                                  className="bg-white border border-stone-300 rounded px-1.5 py-0.5 text-xs font-bold text-[#124E39] cursor-pointer"
+                                  className="bg-white border border-stone-300 rounded px-1.5 py-0.5 text-xs font-bold text-[#0f4a37] cursor-pointer"
                                 >
                                   {distinctBuildings.map((bldg) => (
                                     <option key={bldg} value={bldg}>
@@ -1794,7 +1702,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         initialScope: 'single',
                                       })
                                     }
-                                    className="min-h-[36px] sm:min-h-0 px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-[#124E39] border border-[#124E39]/30 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition"
+                                    className="min-h-[36px] sm:min-h-0 px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-[#0f4a37] border border-[#0f4a37]/30 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition"
                                     title={`Switch room for ${m.applicantName}`}
                                   >
                                     <ArrowRightLeft className="w-3 h-3" />
@@ -1837,7 +1745,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   setTourSearchQuery('');
                   setTourArrivalDateFilter('');
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#124E39] text-[#EBD59E] font-bold text-xs shadow-2xs hover:bg-[#0E3C2C] transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0f4a37] text-white font-bold text-xs shadow-2xs hover:bg-[#0b3a2b] transition cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Reset Tour Search & Arrival Date</span>
@@ -1855,34 +1763,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* ========================================================================= */}
 
       {/* View Mode Toggle: Timeline vs Compact Button Matrix */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#FAF7F2] p-2.5 rounded-2xl border border-[#E6DFD5] shadow-2xs">
-        <div className="flex items-center gap-2">
-          <span className="p-1.5 rounded-xl bg-[#124E39] text-[#EBD59E]">
-            <Calendar className="w-4 h-4" />
-          </span>
-          <div>
-            <h3 className="text-xs font-extrabold text-[#124E39] tracking-tight uppercase">
-              Hotel Rooms Allotment & Turnover Overview
-            </h3>
-            <span className="text-[11px] text-stone-500">
-              {rooms.length} Rooms Inventory across {distinctBuildings.join(', ')}
-            </span>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pt-4">
+        <div>
+          <h2 className="text-xl font-semibold tracking-[-0.01em] text-stone-950">Rooms</h2>
+          <p className="text-[13px] text-stone-500 mt-0.5">
+            {rooms.length} rooms across {distinctBuildings.join(', ')}
+          </p>
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center bg-white p-1 rounded-xl border border-[#E6DFD5] shadow-2xs text-xs font-bold">
+        <div role="tablist" aria-label="Room view" className="flex items-center bg-stone-200/60 p-1 rounded-lg text-[13px] font-medium">
           <button
             type="button"
             onClick={() => setRoomsViewMode('timeline')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               roomsViewMode === 'timeline'
-                ? 'bg-[#124E39] text-white shadow-xs'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                ? 'bg-white text-stone-950 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <Calendar className="w-3.5 h-3.5 text-[#EBD59E]" />
-            <span>Timeline View (Top Dates & Horizontal Rooms)</span>
+            <Calendar className="w-4 h-4" />
+            <span>Timeline</span>
           </button>
 
           <button
@@ -1890,12 +1791,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setRoomsViewMode('buttons')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               roomsViewMode === 'buttons'
-                ? 'bg-[#124E39] text-white shadow-xs'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                ? 'bg-white text-stone-950 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Compact Buttons Matrix</span>
+            <Building2 className="w-4 h-4" />
+            <span>Grid</span>
           </button>
         </div>
       </div>
@@ -1918,13 +1819,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Compact Room Buttons Matrix (Toggleable) */}
       {roomsViewMode === 'buttons' && (
-      <div className="bg-white border border-[#E6DFD5] rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="bg-white border border-[#e2e8e5] rounded-2xl p-5 shadow-sm space-y-4">
         {/* Section Header & Minimalist Controls */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-stone-200">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#124E39]" />
-              <h3 className="text-sm font-bold text-[#124E39] tracking-tight">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#0f4a37]" />
+              <h3 className="text-sm font-bold text-[#0f4a37] tracking-tight">
                 Hotel Room Vacancy & Allocation Overview
               </h3>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-600">
@@ -1942,16 +1843,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               type="button"
               onClick={handleRefreshMatrix}
               disabled={isRefreshingMatrix}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF7F2] hover:bg-emerald-50 text-[#124E39] border border-[#124E39]/30 hover:border-[#124E39] rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f6f8f7] hover:bg-emerald-50 text-[#0f4a37] border border-[#0f4a37]/30 hover:border-[#0f4a37] rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
               title="Refresh Compact Matrix: Pulls all room allocations & zaereen fed on this computer without changing the selected date"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#124E39] ${isRefreshingMatrix ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#0f4a37] ${isRefreshingMatrix ? 'animate-spin' : ''}`} />
               <span>{isRefreshingMatrix ? 'Refreshing...' : 'Refresh Matrix'}</span>
             </button>
 
             {/* Date Picker Control */}
-            <div className="flex items-center gap-1.5 bg-[#FAF7F2] border border-[#E6DFD5] rounded-lg px-2.5 py-1.5 shadow-2xs">
-              <Calendar className="w-3.5 h-3.5 text-[#124E39]" />
+            <div className="flex items-center gap-1.5 bg-[#f6f8f7] border border-[#e2e8e5] rounded-lg px-2.5 py-1.5 shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-[#0f4a37]" />
               <span className="text-stone-600 font-medium">Date:</span>
               <input
                 type="date"
@@ -1962,7 +1863,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedDate(todayStr)}
-                className="text-[10px] ml-1 font-semibold text-[#124E39] hover:underline"
+                className="text-[10px] ml-1 font-semibold text-[#0f4a37] hover:underline"
               >
                 Today
               </button>
@@ -1975,7 +1876,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onClick={() => setSelectedHotel('ALL')}
                 className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
                   selectedHotel === 'ALL'
-                    ? 'bg-[#124E39] text-white shadow-xs'
+                    ? 'bg-[#0f4a37] text-white shadow-xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
@@ -1990,7 +1891,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     onClick={() => setSelectedHotel(bldg)}
                     className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
                       selectedHotel.toLowerCase() === bldg.toLowerCase()
-                        ? 'bg-[#124E39] text-white shadow-xs'
+                        ? 'bg-[#0f4a37] text-white shadow-xs'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
@@ -2054,7 +1955,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Legend Bar */}
-        <div className="flex flex-wrap items-center gap-3.5 text-xs bg-[#FAF7F2] p-2.5 rounded-xl border border-[#E6DFD5]">
+        <div className="flex flex-wrap items-center gap-3.5 text-xs bg-[#f6f8f7] p-2.5 rounded-xl border border-[#e2e8e5]">
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-3.5 rounded bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">✓</span>
             <span className="font-semibold text-emerald-900">Green = Completely Available ({completelyAvailableCount})</span>
@@ -2095,8 +1996,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             return (
               <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
-                    <Building2 className="w-4 h-4 text-[#124E39]" />
+                  <div className="flex items-center gap-2 font-bold text-xs text-[#0f4a37]">
+                    <Building2 className="w-4 h-4 text-[#0f4a37]" />
                     <span>BURHANI HOTEL (44 Rooms: Ground, Mezzanine, Floors 1 to 4)</span>
                   </div>
                   <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
@@ -2151,8 +2052,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             return (
               <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
-                    <Building2 className="w-4 h-4 text-[#124E39]" />
+                  <div className="flex items-center gap-2 font-bold text-xs text-[#0f4a37]">
+                    <Building2 className="w-4 h-4 text-[#0f4a37]" />
                     <span>SAIFEE HOTEL (70 Rooms: Floors 1 to 7)</span>
                   </div>
                   <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
@@ -2211,8 +2112,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div key={bldg} className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 font-bold text-xs text-[#124E39]">
-                      <Building2 className="w-4 h-4 text-[#124E39]" />
+                    <div className="flex items-center gap-2 font-bold text-xs text-[#0f4a37]">
+                      <Building2 className="w-4 h-4 text-[#0f4a37]" />
                       <span>{bldg.toUpperCase()} HOTEL ({bldgRooms.length} Rooms)</span>
                     </div>
                     <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
@@ -2249,10 +2150,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Selected Room Inspection Panel */}
         {inspectedRoom && (
-          <div className="mt-4 p-4 rounded-xl bg-[#FAF7F2] border border-[#124E39]/30 animate-in fade-in">
+          <div className="mt-4 p-4 rounded-xl bg-[#f6f8f7] border border-[#0f4a37]/30 animate-in fade-in">
             <div className="flex items-center justify-between pb-2 border-b border-stone-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-extrabold text-sm text-[#124E39]">
+                <span className="font-extrabold text-sm text-[#0f4a37]">
                   {inspectedRoom.building} Hotel — Room {inspectedRoom.roomNumber}
                 </span>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-white text-stone-700 border border-stone-200 font-medium">
@@ -2340,7 +2241,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     initialScope: 'group',
                                   })
                                 }
-                                className="min-h-[36px] sm:min-h-0 px-2.5 py-1 rounded-lg bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] text-[11px] font-bold flex items-center gap-1 cursor-pointer transition"
+                                className="min-h-[36px] sm:min-h-0 px-2.5 py-1 rounded-lg bg-[#0f4a37] hover:bg-[#0b3a2b] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition"
                               >
                                 <ArrowRightLeft className="w-3 h-3" />
                                 <span>Switch / Swap Room</span>
@@ -2378,7 +2279,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         initialScope: 'single',
                                       })
                                     }
-                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-[#124E39] border border-emerald-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-[#0f4a37] border border-emerald-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
                                     title="Switch room for this guest"
                                   >
                                     <ArrowRightLeft className="w-3 h-3" />
@@ -2424,7 +2325,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             onClick={() => setInspectAllotMode('family')}
                             className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
                               inspectAllotMode === 'family'
-                                ? 'bg-[#124E39] text-[#EBD59E]'
+                                ? 'bg-[#0f4a37] text-white'
                                 : 'text-stone-600 hover:text-stone-900'
                             }`}
                           >
@@ -2435,7 +2336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             onClick={() => setInspectAllotMode('individual')}
                             className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
                               inspectAllotMode === 'individual'
-                                ? 'bg-[#124E39] text-[#EBD59E]'
+                                ? 'bg-[#0f4a37] text-white'
                                 : 'text-stone-600 hover:text-stone-900'
                             }`}
                           >
@@ -2514,7 +2415,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     setInspectedRoom(null);
                                   }
                                 }}
-                                className="px-3.5 py-1.5 bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-black rounded-lg text-xs shadow-xs transition cursor-pointer"
+                                className="px-3.5 py-1.5 bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-black rounded-lg text-xs shadow-xs transition cursor-pointer"
                               >
                                 ⚡ Allot Room {inspectedRoom.roomNumber} to Entire Family
                               </button>
@@ -2549,7 +2450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                     setAllotTargetZaerId('');
                                   }
                                 }}
-                                className="px-3 py-1.5 rounded-lg bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-white font-bold text-xs cursor-pointer"
+                                className="px-3 py-1.5 rounded-lg bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white font-bold text-xs cursor-pointer"
                               >
                                 Allot Room
                               </button>
@@ -2577,7 +2478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     onClick={() => onNavigateTab('reservations')}
-                    className="inline-flex items-center gap-1.5 text-xs text-[#124E39] font-bold hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs text-[#0f4a37] font-bold hover:underline"
                   >
                     <span>View all Zaereen in Main Grid</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -2593,7 +2494,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Daily Arrivals & Departures Table for Selected Date */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Arrivals on Date */}
-        <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200">
             <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
               <span className="w-2 h-2 rounded-full bg-emerald-600" />
@@ -2601,9 +2502,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <button
               onClick={() => onOpenReceptionSlip?.('arrival_slip')}
-              className="text-[11px] text-[#124E39] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[11px] text-[#0f4a37] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <Printer className="w-3 h-3 text-[#124E39]" />
+              <Printer className="w-3 h-3 text-[#0f4a37]" />
               <span>Arrival Slip</span>
             </button>
           </div>
@@ -2633,7 +2534,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-[#124E39] text-xs">
+                    <span className="font-bold text-[#0f4a37] text-xs">
                       {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : <span className="text-amber-700">Unallotted</span>}
                     </span>
                     <div className="text-[10px] text-stone-500">{res.category}</div>
@@ -2649,7 +2550,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Departures on Date */}
-        <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-sm">
+        <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200">
             <div className="flex items-center gap-2 font-bold text-xs text-amber-800">
               <span className="w-2 h-2 rounded-full bg-amber-600" />
@@ -2707,7 +2608,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Delete Zair Confirmation Modal (Non-blocking In-App Modal) */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
@@ -2803,8 +2704,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Toast Feedback Notification */}
       {toastFeedback && (
         <div className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg border bg-[#124E39] text-[#EBD59E] border-[#124E39]">
-            <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg border bg-[#0f4a37] text-white border-[#0f4a37]">
+            <CheckCircle2 className="w-4 h-4 text-[#ecdcae] shrink-0" />
             <span>{toastFeedback}</span>
             <button
               type="button"

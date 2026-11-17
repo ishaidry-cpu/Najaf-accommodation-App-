@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
+import { PageHeader, Dropdown, MenuItem, MenuDivider, btn } from './ui';
 import { SwitchRoomTarget } from './SwitchRoomModal';
 import { 
   isRoomBookedForDuration, 
@@ -794,9 +795,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       return <ArrowUpDown className="w-3.5 h-3.5 text-emerald-200/50 inline ml-1 opacity-40 hover:opacity-100" />;
     }
     return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-[#EBD59E] inline ml-1 font-bold" />
+      <ArrowUp className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
     ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-[#EBD59E] inline ml-1 font-bold" />
+      <ArrowDown className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
     );
   };
 
@@ -860,149 +861,76 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Top Banner & Action Bar */}
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-[#124E39] tracking-tight">
-              Zaereen Lodging & Room Allotment Grid
-            </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 font-bold">
-              {reservations.length} Zaereen Total
-            </span>
-          </div>
-          <p className="text-xs text-stone-600 mt-1 hidden sm:block">
-            Sequence: <strong>ITS ➔ NAME ➔ AGE ➔ FAMILY ➔ OFFICE NAME ➔ TOUR ID ➔ BUILDING & ROOM ALLOTTMENT</strong> ➔ GENDER ➔ GROUP LEAD ➔ DATES ➔ CATEGORY.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Upload Excel Button */}
-          <button
-            onClick={onOpenUploadExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-sm transition"
-          >
-            <Upload className="w-4 h-4 text-[#EBD59E]" />
-            <span>Upload Excel</span>
-          </button>
-
-          {/* Reception Daily Operational Slips (Arrival Slip & Departure List) */}
-          {onOpenReceptionSlip && (
-            <div className="flex items-center rounded-xl border border-[#C5A059]/50 bg-white p-0.5 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => onOpenReceptionSlip('arrival_slip')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#124E39] hover:bg-emerald-50 transition cursor-pointer"
-                title="Open Simple Arrival Slip (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
-              >
-                <Printer className="w-3.5 h-3.5 text-emerald-800" />
-                <span>Arrival Slip</span>
+      {/* Page header */}
+      <PageHeader
+        title="Zaereen"
+        description={`${reservations.length} zaereen on the list. Search, allot rooms and track portal uploads.`}
+        actions={
+          <>
+            <Dropdown
+              label="More actions"
+              width="w-72"
+              trigger={(open) => (
+                <span className={`${btn.ghost} ${open ? 'bg-stone-200/60 text-stone-900' : ''}`}>
+                  More
+                  <ChevronDown className="w-4 h-4 text-stone-400" />
+                </span>
+              )}
+            >
+              {(close) => (
+                <>
+                  <MenuItem icon={Download} onClick={() => { close(); onDownloadTemplate(); }} hint="Blank file with the required columns">
+                    Excel template
+                  </MenuItem>
+                  {onOpenCategoriesModal && (
+                    <MenuItem icon={FileSpreadsheet} onClick={() => { close(); onOpenCategoriesModal(); }} hint={`${categories.length} categories from the Google Sheet`}>
+                      Zaereen categories
+                    </MenuItem>
+                  )}
+                  {onNavigateToShifts && (
+                    <MenuItem icon={ArrowUpRight} onClick={() => { close(); onNavigateToShifts(); }}>
+                      B→A shifts and accounts
+                    </MenuItem>
+                  )}
+                  <MenuDivider />
+                  <MenuItem
+                    icon={Clock}
+                    tone={expiredReservations.length > 0 ? 'danger' : 'default'}
+                    onClick={() => {
+                      close();
+                      if (expiredReservations.length === 0) {
+                        setToastMessage({ text: 'No records have a departure more than 48 hours ago.', type: 'info' });
+                        return;
+                      }
+                      setIsPurgeExpiredModalOpen(true);
+                    }}
+                    hint={expiredReservations.length > 0 ? `${expiredReservations.length} records left more than 48 hours ago` : 'Nothing to remove'}
+                  >
+                    Remove departed zaereen
+                  </MenuItem>
+                </>
+              )}
+            </Dropdown>
+            <button type="button" onClick={onOpenUploadExcel} className={btn.secondary}>
+              <Upload className="w-4 h-4 text-stone-500" />
+              Upload Excel
+            </button>
+            {onOpenAddTourGroup && (
+              <button type="button" onClick={onOpenAddTourGroup} className={btn.secondary} title="Add several zaereen who share a tour ID and dates">
+                <Users className="w-4 h-4 text-stone-500" />
+                Add tour group
               </button>
-              <div className="w-[1px] h-4 bg-stone-200 mx-0.5" />
-              <button
-                type="button"
-                onClick={() => onOpenReceptionSlip('departure_list')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-900 hover:bg-amber-50 transition cursor-pointer"
-                title="Open Simple Departure List (Room #, Building, 1 Pax/Family, Arrival & Departure Dates)"
-              >
-                <Printer className="w-3.5 h-3.5 text-amber-800" />
-                <span>Departure List</span>
-              </button>
-            </div>
-          )}
-
-          {/* Download Template */}
-          <button
-            onClick={onDownloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 shadow-2xs transition"
-          >
-            <Download className="w-3.5 h-3.5 text-stone-500" />
-            <span>Excel Template</span>
-          </button>
-
-          {/* Google Sheet Categories Button */}
-          {onOpenCategoriesModal && (
-            <button
-              onClick={onOpenCategoriesModal}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-[#124E39] border border-emerald-300 shadow-2xs transition"
-              title="Configure or fetch Pilgrim Categories (Mumineen, Muntasbeen, Qasreali, Baitezainy) from Google Sheet"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-[#124E39]" />
-              <span>Google Sheet Categories</span>
-              <span className="bg-[#124E39] text-[#EBD59E] px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
-                {categories.length}
-              </span>
+            )}
+            <button type="button" onClick={onOpenAddZaer || handleAddNewRow} className={btn.primary}>
+              <Plus className="w-4 h-4 text-gold-200" />
+              Add zair
             </button>
-          )}
-
-          {/* B to A Shifts Button */}
-          {onNavigateToShifts && (
-            <button
-              onClick={onNavigateToShifts}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs transition"
-              title="Manage B to A accommodation shifts, accounts money given, and slips"
-            >
-              <ArrowUpRight className="w-3.5 h-3.5 text-amber-700" />
-              <span>B ➔ A Shifts (Accounts)</span>
-            </button>
-          )}
-
-          {/* Purge Records with Departure Passed for 48 Hours */}
-          <button
-            onClick={() => {
-              if (expiredReservations.length === 0) {
-                setToastMessage({
-                  text: 'No records found with departure date passed for 48+ hours.',
-                  type: 'info'
-                });
-                return;
-              }
-              setIsPurgeExpiredModalOpen(true);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer ${
-              expiredReservations.length > 0
-                ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300'
-                : 'bg-stone-50 text-stone-600 border border-stone-200 hover:bg-stone-100'
-            }`}
-            title="Delete any records whose departure date has passed for 48 hours"
-          >
-            <Clock className={`w-3.5 h-3.5 ${expiredReservations.length > 0 ? 'text-rose-600' : 'text-stone-400'}`} />
-            <span>Purge Expired (&gt;48h)</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-              expiredReservations.length > 0
-                ? 'bg-rose-600 text-white'
-                : 'bg-stone-200 text-stone-600'
-            }`}>
-              {expiredReservations.length}
-            </span>
-          </button>
-
-          {/* Add Zair Button */}
-          <button
-            onClick={onOpenAddZaer || handleAddNewRow}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm transition cursor-pointer"
-            title="Manually add all details of a single Zair with duplicate check"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Zair</span>
-          </button>
-
-          {/* Add Tour Group Button (Shared Tour ID, Shared Dates, Different Family IDs & Multiple Individuals) */}
-          {onOpenAddTourGroup && (
-            <button
-              onClick={onOpenAddTourGroup}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#C5A059]/40 shadow-sm transition cursor-pointer"
-              title="Add a Tour ID with different family IDs and multiple individuals with same arrival and departure dates"
-            >
-              <Users className="w-4 h-4 text-[#EBD59E]" />
-              <span>Add Tour Group</span>
-            </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-[#E6DFD5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white border border-[#e2e8e5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">
@@ -1015,7 +943,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setSearchTerm(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
@@ -1028,7 +956,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setCategoryFilter(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Categories ({categories.length})</option>
               {categories.map((cat) => (
@@ -1046,7 +974,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               setBuildingFilter(e.target.value);
               setMobileVisibleCount(40);
             }}
-            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
+            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
           >
             <option value="ALL">All Hotels</option>
             {distinctBuildings.map((bldg) => (
@@ -1062,7 +990,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               setPortalUploadFilter(e.target.value);
               setMobileVisibleCount(40);
             }}
-            className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">Portal: All</option>
             <option value="Uploaded">Uploaded ✓</option>
@@ -1072,7 +1000,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           {/* Arrival Date Filter (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
           <div className="flex items-center gap-1">
             <span className="text-stone-500 font-semibold flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-[#124E39]" />
+              <Calendar className="w-3.5 h-3.5 text-[#0f4a37]" />
               <span className="hidden sm:inline">Arrival:</span>
             </span>
             <select
@@ -1081,7 +1009,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setArrivalDateFilter(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Arrival Dates</option>
               {distinctArrivalDates.map(({ date, count }) => (
@@ -1094,7 +1022,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
           {/* 1-Click Download PDF for chosen arrival date with Hotel Bifurcation options */}
           {arrivalDateFilter !== 'ALL' && (
-            <div className="flex items-center rounded-lg bg-[#124E39] p-0.5 border border-[#C5A059] shadow-xs">
+            <div className="flex items-center rounded-lg bg-[#0f4a37] p-0.5 border border-[#c9a85a] shadow-xs">
               <button
                 type="button"
                 onClick={() => {
@@ -1105,17 +1033,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     includeSignatures: true,
                   });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-[#EBD59E] hover:bg-[#0E3C2C] transition cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-[#ecdcae] hover:bg-[#0b3a2b] transition cursor-pointer"
                 title={`Download official PDF for arrival date ${arrivalDateFilter} (${buildingFilter === 'ALL' ? 'Joined Bifurcated Both Hotels' : `${buildingFilter} Hotel`})`}
               >
-                <Download className="w-3.5 h-3.5 text-[#EBD59E]" />
+                <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
                 <span>
                   {buildingFilter === 'ALL'
                     ? `Download PDF (${arrivalDateFilter})`
                     : `Download ${buildingFilter} PDF (${arrivalDateFilter})`}
                 </span>
               </button>
-              <div className="h-3.5 w-px bg-[#C5A059]/40 my-auto" />
+              <div className="h-3.5 w-px bg-[#c9a85a]/40 my-auto" />
               <button
                 type="button"
                 onClick={() => {
@@ -1157,13 +1085,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             onClick={() => setFitColumnsToScreen((p) => !p)}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer shadow-2xs ${
               fitColumnsToScreen
-                ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                ? 'bg-stone-100 text-stone-900 border-stone-200'
                 : 'bg-white hover:bg-stone-50 text-stone-700 border-stone-300'
             }`}
-            title="Toggle Fit All 16 Columns on Screen without horizontal scroll vs Wide Scrollable view"
+            title="Fit all columns on screen, or scroll sideways for wider columns"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span>{fitColumnsToScreen ? 'All Columns on Screen ✓' : 'Scroll View'}</span>
+            <span>{fitColumnsToScreen ? 'Fit to screen' : 'Wide columns'}</span>
           </button>
 
           <div className="h-4 w-px bg-stone-300" />
@@ -1190,23 +1118,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       {/* "in family member I should be able to allottment on tour id and whole it  */}
       {/* family number in one go and if needed it should be editable"              */}
       {/* ========================================================================= */}
-      <div className="bg-emerald-50/70 border border-emerald-300 rounded-2xl p-3.5 shadow-2xs space-y-2">
+      <div className="bg-white ring-1 ring-stone-200 rounded-2xl p-4 shadow-xs space-y-2">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <span className="p-1.5 rounded-lg bg-[#124E39] text-[#EBD59E] shadow-2xs">
+            <span className="w-9 h-9 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0">
               <Users className="w-4 h-4" />
             </span>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-[#124E39] uppercase tracking-wider">
-                  One-Click Family Room Allotment
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#124E39] text-[#EBD59E] font-bold">
-                  Batch on Tour ID & Family Number
-                </span>
+              <div className="text-sm font-semibold text-stone-950">
+                Allot a whole family
               </div>
-              <p className="text-[11px] text-stone-600 mt-0.5">
-                Select a Tour ID and Family Number to allot a room to the whole family in one go. Individual rooms remain editable.
+              <p className="text-[13px] text-stone-500 mt-0.5">
+                Pick a tour and family to give everyone one room. You can still change each person later.
               </p>
             </div>
           </div>
@@ -1265,7 +1188,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setBatchBuilding(e.target.value);
                 setBatchRoomNumber('');
               }}
-              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-[#124E39] shadow-2xs cursor-pointer"
+              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-[#0f4a37] shadow-2xs cursor-pointer"
             >
               {distinctBuildings.map((bldg) => (
                 <option key={bldg} value={bldg}>{bldg}</option>
@@ -1297,7 +1220,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   setBatchRoomNumber('');
                 }
               }}
-              className="px-3.5 py-1.5 bg-[#124E39] hover:bg-[#0E3C2C] disabled:opacity-40 text-[#EBD59E] font-extrabold rounded-lg text-xs shadow-xs transition cursor-pointer"
+              className="px-3.5 py-1.5 bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white font-extrabold rounded-lg text-xs shadow-xs transition cursor-pointer"
             >
               Allot All ({selectedFamilyMembers.length}) Members
             </button>
@@ -1323,7 +1246,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         {/* Selected Family Member Preview Chips */}
         {selectedFamilyMembers.length > 0 && (
           <div className="pt-2 border-t border-emerald-200/80 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-extrabold text-[#124E39] mr-1">
+            <span className="font-extrabold text-[#0f4a37] mr-1">
               Family "{batchFamily}" ({selectedFamilyMembers.length} Zaereen):
             </span>
             {selectedFamilyMembers.map((m) => (
@@ -1350,9 +1273,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Floating / Sticky Batch Selection Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-2 z-30 mb-3 bg-[#124E39] text-white px-4 py-2.5 rounded-xl shadow-xl border border-[#C5A059]/40 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2">
+        <div className="sticky top-2 z-30 mb-3 bg-[#0f4a37] text-white px-4 py-2.5 rounded-xl shadow-xl border border-[#c9a85a]/40 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 bg-[#0E3C2C] px-3 py-1 rounded-lg text-xs font-bold text-[#EBD59E] border border-[#C5A059]/30">
+            <span className="flex items-center gap-1.5 bg-[#0b3a2b] px-3 py-1 rounded-lg text-xs font-bold text-[#ecdcae] border border-[#c9a85a]/30">
               <CheckSquare className="w-3.5 h-3.5" />
               <span>{selectedIds.size} Selected</span>
             </span>
@@ -1365,7 +1288,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <button
               type="button"
               onClick={() => handleBulkMarkSelectedPortal(true)}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-[#EBD59E] rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-[#ecdcae] rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
               title="Mark selected zaereen as Uploaded to main portal"
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -1414,7 +1337,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <button
             type="button"
             onClick={handleToggleSelectAllVisible}
-            className="text-[#124E39] font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
+            className="text-[#0f4a37] font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
           >
             {isAllVisibleSelected ? 'Deselect All' : 'Select All'}
           </button>
@@ -1433,7 +1356,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <div
                   key={res.id}
                   className={`bg-white border rounded-2xl p-3.5 shadow-2xs space-y-2.5 ${
-                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-[#E6DFD5]'
+                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-[#e2e8e5]'
                   }`}
                 >
                   {/* Top row: Checkbox, Name, Star, Room Status */}
@@ -1444,7 +1367,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelectRow(res.id)}
-                          className="w-4 h-4 rounded border-stone-300 accent-[#124E39]"
+                          className="w-4 h-4 rounded border-stone-300 accent-[#0f4a37]"
                         />
                       </label>
                       <div className="min-w-0">
@@ -1493,8 +1416,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
 
                   {/* Tour ID + Office Name */}
-                  <div className="bg-[#FAF7F2] rounded-xl px-3 py-2 border border-[#E6DFD5] text-xs space-y-1">
-                    <div className="font-mono font-bold text-[#124E39] break-all">
+                  <div className="bg-[#f6f8f7] rounded-xl px-3 py-2 border border-[#e2e8e5] text-xs space-y-1">
+                    <div className="font-mono font-bold text-[#0f4a37] break-all">
                       Tour: {res.tourRefNo || res.tourId || '—'}
                     </div>
                     <div className="text-stone-700 font-semibold">
@@ -1526,7 +1449,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
                           isAllotted
                             ? 'bg-stone-100 text-stone-800 border border-stone-300'
-                            : 'bg-[#124E39] text-[#EBD59E] border border-[#124E39]'
+                            : 'bg-[#0f4a37] text-white border border-[#0f4a37]'
                         }`}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -1552,7 +1475,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       onClick={() => handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)}
                       className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border cursor-pointer ${
                         res.isUploadedToPortal
-                          ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                          ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
                           : 'bg-white text-stone-600 border-stone-300'
                       }`}
                     >
@@ -1594,14 +1517,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setMobileVisibleCount((c) => c + 40)}
-                className="w-full min-h-[44px] py-3 rounded-xl bg-[#FAF7F2] hover:bg-stone-100 border border-[#C5A059] text-[#124E39] font-extrabold text-xs shadow-2xs cursor-pointer"
+                className="w-full min-h-[44px] py-3 rounded-xl bg-[#f6f8f7] hover:bg-stone-100 border border-[#c9a85a] text-[#0f4a37] font-extrabold text-xs shadow-2xs cursor-pointer"
               >
                 Show 40 More ({filteredAndSortedReservations.length - mobileVisibleCount} remaining)
               </button>
             )}
           </>
         ) : (
-          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-8 text-center text-sm text-stone-500">
+          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-8 text-center text-sm text-stone-500">
             No zaereen found matching your filter criteria.
           </div>
         )}
@@ -1610,11 +1533,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       {/* ========================================================================= */}
       {/* MAIN ZAEREEN GRID TABLE: DESKTOP FULL SCREEN TABLE                       */}
       {/* ========================================================================= */}
-      <div className="hidden md:flex bg-white border border-[#E6DFD5] rounded-2xl shadow-sm overflow-hidden flex-col w-full">
+      <div className="hidden md:flex bg-white border border-[#e2e8e5] rounded-2xl shadow-sm overflow-hidden flex-col w-full">
         <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
           <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2000px]'}`}>
             {/* Table Header with interactive sorting on all columns */}
-            <thead className="bg-[#124E39] text-white uppercase text-[11px] tracking-wider font-bold select-none sticky top-0 z-10">
+            <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[11px] tracking-wider font-medium select-none sticky top-0 z-10">
               <tr>
                 <th className={`py-3 px-1 text-center ${fitColumnsToScreen ? 'w-[36px]' : 'w-14'}`}>
                   <div className="flex items-center justify-center gap-1">
@@ -1625,7 +1548,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         if (el) el.indeterminate = isSomeVisibleSelected;
                       }}
                       onChange={handleToggleSelectAllVisible}
-                      className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#EBD59E]"
+                      className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#0f4a37]"
                       title="Select / Deselect all visible zaereen"
                     />
                     <span>#</span>
@@ -1635,7 +1558,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 1. ITS ID */}
                 <th
                   onClick={() => handleSort('itsId')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'
                   }`}
                   title="Click to sort by ITS ID"
@@ -1649,7 +1572,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 2. Applicant Name */}
                 <th
                   onClick={() => handleSort('applicantName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'
                   }`}
                   title="Click to sort by Applicant Name"
@@ -1663,7 +1586,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 3. Age */}
                 <th
                   onClick={() => handleSort('age')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[42px]' : 'min-w-[65px]'
                   }`}
                   title="Click to sort by Age"
@@ -1677,7 +1600,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 4. Family */}
                 <th
                   onClick={() => handleSort('family')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[56px]' : 'min-w-[95px]'
                   }`}
                   title="Click to sort by Family"
@@ -1691,7 +1614,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 5. Office Name */}
                 <th
                   onClick={() => handleSort('officeName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[105px]' : 'min-w-[180px]'
                   }`}
                   title="Click to sort by Office Name"
@@ -1705,7 +1628,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 6. TOUR ID */}
                 <th
                   onClick={() => handleSort('tourRefNo')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[120px]' : 'min-w-[190px] max-w-[260px]'
                   }`}
                   title="Click to sort by Tour ID"
@@ -1719,7 +1642,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 7. Building */}
                 <th
                   onClick={() => handleSort('building')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'
                   }`}
                   title="Click to sort by Building (Saifee / Burhani)"
@@ -1733,7 +1656,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 8. Room Allottment */}
                 <th
                   onClick={() => handleSort('roomNumber')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[115px]' : 'min-w-[170px]'
                   }`}
                   title="Click to sort by Room Number"
@@ -1747,7 +1670,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 9. Gender */}
                 <th
                   onClick={() => handleSort('gender')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[48px]' : 'min-w-[80px]'
                   }`}
                   title="Click to sort by Gender"
@@ -1761,7 +1684,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 10. Group Lead */}
                 <th
                   onClick={() => handleSort('groupLeadName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[100px]' : 'min-w-[170px]'
                   }`}
                   title="Click to sort by Group Lead"
@@ -1775,7 +1698,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 11. Arrival Date */}
                 <th
                   onClick={() => handleSort('arrivalDate')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
                   }`}
                   title="Click to sort by Arrival Date"
@@ -1789,7 +1712,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 12. Departure Date */}
                 <th
                   onClick={() => handleSort('departureDate')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
                   }`}
                   title="Click to sort by Departure Date"
@@ -1803,7 +1726,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 13. Category Sort (KEPT AT THE END!) */}
                 <th
                   onClick={() => handleSort('category')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-[#0E3C2C] transition ${
+                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[115px]' : 'min-w-[150px]'
                   }`}
                   title="Click to sort by Category"
@@ -1817,7 +1740,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 {/* 14. Main Portal Tick Button Sort */}
                 <th
                   onClick={() => handleSort('portal')}
-                  className={`py-3 px-1 text-center bg-[#0E3C2C] cursor-pointer hover:bg-[#08281D] transition ${
+                  className={`py-3 px-1 text-center bg-stone-100 cursor-pointer hover:bg-stone-100 transition ${
                     fitColumnsToScreen ? 'w-[80px]' : 'min-w-[135px]'
                   }`}
                   title="Click to sort by Main Portal upload status"
@@ -1859,7 +1782,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   return (
                     <tr
                       key={res.id}
-                      className={`hover:bg-[#FAF7F2] transition ${
+                      className={`hover:bg-[#f6f8f7] transition ${
                         isSelected ? 'bg-amber-100/40' : !isAllotted ? 'bg-amber-50/25' : ''
                       }`}
                     >
@@ -1870,7 +1793,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelectRow(res.id)}
-                            className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#124E39]"
+                            className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#0f4a37]"
                             title="Select record"
                           />
                           <span className="text-[10px] text-stone-400 font-normal">{index + 1}</span>
@@ -1921,7 +1844,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           />
                           {isShiftedToA && (
                             <span 
-                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#124E39] text-[#EBD59E] border border-[#C5A059]/50 shadow-2xs"
+                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#0f4a37] text-white border border-[#c9a85a]/50 shadow-2xs"
                               title="Shifted to Category A (Nizaam)"
                             >
                               A
@@ -1977,7 +1900,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         <select
                           value={res.building || 'Saifee'}
                           onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
-                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#124E39] cursor-pointer shadow-2xs w-full"
+                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#0f4a37] cursor-pointer shadow-2xs w-full"
                         >
                           {distinctBuildings.map((bldg) => (
                             <option key={bldg} value={bldg}>{bldg}</option>
@@ -1998,10 +1921,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => onOpenQuickAllotModal(res)}
-                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] border border-[#124E39] text-[10px] font-extrabold shadow-xs transition cursor-pointer"
+                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-[#0f4a37] hover:bg-[#0b3a2b] text-white border border-[#0f4a37] text-[10px] font-extrabold shadow-xs transition cursor-pointer"
                                   title="Open Quick Room Allotment Modal with capacity, buffer, & auto-recommendation"
                                 >
-                                  <Sparkles className="w-3.5 h-3.5 text-[#EBD59E]" />
+                                  <Sparkles className="w-3.5 h-3.5 text-[#ecdcae]" />
                                   <span>✨ Allot Room (Modal)</span>
                                 </button>
                               )}
@@ -2080,7 +2003,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => onOpenQuickAllotModal(res)}
-                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-[#124E39] hover:text-[#EBD59E] text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-[#0f4a37] hover:text-white text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
                                     title="Open Quick Room Allotment modal"
                                   >
                                     <Sparkles className="w-3 h-3 text-amber-600" />
@@ -2216,14 +2139,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           }
                           className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition shadow-2xs cursor-pointer ${
                             res.isUploadedToPortal
-                              ? 'bg-[#124E39] text-[#EBD59E] border border-[#124E39]'
+                              ? 'bg-[#0f4a37] text-white border border-[#0f4a37]'
                               : 'bg-white hover:bg-stone-100 text-stone-500 border border-stone-300'
                           }`}
                           title={res.isUploadedToPortal ? 'Uploaded to portal (Click to untick)' : 'Mark uploaded'}
                         >
                           {res.isUploadedToPortal ? (
                             <>
-                              <CheckSquare className="w-3.5 h-3.5 text-[#EBD59E]" />
+                              <CheckSquare className="w-3.5 h-3.5 text-[#ecdcae]" />
                               <span>Done ✓</span>
                             </>
                           ) : (
@@ -2288,7 +2211,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
 
         {/* Footer Summary Bar */}
-        <div className="bg-[#FAF7F2] border-t border-[#E6DFD5] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-stone-600 font-medium">
+        <div className="bg-[#f6f8f7] border-t border-[#e2e8e5] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-stone-600 font-medium">
           <div className="flex items-center gap-4">
             <span>
               Showing <strong className="text-stone-900">{filteredAndSortedReservations.length}</strong> of{' '}
@@ -2311,7 +2234,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <span>•</span>
             <span>
               Uploaded to Portal:{' '}
-              <strong className="text-[#124E39]">
+              <strong className="text-[#0f4a37]">
                 {reservations.filter((r) => r.isUploadedToPortal).length}
               </strong>
             </span>
@@ -2325,7 +2248,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Non-Admin Blocked Modal for B to A Records */}
       {bToABlockedRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
@@ -2358,7 +2281,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               </div>
               <div>
                 <span className="text-stone-500">Tour ID:</span>{' '}
-                <span className="font-mono font-bold text-[#124E39]">{bToABlockedRecord.tourRefNo}</span>
+                <span className="font-mono font-bold text-[#0f4a37]">{bToABlockedRecord.tourRefNo}</span>
               </div>
               <div>
                 <span className="text-stone-500">Category:</span>{' '}
@@ -2391,7 +2314,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Single Delete Confirmation Modal */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             {isBToARecord(recordToDelete) ? (
               // B TO A REGISTRY DELETION CONFIRMATION
@@ -2441,7 +2364,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
                     <div>
-                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-[#124E39]">{recordToDelete.tourRefNo}</span>
+                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-[#0f4a37]">{recordToDelete.tourRefNo}</span>
                     </div>
                     <div>
                       <span className="text-stone-400">Family #:</span> <span className="font-bold">{recordToDelete.family}</span>
@@ -2584,7 +2507,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Batch Delete Confirmation Modal */}
       {isBatchDeleteModalOpen && selectedIds.size > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
@@ -2717,19 +2640,19 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Tour Date/Time Batch Change Prompt Modal */}
       {pendingTourDateChange && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-[#124E39]">
-                <Calendar className="w-5 h-5 text-[#124E39]" />
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-[#0f4a37]">
+                <Calendar className="w-5 h-5 text-[#0f4a37]" />
               </div>
               <div className="flex-1">
                 <h3 className="text-base font-bold text-stone-900">
                   Update Tour Schedule for All Zaereen?
                 </h3>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="font-mono text-xs font-black text-[#124E39] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="font-mono text-xs font-black text-[#0f4a37] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     Tour: {pendingTourDateChange.tourId}
                   </span>
                   <span className="text-xs text-stone-500 font-semibold">
@@ -2748,7 +2671,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </div>
 
             {/* Change Detail Card */}
-            <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl p-3.5 space-y-2 text-xs">
               <div className="flex items-center justify-between pb-1.5 border-b border-stone-200">
                 <span className="font-bold text-stone-700">
                   {pendingTourDateChange.field === 'arrivalDate'
@@ -2779,7 +2702,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
               <p className="text-[11px] text-stone-600 pt-1 leading-relaxed">
                 There are <strong>{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in Tour{' '}
-                <strong className="font-mono text-[#124E39]">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
+                <strong className="font-mono text-[#0f4a37]">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
               </p>
             </div>
 
@@ -2834,10 +2757,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmApplyToAllTour}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                 title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in Tour ${pendingTourDateChange.tourId}`}
               >
-                <Users className="w-4 h-4 text-[#EBD59E]" />
+                <Users className="w-4 h-4 text-[#ecdcae]" />
                 <span>Update All ({pendingTourDateChange.allTourZaereen.length}) in Tour</span>
               </button>
             </div>
@@ -2847,7 +2770,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* User requirement: Purge Expired (>48h Departure) Records Modal */}
       {isPurgeExpiredModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-stone-200 flex flex-col max-h-[90vh]">
             <div className="flex items-start justify-between pb-4 border-b border-stone-100">
               <div className="flex items-center gap-3">
@@ -2961,11 +2884,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <div
             className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold ${
               toastMessage.type === 'success'
-                ? 'bg-[#124E39] text-[#EBD59E] border-[#124E39]'
+                ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
                 : 'bg-stone-800 text-white border-stone-700'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4 text-[#EBD59E] shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-[#ecdcae] shrink-0" />
             <span>{toastMessage.text}</span>
             <button
               type="button"

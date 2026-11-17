@@ -475,8 +475,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
+      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -489,11 +489,11 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
         <div className="pb-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-[#124E39] text-[#EBD59E] shadow-2xs">
+              <span className="p-2 rounded-xl bg-[#0f4a37] text-white shadow-2xs">
                 <Users className="w-5 h-5" />
               </span>
               <div>
-                <h3 className="text-base font-bold text-[#124E39]">
+                <h3 className="text-base font-bold text-[#0f4a37]">
                   Add Tour Group — Shared Tour ID & Dates with Multiple Families
                 </h3>
                 <p className="text-xs text-stone-600 mt-0.5">
@@ -528,8 +528,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           {/* 1. Shared Tour & Schedule Header */}
           <div className="bg-white border border-stone-300 rounded-xl p-4 shadow-2xs space-y-4">
             <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#124E39]">
-                <Briefcase className="w-4 h-4 text-[#124E39]" />
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0f4a37]">
+                <Briefcase className="w-4 h-4 text-[#0f4a37]" />
                 <span>1. Shared Tour Details & Shared Dates (Common to all members)</span>
               </div>
               <span className="text-[11px] font-semibold text-stone-500">
@@ -555,7 +555,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="e.g. NKERP/TOUR/2026/105"
                   value={tourRefNo}
                   onChange={(e) => handleSelectTour(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                 />
                 <datalist id="existing-tour-ids-list">
                   {existingTourIds.map((t) => (
@@ -574,7 +574,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="e.g. Fayz E Husayni Mumbai"
                   value={officeName}
                   onChange={(e) => setOfficeName(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                 />
                 <datalist id="existing-offices-list">
                   {existingOffices.map((o) => (
@@ -595,14 +595,14 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     required
                     value={arrivalDate}
                     onChange={(e) => setArrivalDate(e.target.value)}
-                    className="w-full bg-[#FAF7F2] border border-emerald-300 rounded-lg px-2 py-1.5 font-bold text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer"
+                    className="w-full bg-[#f6f8f7] border border-emerald-300 rounded-lg px-2 py-1.5 font-bold text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer"
                   />
                   <input
                     type="text"
                     placeholder="11:00 AM"
                     value={arrivalTime}
                     onChange={(e) => setArrivalTime(e.target.value)}
-                    className="w-24 bg-[#FAF7F2] border border-emerald-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-emerald-950 focus:outline-none"
+                    className="w-24 bg-[#f6f8f7] border border-emerald-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-emerald-950 focus:outline-none"
                     title="Arrival time (e.g. 11:00 AM or 14:30)"
                   />
                 </div>
@@ -620,14 +620,14 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     required
                     value={departureDate}
                     onChange={(e) => setDepartureDate(e.target.value)}
-                    className="w-full bg-[#FAF7F2] border border-amber-300 rounded-lg px-2 py-1.5 font-bold text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-700 cursor-pointer"
+                    className="w-full bg-[#f6f8f7] border border-amber-300 rounded-lg px-2 py-1.5 font-bold text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-700 cursor-pointer"
                   />
                   <input
                     type="text"
                     placeholder="01:00 AM"
                     value={departureTime}
                     onChange={(e) => setDepartureTime(e.target.value)}
-                    className="w-24 bg-[#FAF7F2] border border-amber-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-amber-950 focus:outline-none"
+                    className="w-24 bg-[#f6f8f7] border border-amber-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-amber-950 focus:outline-none"
                     title="Departure time (e.g. 01:00 AM or 12:00 PM)"
                   />
                 </div>
@@ -641,7 +641,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="e.g. Mulla Shabbir"
                   value={groupLeadName}
                   onChange={(e) => setGroupLeadName(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
                 />
               </div>
 
@@ -651,7 +651,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <select
                   value={defaultCategory}
                   onChange={(e) => setDefaultCategory(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none"
                 >
                   {categories.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -665,7 +665,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <select
                   value={defaultBuilding}
                   onChange={(e) => setDefaultBuilding(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-[#124E39] focus:outline-none cursor-pointer"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-[#0f4a37] focus:outline-none cursor-pointer"
                 >
                   {distinctBuildings.map((bldg) => {
                     const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
@@ -681,7 +681,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
               {/* Vacant Rooms Summary */}
               <div className="flex flex-col justify-end">
                 <div className="p-2 rounded-lg bg-stone-100 border border-stone-200 text-[11px] text-stone-700 flex flex-wrap items-center gap-1.5">
-                  <span className="font-bold text-[#124E39]">Vacant this stay:</span>{' '}
+                  <span className="font-bold text-[#0f4a37]">Vacant this stay:</span>{' '}
                   {distinctBuildings.map((bldg, idx) => {
                     const vCount = getVacantRoomsForBuilding(bldg).length;
                     return (
@@ -699,8 +699,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           <div className="bg-white border border-stone-300 rounded-xl p-4 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
               <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#124E39]">
-                  <Hash className="w-4 h-4 text-[#124E39]" />
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0f4a37]">
+                  <Hash className="w-4 h-4 text-[#0f4a37]" />
                   <span>2. Individuals List — Different Family IDs Supported</span>
                 </div>
                 <p className="text-[11px] text-stone-500 mt-0.5">
@@ -712,10 +712,10 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleAddIndividual(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-2xs transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
                   title="Add another individual with a new Family ID"
                 >
-                  <Plus className="w-3.5 h-3.5 text-[#EBD59E]" />
+                  <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
                   <span>+ New Family Zaer</span>
                 </button>
 
@@ -760,7 +760,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
             {/* Table of Individuals */}
             <div className="overflow-x-auto border border-stone-200 rounded-xl">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-stone-800 text-white uppercase text-[10px] font-bold">
+                <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[10px] font-medium">
                   <tr>
                     <th className="py-2.5 px-2.5 w-[3%] text-center">#</th>
                     <th className="py-2.5 px-2.5 w-[12%]">Family ID *</th>
@@ -796,7 +796,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             placeholder="e.g. 101"
                             value={row.family}
                             onChange={(e) => handleUpdateRow(row.id, 'family', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-mono font-bold text-stone-900 text-xs focus:ring-1 focus:ring-[#124E39]"
+                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-mono font-bold text-stone-900 text-xs focus:ring-1 focus:ring-[#0f4a37]"
                             title="Family ID (e.g. 101, 102, F-14). Can differ per person."
                           />
                         </td>
@@ -808,7 +808,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             placeholder="e.g. 30318214"
                             value={row.itsId}
                             onChange={(e) => handleUpdateRow(row.id, 'itsId', e.target.value)}
-                            className={`w-full bg-white border rounded px-2 py-1 font-mono text-xs focus:ring-1 focus:ring-[#124E39] ${
+                            className={`w-full bg-white border rounded px-2 py-1 font-mono text-xs focus:ring-1 focus:ring-[#0f4a37] ${
                               hasDupWarning ? 'border-rose-400 text-rose-900 font-bold' : 'border-stone-300 text-stone-900'
                             }`}
                             title="8-digit ITS number"
@@ -828,7 +828,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             placeholder="Full Name (e.g. Nafisa Abbas Fatehi)"
                             value={row.applicantName}
                             onChange={(e) => handleUpdateRow(row.id, 'applicantName', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-semibold text-stone-900 text-xs focus:ring-1 focus:ring-[#124E39]"
+                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-semibold text-stone-900 text-xs focus:ring-1 focus:ring-[#0f4a37]"
                           />
                         </td>
 
@@ -840,7 +840,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             max="120"
                             value={row.age}
                             onChange={(e) => handleUpdateRow(row.id, 'age', e.target.value)}
-                            className="w-14 text-center bg-white border border-stone-300 rounded px-1 py-1 font-mono text-xs focus:ring-1 focus:ring-[#124E39]"
+                            className="w-14 text-center bg-white border border-stone-300 rounded px-1 py-1 font-mono text-xs focus:ring-1 focus:ring-[#0f4a37]"
                           />
                         </td>
 
@@ -849,7 +849,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                           <select
                             value={row.gender}
                             onChange={(e) => handleUpdateRow(row.id, 'gender', e.target.value as 'Male' | 'Female')}
-                            className="bg-white border border-stone-300 rounded px-1.5 py-1 text-xs font-medium focus:ring-1 focus:ring-[#124E39]"
+                            className="bg-white border border-stone-300 rounded px-1.5 py-1 text-xs font-medium focus:ring-1 focus:ring-[#0f4a37]"
                           >
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
@@ -862,7 +862,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             <select
                               value={row.building}
                               onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value)}
-                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-[#124E39] focus:ring-1 focus:ring-[#124E39] cursor-pointer"
+                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-[#0f4a37] focus:ring-1 focus:ring-[#0f4a37] cursor-pointer"
                             >
                               {distinctBuildings.map((bldg) => (
                                 <option key={bldg} value={bldg}>{bldg}</option>
@@ -908,7 +908,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(row)}
-                              className="p-1 text-stone-400 hover:text-[#124E39] hover:bg-stone-200/60 rounded transition cursor-pointer"
+                              className="p-1 text-stone-400 hover:text-[#0f4a37] hover:bg-stone-200/60 rounded transition cursor-pointer"
                               title="Duplicate into same Family ID"
                             >
                               <Copy className="w-3.5 h-3.5" />
@@ -935,7 +935,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
               <button
                 type="button"
                 onClick={() => handleAddIndividual(false)}
-                className="text-xs font-bold text-[#124E39] hover:underline flex items-center gap-1 cursor-pointer"
+                className="text-xs font-bold text-[#0f4a37] hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add another individual with next family number</span>
@@ -950,7 +950,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           {/* Modal Footer Controls */}
           <div className="pt-3 border-t border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-stone-600">
-              Ready to create <strong className="text-[#124E39]">{rows.length} Zaereen</strong> across{' '}
+              Ready to create <strong className="text-[#0f4a37]">{rows.length} Zaereen</strong> across{' '}
               <strong className="text-stone-900">{uniqueFamiliesCount} Families</strong> for Tour{' '}
               <strong className="font-mono text-stone-900">{tourRefNo || 'Unassigned'}</strong>.
             </div>
@@ -966,9 +966,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
               <button
                 type="submit"
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-white shadow-sm transition cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-[#EBD59E]" />
+                <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
                 <span>Save Tour Group ({rows.length} Zaereen)</span>
               </button>
             </div>

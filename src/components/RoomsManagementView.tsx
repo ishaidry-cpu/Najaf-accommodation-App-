@@ -24,6 +24,7 @@ import { Room, RoomStatus, RoomCategory, Reservation, GoogleSheetsConfig } from 
 import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { SwitchRoomTarget } from './SwitchRoomModal';
+import { PageHeader, btn } from './ui';
 
 interface RoomsManagementViewProps {
   rooms: Room[];
@@ -115,75 +116,60 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Top Banner */}
-      <div className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#124E39]" />
-            <h2 className="text-base font-bold text-[#124E39]">
-              Hotel Inventory & Building Management — {totalCount} Rooms
-            </h2>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {distinctBuildings.map((bldg) => {
-                const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
-                return (
-                  <span
-                    key={bldg}
-                    className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 font-semibold"
-                  >
-                    {bldg} ({count})
-                  </span>
-                );
-              })}
-            </div>
+      <PageHeader
+        title="Rooms"
+        description={`${totalCount} rooms across ${distinctBuildings.length} buildings. Block a room, edit its details or add new ones.`}
+        meta={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
+            {distinctBuildings.map((bldg) => {
+              const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
+              return (
+                <span key={bldg}>
+                  {bldg} <span className="text-stone-400 tabular-nums">{count}</span>
+                </span>
+              );
+            })}
           </div>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            Manage hotel rooms and buildings. Add rooms manually, create new buildings, or sync inventory directly with your Google Sheet.
-          </p>
-        </div>
-
-        {/* Action Buttons: Add Building / Rooms, Sync Google Sheet, Reset */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              setAddModalTab('manual');
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-xs transition cursor-pointer"
-            title="Add a new building or room manually or sync via Google Sheets"
-          >
-            <Plus className="w-4 h-4 text-[#EBD59E]" />
-            <span>+ Add Building / Rooms</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAddModalTab('sheet');
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-2xs transition cursor-pointer"
-            title="Sync inventory with a Google Sheet"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Sync Google Sheet</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onResetRoomsToSaifeeBurhani}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 shadow-2xs transition cursor-pointer"
-            title="Reset room inventory back to the official 114 rooms across Saifee and Burhani"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-[#124E39]" />
-            <span className="hidden sm:inline">Reset to 114 Rooms</span>
-          </button>
-        </div>
-      </div>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={onResetRoomsToSaifeeBurhani}
+              className={btn.ghost}
+              title="Reset room inventory back to the official 114 rooms across Saifee and Burhani"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset to 114 rooms
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddModalTab('sheet');
+                setIsAddModalOpen(true);
+              }}
+              className={btn.secondary}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-stone-500" />
+              Import from sheet
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddModalTab('manual');
+                setIsAddModalOpen(true);
+              }}
+              className={btn.primary}
+            >
+              <Plus className="w-4 h-4 text-gold-200" />
+              Add rooms
+            </button>
+          </>
+        }
+      />
 
       {/* Filter Toolbar */}
-      <div className="bg-white border border-[#E6DFD5] rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white border border-[#e2e8e5] rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
           {/* Search Box */}
           <div className="relative min-w-[160px] flex-1 sm:flex-none">
@@ -193,7 +179,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               placeholder="Search Room, Building, Bed..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full min-h-[44px] sm:min-h-0 bg-[#FAF7F2] border border-stone-300 rounded-lg pl-8 pr-3 py-2 sm:py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg pl-8 pr-3 py-2 sm:py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
@@ -204,7 +190,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 setSelectedBuilding('ALL');
                 setSelectedFloorLabel('ALL');
               }}
-              className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === 'ALL' ? 'bg-[#124E39] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
+              className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === 'ALL' ? 'bg-[#0f4a37] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
             >
               All Buildings ({totalCount})
             </button>
@@ -217,7 +203,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                     setSelectedBuilding(bldg);
                     setSelectedFloorLabel('ALL');
                   }}
-                  className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === bldg ? 'bg-[#124E39] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
+                  className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === bldg ? 'bg-[#0f4a37] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
                 >
                   {bldg} ({bCount})
                 </button>
@@ -245,8 +231,8 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
         {/* Status Filter & Date Picker */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="flex items-center gap-1.5 min-h-[44px] sm:min-h-0 bg-[#FAF7F2] px-2.5 py-1 rounded-lg border border-stone-300">
-            <Calendar className="w-3.5 h-3.5 text-[#124E39]" />
+          <div className="flex items-center gap-1.5 min-h-[44px] sm:min-h-0 bg-[#f6f8f7] px-2.5 py-1 rounded-lg border border-stone-300">
+            <Calendar className="w-3.5 h-3.5 text-[#0f4a37]" />
             <span className="text-[11px] text-stone-500 font-semibold">Check Date:</span>
             <input
               type="date"
@@ -290,52 +276,48 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
           return (
             <div
               key={room.id}
-              className={`bg-white border rounded-xl p-3.5 shadow-2xs hover:shadow-md transition flex flex-col justify-between ${
+              className={`bg-white border rounded-xl p-4 shadow-xs hover:shadow-md transition flex flex-col justify-between ${
                 isBlocked
                   ? 'border-stone-300 bg-stone-50/50'
                   : dynStatus === 'occupied'
                   ? 'border-purple-200 hover:border-purple-300'
-                  : 'border-[#E6DFD5] hover:border-[#124E39]/40'
+                  : 'border-stone-200 hover:border-stone-300'
               }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div>
-                    <span className="font-mono text-base font-extrabold text-[#124E39] block">
-                      Room {room.roomNumber}
+                    <span className="text-[17px] font-semibold tracking-[-0.01em] text-stone-950 block tabular-nums">
+                      {room.roomNumber}
                     </span>
-                    <span className="text-[11px] font-semibold text-stone-500">
-                      {room.building} Hotel • {room.floorLabel || `Floor ${room.floor}`}
+                    <span className="text-xs text-stone-500">
+                      {room.building}, {room.floorLabel || `Floor ${room.floor}`}
                     </span>
                   </div>
 
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${statusBadgeClass}`}>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${statusBadgeClass}`}>
                     {statusText}
                   </span>
                 </div>
 
                 {/* Specs */}
-                <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-[#FAF7F2] p-2 rounded-lg border border-[#E6DFD5] mb-2.5">
-                  <div className="text-stone-600">
-                    <span className="text-stone-400 block text-[9px] uppercase">Capacity:</span>
-                    <span className="font-bold text-stone-900">
-                      Pax: {room.capacity}
-                      {room.buffer ? ` (+${room.buffer} Buffer)` : ''}
-                    </span>
+                <dl className="grid grid-cols-3 gap-2 text-xs py-2.5 mb-2 border-y border-stone-100">
+                  <div className="min-w-0">
+                    <dt className="text-stone-400">Sleeps</dt>
+                    <dd className="mt-0.5 font-medium text-stone-900 tabular-nums">
+                      {room.capacity}
+                      {room.buffer ? <span className="text-stone-400 font-normal"> +{room.buffer}</span> : null}
+                    </dd>
                   </div>
-                  <div className="text-stone-600">
-                    <span className="text-stone-400 block text-[9px] uppercase">Toilet:</span>
-                    <span className="font-semibold text-blue-900 truncate block">
-                      {room.toiletType || 'Standard'}
-                    </span>
+                  <div className="min-w-0">
+                    <dt className="text-stone-400">Beds</dt>
+                    <dd className="mt-0.5 font-medium text-stone-900 truncate">{(room.bedType || 'Single Beds').replace(/ beds?$/i, '')}</dd>
                   </div>
-                  <div className="col-span-2 text-stone-600 pt-1 border-t border-stone-200/60">
-                    <span className="text-stone-400 block text-[9px] uppercase">Beds:</span>
-                    <span className="font-semibold text-amber-900 truncate block">
-                      {room.bedType || 'Single Beds'}
-                    </span>
+                  <div className="min-w-0">
+                    <dt className="text-stone-400">Toilet</dt>
+                    <dd className="mt-0.5 font-medium text-stone-900 truncate capitalize">{(room.toiletType || 'Standard').toLowerCase()}</dd>
                   </div>
-                </div>
+                </dl>
 
                 {/* Current Guest info if occupied */}
                 {currentBooking && !isBlocked && (
@@ -366,7 +348,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setInspectingRoom(room)}
-                  className="min-h-[44px] sm:min-h-0 px-2 text-[#124E39] hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
+                  className="min-h-[44px] sm:min-h-0 px-2 text-[#0f4a37] hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
                 >
                   View Details
                 </button>
@@ -420,7 +402,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               setStatusFilter('ALL');
               setSearchQuery('');
             }}
-            className="text-xs text-[#124E39] underline font-bold cursor-pointer"
+            className="text-xs text-[#0f4a37] underline font-bold cursor-pointer"
           >
             Clear all filters
           </button>
@@ -431,11 +413,11 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
       {inspectingRoom && (() => {
         const occupantsOnDate = getRoomBookingsOnDate(inspectingRoom, checkDate, reservations);
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in">
             <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl border border-stone-200 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-2 border-b border-stone-200">
                 <div className="flex items-center gap-2">
-                  <BedDouble className="w-5 h-5 text-[#124E39]" />
+                  <BedDouble className="w-5 h-5 text-[#0f4a37]" />
                   <h3 className="font-bold text-base text-stone-900">
                     Room {inspectingRoom.roomNumber} ({inspectingRoom.building} Hotel)
                   </h3>
@@ -452,7 +434,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               <div className="space-y-2 text-xs text-stone-700">
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Building / Hotel:</span>
-                  <span className="font-bold text-[#124E39]">{inspectingRoom.building} Hotel</span>
+                  <span className="font-bold text-[#0f4a37]">{inspectingRoom.building} Hotel</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Floor:</span>
@@ -476,7 +458,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Accommodation Category:</span>
-                  <span className="font-bold text-[#124E39]">{inspectingRoom.category}</span>
+                  <span className="font-bold text-[#0f4a37]">{inspectingRoom.category}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Status:</span>
@@ -488,7 +470,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   <div className="pt-2 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-stone-700 font-bold flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-[#124E39]" />
+                        <Users className="w-3.5 h-3.5 text-[#0f4a37]" />
                         <span>Occupants on {checkDate} ({occupantsOnDate.length})</span>
                       </span>
                       {onOpenSwitchRoomModal && (
@@ -508,7 +490,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                     </div>
                     <div className="space-y-1.5 max-h-44 overflow-y-auto">
                       {occupantsOnDate.map((occ) => (
-                        <div key={occ.id} className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-xl p-2.5 flex items-center justify-between gap-2">
+                        <div key={occ.id} className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl p-2.5 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-bold text-stone-900 truncate">{occ.applicantName}</div>
                             <div className="text-[11px] text-stone-600 font-mono">
@@ -580,7 +562,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setInspectingRoom(null)}
-                  className="min-h-[44px] px-5 py-2 rounded-lg bg-[#124E39] text-white text-xs font-bold cursor-pointer"
+                  className="min-h-[44px] px-5 py-2 rounded-lg bg-[#0f4a37] text-white text-xs font-bold cursor-pointer"
                 >
                   Close
                 </button>

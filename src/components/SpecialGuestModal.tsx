@@ -156,8 +156,8 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-      <div className="bg-[#FAF7F2] rounded-2xl border border-[#E6DFD5] shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-stone-950/45 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className="bg-[#f6f8f7] rounded-2xl border border-[#e2e8e5] shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in zoom-in-95 duration-150">
         
         {/* Header */}
         <div className="flex items-start justify-between pb-3 border-b border-stone-200">
@@ -212,7 +212,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
               onClick={() => setScope('guest')}
               className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                 scope === 'guest'
-                  ? 'border-[#124E39] bg-emerald-50 text-[#124E39] shadow-2xs ring-2 ring-[#124E39]'
+                  ? 'border-[#0f4a37] bg-emerald-50 text-[#0f4a37] shadow-2xs ring-2 ring-[#0f4a37]'
                   : 'border-stone-200 bg-white hover:border-stone-300 text-stone-700'
               }`}
             >
@@ -221,7 +221,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
                   <User className="w-3.5 h-3.5" />
                   <span>Only Guest</span>
                 </span>
-                {scope === 'guest' && <Check className="w-3.5 h-3.5 text-[#124E39]" />}
+                {scope === 'guest' && <Check className="w-3.5 h-3.5 text-[#0f4a37]" />}
               </div>
               <div className="text-[10px] text-stone-500 mt-1 truncate" title={targetReservation.applicantName}>
                 1 Individual Pax
@@ -234,7 +234,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
               onClick={() => setScope('family')}
               className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                 scope === 'family'
-                  ? 'border-[#124E39] bg-emerald-50 text-[#124E39] shadow-2xs ring-2 ring-[#124E39]'
+                  ? 'border-[#0f4a37] bg-emerald-50 text-[#0f4a37] shadow-2xs ring-2 ring-[#0f4a37]'
                   : 'border-stone-200 bg-white hover:border-stone-300 text-stone-700'
               }`}
             >
@@ -243,7 +243,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
                   <Users className="w-3.5 h-3.5" />
                   <span>Whole Family</span>
                 </span>
-                {scope === 'family' && <Check className="w-3.5 h-3.5 text-[#124E39]" />}
+                {scope === 'family' && <Check className="w-3.5 h-3.5 text-[#0f4a37]" />}
               </div>
               <div className="text-[10px] text-stone-500 mt-1">
                 Fam {targetReservation.family} ({familyMembers.length} {familyMembers.length > 1 ? 'Members' : 'Member'})
@@ -256,7 +256,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
               onClick={() => setScope('tour')}
               className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                 scope === 'tour'
-                  ? 'border-[#124E39] bg-emerald-50 text-[#124E39] shadow-2xs ring-2 ring-[#124E39]'
+                  ? 'border-[#0f4a37] bg-emerald-50 text-[#0f4a37] shadow-2xs ring-2 ring-[#0f4a37]'
                   : 'border-stone-200 bg-white hover:border-stone-300 text-stone-700'
               }`}
             >
@@ -265,7 +265,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span>Whole Tour ID</span>
                 </span>
-                {scope === 'tour' && <Check className="w-3.5 h-3.5 text-[#124E39]" />}
+                {scope === 'tour' && <Check className="w-3.5 h-3.5 text-[#0f4a37]" />}
               </div>
               <div className="text-[10px] text-stone-500 mt-1 truncate" title={targetReservation.tourRefNo}>
                 All {tourMembers.length} Zaereen
@@ -313,7 +313,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               placeholder="e.g. Ground floor required, elderly wheelchair user, western toilet, double bed..."
-              className="w-full bg-white border border-stone-300 rounded-xl p-2.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#124E39]"
+              className="w-full bg-white border border-stone-300 rounded-xl p-2.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
             />
 
             {/* Quick Requirement Chips */}
@@ -368,9 +368,9 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-[#124E39] hover:bg-[#0E3C2C] text-[#EBD59E] shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
             >
-              <Check className="w-4 h-4 text-[#EBD59E]" />
+              <Check className="w-4 h-4 text-[#ecdcae]" />
               <span>
                 {isStarred
                   ? scope === 'guest'

@@ -45,21 +45,25 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
         disabled={busy && !running}
         title={title}
         aria-label={label}
-        className={`relative overflow-hidden flex items-center gap-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap border shadow-2xs ${
-          compact ? 'min-h-[40px] px-2 text-[11px]' : 'px-2.5 py-1.5 text-xs'
+        className={`relative overflow-hidden flex items-center gap-1.5 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
+          compact ? 'h-9 px-2.5 text-[13px]' : 'h-9 px-3 text-[13px]'
         } ${
           running
-            ? 'bg-amber-50 text-amber-950 border-amber-300'
+            ? 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200'
             : notConfigured
-              ? 'bg-stone-100 text-stone-600 border-stone-300'
-              : 'bg-[#0E3C2C] hover:bg-[#124E39] text-[#EBD59E] border-[#C5A059]/50'
+              ? 'bg-stone-100 text-stone-600'
+              : 'bg-brand-700 hover:bg-brand-800 text-white shadow-xs'
         }`}
       >
         {running && pct !== null && (
-          <span className="absolute inset-y-0 left-0 bg-amber-200/70 transition-all duration-500" style={{ width: `${pct}%` }} aria-hidden />
+          <span className="absolute inset-y-0 left-0 bg-amber-200/60 transition-all duration-500" style={{ width: `${pct}%` }} aria-hidden />
         )}
         <span className="relative flex items-center gap-1.5">
-          {running || busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}
+          {running || busy ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCcw className={`w-4 h-4 ${notConfigured ? '' : 'text-gold-200'}`} />
+          )}
           <span>{compact && !running ? 'NKERP' : label}</span>
         </span>
       </button>
@@ -68,14 +72,15 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
           type="button"
           onClick={onOpenSyncTab}
           title={attentionCount ? `${attentionCount} item(s) from the last sync need you` : 'Last sync: nothing needs you'}
-          className={`flex items-center justify-center rounded-lg border cursor-pointer ${compact ? 'min-w-[28px] min-h-[40px]' : 'w-7 h-7'} ${
-            attentionCount ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+          aria-label={attentionCount ? `${attentionCount} sync items need you` : 'Last sync finished cleanly'}
+          className={`flex items-center justify-center rounded-lg cursor-pointer h-9 ${compact ? 'min-w-8 px-1.5' : 'min-w-9 px-2'} ${
+            attentionCount ? 'bg-rose-50 text-rose-700 hover:bg-rose-100' : 'text-emerald-700 hover:bg-emerald-50'
           }`}
         >
           {attentionCount ? (
-            <span className="flex items-center gap-0.5 text-[10px] font-extrabold"><AlertTriangle className="w-3 h-3" />{attentionCount}</span>
+            <span className="flex items-center gap-1 text-xs font-semibold tabular-nums"><AlertTriangle className="w-3.5 h-3.5" />{attentionCount}</span>
           ) : (
-            <CheckCircle2 className="w-3.5 h-3.5" />
+            <CheckCircle2 className="w-4 h-4" />
           )}
         </button>
       )}

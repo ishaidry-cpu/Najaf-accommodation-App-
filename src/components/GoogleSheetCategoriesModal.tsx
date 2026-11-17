@@ -111,21 +111,21 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
       <div 
-        className="bg-[#FAF7F2] border border-[#E6DFD5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#124E39] text-white p-5 flex items-center justify-between">
+        <div className="bg-[#0f4a37] text-white p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[#EBD59E] border border-[#C5A059]/40">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[#ecdcae] border border-[#c9a85a]/40">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>Google Sheet Categories</span>
-                <span className="text-[11px] bg-[#EBD59E] text-[#124E39] px-2 py-0.5 rounded-full font-extrabold uppercase">
+                <span className="text-[11px] bg-[#ecdcae] text-[#0f4a37] px-2 py-0.5 rounded-full font-extrabold uppercase">
                   {currentList.length} Active
                 </span>
               </h2>
@@ -161,10 +161,10 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
           )}
 
           {/* Section 1: Fetch From Google Sheet */}
-          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-2xs space-y-3">
+          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-2xs space-y-3">
             <div className="flex items-center gap-2">
-              <LinkIcon className="w-4 h-4 text-[#124E39]" />
-              <h3 className="text-sm font-bold text-[#124E39]">Fetch From Your Google Sheet</h3>
+              <LinkIcon className="w-4 h-4 text-[#0f4a37]" />
+              <h3 className="text-sm font-bold text-[#0f4a37]">Fetch From Your Google Sheet</h3>
             </div>
             <p className="text-xs text-stone-600">
               Paste the link to your Google Sheet below. To allow instant fetching without login, make sure your sheet sharing is set to <strong className="text-stone-800">"Anyone with the link can view"</strong>.
@@ -177,13 +177,13 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
                   placeholder="https://docs.google.com/spreadsheets/d/.../edit"
                   value={sheetUrl}
                   onChange={(e) => setSheetUrl(e.target.value)}
-                  className="w-full bg-[#FAF7F2] border border-stone-300 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#124E39] focus:bg-white"
+                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37] focus:bg-white"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="px-4 py-2.5 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
               >
                 {isLoading ? (
                   <>
@@ -192,7 +192,7 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-3.5 h-3.5 text-[#EBD59E]" />
+                    <Sparkles className="w-3.5 h-3.5 text-[#ecdcae]" />
                     <span>Fetch Categories</span>
                   </>
                 )}
@@ -219,11 +219,11 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
           </div>
 
           {/* Section 2: Current Active Categories */}
-          <div className="bg-white border border-[#E6DFD5] rounded-2xl p-4 shadow-2xs space-y-3">
+          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Tag className="w-4 h-4 text-[#124E39]" />
-                <h3 className="text-sm font-bold text-[#124E39]">Active Categories in System</h3>
+                <Tag className="w-4 h-4 text-[#0f4a37]" />
+                <h3 className="text-sm font-bold text-[#0f4a37]">Active Categories in System</h3>
               </div>
               <button
                 type="button"
@@ -239,7 +239,7 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
               {currentList.map((cat) => (
                 <div
                   key={cat}
-                  className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#124E39] font-bold text-xs shadow-2xs hover:bg-emerald-100 transition"
+                  className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#0f4a37] font-bold text-xs shadow-2xs hover:bg-emerald-100 transition"
                 >
                   <span>{cat}</span>
                   <button
@@ -267,7 +267,7 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
                     handleAddManualCategory();
                   }
                 }}
-                className="flex-1 bg-[#FAF7F2] border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#124E39]"
+                className="flex-1 bg-[#f6f8f7] border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
               />
               <button
                 type="button"
@@ -282,7 +282,7 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-stone-100/80 border-t border-[#E6DFD5] flex items-center justify-between">
+        <div className="p-4 bg-stone-100/80 border-t border-[#e2e8e5] flex items-center justify-between">
           <button
             type="button"
             onClick={onClose}
@@ -294,9 +294,9 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
           <button
             type="button"
             onClick={handleSaveAndApply}
-            className="px-5 py-2.5 rounded-xl bg-[#124E39] hover:bg-[#0E3C2C] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+            className="px-5 py-2.5 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
           >
-            <Check className="w-4 h-4 text-[#EBD59E]" />
+            <Check className="w-4 h-4 text-[#ecdcae]" />
             <span>Save & Apply Categories</span>
           </button>
         </div>
