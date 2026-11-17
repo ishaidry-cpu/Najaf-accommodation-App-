@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:sync": "node --import tsx --test --test-force-exit 'server/nkerp-sync/__tests__/*.test.ts'"
+    "test:sync": "node --import tsx --test 'server/nkerp-sync/__tests__/*.test.ts'"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

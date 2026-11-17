@@ -13,6 +13,7 @@ import {
   normalizeBuildingName,
   normalizeRoomNumber,
   getCanonicalRoomKey,
+  reconcileOfficialSaifeeBurhaniRooms,
 } from './storage';
 
 export interface SyncResult {
@@ -812,7 +813,9 @@ export async function twoWaySyncWithGoogleSheet(
       mergedRoomsMap.set(key, srm);
     }
   });
-  const mergedRooms = deduplicateRooms(Array.from(mergedRoomsMap.values()));
+  const mergedRooms = reconcileOfficialSaifeeBurhaniRooms(
+    deduplicateRooms(Array.from(mergedRoomsMap.values()))
+  );
 
   // 5. Write back complete updated state to Google Sheets & remove obsolete present tabs
   const pushRes = await syncAllToGoogleSheet(
@@ -1008,8 +1011,14 @@ export async function fetchRoomsFromGoogleSheet(
   let bIdx = headerRow.findIndex((h: string) => h.includes('building') || h.includes('hotel'));
   let rIdx = headerRow.findIndex((h: string) => (h.includes('room') && !h.includes('allot')) || h.includes('number') || h === 'roomno');
   let fIdx = headerRow.findIndex((h: string) => h.includes('floor'));
-  let cIdx = headerRow.findIndex((h: string) => h.includes('capacity') || h.includes('bed') || h === 'cap' || h.includes('pax'));
-  let catIdx = headerRow.findIndex((h: string) => h.includes('category') || h.includes('type'));
+  // Strictly prioritize Capacity / Cap / Max Pax headers before Beds, and never match Bed Type / Bedding
+  let cIdx = headerRow.findIndex(
+    (h: string) => h === 'capacity (beds)' || h === 'capacity (max beds)' || h === 'capacity' || h === 'cap'
+  );
+  if (cIdx === -1) cIdx = headerRow.findIndex((h: string) => h.includes('capacity') && !h.includes('buffer'));
+  if (cIdx === -1) cIdx = headerRow.findIndex((h: string) => h === 'max pax' || h === 'pax' || (h.includes('pax') && !h.includes('name')));
+  if (cIdx === -1) cIdx = headerRow.findIndex((h: string) => (h === 'beds' || h === 'total beds') && !h.includes('type'));
+  let catIdx = headerRow.findIndex((h: string) => h.includes('category') || h === 'type');
   let sIdx = headerRow.findIndex((h: string) => h.includes('status') || h === 'current status');
   let brIdx = headerRow.findIndex((h: string) => h.includes('blocked') || h.includes('reason'));
   let unbIdx = headerRow.findIndex((h: string) => h.includes('unblock') || h.includes('reopen') || h.includes('date'));
@@ -1017,11 +1026,16 @@ export async function fetchRoomsFromGoogleSheet(
   let bufIdx = headerRow.findIndex((h: string) => h === 'buffer' || h.includes('buffer'));
   let nIdx = headerRow.findIndex((h: string) => h.includes('note'));
 
-  // Fallback if headers were not explicitly matched (only if reasonably within range)
+  // Fallback if headers were not explicitly matched (only when positional column isn't clearly another field)
   if (bIdx === -1) bIdx = 0;
   if (rIdx === -1) rIdx = 1;
   if (fIdx === -1) fIdx = 2;
-  if (cIdx === -1 && headerRow.length > 3) cIdx = 3;
+  if (cIdx === -1 && headerRow.length > 3) {
+    const col3 = headerRow[3] || '';
+    if (!col3.includes('category') && !col3.includes('toilet') && !col3.includes('bed type') && !col3.includes('status') && col3 !== 'age') {
+      cIdx = 3;
+    }
+  }
   if (catIdx === -1 && headerRow.length > 4) catIdx = 4;
   if (sIdx === -1 && headerRow.length > 5) sIdx = 5;
   if (brIdx === -1 && headerRow.length > 6) brIdx = 6;
@@ -1189,10 +1203,10 @@ export async function fetchRoomsFromGoogleSheet(
     }
   });
 
-    return deduplicateRooms(Array.from(parsedRoomMap.values()));
+    return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(parsedRoomMap.values())));
   } catch (err) {
     console.warn('Failed to fetch rooms from Google Sheet; retaining existing rooms:', err);
-    return deduplicateRooms(existingRooms);
+    return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(existingRooms));
   }
 }
 
@@ -1829,11 +1843,17 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   let bIdx = headerRow.findIndex((h) => h.includes('building') || h.includes('hotel'));
   let rIdx = headerRow.findIndex((h) => h === 'room' || h === 'room number' || h === 'roomno' || (h.includes('room') && !h.includes('allot')));
   let fIdx = headerRow.findIndex((h) => h.includes('floor'));
-  let cIdx = headerRow.findIndex((h) => h.includes('capacity') || h.includes('bed') || h.includes('pax'));
+  let cIdx = headerRow.findIndex(
+    (h) => h === 'capacity (beds)' || h === 'capacity (max beds)' || h === 'capacity' || h === 'cap'
+  );
+  if (cIdx === -1) cIdx = headerRow.findIndex((h) => h.includes('capacity') && !h.includes('buffer'));
+  if (cIdx === -1) cIdx = headerRow.findIndex((h) => h === 'max pax' || h === 'pax' || (h.includes('pax') && !h.includes('name')));
+  if (cIdx === -1) cIdx = headerRow.findIndex((h) => (h === 'beds' || h === 'total beds') && !h.includes('type'));
   let bufIdx = headerRow.findIndex((h) => h.includes('buffer'));
+  let amIdx = headerRow.findIndex((h) => h.includes('amenit'));
   let toiletIdx = headerRow.findIndex((h) => h.includes('toilet') || h.includes('wc') || h.includes('bath'));
   let bedIdx = headerRow.findIndex((h) => h.includes('bed type') || h.includes('bedding'));
-  let catIdx = headerRow.findIndex((h) => h.includes('category') || h.includes('type'));
+  let catIdx = headerRow.findIndex((h) => h.includes('category') || h === 'type');
   let sIdx = headerRow.findIndex((h) => h.includes('status'));
   let brIdx = headerRow.findIndex((h) => h.includes('blocked') || h.includes('reason'));
   let nIdx = headerRow.findIndex((h) => h.includes('note'));
@@ -1841,7 +1861,12 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   if (bIdx === -1) bIdx = 0;
   if (rIdx === -1) rIdx = 1;
   if (fIdx === -1) fIdx = 2;
-  if (cIdx === -1) cIdx = 3;
+  if (cIdx === -1 && headerRow.length > 3) {
+    const col3 = headerRow[3] || '';
+    if (!col3.includes('category') && !col3.includes('toilet') && !col3.includes('bed type') && !col3.includes('status') && col3 !== 'age') {
+      cIdx = 3;
+    }
+  }
 
   const cleanExisting = deduplicateRooms(existingRooms);
   const existingByKey = new Map<string, Room>();
@@ -1894,18 +1919,22 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       capacity = existing ? existing.capacity : 3;
     }
 
+    const rawAmenities = amIdx >= 0 ? String(row[amIdx] || '').trim() : '';
     let buffer = bufferFromCap;
-    if (bufIdx >= 0 && row[bufIdx] !== undefined) {
+    if (bufIdx >= 0 && row[bufIdx] !== undefined && String(row[bufIdx]).trim() !== '') {
       const bMatch = String(row[bufIdx]).match(/\d+/);
       if (bMatch) buffer = parseInt(bMatch[0], 10);
-    } else {
-      const fullRowText = row.join(' ');
-      const bMatch = fullRowText.match(/buffer[:\s]*(\d+)/i) || fullRowText.match(/\+(\d+)\s*(?:buffer|buf)?/i);
+    } else if (rawAmenities) {
+      const bMatch =
+        rawAmenities.match(/buffer[:\s]*(\d+)/i) ||
+        rawAmenities.match(/(\d+)\s*buffer/i);
       if (bMatch) {
         buffer = parseInt(bMatch[1], 10);
       } else if (existing?.buffer !== undefined) {
         buffer = existing.buffer;
       }
+    } else if (existing?.buffer !== undefined) {
+      buffer = existing.buffer;
     }
 
     const rawToilet = toiletIdx >= 0 ? String(row[toiletIdx] || '').toLowerCase() : '';
@@ -1984,7 +2013,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
     }
   });
 
-  return deduplicateRooms(Array.from(parsedRoomMap.values()));
+  return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(parsedRoomMap.values())));
 }
 
 /**

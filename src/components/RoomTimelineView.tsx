@@ -32,7 +32,8 @@ import {
   getRoomBookingsOnDate, 
   getRoomStatusOnDate,
   checkRoomAllotmentAvailability,
-  normalizeBuildingName
+  normalizeBuildingName,
+  countEffectivePax
 } from '../services/storage';
 import { checkTurnoverTimingConflict } from '../utils/turnoverTiming';
 
@@ -1131,7 +1132,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
 
                       // Bookings occupying this room on dateStr
                       const dayBookings = getRoomBookingsOnDate(room, dateStr, reservations);
-                      const currentPax = dayBookings.reduce((sum, r) => sum + (r.pax || r.paxCount || 1), 0);
+                      const currentPax = countEffectivePax(dayBookings);
                       const isBufferUsed = currentPax > (room.capacity || 2) && currentPax <= maxCap;
 
                       // Check arrivals and departures on this specific date
@@ -1495,7 +1496,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                               const isCurrent = rm.roomNumber === hoveredReservation.roomNumber && rm.building.toLowerCase() === (hoveredReservation.building || '').toLowerCase();
                               return (
                                 <option key={rm.id} value={rm.roomNumber}>
-                                  Room {rm.roomNumber} (Cap: {rm.capacity} • {rm.toiletType || 'Std'}{isCurrent ? ' • CURRENT' : ''})
+                                  Room {rm.roomNumber} (Cap: {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''} • {rm.toiletType || 'Std'}{isCurrent ? ' • CURRENT' : ''})
                                 </option>
                               );
                             })}
