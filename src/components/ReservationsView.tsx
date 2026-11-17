@@ -313,7 +313,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       if (buildingFilter !== 'ALL') {
         if (buildingFilter === 'Unallotted') {
           if (res.roomNumber && res.roomNumber.trim() !== '') return false;
-        } else if (res.building !== buildingFilter) {
+        } else if (normalizeBuildingName(res.building).toLowerCase() !== buildingFilter.toLowerCase()) {
           return false;
         }
       }
@@ -424,7 +424,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     const datePairs = new Set<string>();
     filteredAndSortedReservations.forEach((r) => {
       if (r.arrivalDate && r.departureDate) {
-        const b = (r.building || 'Saifee').trim().toLowerCase();
+        const b = (normalizeBuildingName(r.building) || 'Saifee').toLowerCase();
         const arr = r.arrivalDate.slice(0, 10);
         const dep = r.departureDate.slice(0, 10);
         datePairs.add(`${b}___${arr}___${dep}`);
@@ -433,8 +433,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
     datePairs.forEach((pair) => {
       const [bldgNorm, arr, dep] = pair.split('___');
-      const bldgRooms = rooms.filter((rm) => (rm.building || '').trim().toLowerCase() === bldgNorm);
-      const bldgName = bldgRooms[0]?.building || (bldgNorm.includes('burhani') ? 'Burhani' : 'Saifee');
+      const bldgRooms = rooms.filter((rm) => normalizeBuildingName(rm.building).toLowerCase() === bldgNorm);
+      const bldgName = bldgRooms[0]?.building || normalizeBuildingName(bldgNorm) || 'Saifee';
 
       const available = bldgRooms.filter((rm) => {
         if (rm.status === 'blocked') return false;
@@ -1770,8 +1770,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
 
                   // Available rooms lookup: Instant, memoized, showing all rooms where capacity is not reached!
-                  const bldgNorm = (res.building || 'Saifee').trim().toLowerCase();
-                  const hotelRooms = rooms.filter((rm) => (rm.building || '').trim().toLowerCase() === bldgNorm);
+                  const chosenBldg = normalizeBuildingName(res.building) || 'Saifee';
+                  const bldgNorm = chosenBldg.toLowerCase();
+                  const hotelRooms = rooms.filter((rm) => normalizeBuildingName(rm.building).toLowerCase() === bldgNorm);
                   const dateCacheKey = `${bldgNorm}___${(res.arrivalDate || '').slice(0, 10)}___${(res.departureDate || '').slice(0, 10)}`;
                   const cachedAvailable = availableRoomsCache.get(dateCacheKey);
                   const availableRoomsForRes = cachedAvailable || hotelRooms.filter((rm) => rm.status !== 'blocked');
@@ -1898,7 +1899,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       {/* 7. Hotel / Building */}
                       <td className={`py-2 px-1 text-center text-stone-900 font-bold ${fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'}`}>
                         <select
-                          value={res.building || 'Saifee'}
+                          value={chosenBldg}
                           onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
                           className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#0f4a37] cursor-pointer shadow-2xs w-full"
                         >
@@ -1938,8 +1939,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                       if (onOpenQuickAllotModal) onOpenQuickAllotModal(res);
                                       return;
                                     }
-                                    const matchedRoom = rooms.find((rm) => String(rm.roomNumber).trim() === String(val).trim());
-                                    const targetBldg = matchedRoom ? matchedRoom.building : (res.building || 'Saifee');
+                                    const matchedRoom = hotelRooms.find(
+                                      (rm) => String(rm.roomNumber).trim().toLowerCase() === String(val).trim().toLowerCase()
+                                    );
+                                    const targetBldg = matchedRoom
+                                      ? (normalizeBuildingName(matchedRoom.building) || chosenBldg)
+                                      : chosenBldg;
                                     if (onAllotRoom) {
                                       onAllotRoom(res.id, targetBldg, val);
                                     } else {
@@ -1963,7 +1968,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   )}
                                   {res.roomNumber && (
                                     <option value={res.roomNumber}>
-                                      Rm {res.roomNumber} ({res.building || 'Saifee'}) ✓ Current
+                                      Rm {res.roomNumber} ({chosenBldg}) ✓ Current
                                     </option>
                                   )}
                                   {availableRoomsForRes.length > 0 && (
@@ -2025,7 +2030,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                 if (onBatchAllotFamily) {
                                   const safeTour = String(res.tourRefNo || res.tourId || '');
                                   const safeFam = String(res.family || '');
-                                  onBatchAllotFamily(safeTour, safeFam, res.building || 'Saifee', res.roomNumber);
+                                  onBatchAllotFamily(safeTour, safeFam, chosenBldg, res.roomNumber);
                                 }
                               }}
                               className="flex items-center justify-center gap-0.5 px-1 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-[9px] font-extrabold shadow-2xs transition truncate"
