@@ -3,7 +3,6 @@
  * and said no), what is a *transport* failure (we never got a usable answer: retry reads, never writes),
  * and how timeouts and outbound proxies are handled.
  */
-import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici';
 
 /** NKERP (or Google) answered and refused the request: HTTP error status, or `IsError` in the body. */
 export class Rejected extends Error {
@@ -29,19 +28,26 @@ export class BadResponse extends Error {
   }
 }
 
-let proxyConfigured = false;
+let proxyReady: Promise<void> | null = null;
 
 /**
  * Honour HTTPS_PROXY / HTTP_PROXY / NO_PROXY for every outbound call when they are set (corporate
  * networks, sandboxes). Node's built-in fetch ignores them by default. Idempotent.
+ *
+ * The `undici` package is loaded only when a proxy is configured, and only if it is installed: a server
+ * that has no proxy (Cloud Run, Google AI Studio) must start and sync without it.
  */
-export function configureOutboundProxy(): void {
-  if (proxyConfigured) return;
-  proxyConfigured = true;
-  const env = process.env;
-  if (env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy) {
-    setGlobalDispatcher(new EnvHttpProxyAgent());
+export function configureOutboundProxy(): Promise<void> {
+  if (!proxyReady) {
+    const env = process.env;
+    proxyReady = env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy
+      ? import('undici')
+        .then(({ EnvHttpProxyAgent, setGlobalDispatcher }) => setGlobalDispatcher(new EnvHttpProxyAgent()))
+        .catch((err) => console.warn('[nkerp-sync] proxy variables are set but undici could not be loaded; '
+          + `connecting directly (${(err as Error).message})`))
+      : Promise.resolve();
   }
+  return proxyReady;
 }
 
 export interface FetchJsonOptions {
@@ -81,7 +87,7 @@ function classifyTransport(err: unknown, host: string): TransportError {
  * response arrived, BadResponse when the body is not JSON.
  */
 export async function fetchJson<T = any>(url: string, opts: FetchJsonOptions): Promise<JsonResponse<T>> {
-  configureOutboundProxy();
+  await configureOutboundProxy();
   const timeout = AbortSignal.timeout(opts.timeoutMs);
   const signal = opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout;
   let res: Response;

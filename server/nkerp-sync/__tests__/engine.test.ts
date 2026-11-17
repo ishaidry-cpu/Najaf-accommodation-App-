@@ -460,6 +460,8 @@ describe('credentials and Google auth', () => {
     assert.equal(googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: Buffer.from(json).toString('base64') }).private_key, pem);
     const escaped = JSON.stringify({ ...key, private_key: pem.replace(/\n/g, '\\n') });
     assert.equal(googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: escaped }).private_key, pem);
+    assert.throws(() => googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({ ...key, private_key: 'x' }) }),
+      /no usable private_key/);
     const status = credentialStatus({ GOOGLE_SERVICE_ACCOUNT_JSON: json });
     assert.deepEqual([status.nkerp, status.google, status.googleAccount], [false, true, key.client_email]);
     assert.ok(!JSON.stringify(status).includes('PRIVATE KEY'));

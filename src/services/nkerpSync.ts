@@ -26,7 +26,8 @@ export interface SyncConfig {
   sheetId: string;
   sheetUrl: string;
   gemini: boolean;
-  keySource: 'env' | 'admin-pin' | null;
+  /** 'env': an access key is required; null: the sync is open (no key set on the server). */
+  keySource: 'env' | null;
   today: string;
   running: boolean;
 }

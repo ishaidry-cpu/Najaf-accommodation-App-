@@ -58,6 +58,9 @@ function parseKey(text: string, source: string): ServiceAccountKey {
   if (!key.private_key.includes('\n') && key.private_key.includes('\\n')) {
     key = { ...key, private_key: key.private_key.replace(/\\n/g, '\n') };
   }
+  if (!/-----BEGIN (RSA )?PRIVATE KEY-----[\s\S]+-----END (RSA )?PRIVATE KEY-----/.test(key.private_key)) {
+    throw new MissingCredentials(`${source} has no usable private_key (paste the whole key file, from { to })`);
+  }
   return key;
 }
 

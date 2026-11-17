@@ -356,7 +356,7 @@ const Setup: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
       <ul className="p-3.5 space-y-2 text-xs">
         <Row ok={c.nkerp} label="NKERP login">server secrets <code>NKERP_LOGIN_ID</code> and <code>NKERP_PASSWORD</code> (an account with the Tour and Accomodation Admin role).</Row>
         <Row ok={c.google} label="Google service account">server secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> (the key file's JSON), then share the Sheet with that account as <b>Editor</b>.</Row>
-        <Row ok={c.keySource === 'env'} label="Access key">server secret <code>NKERP_SYNC_ACCESS_KEY</code> (recommended; without it the admin PIN is used).</Row>
+        <Row ok label="Access key (optional)">{c.keySource === 'env' ? 'set: staff enter it once per device.' : <>not set, so anyone who can open the app can run the sync. Set <code>NKERP_SYNC_ACCESS_KEY</code> to require a key.</>}</Row>
         <Row ok={c.gemini} label="Plain-language instructions (optional)">server secret <code>GEMINI_API_KEY</code>; without it, the built-in instruction rules are used.</Row>
       </ul>
     </Card>
@@ -456,10 +456,11 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
               </button>
             </>
           )}
-          <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
+{config?.keySource === 'env' && (
+                    <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
             className="p-1.5 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
             <LogOut className="w-3.5 h-3.5" />
-          </button>
+          </button>)}
         </div>
       </div>
 

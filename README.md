@@ -37,7 +37,7 @@ Safe requests run straight away. Anything that loosens a safety rule asks for co
 | --- | --- |
 | `NKERP_LOGIN_ID`, `NKERP_PASSWORD` | NKERP account with the *Tour and Accomodation Admin* role |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` (or `GOOGLE_SERVICE_ACCOUNT_FILE`) | Google service-account key. Share the Sheet with its `client_email` as **Editor** |
-| `NKERP_SYNC_ACCESS_KEY` | Key staff enter once per device to use the sync (falls back to the admin PIN) |
+| `NKERP_SYNC_ACCESS_KEY` (optional) | Key staff enter once per device to use the sync. Without it there is no key: anyone who can open the app can run the sync |
 | `GEMINI_API_KEY` (optional) | Lets the instruction box understand free-form phrasing. Without it, built-in rules are used |
 
 The server needs outbound access to `to.najafkarbala.com`, `sheets.googleapis.com` and `oauth2.googleapis.com`.

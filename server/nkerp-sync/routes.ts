@@ -14,7 +14,7 @@
  *   POST /messages/:id/dismiss
  *
  * Every route except /config needs the access key (header x-sync-key, or ?key= for EventSource):
- * NKERP_SYNC_ACCESS_KEY when set, otherwise the app's admin PIN.
+ * NKERP_SYNC_ACCESS_KEY when it is set. With no key set, the sync is open (no key is asked for).
  */
 import crypto from 'crypto';
 import express from 'express';
@@ -120,7 +120,6 @@ function digest(s: string): Buffer {
 
 export interface RouterOptions {
   dataDir: string;
-  adminPin: () => string | undefined;
   /** Test seams: the run dependencies and the "is the server configured" check. */
   depsFactory?: ConstructorParameters<typeof JobManager>[1];
   credentials?: typeof credentialStatus;
@@ -136,11 +135,10 @@ export function createNkerpSyncRouter(opts: RouterOptions): { router: express.Ro
   const clients = new Set<express.Response>();
   const failures = new Map<string, { count: number; resetAt: number }>();
 
-  const accessKey = (): { key: string; source: 'env' | 'admin-pin' } | null => {
+  /** The access key, or null when none is set: then the sync is open to anyone who can open the app. */
+  const accessKey = (): { key: string; source: 'env' } | null => {
     const env = process.env.NKERP_SYNC_ACCESS_KEY?.trim();
-    if (env) return { key: env, source: 'env' };
-    const pin = opts.adminPin()?.trim();
-    return pin ? { key: pin, source: 'admin-pin' } : null;
+    return env ? { key: env, source: 'env' } : null;
   };
 
   const auth: express.RequestHandler = (req, res, next) => {
@@ -151,11 +149,11 @@ export function createNkerpSyncRouter(opts: RouterOptions): { router: express.Ro
       return;
     }
     const expected = accessKey();
-    const given = String(req.get('x-sync-key') ?? req.query.key ?? '');
     if (!expected) {
-      res.status(503).json({ error: 'No access key is configured (set NKERP_SYNC_ACCESS_KEY or an admin PIN)' });
+      next();                                   // no NKERP_SYNC_ACCESS_KEY: no lock
       return;
     }
+    const given = String(req.get('x-sync-key') ?? req.query.key ?? '');
     if (given && crypto.timingSafeEqual(digest(given), digest(expected.key))) {
       failures.delete(ip);
       next();

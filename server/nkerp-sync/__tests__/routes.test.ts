@@ -64,16 +64,17 @@ before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nkerp-sync-'));
   const app = express();
   app.use(express.json());
-  const { router } = createNkerpSyncRouter({ dataDir, adminPin: () => PIN, depsFactory: deps, credentials: configured });
+  const { router } = createNkerpSyncRouter({ dataDir, depsFactory: deps, credentials: configured });
   app.use('/api/nkerp-sync', router);
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/nkerp-sync`;
-  delete process.env.NKERP_SYNC_ACCESS_KEY;
+  process.env.NKERP_SYNC_ACCESS_KEY = PIN;
   delete process.env.GEMINI_API_KEY;
 });
 
 after(async () => {
+  delete process.env.NKERP_SYNC_ACCESS_KEY;
   server.closeAllConnections?.();
   await new Promise<void>((r) => server.close(() => r()));
   fs.rmSync(dataDir, { recursive: true, force: true });
@@ -90,20 +91,24 @@ describe('access', () => {
     const { status, body } = await req('/config', { key: null });
     assert.equal(status, 200);
     assert.equal(body.configured, true);
-    assert.equal(body.keySource, 'admin-pin');
+    assert.equal(body.keySource, 'env');
     assert.ok(!JSON.stringify(body).includes(PIN));
   });
 
-  it('everything else needs the key; an env key replaces the admin PIN', async () => {
+  it('with NKERP_SYNC_ACCESS_KEY set, everything else needs that key', async () => {
     assert.equal((await req('/status', { key: null })).status, 401);
     assert.equal((await req('/status', { key: 'nope' })).status, 401);
     assert.equal((await req('/status')).status, 200);
-    process.env.NKERP_SYNC_ACCESS_KEY = 'long-random-key';
+  });
+
+  it('with no access key set, the sync is open and needs no key', async () => {
+    delete process.env.NKERP_SYNC_ACCESS_KEY;
     try {
-      assert.equal((await req('/status')).status, 401);
-      assert.equal((await req('/status', { key: 'long-random-key' })).status, 200);
+      assert.equal((await req('/config', { key: null })).body.keySource, null);
+      assert.equal((await req('/status', { key: null })).status, 200);
+      assert.equal((await req('/auth', { key: null, body: {} })).status, 200);
     } finally {
-      delete process.env.NKERP_SYNC_ACCESS_KEY;
+      process.env.NKERP_SYNC_ACCESS_KEY = PIN;
     }
   });
 });

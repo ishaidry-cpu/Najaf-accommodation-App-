@@ -60,6 +60,12 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
   notifyRef.current = notify;
   const keyRef = useRef(key);
   keyRef.current = key;
+  // No access key set on the server: the sync is open and the app never asks for one.
+  const configRef = useRef(config);
+  configRef.current = config;
+  const syncIsOpen = config?.keySource === null;
+  const openRef = useRef(syncIsOpen);
+  openRef.current = syncIsOpen;
 
   // ---- config (no key needed)
   useEffect(() => {
@@ -87,7 +93,7 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
 
   const refresh = useCallback(async () => {
     const k = keyRef.current;
-    if (!k) return;
+    if (!k && !openRef.current) return;
     try {
       const [s, m] = await Promise.all([syncApi.status(k), syncApi.messages(k)]);
       setStatus(s);
@@ -101,7 +107,7 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
 
   // ---- live stream
   useEffect(() => {
-    if (!key) {
+    if (!key && !syncIsOpen) {
       setConnected(false);
       return;
     }
@@ -175,12 +181,28 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
       if (retry) clearTimeout(retry);
       es?.close();
     };
-  }, [key, refresh, handleAuthError]);
+  }, [key, syncIsOpen, refresh, handleAuthError]);
 
   /** Run `fn` with the key, prompting for it first when missing or rejected. */
   const withKey = useCallback(async (fn: (k: string) => Promise<void>) => {
-    const k = keyRef.current;
-    if (!k) {
+    let k = keyRef.current;
+    if (!k && !openRef.current && !configRef.current) {
+      // Settings not loaded yet: ask the server whether a key is needed at all before prompting.
+      let c: SyncConfig;
+      try {
+        c = await syncApi.config();
+      } catch (err) {
+        throw new Error(err instanceof SyncHttpError && err.status === 404
+          ? 'Sync to NKERP is not running on this server (it answered 404). Restart or redeploy the app with the latest code; '
+            + 'if it still happens, the server failed to start the sync (check the server log).'
+          : (err as Error).message);
+      }
+      setConfig(c);
+      configRef.current = c;
+      openRef.current = c.keySource === null;
+      k = keyRef.current;
+    }
+    if (!k && !openRef.current) {
       pending.current = fn;
       setKeyError(null);
       setNeedKey(true);
@@ -278,7 +300,7 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
 
   const loadJob = useCallback(async (id: string): Promise<JobDetail | null> => {
     const k = keyRef.current;
-    if (!k) return null;
+    if (!k && !openRef.current) return null;
     try {
       return await syncApi.job(k, id);
     } catch (err) {
@@ -299,6 +321,6 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
     config, status, active, messages, connected, needKey, keyError, busy, error,
     running: Boolean(active) || Boolean(config?.running && !status),
     attentionCount, startSync, startPreview, cancel, send, confirm, dismiss, submitKey, closeKeyPrompt, forgetKey,
-    refresh, loadJob, requestKey, hasKey: Boolean(key),
+    refresh, loadJob, requestKey, hasKey: Boolean(key) || syncIsOpen,
   };
 }

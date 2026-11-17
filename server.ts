@@ -565,10 +565,7 @@ app.post('/api/sheets/switch', (req, res) => {
 // ==========================================
 // SYNC TO NKERP (Najaf accommodation allocation engine, runs entirely on this server)
 // ==========================================
-const nkerpSync = createNkerpSyncRouter({
-  dataDir: DATA_DIR,
-  adminPin: () => readJsonFile<any>(CONFIG_FILE, {}).adminPin,
-});
+const nkerpSync = createNkerpSyncRouter({ dataDir: DATA_DIR });
 app.use('/api/nkerp-sync', nkerpSync.router);
 
 // ==========================================

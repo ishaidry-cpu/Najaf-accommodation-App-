@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { KeyRound, X } from 'lucide-react';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 
-/** Asks once for the sync access key (NKERP_SYNC_ACCESS_KEY, or the admin PIN), then remembers it on this device. */
+/** Asks once for the sync access key (NKERP_SYNC_ACCESS_KEY; only when one is set), then remembers it on this device. */
 export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   const [value, setValue] = useState('');
   const [checking, setChecking] = useState(false);
@@ -16,7 +16,6 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
   }, [sync.needKey]);
 
   if (!sync.needKey) return null;
-  const pinMode = sync.config?.keySource === 'admin-pin';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,9 +41,7 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
         </div>
         <div className="p-4 space-y-3">
           <p className="text-xs text-stone-700 leading-relaxed">
-            {pinMode
-              ? 'Enter the admin PIN to run the NKERP sync from this device.'
-              : 'Enter the sync access key to run the NKERP sync from this device.'}{' '}
+            Enter the sync access key to run the NKERP sync from this device.{' '}
             It is remembered on this device until you sign it out from the Sync tab.
           </p>
           <input
@@ -54,8 +51,8 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#124E39]/40"
-            placeholder={pinMode ? 'Admin PIN' : 'Access key'}
-            aria-label={pinMode ? 'Admin PIN' : 'Access key'}
+            placeholder="Access key"
+            aria-label="Access key"
           />
           {sync.keyError && <p className="text-xs font-semibold text-rose-700">{sync.keyError}</p>}
           <div className="flex justify-end gap-2">
