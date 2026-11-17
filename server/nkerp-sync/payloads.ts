@@ -2,9 +2,9 @@
  * Save payloads, built exactly as the NKERP screens build them, plus the capacity and readback checks.
  * Pure functions (except `persisted`, which re-reads NKERP through the given client).
  */
-import { NAJAF, VENUE, type NkerpApi } from './nkerpClient';
-import type { AllocItem, Move, Night, NkRecord } from './types';
-import { day, pyTitle, sortBy, tuple } from './util';
+import { NAJAF, VENUE, type NkerpApi } from './nkerpClient.js';
+import type { AllocItem, Move, Night, NkRecord } from './types.js';
+import { day, pyTitle, sortBy, tuple } from './util.js';
 
 /** Python's dict.get(): a missing field is sent as null, never dropped from the JSON payload. */
 const g = (o: NkRecord | undefined | null, k: string): any => (o == null || o[k] === undefined ? null : o[k]);

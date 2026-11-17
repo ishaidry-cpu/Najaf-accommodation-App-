@@ -4,8 +4,8 @@
  * refreshed five minutes before they expire; concurrent callers share one in-flight refresh.
  */
 import crypto from 'crypto';
-import { fetchJson, Rejected, withTransportRetry } from './http';
-import type { ServiceAccountKey } from './credentials';
+import { fetchJson, Rejected, withTransportRetry } from './http.js';
+import type { ServiceAccountKey } from './credentials.js';
 
 export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';

@@ -5,10 +5,10 @@
  *                                              what earlier runs saw (it decides who may be deallocated)
  * Nothing else in the spreadsheet is ever touched.
  */
-import { fetchJson, Rejected, withTransportRetry } from './http';
-import type { GoogleTokenSource } from './googleAuth';
-import type { HistoryRow, MemoryEntry, SheetRow } from './types';
-import { familyNo, norm, parseArrival, pyRepr, tupleKey } from './util';
+import { fetchJson, Rejected, withTransportRetry } from './http.js';
+import type { GoogleTokenSource } from './googleAuth.js';
+import type { HistoryRow, MemoryEntry, SheetRow } from './types.js';
+import { familyNo, norm, parseArrival, pyRepr, tupleKey } from './util.js';
 
 export const DEFAULT_SHEET_ID = '1kOWtRpUF9yeN52MmaiWMW7q8ddDEsIyYrvZgv0_t0uw';
 export const SHEET_TAB = 'Zaereen Lodging & Room Allotment Grid';

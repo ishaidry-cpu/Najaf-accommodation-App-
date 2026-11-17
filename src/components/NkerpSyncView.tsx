@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 import type {
-  AttentionItem, ChatMessage, JobDetail, JobEvent, JobItem, JobStatus, LogLevel, ReportEntry, SyncReport,
+  AttentionItem, ChatMessage, JobEvent, JobStatus, LogLevel, ReportEntry, SyncReport,
 } from '../services/nkerpSync';
 
 const ACTIONS = ['deallocate', 'reallocate', 'allocate'] as const;
@@ -25,8 +25,7 @@ const STATUS_STYLE: Record<JobStatus, { label: string; cls: string }> = {
   attention: { label: 'Needs you', cls: 'bg-orange-100 text-orange-900 border-orange-300' },
   stopped: { label: 'Stopped', cls: 'bg-rose-100 text-rose-900 border-rose-300' },
   failed: { label: 'Failed', cls: 'bg-rose-100 text-rose-900 border-rose-300' },
-  cancelled: { label: 'Cancelled', cls: 'bg-stone-200 text-stone-800 border-stone-300' },
-  interrupted: { label: 'Interrupted', cls: 'bg-rose-100 text-rose-900 border-rose-300' },
+  cancelled: { label: 'Stopped early', cls: 'bg-stone-200 text-stone-800 border-stone-300' },
 };
 
 const LEVEL_STYLE: Record<LogLevel, string> = {
@@ -364,34 +363,19 @@ const Setup: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
 };
 
 export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
-  const [selected, setSelected] = useState<JobDetail | null>(null);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { config, status, active } = sync;
+  const { config, active, last } = sync;
 
-  useEffect(() => {
-    if (sync.hasKey) void sync.refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sync.hasKey]);
-
-  // When a new run starts, follow it rather than an old selection.
-  useEffect(() => {
-    if (active) setSelected(null);
-  }, [active?.id]);
-
-  const latest = status?.latest ?? null;
-  const last = status?.last ?? latest;
-  const shownJob: (JobItem & { events: JobEvent[]; report?: SyncReport | null }) | null = active ?? selected ?? last;
-  const shownReport = selected ? selected.report : active ? null : last?.report ?? null;
-  const attentionItems = selected ? selected.attention ?? [] : status?.attention ?? [];
-  const attentionFrom = !selected && latest && last && latest.id !== last.id ? latest : null;
-  const failedLast = !selected && !active && last && !last.report && last.error && last.status !== 'cancelled' ? last : null;
+  const shownJob = active ?? last;
+  const shownReport = active ? null : last?.report ?? null;
+  const failedLast = !active && last && !last.report && last.error && last.status !== 'cancelled' ? last : null;
   const shownAttention: AttentionItem[] = failedLast
-    ? [{ id: 'failed-last', kind: 'stopped', severity: 'critical', action: last!.options.apply ? 'sync' : 'preview',
-      title: `The latest ${last!.options.apply ? 'sync' : 'preview'} ${last!.status} before planning anything`, people: [],
+    ? [{ id: 'failed-last', kind: 'stopped', severity: 'critical', action: failedLast.options.apply ? 'sync' : 'preview',
+      title: `The latest ${failedLast.options.apply ? 'sync' : 'preview'} ${failedLast.status} before planning anything`, people: [],
       detail: failedLast.error!, hint: 'Nothing was saved. See the run above for what to check, then run it again.',
-      suggestion: last!.options.apply ? 'Sync again' : 'Preview' }, ...attentionItems]
-    : attentionItems;
+      suggestion: failedLast.options.apply ? 'Sync again' : 'Preview' }]
+    : active ? [] : last?.attention ?? [];
 
   const ask = (prefix: string) => {
     setDraft(prefix);
@@ -401,14 +385,17 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   if (!sync.hasKey) {
     return (
       <div className="max-w-xl mx-auto mt-6 space-y-3">
+        {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
         <Setup sync={sync} />
-        <Card title="Sync to NKERP" icon={<KeyRound className="w-4 h-4" />}>
-          <div className="p-4 text-xs text-stone-700 space-y-3">
-            <p>The sync log, run history and instructions are protected. Enter the access key once on this device to open them.</p>
-            <button type="button" onClick={sync.requestKey}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] text-[#EBD59E] cursor-pointer">Enter access key</button>
-          </div>
-        </Card>
+        {config?.keySource === 'env' && (
+          <Card title="Sync to NKERP" icon={<KeyRound className="w-4 h-4" />}>
+            <div className="p-4 text-xs text-stone-700 space-y-3">
+              <p>The sync is protected with an access key. Enter it once on this device to open the log, history and instructions.</p>
+              <button type="button" onClick={sync.requestKey}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#124E39] text-[#EBD59E] cursor-pointer">Enter access key</button>
+            </div>
+          </Card>
+        )}
       </div>
     );
   }
@@ -425,13 +412,14 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
         <div>
           <h1 className="text-lg font-extrabold text-[#124E39] flex items-center gap-2"><RefreshCcw className="w-5 h-5" />Sync to NKERP</h1>
           <p className="text-[11px] text-stone-600">
-            Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Runs on this app's server; Karbala and other tabs are never touched.
+            Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Karbala and other tabs are never touched.
+            {active ? ' Keep this page open while it runs.' : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span title={sync.connected ? 'Live updates connected' : 'Live updates reconnecting'}
+          <span title={sync.connected ? 'The sync is reachable on the server' : 'The sync is not reachable on the server'}
             className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border ${sync.connected ? 'text-emerald-800 border-emerald-200 bg-emerald-50' : 'text-stone-600 border-stone-300 bg-stone-100'}`}>
-            {sync.connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{sync.connected ? 'Live' : 'Offline'}
+            {sync.connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{sync.connected ? 'Online' : 'Offline'}
           </span>
           {config && (
             <a href={config.sheetUrl} target="_blank" rel="noreferrer"
@@ -440,9 +428,10 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             </a>
           )}
           {sync.running ? (
-            <button type="button" onClick={() => void sync.cancel()}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white cursor-pointer">
-              <Square className="w-3.5 h-3.5" />Stop after current save
+            <button type="button" onClick={sync.cancel} disabled={sync.stopping}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60 cursor-pointer">
+              {sync.stopping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+              {sync.stopping ? 'Stopping…' : 'Stop after current save'}
             </button>
           ) : (
             <>
@@ -456,26 +445,24 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
               </button>
             </>
           )}
-{config?.keySource === 'env' && (
-                    <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
-            className="p-1.5 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
-            <LogOut className="w-3.5 h-3.5" />
-          </button>)}
+          {config?.keySource === 'env' && (
+            <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
+              className="p-1.5 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
       <Setup sync={sync} />
 
-      {/* Current / selected run */}
+      {/* Current or last run on this device */}
       {shownJob ? (
         <Card
-          title={active ? 'Running now' : selected ? 'Selected run' : 'Last run'}
+          title={active ? 'Running now' : 'Last run on this device'}
           icon={<Terminal className="w-4 h-4" />}
-          right={<div className="flex items-center gap-2">
-            <StatusPill status={shownJob.status} />
-            {selected && <button type="button" onClick={() => setSelected(null)} className="text-[11px] font-bold text-stone-600 hover:underline cursor-pointer">Back to latest</button>}
-          </div>}
+          right={<StatusPill status={shownJob.status} />}
         >
           <div className="px-3.5 py-2.5 space-y-2 border-b border-[#EFE9DF]">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-600">
@@ -520,8 +507,8 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             {shownJob.error && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-900">
                 <div className="font-bold">{shownJob.error}</div>
-                {/could not reach to\.najafkarbala\.com/.test(shownJob.error) && <div>NKERP did not answer from this server. Check NKERP is up and that the server can reach to.najafkarbala.com, then sync again. Nothing was saved.</div>}
-                {/sheets\.googleapis|oauth2\.googleapis|Google/.test(shownJob.error) && <div>The Google Sheet could not be read. Check the service account key and that the Sheet is shared with it. Nothing was saved.</div>}
+                {/could not reach to\.najafkarbala\.com|ran out of time while reading NKERP/.test(shownJob.error) && <div>NKERP did not answer in time from this server. Check NKERP is up, then sync again. Nothing was saved.</div>}
+                {/sheets\.googleapis|oauth2\.googleapis|Google|private_key/.test(shownJob.error) && <div>The Google Sheet could not be read. Check the GOOGLE_SERVICE_ACCOUNT_JSON key and that the Sheet is shared with it. Nothing was saved.</div>}
                 {/NKERP login failed|role is missing/.test(shownJob.error) && <div>Check the NKERP login configured on the server (NKERP_LOGIN_ID / NKERP_PASSWORD) and that it has the Tour and Accomodation Admin role. Nothing was saved.</div>}
               </div>
             )}
@@ -529,7 +516,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
           <LogConsole events={shownJob.events ?? []} live={Boolean(active)} />
         </Card>
       ) : (
-        <Card title="No runs yet" icon={<Terminal className="w-4 h-4" />}>
+        <Card title="No runs on this device yet" icon={<Terminal className="w-4 h-4" />}>
           <div className="p-4 text-xs text-stone-600">Press <b>Sync to NKERP</b> to run it, or <b>Preview</b> to see what it would do without saving anything.</div>
         </Card>
       )}
@@ -538,11 +525,6 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
         <div className="lg:col-span-3 space-y-3">
           <Card title="Needs you" icon={<AlertTriangle className="w-4 h-4" />}
             right={<span className="text-[11px] text-stone-500">{plural(shownAttention.filter((i) => i.kind !== 'note').length, 'problem')} · {plural(shownAttention.filter((i) => i.kind === 'note').length, 'note')}</span>}>
-            {attentionFrom && (
-              <div className="px-3.5 py-1.5 text-[11px] text-stone-600 bg-stone-50 border-b border-[#EFE9DF]">
-                From the last run that finished its checks ({fmtTime(attentionFrom.startedAt)}); the newest run ended without a report.
-              </div>
-            )}
             <NeedsYou items={shownAttention} onSend={(t) => void sync.send(t)} onAsk={ask} disabled={sync.running} />
           </Card>
           {shownReport && (
@@ -556,41 +538,36 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             right={<span className="text-[10px] text-stone-500">{config?.gemini ? 'Gemini + rules' : 'Built-in rules'}</span>}>
             <Conversation sync={sync} draft={draft} setDraft={setDraft} inputRef={inputRef} />
           </Card>
-          <Card title="Run history" icon={<History className="w-4 h-4" />}>
+          <Card title="Sync history" icon={<History className="w-4 h-4" />}
+            right={<button type="button" onClick={() => void sync.refresh()} className="text-[11px] font-bold text-stone-600 hover:underline cursor-pointer">Refresh</button>}>
             <ul className="max-h-72 overflow-y-auto">
-              {(status?.jobs ?? []).length === 0 && <li className="px-3.5 py-3 text-xs text-stone-500">No runs yet.</li>}
-              {(status?.jobs ?? []).map((j) => (
-                <li key={j.id}>
-                  <button type="button" onClick={async () => {
-                    if (active && j.id === active.id) return setSelected(null);
-                    const d = await sync.loadJob(j.id);
-                    if (d) setSelected(d);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 border-t border-[#F3EEE6] first:border-t-0 hover:bg-stone-50 cursor-pointer ${selected?.id === j.id ? 'bg-emerald-50/60' : ''}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
-                        {j.options.apply ? <RefreshCcw className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        {j.options.apply ? 'Sync' : 'Preview'}
-                        <span className="font-normal text-stone-500">{fmtTime(j.startedAt)}</span>
-                      </span>
-                      <StatusPill status={j.status} />
-                    </div>
-                    {j.summary && (
-                      <div className="text-[10px] text-stone-500 mt-0.5">
-                        {ACTIONS.map((a) => `${(j.options.apply ? j.summary!.done : j.summary!.planned)[a] ?? 0} ${a}`).join(' · ')}{j.problems ? ` · ${j.problems} need you` : ''}
-                      </div>
-                    )}
-                    {!j.summary && j.error && <div className="text-[10px] text-rose-700 mt-0.5 truncate">{j.error}</div>}
-                  </button>
+              {sync.historyError && <li className="px-3.5 py-2 text-[11px] text-rose-700">{sync.historyError}</li>}
+              {!sync.historyError && sync.history.length === 0 && (
+                <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in the Sheet's Sync History yet.</li>
+              )}
+              {sync.history.map((h) => (
+                <li key={h.runId} className="px-3.5 py-2 border-t border-[#F3EEE6] first:border-t-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                      <RefreshCcw className="w-3 h-3" />Sync <span className="font-normal text-stone-500">{h.runAt}</span>
+                    </span>
+                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${h.problems ? 'bg-orange-100 text-orange-900 border-orange-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300'}`}>
+                      {h.problems ? `${h.problems} held` : 'All good'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">
+                    {ACTIONS.map((a) => `${h.done[a] ?? 0} ${a}`).join(' · ')} · {plural(h.people, 'person')} logged
+                  </div>
                 </li>
               ))}
             </ul>
+            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-[#EFE9DF]">Previews save nothing, so they appear only on the device that ran them.</div>
           </Card>
         </div>
       </div>
       <div className="flex items-start gap-1.5 text-[10px] text-stone-500">
         <Circle className="w-2 h-2 fill-current mt-1 shrink-0" />
-        <span>Every applied run is also logged in the Sheet's <b>Sync History</b> tab, which is the sync's memory: don't edit or delete its rows.</span>
+        <span>Every applied run is logged in the Sheet's <b>Sync History</b> tab, which is the sync's memory: don't edit or delete its rows.</span>
       </div>
     </div>
   );

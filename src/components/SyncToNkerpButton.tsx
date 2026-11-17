@@ -11,11 +11,10 @@ interface Props {
 
 /** The one button: runs the full Najaf accommodation sync (Sheet -> NKERP) on the app's server. */
 export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compact = false }) => {
-  const { active, running, busy, config, attentionCount, status } = sync;
+  const { active, running, busy, config, attentionCount, last } = sync;
   const progress = active?.progress;
   const pct = progress && progress.total ? Math.round((progress.current / progress.total) * 100) : null;
   const notConfigured = config !== null && !config.configured;
-  const last = status?.latest;
 
   const onClick = () => {
     if (running) {

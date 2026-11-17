@@ -9,10 +9,10 @@
  *   - Lists are paged defensively: a short or repeated page aborts instead of planning on partial data.
  *   - The session cookies live in memory only.
  */
-import { BadResponse, fetchJson, Rejected, TransportError, withTransportRetry } from './http';
-import { nkerpLogin } from './credentials';
-import type { NkRecord } from './types';
-import { norm } from './util';
+import { BadResponse, fetchJson, Rejected, TransportError, withTransportRetry } from './http.js';
+import { nkerpLogin } from './credentials.js';
+import type { NkRecord } from './types.js';
+import { norm } from './util.js';
 
 export const BASE = 'https://to.najafkarbala.com/NKERPApi/';
 const ORIGIN = 'https://to.najafkarbala.com';

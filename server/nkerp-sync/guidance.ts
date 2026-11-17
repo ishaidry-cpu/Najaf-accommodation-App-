@@ -2,7 +2,7 @@
  * Turns a run report into the Sync tab's "Needs you" list: one item per problem or note, each with a plain
  * explanation of what happened and the instruction that would resolve it (which the user can send as is).
  */
-import type { SyncReport } from './types';
+import type { SyncReport } from './types.js';
 
 export type AttentionKind = 'stopped' | 'cancelled' | 'history' | 'problem' | 'note';
 

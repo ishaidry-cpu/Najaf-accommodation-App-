@@ -11,8 +11,8 @@
 import type {
   AllocItem, Cleared, MemoryEntry, Move, NkRecord, Notes, Person, Removal, Resolution, SheetIndex, SheetRow,
   Skipped, StateEntry,
-} from './types';
-import { day, familyNo, groupBy, norm, parseTupleKey, place, sortBy, sortedStrings, tupleKey } from './util';
+} from './types.js';
+import { day, familyNo, groupBy, norm, parseTupleKey, place, sortBy, sortedStrings, tupleKey } from './util.js';
 
 /** Ordered multi-map used for notes (keeps Python defaultdict(list) insertion order). */
 export function addNote(notes: Notes, key: string, value: string): void {

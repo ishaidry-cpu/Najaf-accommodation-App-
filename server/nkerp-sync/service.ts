@@ -1,10 +1,10 @@
 /** Builds the real dependencies (NKERP client, Sheets client, Sync History tab) from server configuration. */
-import { googleServiceAccount, nkerpLogin } from './credentials';
-import type { RunDeps } from './engine';
-import { GoogleTokenSource } from './googleAuth';
-import { NkerpClient } from './nkerpClient';
-import { DEFAULT_SHEET_ID, SheetsApi, SyncHistoryTab } from './sheets';
-import type { ProgressSink } from './types';
+import { googleServiceAccount, nkerpLogin } from './credentials.js';
+import type { RunDeps } from './engine.js';
+import { GoogleTokenSource } from './googleAuth.js';
+import { NkerpClient } from './nkerpClient.js';
+import { DEFAULT_SHEET_ID, SheetsApi, SyncHistoryTab } from './sheets.js';
+import type { ProgressSink } from './types.js';
 
 export function sheetId(env: NodeJS.ProcessEnv = process.env): string {
   return env.NAJAF_SHEET_ID?.trim() || DEFAULT_SHEET_ID;
@@ -25,7 +25,7 @@ export function realDeps(apply: boolean, progress: ProgressSink, signal: AbortSi
   // Fail fast, before any network call, when the server is not configured.
   nkerpLogin();
   const api = new SheetsApi(sheetId(), googleTokens());
-  const concurrency = Math.max(1, Math.min(8, parseInt(process.env.NKERP_SYNC_CONCURRENCY || '4', 10) || 4));
+  const concurrency = Math.max(1, Math.min(8, parseInt(process.env.NKERP_SYNC_CONCURRENCY || '6', 10) || 6));
   return {
     nkerp: new NkerpClient({ allowWrite: apply, signal }),
     readSheet: () => api.readGrid(),

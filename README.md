@@ -12,8 +12,8 @@ This application streamlines reservation management and logistics for Zaereen ac
 
 ## Sync to NKERP
 
-The **Sync to NKERP** button (top bar on every screen) runs the Najaf accommodation allocation on this app's
-own server, with no external AI or Claude account involved. Each run brings NKERP's Najaf rooms in line with the
+The **Sync to NKERP** button (top bar on every screen) runs the Najaf accommodation allocation on the app's
+server side (Vercel Functions, or the app's own server), with no external AI or Claude account involved. Each run brings NKERP's Najaf rooms in line with the
 Google Sheet *Faiz Husaini Zaereen Accommodation (Saifee & Burhani)*, in this order:
 
 1. **Deallocate** people an earlier run saw in the Sheet with a room whose row is now blank or deleted, and whom
@@ -41,6 +41,17 @@ Safe requests run straight away. Anything that loosens a safety rule asks for co
 | `GEMINI_API_KEY` (optional) | Lets the instruction box understand free-form phrasing. Without it, built-in rules are used |
 
 The server needs outbound access to `to.najafkarbala.com`, `sheets.googleapis.com` and `oauth2.googleapis.com`.
+
+### Hosting
+
+- **Vercel** (the live app): the sync runs as Vercel Functions in `api/nkerp-sync/`. Add the secrets above in the
+  Vercel project under **Settings → Environment Variables**, then redeploy. One sync can run for up to 5 minutes (the
+  Hobby plan's limit). The engine starts no new save in the last 40 seconds, so the limit never cuts a save in half;
+  if a run stops early, press Sync again to finish (a rerun is safe). Keep the Sync tab open while a sync runs.
+- **Own server** (`npm run dev` / `npm start`, Google AI Studio, Cloud Run): `server.ts` serves the same API.
+
+The functions run a pre-built copy of the engine (`api/_lib/nkerp-sync.mjs`). After changing anything in
+`server/nkerp-sync/`, run `npm run build:api` and commit the result; `npm run test:sync` fails if it is out of date.
 
 ### Engine and tests
 

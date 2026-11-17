@@ -15,10 +15,10 @@
  * of the engine (order, capacity, readback, mass-deallocation guard, Karbala untouched) still applies.
  */
 import { GoogleGenAI } from '@google/genai';
-import { attention } from './guidance';
-import type { RunOptions, SyncAction, SyncReport } from './types';
-import { ALL_ACTIONS } from './types';
-import { addDays, parseArrival } from './util';
+import { attention } from './guidance.js';
+import type { RunOptions, SyncAction, SyncReport } from './types.js';
+import { ALL_ACTIONS } from './types.js';
+import { addDays, parseArrival } from './util.js';
 
 export type Intent = 'sync' | 'preview' | 'cancel' | 'status' | 'explain' | 'help' | 'unsupported';
 

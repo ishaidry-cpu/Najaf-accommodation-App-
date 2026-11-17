@@ -12,21 +12,21 @@
  *
  * Port of the `najaf-accommodation-allocation` skill's najaf_alloc.py; see __tests__/parity.test.ts.
  */
-import { Rejected, type NkerpApi } from './nkerpClient';
+import { Rejected, type NkerpApi } from './nkerpClient.js';
 import {
   allocNeed, allocPayload, capacityProblems, deallocPayload, persisted, reallocPayload, type PlannedLoad,
-} from './payloads';
-import { peopleOnTour, plan, planSync } from './planner';
-import { memory, type HistoryStore } from './sheets';
+} from './payloads.js';
+import { peopleOnTour, plan, planSync } from './planner.js';
+import { memory, type HistoryStore } from './sheets.js';
 import type {
   AllocItem, HistoryRow, Move, NkRecord, Person, ProgressSink, Removal, ReportEntry, RunOptions, SheetRow, StateEntry,
   SyncAction, SyncReport,
-} from './types';
-import { ALL_ACTIONS } from './types';
+} from './types.js';
+import { ALL_ACTIONS } from './types.js';
 import {
   addDays, day, errorMessage, errorTypeName, groupBy, norm, parseTupleKey, place, pyRepr, pyTitle, sortBy,
   sortedStrings, stampsIn, todayIn, tuple, tupleKey,
-} from './util';
+} from './util.js';
 
 export const LOOKBACK_DAYS = 21;     // stays that arrived up to this long ago can still be reallocated / deallocated
 export const MAX_DEALLOC = 20;       // more people than this to deallocate in one run -> hold them all and report
@@ -93,7 +93,8 @@ export class Run {
 
   constructor(private readonly c: NkerpApi, private readonly apply: boolean, readonly today: string,
     private readonly allowOver: boolean, private readonly limit: number | null | undefined,
-    private readonly progress: ProgressSink = () => {}, private readonly signal?: AbortSignal) {
+    private readonly progress: ProgressSink = () => {}, private readonly signal?: AbortSignal,
+    private readonly deadline?: number) {
     this.report = { today, mode: apply ? 'apply' : 'dry-run', done: [], planned: [], problems: [], notes: {}, skipped: {} };
   }
 
@@ -106,6 +107,12 @@ export class Run {
     if (!this.report.cancelled && this.signal?.aborted) {
       this.report.cancelled = 'cancelled by the user; no further saves were started (saves already sent were confirmed)';
       this.progress({ level: 'warn', stage: 'cancel', message: 'Cancel requested: finishing the current save, starting no new ones' });
+    }
+    if (!this.report.cancelled && this.deadline && Date.now() >= this.deadline) {
+      // Hosted functions are killed at a hard time limit; never let that land in the middle of a save.
+      this.report.cancelled = 'time limit reached: no further saves were started (saves already sent were confirmed). '
+        + 'Press Sync again to finish the rest; a rerun is safe and only does what is still missing';
+      this.progress({ level: 'warn', stage: 'cancel', message: 'Time limit close: starting no new saves; run the sync again to finish' });
     }
     return 'stopped' in this.report || Boolean(this.report.cancelled);
   }
@@ -348,6 +355,8 @@ export interface RunDeps {
   history: HistoryStore;
   progress?: ProgressSink;
   signal?: AbortSignal;
+  /** Epoch ms after which no new save may start (hosted functions with a hard time limit). */
+  deadline?: number;
   /** Parallel NKERP tour reads (default 4). */
   concurrency?: number;
   now?: () => Date;
@@ -365,7 +374,7 @@ export interface RunStats {
 
 /** Read N tours with bounded concurrency; results keyed in input order. Fails fast. */
 async function readTours(nkerp: NkerpApi, refs: string[], concurrency: number, progress: ProgressSink,
-  signal?: AbortSignal): Promise<Map<string, Map<string, Person>>> {
+  signal?: AbortSignal, deadline?: number): Promise<Map<string, Map<string, Person>>> {
   const results: (Map<string, Person> | undefined)[] = new Array(refs.length);
   let next = 0;
   let done = 0;
@@ -375,6 +384,10 @@ async function readTours(nkerp: NkerpApi, refs: string[], concurrency: number, p
       const i = next++;
       if (i >= refs.length) return;
       if (signal?.aborted) throw new Error('cancelled while reading NKERP tours');
+      if (deadline && Date.now() >= deadline) {
+        throw new Error(`ran out of time while reading NKERP (${done} of ${refs.length} tours read); nothing was saved. `
+          + 'NKERP is answering slowly: try again');
+      }
       try {
         results[i] = peopleOnTour(await nkerp.current(refs[i]), refs[i]);
       } catch (err) {
@@ -424,7 +437,7 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
   const apps = await deps.nkerp.pending();
   progress({ level: 'info', stage: 'read-pending', message: `NKERP: ${apps.length} applicants still have unallocated Najaf nights` });
 
-  const R = new Run(deps.nkerp, apply, today, Boolean(opts.allowOverCapacity), opts.limit, progress, deps.signal);
+  const R = new Run(deps.nkerp, apply, today, Boolean(opts.allowOverCapacity), opts.limit, progress, deps.signal, deps.deadline);
   const rep = R.report;
 
   const { items, notes, skipped } = plan(sheet, apps, today);
@@ -433,7 +446,7 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
     ...[...mem.keys()].map((k) => parseTupleKey<[string, string]>(k)[0]),
   ]);
   progress({ level: 'info', stage: 'read-tours', message: `Reading who is where for ${refs.length} tours`, current: 0, total: refs.length });
-  const current = await readTours(deps.nkerp, refs, deps.concurrency ?? 4, progress, deps.signal);
+  const current = await readTours(deps.nkerp, refs, deps.concurrency ?? 4, progress, deps.signal, deps.deadline);
   const sync = planSync(sheet, current, apps, mem, today);
   for (const [k, v] of Object.entries(sync.notes)) (notes[k] ??= []).push(...v);
   rep.notes = notes;

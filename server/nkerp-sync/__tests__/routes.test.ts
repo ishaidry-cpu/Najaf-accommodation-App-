@@ -1,34 +1,29 @@
 /**
- * HTTP-level integration tests: the real Express router, job manager and conversation, over a real socket,
- * with the in-memory NKERP and Sync History fakes in place of the network.
+ * The Sync to NKERP HTTP API: the web-standard handlers the Vercel Functions call, and the same handlers
+ * through the Express adapter over a real socket. The in-memory NKERP and Sync History fakes replace the
+ * network.
  */
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import os from 'node:os';
-import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import express from 'express';
-import type { RunDeps } from '../engine';
-import { JobManager } from '../jobManager';
+import { runSync, type RunDeps } from '../engine';
+import { dispatch, groupHistory, type HandlerDeps } from '../handlers';
 import { createNkerpSyncRouter } from '../routes';
 import { app as applicant, FakeNKERP, FakeTab, row, T1, T2 } from './fakes';
 
-const PIN = '4321';
-let dataDir: string;
-let server: http.Server;
-let base: string;
-let gate: Promise<void> | null = null;       // when set, pending() waits on it (keeps a job running)
+const KEY = 'test-access-key';
+let gate: Promise<void> | null = null;          // when set, pending() waits on it (keeps a run running)
 let release: (() => void) | null = null;
 let lastFake: FakeNKERP;
 let lastTab: FakeTab;
-let lastOptionsSeen: boolean[] = [];
+let applies: boolean[] = [];
 
 const configured = () => ({ nkerp: true, google: true, googleAccount: 'svc@example.com', problem: null });
 
-function deps(apply: boolean, progress: RunDeps['progress'], signal: AbortSignal): RunDeps {
-  lastOptionsSeen.push(apply);
+function fakeDeps(apply: boolean, progress: RunDeps['progress'], signal: AbortSignal): RunDeps {
+  applies.push(apply);
   lastFake = new FakeNKERP({ apps: [applicant(1, T1, '111'), applicant(2, T2, '222')] });
   const pending = lastFake.pending.bind(lastFake);
   lastFake.pending = async () => {
@@ -36,203 +31,217 @@ function deps(apply: boolean, progress: RunDeps['progress'], signal: AbortSignal
     return pending();
   };
   lastTab = new FakeTab();
-  return { nkerp: lastFake, history: lastTab, progress, signal, today: undefined,
-    readSheet: async () => [row(2, '111', T1, 'SAIFEE', '107'), row(3, '222', T2, 'SAIFEE', '108')] } as RunDeps;
+  return { nkerp: lastFake, history: lastTab, progress, signal,
+    readSheet: async () => [row(2, '111', T1, 'SAIFEE', '107'), row(3, '222', T2, 'SAIFEE', '108')] };
 }
 
-async function req(p: string, init: { method?: string; body?: unknown; key?: string | null } = {}) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (init.key !== null) headers['x-sync-key'] = init.key ?? PIN;
-  const res = await fetch(`${base}${p}`, { method: init.method ?? (init.body ? 'POST' : 'GET'), headers,
+const deps: HandlerDeps = {
+  depsFactory: fakeDeps, credentials: configured, maxSeconds: 0,
+  readHistory: async () => [
+    { 'Run At': '2026-11-16 10:00', 'Run ID': '20261116-100000', Action: 'ALLOCATE', Result: 'done', 'Tour ID': T1, ITS: '1' },
+    { 'Run At': '2026-11-16 10:00', 'Run ID': '20261116-100000', Action: 'REALLOCATE', Result: 'held', 'Tour ID': T1, ITS: '2' },
+    { 'Run At': '2026-11-17 09:00', 'Run ID': '20261117-090000', Action: 'SEEN', Result: 'recorded', 'Tour ID': T2, ITS: '3' },
+  ],
+};
+
+function web(path: string, init: { method?: string; body?: unknown; key?: string | null } = {}): Request {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-forwarded-for': '10.0.0.1' };
+  if (init.key !== null) headers['x-sync-key'] = init.key ?? KEY;
+  return new Request(`http://app/api/nkerp-sync/${path}`, { method: init.method ?? (init.body ? 'POST' : 'GET'), headers,
     body: init.body ? JSON.stringify(init.body) : undefined });
-  return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-async function waitFor<T>(fn: () => Promise<T | null | undefined | false>, ms = 5000): Promise<T> {
-  const end = Date.now() + ms;
-  for (;;) {
-    const v = await fn();
-    if (v) return v;
-    if (Date.now() > end) throw new Error('timed out waiting');
-    await new Promise((r) => setTimeout(r, 25));
-  }
+const call = (name: string, init: Parameters<typeof web>[1] = {}) => dispatch(name, web(name, init), deps);
+
+/** Read a run's NDJSON stream to the end. */
+async function lines(res: Response): Promise<any[]> {
+  const text = await res.text();
+  return text.split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
-
-const idle = () => waitFor(async () => !(await req('/status')).body.active);
-
-before(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nkerp-sync-'));
-  const app = express();
-  app.use(express.json());
-  const { router } = createNkerpSyncRouter({ dataDir, depsFactory: deps, credentials: configured });
-  app.use('/api/nkerp-sync', router);
-  server = http.createServer(app);
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/nkerp-sync`;
-  process.env.NKERP_SYNC_ACCESS_KEY = PIN;
-  delete process.env.GEMINI_API_KEY;
-});
-
-after(async () => {
-  delete process.env.NKERP_SYNC_ACCESS_KEY;
-  server.closeAllConnections?.();
-  await new Promise<void>((r) => server.close(() => r()));
-  fs.rmSync(dataDir, { recursive: true, force: true });
-});
 
 beforeEach(() => {
   gate = null;
   release = null;
-  lastOptionsSeen = [];
+  applies = [];
+  process.env.NKERP_SYNC_ACCESS_KEY = KEY;
+  delete process.env.GEMINI_API_KEY;
 });
 
-describe('access', () => {
-  it('config is public and carries no secrets', async () => {
-    const { status, body } = await req('/config', { key: null });
-    assert.equal(status, 200);
+after(() => {
+  delete process.env.NKERP_SYNC_ACCESS_KEY;
+});
+
+describe('handlers (as Vercel Functions call them)', () => {
+  it('config is public, carries no secrets, and says whether a key is needed', async () => {
+    const body = await (await call('config', { key: null })).json();
     assert.equal(body.configured, true);
     assert.equal(body.keySource, 'env');
-    assert.ok(!JSON.stringify(body).includes(PIN));
-  });
-
-  it('with NKERP_SYNC_ACCESS_KEY set, everything else needs that key', async () => {
-    assert.equal((await req('/status', { key: null })).status, 401);
-    assert.equal((await req('/status', { key: 'nope' })).status, 401);
-    assert.equal((await req('/status')).status, 200);
-  });
-
-  it('with no access key set, the sync is open and needs no key', async () => {
+    assert.ok(!JSON.stringify(body).includes(KEY));
     delete process.env.NKERP_SYNC_ACCESS_KEY;
-    try {
-      assert.equal((await req('/config', { key: null })).body.keySource, null);
-      assert.equal((await req('/status', { key: null })).status, 200);
-      assert.equal((await req('/auth', { key: null, body: {} })).status, 200);
-    } finally {
-      process.env.NKERP_SYNC_ACCESS_KEY = PIN;
-    }
+    assert.equal((await (await call('config', { key: null })).json()).keySource, null);
   });
-});
 
-describe('runs', () => {
-  it('validates options strictly', async () => {
-    assert.equal((await req('/run', { body: { today: '2026-13-01' } })).status, 400);
-    assert.equal((await req('/run', { body: { only: ['delete'] } })).status, 400);
-    assert.equal((await req('/run', { body: { limit: 0 } })).status, 400);
-    const r = await req('/run', { body: { allowMassDeallocation: true } });
+  it('with a key set everything else needs it; with none set the sync is open', async () => {
+    assert.equal((await call('history', { key: null })).status, 401);
+    assert.equal((await call('history', { key: 'nope' })).status, 401);
+    assert.equal((await call('history')).status, 200);
+    delete process.env.NKERP_SYNC_ACCESS_KEY;
+    assert.equal((await call('history', { key: null })).status, 200);
+    assert.equal((await call('auth', { key: null, body: {} })).status, 200);
+  });
+
+  it('validates run options strictly', async () => {
+    assert.equal((await call('run', { body: { today: '2026-13-01' } })).status, 400);
+    assert.equal((await call('run', { body: { only: ['delete'] } })).status, 400);
+    assert.equal((await call('run', { body: { limit: 0 } })).status, 400);
+    const r = await call('run', { body: { allowMassDeallocation: true } });
     assert.equal(r.status, 400);
-    assert.match(r.body.error, /confirmOverrides/);
+    assert.match((await r.json()).error, /confirmOverrides/);
   });
 
-  it('the button runs a sync, one at a time, and streams it over SSE', async () => {
-    gate = new Promise((r) => { release = r; });
-    const events: any[] = [];
-    const ac = new AbortController();
-    const stream = fetch(`${base}/events?key=${PIN}`, { signal: ac.signal }).then(async (res) => {
-      const reader = res.body!.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) return;
-        buf += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const chunk = buf.slice(0, i);
-          buf = buf.slice(i + 2);
-          if (chunk.startsWith('data: ')) events.push(JSON.parse(chunk.slice(6)));
-        }
-      }
-    }).catch(() => {});
-    await waitFor(async () => events.some((e) => e.type === 'hello'));
+  it('refuses to run when the server is not configured', async () => {
+    const r = await dispatch('run', web('run', { body: {} }), { ...deps,
+      credentials: () => ({ nkerp: false, google: true, googleAccount: null, problem: 'NKERP login is not configured' }) });
+    assert.equal(r.status, 503);
+  });
 
-    const first = await req('/run', { body: { source: 'button' } });
-    assert.equal(first.status, 202);
-    assert.equal(first.body.status, 'running');
-    const second = await req('/run', { body: {} });
-    assert.equal(second.status, 409);
-    assert.equal(second.body.jobId, first.body.id);
-    release!();
-    await idle();
-    const job = (await req(`/jobs/${first.body.id}`)).body;
-    assert.equal(job.status, 'succeeded');
-    assert.equal(job.trigger.source, 'button');
-    assert.deepEqual(job.summary.done, { deallocate: 0, reallocate: 0, allocate: 2 });
+  it('a run streams start, its log, and a final report', async () => {
+    const res = await call('run', { body: { source: 'button' } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type')!, /ndjson/);
+    const out = await lines(res);
+    assert.equal(out[0].type, 'start');
+    assert.equal(out[0].job.status, 'running');
+    assert.ok(out.some((l) => l.type === 'event' && l.event.stage === 'allocate'));
+    const done = out[out.length - 1];
+    assert.equal(done.type, 'done');
+    assert.equal(done.job.status, 'succeeded');
+    assert.equal(done.job.trigger.source, 'button');
+    assert.deepEqual(done.job.summary.done, { deallocate: 0, reallocate: 0, allocate: 2 });
+    assert.deepEqual(done.job.attention, []);
     assert.equal(lastFake.writes.length, 2);
     assert.equal(lastTab.appended.length, 2);
-    await waitFor(async () => events.some((e) => e.type === 'job' && e.job.status === 'succeeded'));
-    assert.ok(events.some((e) => e.type === 'event' && e.event.stage === 'allocate'));
-    ac.abort();
-    await stream;
-    // persisted for the history list
-    assert.ok((await req('/jobs')).body.some((j: any) => j.id === first.body.id));
   });
 
-  it('cancel stops a running job', async () => {
+  it('a preview writes nothing', async () => {
+    const out = await lines(await call('run', { body: { apply: false, source: 'instruction', instruction: 'preview' } }));
+    const done = out[out.length - 1].job;
+    assert.deepEqual([done.options.apply, done.trigger.instruction, done.summary.planned.allocate], [false, 'preview', 2]);
+    assert.deepEqual([lastFake.writes, lastTab.appended], [[], []]);
+  });
+
+  it('one run at a time', async () => {
     gate = new Promise((r) => { release = r; });
-    const { body } = await req('/run', { body: {} });
-    await req('/cancel', { body: {} });
+    const first = await call('run', { body: {} });
+    const second = await call('run', { body: {} });
+    assert.equal(second.status, 409);
     release!();
-    await idle();
-    const job = (await req(`/jobs/${body.id}`)).body;
-    assert.ok(['cancelled'].includes(job.status), job.status);
+    await lines(first);
+    const third = await call('run', { body: {} });
+    assert.equal(third.status, 200);
+    await lines(third);
+  });
+
+  it('a browser that stops reading stops the run before its next save', async () => {
+    gate = new Promise((r) => { release = r; });
+    const res = await call('run', { body: {} });
+    assert.equal(res.status, 200);
+    const reader = res.body!.getReader();
+    await reader.read();                    // the start line
+    await reader.cancel();                  // Stop pressed / page closed
+    release!();
+    await new Promise((r) => setTimeout(r, 50));
     assert.equal(lastFake.writes.length, 0);
-  });
-});
-
-describe('instructions', () => {
-  it('a safe instruction runs straight away and the result is reported back', async () => {
-    await req('/messages', { body: { text: 'preview only allocations' } });
-    await waitFor(async () => (await req('/messages')).body.some((m: any) => /Preview finished/.test(m.text)));
-    assert.deepEqual(lastOptionsSeen, [false]);
-    assert.equal(lastFake.writes.length, 0);
-    const msgs = (await req('/messages')).body;
-    const proposal = msgs.find((m: any) => m.proposal)!.proposal;
-    assert.deepEqual(proposal.options, { apply: false, only: ['allocate'] });
-    assert.equal(proposal.status, 'executed');
+    assert.equal((await (await call('config', { key: null })).json()).running, false);
   });
 
-  it('a safety override waits for confirmation, then runs with it', async () => {
-    await req('/messages', { body: { text: 'the sheet is correct, sync and allow mass deallocation' } });
-    const pending = await waitFor(async () => (await req('/messages')).body.find((m: any) => m.proposal?.status === 'pending'));
-    assert.equal(pending.proposal.options.allowMassDeallocation, true);
-    assert.equal(lastOptionsSeen.length, 0);
-    const conf = await req(`/messages/${pending.id}/confirm`, { body: {} });
-    assert.equal(conf.status, 200);
-    await idle();
-    const job = (await req(`/jobs/${conf.body.jobId}`)).body;
-    assert.equal(job.options.allowMassDeallocation, true);
-    assert.equal(job.trigger.source, 'instruction');
-    assert.match(job.trigger.instruction, /allow mass deallocation/);
-    assert.equal((await req(`/messages/${pending.id}/confirm`, { body: {} })).status, 409);   // not twice
+  it('history groups Sync History rows into runs, newest first', async () => {
+    const body = await (await call('history')).json();
+    assert.deepEqual(body.runs.map((r: any) => [r.runId, r.people, r.done.allocate, r.problems, r.seen]),
+      [['20261117-090000', 1, 0, 0, 1], ['20261116-100000', 2, 1, 1, 0]]);
+    assert.deepEqual(groupHistory([{ Action: 'SEEN' }]), []);       // rows without a Run ID are ignored
   });
 
-  it('questions are answered from the last report; status works', async () => {
-    await req('/messages', { body: { text: 'what needs fixing?' } });
-    await req('/messages', { body: { text: 'status' } });
-    const msgs = await waitFor(async () => {
-      const m = (await req('/messages')).body;
-      return m.some((x: any) => /Nothing is running/.test(x.text)) && m.some((x: any) => /^Last run/.test(x.text)) && m;
-    });
-    assert.ok(msgs.length);
+  it('interpret proposes, never runs', async () => {
+    const p = await (await call('interpret', { body: { text: 'the sheet is correct, sync and allow mass deallocation', report: null } })).json();
+    assert.equal(p.intent, 'sync');
+    assert.equal(p.options.allowMassDeallocation, true);
+    assert.equal(p.needsConfirmation, true);
+    assert.deepEqual(applies, []);
+    assert.equal((await call('interpret', { body: { text: '' } })).status, 400);
+    const q = await (await call('interpret', { body: { text: 'why was 108 held?', report: {
+      today: '2026-11-16', mode: 'apply', done: [], planned: [], notes: {}, skipped: {},
+      problems: [{ action: 'reallocate', group: `${T1} Saifee 108`, people: ['A'], reason: `room already occupied by ${T2}: x` }] } } })).json();
+    assert.equal(q.intent, 'explain');
+    assert.match(q.reply, /3044/);
   });
-});
 
-describe('robustness', () => {
   it('locks out an address after 10 wrong keys', async () => {
-    for (let i = 0; i < 10; i++) await req('/status', { key: `bad${i}` });
-    assert.equal((await req('/status', { key: PIN })).status, 429);
+    const r = (key: string) => dispatch('history', new Request('http://app/api/nkerp-sync/history', {
+      headers: { 'x-sync-key': key, 'x-forwarded-for': '10.9.9.9' } }), deps);
+    for (let i = 0; i < 10; i++) await r(`bad${i}`);
+    assert.equal((await r(KEY)).status, 429);
   });
 
-  it('a job left running by a crash is marked interrupted on start-up', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nkerp-crash-'));
-    fs.mkdirSync(path.join(dir, 'nkerp-sync', 'jobs'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'nkerp-sync', 'jobs', '20261116T100000-abc123.json'), JSON.stringify({
-      id: '20261116T100000-abc123', status: 'running', options: { apply: true }, trigger: { source: 'button' }, events: [],
-      report: null, startedAt: '2026-11-16T10:00:00Z', finishedAt: null }));
-    const m = new JobManager(dir, deps);
-    const job = m.get('20261116T100000-abc123')!;
-    assert.equal(job.status, 'interrupted');
-    assert.match(job.error!, /check the last group in NKERP/);
-    fs.rmSync(dir, { recursive: true, force: true });
+  it('unknown endpoints are 404', async () => {
+    assert.equal((await call('jobs')).status, 404);
+  });
+});
+
+describe('time limit (hosted functions)', () => {
+  it('no new save starts after the deadline; the run says to sync again', async () => {
+    const fake = new FakeNKERP({ apps: [applicant(1, T1, '111'), applicant(2, T2, '222')] });
+    const save = fake.save.bind(fake);
+    fake.save = async (b: any) => {
+      await new Promise((r) => setTimeout(r, 120));
+      return save(b);
+    };
+    const tab = new FakeTab();
+    const { report } = await runSync({ apply: true, today: '2026-11-16' }, { nkerp: fake, history: tab,
+      readSheet: async () => [row(2, '111', T1, 'SAIFEE', '107'), row(3, '222', T2, 'SAIFEE', '108')],
+      deadline: Date.now() + 60 });
+    assert.equal(fake.writes.length, 1);
+    assert.equal(report.done.length, 1);
+    assert.match(report.cancelled!, /time limit reached/);
+    assert.ok(tab.appended.some((h) => h.Result === 'done'));          // what was done is still logged
+  });
+
+  it('a deadline that passes while reading NKERP fails the run before any save', async () => {
+    const fake = new FakeNKERP({ apps: [applicant(1, T1, '111')] });
+    await assert.rejects(runSync({ apply: true, today: '2026-11-16' }, { nkerp: fake, history: new FakeTab(),
+      readSheet: async () => [row(2, '111', T1, 'SAIFEE', '107')], deadline: Date.now() - 1 }), /ran out of time/);
+    assert.deepEqual(fake.writes, []);
+  });
+});
+
+describe('Express adapter (server.ts hosts)', () => {
+  let server: http.Server;
+  let base: string;
+
+  before(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/nkerp-sync', createNkerpSyncRouter(deps));
+    server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/nkerp-sync`;
+  });
+
+  after(async () => {
+    server.closeAllConnections?.();
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+
+  it('serves the same API, streaming the run', async () => {
+    process.env.NKERP_SYNC_ACCESS_KEY = KEY;
+    assert.equal((await fetch(`${base}/config`)).status, 200);
+    assert.equal((await fetch(`${base}/history`)).status, 401);
+    const res = await fetch(`${base}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-sync-key': KEY },
+      body: JSON.stringify({ source: 'button' }) });
+    assert.equal(res.status, 200);
+    const out = await lines(res);
+    assert.equal(out[out.length - 1].job.status, 'succeeded');
+    assert.equal(lastFake.writes.length, 2);
+    assert.equal((await fetch(`${base}/nope`)).status, 404);
   });
 });
