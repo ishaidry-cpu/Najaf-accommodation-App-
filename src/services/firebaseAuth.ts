@@ -1,11 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  User, 
-  signOut 
+import {
+  getAuth,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  User,
+  signOut,
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -17,8 +19,37 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
 ];
 
-const provider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => provider.addScope(scope));
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'ishaidry@gmail.com',
+  'burhanplumber52@gmail.com',
+  'sajjadhusainlightwala@gmail.com',
+] as const;
+
+export const getUserEmail = (user?: User | null): string => {
+  if (!user) return '';
+  const email = user.email || user.providerData?.find((p) => p?.email)?.email || '';
+  return email.trim().toLowerCase();
+};
+
+export const isAuthorizedAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  return AUTHORIZED_ADMIN_EMAILS.includes(
+    email.trim().toLowerCase() as (typeof AUTHORIZED_ADMIN_EMAILS)[number]
+  );
+};
+
+const createScopedProvider = () => {
+  const provider = new GoogleAuthProvider();
+  SCOPES.forEach((scope) => provider.addScope(scope));
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+};
+
+const createBasicProvider = () => {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+};
 
 const SESSION_STORAGE_KEY = 'faize_google_session_v1';
 export const ONE_HOUR_MS = 60 * 60 * 1000; // 1 hour
@@ -52,7 +83,7 @@ export const saveSession = (accessToken: string, user: User) => {
     const session: StoredSession = {
       accessToken,
       loginTime: Date.now(),
-      userEmail: user.email || '',
+      userEmail: getUserEmail(user),
       userDisplayName: user.displayName || undefined,
       userPhotoURL: user.photoURL || undefined,
     };
@@ -78,25 +109,73 @@ export const getSessionRemainingMs = (): number => {
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 
+const formatSignInError = (error: any): Error => {
+  const code = error?.code || '';
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  if (code === 'auth/unauthorized-domain') {
+    return new Error(
+      `Sign-in is not enabled for this domain (${host}). Add "${host}" under Firebase Authentication → Settings → Authorized domains.`
+    );
+  }
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+    return new Error(
+      'Sign-in popup was closed before completing. If Google showed "Access blocked / Error 403", add this Gmail ID to Google Cloud OAuth Consent Screen → Test users.'
+    );
+  }
+  if (code === 'auth/popup-blocked') {
+    return new Error(
+      'Sign-in popup was blocked by your browser. Please allow popups for this site and try again.'
+    );
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return new Error('Google Sign-In is not enabled in Firebase Authentication.');
+  }
+  return error instanceof Error ? error : new Error(error?.message || 'Google sign-in failed.');
+};
+
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
   // Pre-seed cached access token from stored 1-hour session if available
   const storedSession = getStoredSession();
-  if (storedSession && !cachedAccessToken) {
-    cachedAccessToken = storedSession.accessToken;
+  if (storedSession && cachedAccessToken === null) {
+    cachedAccessToken = storedSession.accessToken || '';
   }
+
+  // Handle redirect-based Google login fallback (e.g. mobile browsers where popups are blocked)
+  getRedirectResult(auth)
+    .then((result) => {
+      if (result?.user) {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const token = credential?.accessToken || '';
+        cachedAccessToken = token;
+        saveSession(token, result.user);
+        if (onAuthSuccess) onAuthSuccess(result.user, token);
+      }
+    })
+    .catch((err) => {
+      console.warn('Redirect sign-in check warning:', err);
+    });
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
+      const email = getUserEmail(user);
       const session = getStoredSession();
-      const token = cachedAccessToken || session?.accessToken;
-      if (token) {
-        cachedAccessToken = token;
-        if (onAuthSuccess) onAuthSuccess(user, token);
+      const matchingSession =
+        session && (!session.userEmail || session.userEmail.toLowerCase() === email)
+          ? session
+          : null;
+
+      if (cachedAccessToken !== null) {
+        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      } else if (matchingSession) {
+        cachedAccessToken = matchingSession.accessToken || '';
+        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
-        // Token expired or not stored
+        // Session expired or not present
+        cachedAccessToken = null;
         if (onAuthFailure) onAuthFailure();
       }
     } else {
@@ -110,29 +189,52 @@ export const initAuth = (
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Failed to get access token from Google sign in');
+    let result;
+    try {
+      result = await signInWithPopup(auth, createScopedProvider());
+    } catch (scopedErr: any) {
+      const code = scopedErr?.code || '';
+      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+        await signInWithRedirect(auth, createScopedProvider());
+        return null;
+      }
+      // If Workspace scopes fail due to consent/internal OAuth rejection, retry with basic Google sign-in
+      if (
+        code !== 'auth/popup-closed-by-user' &&
+        code !== 'auth/cancelled-popup-request' &&
+        code !== 'auth/unauthorized-domain' &&
+        code !== 'auth/operation-not-allowed'
+      ) {
+        try {
+          result = await signInWithPopup(auth, createBasicProvider());
+        } catch {
+          throw scopedErr;
+        }
+      } else {
+        throw scopedErr;
+      }
     }
 
-    cachedAccessToken = credential.accessToken;
-    saveSession(cachedAccessToken, result.user);
-    return { user: result.user, accessToken: cachedAccessToken };
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken || '';
+
+    cachedAccessToken = token;
+    saveSession(token, result.user);
+    return { user: result.user, accessToken: token };
   } catch (error: any) {
     console.error('Sign in error:', error);
-    throw error;
+    throw formatSignInError(error);
   } finally {
     isSigningIn = false;
   }
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (!cachedAccessToken) {
+  if (cachedAccessToken === null) {
     const session = getStoredSession();
-    if (session) cachedAccessToken = session.accessToken;
+    if (session) cachedAccessToken = session.accessToken || '';
   }
-  return cachedAccessToken;
+  return cachedAccessToken || null;
 };
 
 export const logout = async () => {
@@ -140,4 +242,3 @@ export const logout = async () => {
   cachedAccessToken = null;
   clearSession();
 };
-

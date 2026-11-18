@@ -85,6 +85,12 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       .sort((a, b) => a.tourId.localeCompare(b.tourId));
   }, [allReservations]);
 
+  // Saved A to B pax across all tours
+  const savedAToBPax = useMemo(
+    () => allReservations.filter((r) => r.shiftDirection === 'A_TO_B' || Boolean(r.refundSlipNo)),
+    [allReservations]
+  );
+
   // Synchronize modal initialization whenever opened or target changes
   useEffect(() => {
     if (!modalOpen) return;
@@ -107,7 +113,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       setSelectedTourFilter(allSameTour && firstTour ? firstTour : 'ALL');
       setSelectedMemberIds(initialSelectedIds);
       setActiveSingleZaerId(firstMatch?.id || initialSelectedIds[0]);
-      setSlipMode(initialSelectedIds.length === 1 ? 'single' : 'tour');
+      setSlipMode('tour');
       return;
     }
 
@@ -129,6 +135,28 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       } else {
         setSelectedMemberIds(list.map((m) => m.id));
         setSlipMode(list.length > 1 ? 'tour' : 'single');
+      }
+    } else if (initialDirection === 'A_TO_B') {
+      const savedA2B = allReservations.filter((r) => r.shiftDirection === 'A_TO_B' || Boolean(r.refundSlipNo));
+      if (savedA2B.length > 0) {
+        const distinctSavedTours = new Set(savedA2B.map((r) => (r.tourRefNo || r.tourId || '').trim()).filter(Boolean));
+        setSelectedTourFilter(distinctSavedTours.size === 1 ? Array.from(distinctSavedTours)[0] : 'ALL');
+        setSelectedMemberIds(savedA2B.map((m) => m.id));
+        setActiveSingleZaerId(savedA2B[0].id);
+        setSlipMode('tour');
+      } else if (fallbackRes) {
+        setSelectedTourFilter(tourRef || 'ALL');
+        setActiveSingleZaerId(fallbackRes.id);
+        const tNorm = tourRef.toLowerCase();
+        const sameTourMembers = tourRef
+          ? allReservations.filter((r) => (r.tourRefNo || r.tourId || '').trim().toLowerCase() === tNorm)
+          : [fallbackRes];
+        setSelectedMemberIds(sameTourMembers.map((m) => m.id));
+        setSlipMode('tour');
+      } else {
+        setSelectedTourFilter('ALL');
+        setSelectedMemberIds([]);
+        setActiveSingleZaerId('');
       }
     } else if (fallbackRes) {
       setSelectedTourFilter(tourRef || 'ALL');
@@ -236,6 +264,14 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
         (!tour || (m.tourRefNo || m.tourId || '').trim().toLowerCase() === tour)
     );
     setSelectedMemberIds(sameFam.map((m) => m.id));
+    setSlipMode('tour');
+  };
+
+  const handleSelectSavedAToBPax = () => {
+    if (savedAToBPax.length === 0) return;
+    setSelectedTourFilter('ALL');
+    setSelectedMemberIds(savedAToBPax.map((m) => m.id));
+    setActiveSingleZaerId(savedAToBPax[0].id);
     setSlipMode('tour');
   };
 
@@ -362,13 +398,379 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     ? `$  ${accountsAmountNote.trim()}   (Accounts Verification: ___________________)`
     : '$  __________________________________   (To be written by Accounts)';
 
+  // Group selected/active pax by Tour ID so each Tour ID gets its own 2-page A to B slip
+  const tourSlipGroups = useMemo(() => {
+    const list = effectiveSlipPaxList;
+    if (list.length === 0) {
+      const fallbackTour = selectedTourFilter && selectedTourFilter !== 'ALL' ? selectedTourFilter : '—';
+      return [
+        {
+          tourId: fallbackTour,
+          officeName: '—',
+          paxList: [] as Reservation[],
+          paxCount: 0,
+          arrivalDate: '',
+          arrivalTime: '',
+          departureDate: '',
+          departureTime: '',
+          nights: 1,
+          roomSummary: 'Room Pending Allotment',
+          slipNo,
+        },
+      ];
+    }
+
+    const map = new Map<string, Reservation[]>();
+    list.forEach((item) => {
+      const rawTour = (item.tourRefNo || item.tourId || '').trim() || 'Individual / Unassigned Tour';
+      const existing = map.get(rawTour) || [];
+      existing.push(item);
+      map.set(rawTour, existing);
+    });
+
+    const entries = Array.from(map.entries());
+    return entries.map(([tId, members]) => {
+      const offices = Array.from(new Set(members.map((m) => (m.officeName || '').trim()).filter(Boolean)));
+      const withArr = members.find((m) => m.arrivalDate) || members[0];
+      const withDep = members.find((m) => m.departureDate) || members[0];
+      const arrD = withArr?.arrivalDate || '';
+      const arrT = withArr?.arrivalTime || '';
+      const depD = withDep?.departureDate || '';
+      const depT = withDep?.departureTime || '';
+      const existingSlip = members.find((m) => m.refundSlipNo)?.refundSlipNo;
+      const safeSuffix = tId.replace(/[^a-zA-Z0-9]/g, '').slice(-6) || 'TOUR';
+      const groupSlipNo = existingSlip || `REF-A2B-${safeSuffix}`;
+      const count =
+        slipMode === 'single' && entries.length === 1
+          ? activeSingleZaer?.paxCount || activeSingleZaer?.pax || members.length
+          : members.length;
+
+      return {
+        tourId: tId,
+        officeName: offices.length > 0 ? offices.join(', ') : '—',
+        paxList: members,
+        paxCount: count,
+        arrivalDate: arrD,
+        arrivalTime: arrT,
+        departureDate: depD,
+        departureTime: depT,
+        nights: calculateNights(arrD, depD),
+        roomSummary:
+          slipMode === 'single' && entries.length === 1
+            ? formatRoomGivenIn(activeSingleZaer)
+            : formatRoomsSummary(members),
+        slipNo: groupSlipNo,
+      };
+    });
+  }, [effectiveSlipPaxList, selectedTourFilter, slipNo, slipMode, activeSingleZaer]);
+
   // Early return strictly AFTER all React hooks have executed unconditionally
   if (!modalOpen) return null;
 
   // ==========================================
-  // PDF GENERATION (BOTH B -> A AND A -> B WITH FULL PAX ITS + AGE)
+  // PDF GENERATION
+  // - A -> B: Each Tour ID has its OWN 2-page slip:
+  //     Page 1 (Front Page): Tour ID, Office Name, Number of Pax, Number of Nights, Arrival & Departure Dates + same B->A fields & Accounts/Signatures
+  //     Page 2 (Second Page): Names of all pax sent to A to B from that specific Tour ID
+  // - B -> A: Unchanged
   // ==========================================
+  const generateAToBPdfForGroups = (
+    groupsToRender: typeof tourSlipGroups,
+    customFileName?: string
+  ) => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const issueDateStr = new Date().toLocaleDateString();
+
+    const drawPageBorder = () => {
+      doc.setDrawColor(18, 78, 57);
+      doc.setLineWidth(2);
+      doc.rect(25, 25, pageWidth - 50, pageHeight - 50);
+
+      doc.setDrawColor(197, 160, 89);
+      doc.setLineWidth(0.75);
+      doc.rect(29, 29, pageWidth - 58, pageHeight - 58);
+    };
+
+    groupsToRender.forEach((group, groupIndex) => {
+      // ==================================================
+      // PAGE 1 (FRONT PAGE FOR THIS SPECIFIC TOUR ID)
+      // ==================================================
+      if (groupIndex > 0) {
+        doc.addPage();
+      }
+      drawPageBorder();
+
+      // Top Header Banner (same as B to A slip)
+      doc.setFillColor(18, 78, 57);
+      doc.rect(30, 30, pageWidth - 60, 66, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('FAIZ HUSAINI — ACCOMMODATION OFFICE', pageWidth / 2, 53, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(235, 213, 158);
+      doc.text('CATEGORY A TO B ACCOMMODATION SHIFT SLIP', pageWidth / 2, 71, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(200, 225, 210);
+      doc.text('ACCOUNTS DEPARTMENT REFUND & CATEGORY SHIFT RECORD', pageWidth / 2, 85, { align: 'center' });
+
+      // Slip Meta Info
+      doc.setTextColor(18, 78, 57);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text(`Slip / Refund Receipt No: ${group.slipNo}`, 45, 118);
+
+      doc.setTextColor(100, 116, 139);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Date of Issue: ${issueDateStr}`, pageWidth - 45, 118, { align: 'right' });
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(1);
+      doc.line(45, 126, pageWidth - 45, 126);
+
+      // Core Specification Rows (Tour ID, Office Name, Pax, Nights, Amount, Arrival, Departure, Room given in)
+      const tableBody = [
+        ['Tour ID', group.tourId],
+        ['Office Name', group.officeName],
+        ['Number of pax', `${group.paxCount} Pax`],
+        ['Number of nights', `${group.nights} Nights`],
+        ['Amount (Keep it blank to be filled by accounts)', amountDisplayForPdf],
+        ['Date of arrival', formatDateTimeDisplay(group.arrivalDate, group.arrivalTime)],
+        ['Date of departure', formatDateTimeDisplay(group.departureDate, group.departureTime)],
+        ['Room given in', group.roomSummary],
+      ];
+
+      safeAutoTable(doc, {
+        startY: 140,
+        head: [['A TO B SLIP DETAIL', 'OFFICIAL SPECIFICATION']],
+        body: tableBody,
+        margin: { left: 45, right: 45 },
+        theme: 'grid',
+        styles: {
+          fontSize: 9.5,
+          cellPadding: 9,
+          textColor: [30, 41, 59],
+          lineColor: [203, 213, 225],
+          lineWidth: 0.75,
+        },
+        headStyles: {
+          fillColor: [18, 78, 57],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9.5,
+        },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 215, fillColor: [248, 250, 252] },
+          1: { fontStyle: 'bold', fontSize: 10, textColor: [15, 23, 42] },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.row.index === 4) {
+            data.cell.styles.textColor = accountsAmountNote.trim() ? [18, 78, 57] : [100, 116, 139];
+            data.cell.styles.fontStyle = accountsAmountNote.trim() ? 'bold' : 'normal';
+          }
+        },
+      });
+
+      const frontAfterTableY = (doc as any).lastAutoTable?.finalY ?? 410;
+
+      // Accounts Box for Writing Amount & Verification (same style as B to A slip)
+      const boxY = frontAfterTableY + 22;
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(45, boxY, pageWidth - 90, 74, 4, 4, 'F');
+      doc.setDrawColor(18, 78, 57);
+      doc.setLineWidth(1);
+      doc.roundedRect(45, boxY, pageWidth - 90, 74, 4, 4, 'S');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(18, 78, 57);
+      doc.text('FOR ACCOUNTS DEPARTMENT USE ONLY:', 58, boxY + 18);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        '1. Calculate and fill Category A to B refund differential in "Amount" field above.',
+        58,
+        boxY + 34
+      );
+      doc.text(
+        '2. Amount Refunded: $_________________________   Voucher / Receipt No: _________________________',
+        58,
+        boxY + 50
+      );
+      doc.text(
+        '3. Verify shifted pax roster on Page 2 and reconcile against Faiz-e-Husaini Accommodation records.',
+        58,
+        boxY + 64
+      );
+
+      // Signatures Section at Bottom of Page 1
+      const sigY = Math.max(boxY + 115, pageHeight - 105);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.5);
+      doc.line(45, sigY - 15, pageWidth - 45, sigY - 15);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('_____________________________________', 55, sigY + 15);
+      doc.text('Prepared By: Accommodation Desk Officer', 55, sigY + 30);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Faiz-e-Husaini Najaf Office', 55, sigY + 43);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('_____________________________________', pageWidth - 235, sigY + 15);
+      doc.text('Refunded & Verified By: Accounts Cashier', pageWidth - 235, sigY + 30);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Official Stamp & Signature', pageWidth - 235, sigY + 43);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(120, 113, 108);
+      doc.text(
+        `Page 1 (Front Page) • Tour ID: ${group.tourId} • See Page 2 for Names of Shifted Pax`,
+        pageWidth / 2,
+        pageHeight - 38,
+        { align: 'center' }
+      );
+
+      // ==================================================
+      // PAGE 2 (SECOND PAGE: NAMES OF ALL PAX SENT TO A TO B FOR THIS TOUR ID)
+      // ==================================================
+      doc.addPage();
+      drawPageBorder();
+
+      doc.setFillColor(18, 78, 57);
+      doc.rect(30, 30, pageWidth - 60, 62, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('FAIZ HUSAINI — ACCOMMODATION OFFICE', pageWidth / 2, 51, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(235, 213, 158);
+      doc.text('CATEGORY A TO B — SHIFTED PAX NAMES (PAGE 2)', pageWidth / 2, 68, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(215, 232, 222);
+      doc.text(
+        `Tour ID: ${group.tourId}   •   Office: ${group.officeName}   •   Total Pax: ${group.paxList.length}`,
+        pageWidth / 2,
+        82,
+        { align: 'center' }
+      );
+
+      // Compact Summary Strip on Page 2
+      doc.setTextColor(30, 41, 59);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.text(`Slip No: ${group.slipNo}`, 45, 112);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Arrival: ${formatDateTimeDisplay(group.arrivalDate, group.arrivalTime)}  |  Departure: ${formatDateTimeDisplay(group.departureDate, group.departureTime)}  |  ${group.nights} Nights`,
+        pageWidth - 45,
+        112,
+        { align: 'right' }
+      );
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.line(45, 120, pageWidth - 45, 120);
+
+      const paxRows =
+        group.paxList.length > 0
+          ? group.paxList.map((z, idx) => [
+              String(idx + 1),
+              z.applicantName || '—',
+              z.itsId || '—',
+              z.age !== undefined && z.age !== '' ? `${z.age} yrs` : '—',
+              z.gender === 'Female' ? 'F' : z.gender === 'Male' ? 'M' : String(z.gender || '—'),
+              z.family ? `#${z.family}` : '—',
+              z.roomNumber ? `${z.building || ''} Rm ${z.roomNumber}`.trim() : z.building || 'Pending',
+            ])
+          : [['—', 'No pax selected for this Tour ID', '—', '—', '—', '—', '—']];
+
+      safeAutoTable(doc, {
+        startY: 132,
+        head: [['#', 'Zaer Name (Sent to A to B)', 'ITS ID', 'Age', 'Sex', 'Family', 'Room Allotted']],
+        body: paxRows,
+        margin: { left: 45, right: 45, bottom: 75 },
+        theme: 'grid',
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 6,
+          textColor: [30, 41, 59],
+          lineColor: [203, 213, 225],
+          lineWidth: 0.5,
+        },
+        headStyles: {
+          fillColor: [18, 78, 57],
+          textColor: [235, 213, 158],
+          fontStyle: 'bold',
+          fontSize: 8.5,
+        },
+        columnStyles: {
+          0: { cellWidth: 26, halign: 'center' },
+          1: { fontStyle: 'bold', cellWidth: 160 },
+          2: { fontStyle: 'bold', cellWidth: 74 },
+          3: { halign: 'center', cellWidth: 44 },
+          4: { halign: 'center', cellWidth: 32 },
+          5: { halign: 'center', cellWidth: 48 },
+          6: { cellWidth: 'auto' },
+        },
+        didDrawPage: () => {
+          drawPageBorder();
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(120, 113, 108);
+          doc.text(
+            `Page 2 (Pax Roster) • Tour ID: ${group.tourId} • ${group.paxList.length} Pax`,
+            pageWidth / 2,
+            pageHeight - 38,
+            { align: 'center' }
+          );
+        },
+      });
+    });
+
+    const singleName = groupsToRender[0]?.tourId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'Slip';
+    const fileName =
+      customFileName ||
+      (groupsToRender.length === 1
+        ? `Faiz_Husaini_A_to_B_Slip_${singleName}.pdf`
+        : `Faiz_Husaini_A_to_B_Slips_${groupsToRender.length}_Tours.pdf`);
+    saveOrDownloadPdf(doc, fileName);
+  };
+
   const handleDownloadPdfSlip = () => {
+    if (isAToB) {
+      generateAToBPdfForGroups(tourSlipGroups);
+      return;
+    }
+
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'pt',
@@ -402,32 +804,18 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10.5);
     doc.setTextColor(235, 213, 158);
-    doc.text(
-      isAToB
-        ? 'CATEGORY A TO B ACCOMMODATION REFUND RECEIPT'
-        : 'CATEGORY B TO A ACCOMMODATION SHIFT SLIP',
-      pageWidth / 2,
-      71,
-      { align: 'center' }
-    );
+    doc.text('CATEGORY B TO A ACCOMMODATION SHIFT SLIP', pageWidth / 2, 71, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(200, 225, 210);
-    doc.text(
-      isAToB
-        ? 'ACCOUNTS DEPARTMENT REFUND & CATEGORY SHIFT RECORD (WITH FULL PAX ROSTER)'
-        : 'ACCOUNTS DEPARTMENT PAYMENT & SHIFT RECORD',
-      pageWidth / 2,
-      85,
-      { align: 'center' }
-    );
+    doc.text('ACCOUNTS DEPARTMENT PAYMENT & SHIFT RECORD', pageWidth / 2, 85, { align: 'center' });
 
     // Slip Meta Info
     doc.setTextColor(18, 78, 57);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
-    doc.text(`${isAToB ? 'Refund Receipt No' : 'Slip No'}: ${slipNo}`, 45, 118);
+    doc.text(`Slip No: ${slipNo}`, 45, 118);
 
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
@@ -438,18 +826,13 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     doc.setLineWidth(1);
     doc.line(45, 126, pageWidth - 45, 126);
 
-    // Core 7 Specification Rows (plus Office Name for Accounts clarity)
+    // Core Specification Rows
     const tableBody = [
       ['Tour ID', tourIdVal],
       ['Office Name', officeVal],
       ['Number of pax', `${paxVal} Pax`],
       ['Number of nights', `${nightsVal} Nights`],
-      [
-        isAToB
-          ? 'Refund Amount (To be filled by accounts)'
-          : 'Amount (Keep it blank to be filled by accounts)',
-        amountDisplayForPdf,
-      ],
+      ['Amount (Keep it blank to be filled by accounts)', amountDisplayForPdf],
       ['Date of arrival', arrVal],
       ['Date of departure', depVal],
       ['Room given in', roomVal],
@@ -457,7 +840,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
     safeAutoTable(doc, {
       startY: 138,
-      head: [[isAToB ? 'REFUND RECEIPT DETAIL' : 'SHIFT SLIP DETAIL', 'OFFICIAL SPECIFICATION']],
+      head: [['SHIFT SLIP DETAIL', 'OFFICIAL SPECIFICATION']],
       body: tableBody,
       margin: { left: 45, right: 45 },
       theme: 'grid',
@@ -488,64 +871,6 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
     let currentY = (doc as any).lastAutoTable?.finalY ?? 375;
 
-    // For A -> B Receipt (and whenever full roster is included): Render Shifted Zaereen Roster with Name, ITS ID & Age
-    if (isAToB && effectiveSlipPaxList.length > 0) {
-      currentY += 16;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(18, 78, 57);
-      doc.text(
-        `SHIFTED ZAEREEN / PAX DETAILS (${effectiveSlipPaxList.length} PAX — CATEGORY A TO B)`,
-        45,
-        currentY
-      );
-
-      const paxRows = effectiveSlipPaxList.map((z, idx) => [
-        String(idx + 1),
-        z.applicantName || '—',
-        z.itsId || '—',
-        z.age !== undefined && z.age !== '' ? `${z.age} yrs` : '—',
-        z.gender === 'Female' ? 'F' : z.gender === 'Male' ? 'M' : String(z.gender || '—'),
-        z.family ? `#${z.family}` : '—',
-        z.roomNumber ? `${z.building || ''} Rm ${z.roomNumber}`.trim() : z.building || 'Pending',
-      ]);
-
-      safeAutoTable(doc, {
-        startY: currentY + 6,
-        head: [['#', 'Zaer Full Name', 'ITS ID', 'Age', 'Sex', 'Family', 'Room']],
-        body: paxRows,
-        margin: { left: 45, right: 45, bottom: 110 },
-        theme: 'grid',
-        styles: {
-          fontSize: 8.5,
-          cellPadding: 5,
-          textColor: [30, 41, 59],
-          lineColor: [203, 213, 225],
-          lineWidth: 0.5,
-        },
-        headStyles: {
-          fillColor: [18, 78, 57],
-          textColor: [235, 213, 158],
-          fontStyle: 'bold',
-          fontSize: 8.5,
-        },
-        columnStyles: {
-          0: { cellWidth: 24, halign: 'center' },
-          1: { fontStyle: 'bold', cellWidth: 155 },
-          2: { fontStyle: 'bold', cellWidth: 72 },
-          3: { halign: 'center', cellWidth: 44 },
-          4: { halign: 'center', cellWidth: 32 },
-          5: { halign: 'center', cellWidth: 48 },
-          6: { cellWidth: 'auto' },
-        },
-        didDrawPage: () => {
-          drawPageBorder();
-        },
-      });
-
-      currentY = (doc as any).lastAutoTable?.finalY ?? currentY + 60;
-    }
-
     // Ensure enough room for Accounts Use Only box & signatures; otherwise add a clean page
     if (currentY + 170 > pageHeight - 40) {
       doc.addPage();
@@ -564,36 +889,14 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(18, 78, 57);
-    doc.text(
-      isAToB ? 'FOR ACCOUNTS REFUND PROCESSING ONLY:' : 'FOR ACCOUNTS DEPARTMENT USE ONLY:',
-      58,
-      boxY + 18
-    );
+    doc.text('FOR ACCOUNTS DEPARTMENT USE ONLY:', 58, boxY + 18);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);
-    if (isAToB) {
-      doc.text(
-        '1. Verify shifted zaereen names, ITS IDs & ages above and calculate Category A to B refund differential.',
-        58,
-        boxY + 34
-      );
-      doc.text(
-        '2. Refund Amount Written by Accounts: $_____________________   Voucher / Receipt No: _____________________',
-        58,
-        boxY + 50
-      );
-      doc.text(
-        '3. Process refund to zaer / tour coordinator and reconcile against Faiz-e-Husaini Accommodation records.',
-        58,
-        boxY + 64
-      );
-    } else {
-      doc.text('1. Calculate and fill B to A differential tariff in "Amount" field above.', 58, boxY + 34);
-      doc.text('2. Amount Collected: $_________________________   Receipt No: _________________________', 58, boxY + 50);
-      doc.text('3. Collect money and reconcile against Faiz-e-Husaini Accommodation records.', 58, boxY + 64);
-    }
+    doc.text('1. Calculate and fill B to A differential tariff in "Amount" field above.', 58, boxY + 34);
+    doc.text('2. Amount Collected: $_________________________   Receipt No: _________________________', 58, boxY + 50);
+    doc.text('3. Collect money and reconcile against Faiz-e-Husaini Accommodation records.', 58, boxY + 64);
 
     // Signatures Section at Bottom
     const sigY = Math.max(boxY + 108, pageHeight - 90);
@@ -616,20 +919,14 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
     doc.text('_____________________________________', pageWidth - 235, sigY + 15);
-    doc.text(
-      isAToB ? 'Refunded & Verified By: Accounts Cashier' : 'Received & Verified By: Accounts Cashier',
-      pageWidth - 235,
-      sigY + 30
-    );
+    doc.text('Received & Verified By: Accounts Cashier', pageWidth - 235, sigY + 30);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text('Official Stamp & Signature', pageWidth - 235, sigY + 43);
 
     const safeTourName = tourIdVal.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'Slip';
-    const fileName = isAToB
-      ? `Faiz_Husaini_A_to_B_Refund_Receipt_${safeTourName}.pdf`
-      : `Faiz_Husaini_B_to_A_Shift_Slip_${safeTourName}.pdf`;
+    const fileName = `Faiz_Husaini_B_to_A_Shift_Slip_${safeTourName}.pdf`;
     saveOrDownloadPdf(doc, fileName);
   };
 
@@ -657,6 +954,10 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
           }
           .print-hidden {
             display: none !important;
+          }
+          .a2b-page-break {
+            page-break-before: always !important;
+            break-before: page !important;
           }
         }
       `,
@@ -832,6 +1133,16 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
             </div>
 
             <div className="md:col-span-3 flex items-center justify-end gap-1.5 flex-wrap">
+              {isAToB && savedAToBPax.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectSavedAToBPax}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white transition cursor-pointer whitespace-nowrap"
+                  title="Select all pax already marked as shifted A to B"
+                >
+                  Saved A➔B ({savedAToBPax.length})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSelectAllFiltered}
@@ -1005,237 +1316,417 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
         {/* Printable Receipt / Slip Paper View */}
         <div
           id="accounts-slip-print-area"
-          className="flex-1 overflow-y-auto mt-3 p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4"
+          className="flex-1 overflow-y-auto mt-3 space-y-5"
         >
-          {/* Official Header */}
-          <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
-            <div className="flex justify-center mb-1">
-              <FaizHusainiLogo size="md" />
-            </div>
-            <div
-              className={`inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 ${
-                isAToB ? 'bg-amber-800 text-amber-50' : 'bg-[#0f4a37] text-white'
-              }`}
-            >
-              {isAToB
-                ? 'ACCOUNTS DEPARTMENT — CATEGORY A TO B SHIFT & REFUND RECEIPT'
-                : slipMode === 'tour' && effectiveSlipPaxList.length > 1
-                ? 'ACCOUNTS DEPARTMENT — CONSOLIDATED TOUR B TO A SHIFT PAYMENT SLIP'
-                : 'ACCOUNTS DEPARTMENT — PILGRIM B TO A SHIFT REQUEST SLIP'}
-            </div>
-            <div className="text-xs font-semibold text-stone-600 mt-1">
-              {isAToB ? (
-                <>
-                  Official Category Shift & Refund Voucher:{' '}
-                  <strong className="text-stone-900">Category A (Nizaam) ➔ Category B (Standard)</strong> · Faiz-e-Husaini Najaf
-                </>
-              ) : (
-                <>
-                  Official Shift Request:{' '}
-                  <strong className="text-stone-900">Category B (Standard) ➔ Category A (Nizaam)</strong> · Faiz-e-Husaini Najaf
-                </>
-              )}
-            </div>
-          </div>
+          {isAToB ? (
+            <>
+              {tourSlipGroups.map((group, groupIdx) => (
+                <div
+                  key={group.tourId}
+                  className={`space-y-4 ${groupIdx > 0 ? 'a2b-page-break pt-2' : ''}`}
+                >
+                  {/* Tour Slip Header Bar (Hidden on print) */}
+                  <div className="print-hidden flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded bg-amber-800 text-amber-50 font-extrabold">
+                        Slip {groupIdx + 1} of {tourSlipGroups.length}
+                      </span>
+                      <span className="font-mono font-bold text-[#0f4a37]">{group.tourId}</span>
+                      <span className="text-stone-600">
+                        · {group.officeName} · <strong>{group.paxCount} Pax</strong> ·{' '}
+                        <strong>{group.nights} Nights</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => generateAToBPdfForGroups([group])}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Tour Slip PDF</span>
+                    </button>
+                  </div>
 
-          {/* Slip Reference & Date Header */}
-          <div className="flex items-center justify-between bg-stone-50 px-4 py-2 rounded-lg border border-stone-200 text-xs">
-            <div>
-              <span className="text-stone-500 text-[11px] block">
-                {isAToB ? 'Refund Receipt No:' : 'Slip Reference No:'}
-              </span>
-              <span className="font-mono font-bold text-[#0f4a37] text-sm tabular-nums">{slipNo}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-stone-500 text-[11px] block">Date of Issue:</span>
-              <span className="font-semibold text-stone-800 text-sm tabular-nums">
-                {new Date().toLocaleDateString()}
-              </span>
-            </div>
-          </div>
+                  {/* PAGE 1: FRONT PAGE (Same structure as B to A slip) */}
+                  <div className="p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+                    <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
+                      <span>Page 1 · Front Page (Summary &amp; Accounts)</span>
+                      <span className="font-mono text-[#0f4a37]">{group.tourId}</span>
+                    </div>
 
-          {/* Core 7 Specification Rows (Same structure for B -> A and A -> B) */}
-          <div className="overflow-x-auto border-2 border-[#0f4a37]/30 rounded-xl shadow-xs">
-            <table className="w-full text-left text-sm border-collapse bg-white">
-              <thead>
-                <tr className="bg-[#0f4a37] text-white">
-                  <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[44%]">
-                    {isAToB ? 'Refund Receipt Detail' : 'Shift Slip Detail'}
-                  </th>
-                  <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[56%]">
-                    Official Specification
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Tour ID</td>
-                  <td className="py-2.5 px-4 font-mono font-bold text-base text-[#0f4a37] break-all">
-                    {tourIdVal}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Office Name</td>
-                  <td className="py-2.5 px-4 font-semibold text-stone-900 text-sm">{officeVal}</td>
-                </tr>
-
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of pax</td>
-                  <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
-                    {paxVal} Pax
-                  </td>
-                </tr>
-
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of nights</td>
-                  <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
-                    {nightsVal} Nights
-                  </td>
-                </tr>
-
-                <tr className="bg-amber-50/40">
-                  <td className="py-2.5 px-4 font-semibold text-stone-800 bg-amber-50/60">
-                    {isAToB ? 'Refund Amount' : 'Amount'}{' '}
-                    <span className="text-[11px] font-normal text-stone-500 block sm:inline">
-                      (Left blank to be written by accounts)
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-stone-500 text-base">$</span>
-                      <div className="min-h-8 min-w-[220px] flex-1 max-w-xs border-b-2 border-stone-500 border-dashed bg-white px-2.5 py-1 flex items-center text-xs font-mono font-bold text-stone-900">
-                        {accountsAmountNote.trim() ? (
-                          <span>{accountsAmountNote.trim()}</span>
-                        ) : (
-                          <span className="text-stone-400 font-sans italic font-normal">
-                            Blank — To be written by Accounts
-                          </span>
-                        )}
+                    {/* Official Header */}
+                    <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+                      <div className="flex justify-center mb-1">
+                        <FaizHusainiLogo size="md" />
+                      </div>
+                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                        ACCOUNTS DEPARTMENT — CATEGORY A TO B SHIFT SLIP
+                      </div>
+                      <div className="text-xs font-semibold text-stone-600 mt-1">
+                        Official Shift &amp; Refund Record:{' '}
+                        <strong className="text-stone-900">Category A (Nizaam) ➔ Category B (Standard)</strong> · Faiz-e-Husaini Najaf
                       </div>
                     </div>
-                  </td>
-                </tr>
 
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of arrival</td>
-                  <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
-                    {arrVal}
-                  </td>
-                </tr>
+                    {/* Slip Reference & Date Header */}
+                    <div className="flex items-center justify-between bg-stone-50 px-4 py-2 rounded-lg border border-stone-200 text-xs">
+                      <div>
+                        <span className="text-stone-500 text-[11px] block">Slip / Refund Receipt No:</span>
+                        <span className="font-mono font-bold text-[#0f4a37] text-sm tabular-nums">{group.slipNo}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-stone-500 text-[11px] block">Date of Issue:</span>
+                        <span className="font-semibold text-stone-800 text-sm tabular-nums">
+                          {new Date().toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
 
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of departure</td>
-                  <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
-                    {depVal}
-                  </td>
-                </tr>
+                    {/* Front Page Core Specification Table (Same as B to A slip) */}
+                    <div className="overflow-x-auto border-2 border-[#0f4a37]/30 rounded-xl shadow-xs">
+                      <table className="w-full text-left text-sm border-collapse bg-white">
+                        <thead>
+                          <tr className="bg-[#0f4a37] text-white">
+                            <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[44%]">
+                              A to B Slip Detail
+                            </th>
+                            <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[56%]">
+                              Official Specification
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-200">
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Tour ID</td>
+                            <td className="py-2.5 px-4 font-mono font-bold text-base text-[#0f4a37] break-all">
+                              {group.tourId}
+                            </td>
+                          </tr>
 
-                <tr>
-                  <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Room given in</td>
-                  <td className="py-2.5 px-4 font-bold text-[#0f4a37] text-sm">{roomVal}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Office Name</td>
+                            <td className="py-2.5 px-4 font-semibold text-stone-900 text-sm">{group.officeName}</td>
+                          </tr>
 
-          {/* DIFFERENCE FOR A -> B: FULL LIST OF ALL SHIFTED ZAEREEN NAMES, ITS IDs & AGES */}
-          {isAToB && (
-            <div className="border-2 border-amber-700/30 rounded-xl overflow-hidden bg-white shadow-xs">
-              <div className="bg-amber-800 text-amber-50 px-4 py-2 flex items-center justify-between">
-                <span className="font-bold text-xs uppercase tracking-wider">
-                  Shifted Zaereen / Pax Details (Category A ➔ Category B)
-                </span>
-                <span className="font-mono font-bold text-xs tabular-nums">
-                  {effectiveSlipPaxList.length} Pax
-                </span>
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of pax</td>
+                            <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
+                              {group.paxCount} Pax
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of nights</td>
+                            <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
+                              {group.nights} Nights
+                            </td>
+                          </tr>
+
+                          <tr className="bg-amber-50/40">
+                            <td className="py-2.5 px-4 font-semibold text-stone-800 bg-amber-50/60">
+                              Amount{' '}
+                              <span className="text-[11px] font-normal text-stone-500 block sm:inline">
+                                (Left blank to be written by accounts)
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-stone-500 text-base">$</span>
+                                <div className="min-h-8 min-w-[220px] flex-1 max-w-xs border-b-2 border-stone-500 border-dashed bg-white px-2.5 py-1 flex items-center text-xs font-mono font-bold text-stone-900">
+                                  {accountsAmountNote.trim() ? (
+                                    <span>{accountsAmountNote.trim()}</span>
+                                  ) : (
+                                    <span className="text-stone-400 font-sans italic font-normal">
+                                      Blank — To be written by Accounts
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of arrival</td>
+                            <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
+                              {formatDateTimeDisplay(group.arrivalDate, group.arrivalTime)}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of departure</td>
+                            <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
+                              {formatDateTimeDisplay(group.departureDate, group.departureTime)}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Room given in</td>
+                            <td className="py-2.5 px-4 font-bold text-[#0f4a37] text-sm">{group.roomSummary}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Accounts Notice (Same as B to A slip) */}
+                    <div className="p-3 rounded-lg bg-stone-50 border border-stone-300 text-xs text-stone-700 space-y-1.5">
+                      <div>
+                        <strong>Accounts Department Directive:</strong> Please verify the shifted pax roster on Page 2, fill the approved Category A to B refund differential in the blank box, issue voucher/receipt, and reconcile against official group records.
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-stone-700">
+                        <div>Amount Refunded ($): _______________________</div>
+                        <div>Voucher / Receipt No: _______________________</div>
+                      </div>
+                    </div>
+
+                    {/* Signatures (Same as B to A slip) */}
+                    <div className="pt-4 border-t border-stone-200 grid grid-cols-2 sm:grid-cols-3 gap-4 text-[10px] text-stone-500">
+                      <div>
+                        <div className="border-b border-stone-300 w-36 mb-1" />
+                        <div>Prepared By: Accommodation Officer</div>
+                      </div>
+                      <div>
+                        <div className="border-b border-stone-300 w-36 mb-1" />
+                        <div>Tour Coordinator Received</div>
+                      </div>
+                      <div className="sm:text-right">
+                        <div className="border-b border-stone-300 w-36 mb-1 sm:ml-auto" />
+                        <div>Accounts Cashier Verification &amp; Stamp</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PAGE 2: SECOND PAGE — NAMES OF ALL PAX SENT TO A TO B FOR THIS TOUR ID */}
+                  <div className="a2b-page-break p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+                    <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
+                      <span>Page 2 · Names of All Pax Sent to A to B</span>
+                      <span className="font-mono text-[#0f4a37]">{group.tourId}</span>
+                    </div>
+
+                    {/* Page 2 Header */}
+                    <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+                      <div className="flex justify-center mb-1">
+                        <FaizHusainiLogo size="sm" showSubtitle={false} />
+                      </div>
+                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                        PAGE 2 — PAX NAMES SENT TO A TO B
+                      </div>
+                      <div className="text-xs text-stone-700 font-semibold mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                        <span>
+                          Tour ID: <strong className="font-mono text-[#0f4a37]">{group.tourId}</strong>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Office: <strong className="text-stone-900">{group.officeName}</strong>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Total Pax: <strong className="text-stone-900 tabular-nums">{group.paxList.length} Pax</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-2 border-[#0f4a37]/25 rounded-xl overflow-hidden bg-white shadow-xs">
+                      <div className="bg-[#0f4a37] text-white px-4 py-2 flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase tracking-wider">
+                          Shifted Pax Roster — {group.tourId}
+                        </span>
+                        <span className="font-mono font-bold text-xs tabular-nums text-[#ecdcae]">
+                          {group.paxList.length} Pax
+                        </span>
+                      </div>
+
+                      {group.paxList.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-stone-100 text-stone-700 uppercase text-[11px] font-bold border-b border-stone-200">
+                              <tr>
+                                <th className="py-2 px-3 w-10 text-center">#</th>
+                                <th className="py-2 px-3">Zaer Name (Sent to A to B)</th>
+                                <th className="py-2 px-3">ITS ID</th>
+                                <th className="py-2 px-3 text-center">Age</th>
+                                <th className="py-2 px-3 text-center">Sex</th>
+                                <th className="py-2 px-3 text-center">Family</th>
+                                <th className="py-2 px-3">Room Allotted</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-stone-200">
+                              {group.paxList.map((z, idx) => (
+                                <tr key={z.id} className="hover:bg-stone-50/60">
+                                  <td className="py-2 px-3 text-center font-mono text-stone-500 tabular-nums">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="py-2 px-3 font-bold text-stone-950">{z.applicantName}</td>
+                                  <td className="py-2 px-3 font-mono font-bold text-stone-900 tabular-nums">
+                                    {z.itsId || '—'}
+                                  </td>
+                                  <td className="py-2 px-3 text-center font-mono font-semibold text-stone-800 tabular-nums">
+                                    {z.age !== undefined && z.age !== '' ? `${z.age} yrs` : '—'}
+                                  </td>
+                                  <td className="py-2 px-3 text-center text-stone-700">
+                                    {z.gender === 'Female' ? 'F' : z.gender === 'Male' ? 'M' : z.gender || '—'}
+                                  </td>
+                                  <td className="py-2 px-3 text-center font-mono font-bold text-emerald-900 tabular-nums">
+                                    {z.family ? `#${z.family}` : '—'}
+                                  </td>
+                                  <td className="py-2 px-3 text-stone-800 font-medium tabular-nums">
+                                    {z.roomNumber ? `${z.building || ''} Rm ${z.roomNumber}`.trim() : z.building || 'Pending'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="p-6 text-center text-xs text-stone-500 italic">
+                          Select one or more zaereen above to populate the Page 2 pax list for this Tour ID.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className="p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+              {/* Official Header */}
+              <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+                <div className="flex justify-center mb-1">
+                  <FaizHusainiLogo size="md" />
+                </div>
+                <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                  {slipMode === 'tour' && effectiveSlipPaxList.length > 1
+                    ? 'ACCOUNTS DEPARTMENT — CONSOLIDATED TOUR B TO A SHIFT PAYMENT SLIP'
+                    : 'ACCOUNTS DEPARTMENT — PILGRIM B TO A SHIFT REQUEST SLIP'}
+                </div>
+                <div className="text-xs font-semibold text-stone-600 mt-1">
+                  Official Shift Request:{' '}
+                  <strong className="text-stone-900">Category B (Standard) ➔ Category A (Nizaam)</strong> · Faiz-e-Husaini Najaf
+                </div>
               </div>
 
-              {effectiveSlipPaxList.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-stone-100 text-stone-700 uppercase text-[11px] font-bold border-b border-stone-200">
-                      <tr>
-                        <th className="py-2 px-3 w-10 text-center">#</th>
-                        <th className="py-2 px-3">Zaer Full Name</th>
-                        <th className="py-2 px-3">ITS ID</th>
-                        <th className="py-2 px-3 text-center">Age</th>
-                        <th className="py-2 px-3 text-center">Sex</th>
-                        <th className="py-2 px-3 text-center">Family</th>
-                        <th className="py-2 px-3">Room Allotted</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-200">
-                      {effectiveSlipPaxList.map((z, idx) => (
-                        <tr key={z.id} className="hover:bg-stone-50/60">
-                          <td className="py-2 px-3 text-center font-mono text-stone-500 tabular-nums">
-                            {idx + 1}
-                          </td>
-                          <td className="py-2 px-3 font-bold text-stone-950">{z.applicantName}</td>
-                          <td className="py-2 px-3 font-mono font-bold text-stone-900 tabular-nums">
-                            {z.itsId || '—'}
-                          </td>
-                          <td className="py-2 px-3 text-center font-mono font-semibold text-stone-800 tabular-nums">
-                            {z.age !== undefined && z.age !== '' ? `${z.age} yrs` : '—'}
-                          </td>
-                          <td className="py-2 px-3 text-center text-stone-700">
-                            {z.gender === 'Female' ? 'F' : z.gender === 'Male' ? 'M' : z.gender || '—'}
-                          </td>
-                          <td className="py-2 px-3 text-center font-mono font-bold text-emerald-900 tabular-nums">
-                            {z.family ? `#${z.family}` : '—'}
-                          </td>
-                          <td className="py-2 px-3 text-stone-800 font-medium tabular-nums">
-                            {z.roomNumber ? `${z.building || ''} Rm ${z.roomNumber}`.trim() : z.building || 'Pending'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* Slip Reference & Date Header */}
+              <div className="flex items-center justify-between bg-stone-50 px-4 py-2 rounded-lg border border-stone-200 text-xs">
+                <div>
+                  <span className="text-stone-500 text-[11px] block">Slip Reference No:</span>
+                  <span className="font-mono font-bold text-[#0f4a37] text-sm tabular-nums">{slipNo}</span>
                 </div>
-              ) : (
-                <div className="p-4 text-center text-xs text-stone-500 italic">
-                  Select one or more zaereen above to populate the A ➔ B refund roster.
+                <div className="text-right">
+                  <span className="text-stone-500 text-[11px] block">Date of Issue:</span>
+                  <span className="font-semibold text-stone-800 text-sm tabular-nums">
+                    {new Date().toLocaleDateString()}
+                  </span>
                 </div>
-              )}
+              </div>
+
+              {/* Core Specification Rows */}
+              <div className="overflow-x-auto border-2 border-[#0f4a37]/30 rounded-xl shadow-xs">
+                <table className="w-full text-left text-sm border-collapse bg-white">
+                  <thead>
+                    <tr className="bg-[#0f4a37] text-white">
+                      <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[44%]">
+                        Shift Slip Detail
+                      </th>
+                      <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[56%]">
+                        Official Specification
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Tour ID</td>
+                      <td className="py-2.5 px-4 font-mono font-bold text-base text-[#0f4a37] break-all">
+                        {tourIdVal}
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Office Name</td>
+                      <td className="py-2.5 px-4 font-semibold text-stone-900 text-sm">{officeVal}</td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of pax</td>
+                      <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
+                        {paxVal} Pax
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Number of nights</td>
+                      <td className="py-2.5 px-4 font-bold text-stone-900 text-sm tabular-nums">
+                        {nightsVal} Nights
+                      </td>
+                    </tr>
+
+                    <tr className="bg-amber-50/40">
+                      <td className="py-2.5 px-4 font-semibold text-stone-800 bg-amber-50/60">
+                        Amount{' '}
+                        <span className="text-[11px] font-normal text-stone-500 block sm:inline">
+                          (Left blank to be written by accounts)
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-stone-500 text-base">$</span>
+                          <div className="min-h-8 min-w-[220px] flex-1 max-w-xs border-b-2 border-stone-500 border-dashed bg-white px-2.5 py-1 flex items-center text-xs font-mono font-bold text-stone-900">
+                            {accountsAmountNote.trim() ? (
+                              <span>{accountsAmountNote.trim()}</span>
+                            ) : (
+                              <span className="text-stone-400 font-sans italic font-normal">
+                                Blank — To be written by Accounts
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of arrival</td>
+                      <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
+                        {arrVal}
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Date of departure</td>
+                      <td className="py-2.5 px-4 font-medium text-stone-900 text-sm tabular-nums">
+                        {depVal}
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Room given in</td>
+                      <td className="py-2.5 px-4 font-bold text-[#0f4a37] text-sm">{roomVal}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Accounts Notice */}
+              <div className="p-3 rounded-lg bg-stone-50 border border-stone-300 text-xs text-stone-700 space-y-1.5">
+                <div>
+                  <strong>Accounts Department Directive:</strong> Please collect the category B to A differential tariff, issue payment receipt, and reconcile against official group records.
+                </div>
+              </div>
+
+              {/* Signatures */}
+              <div className="pt-4 border-t border-stone-200 grid grid-cols-2 sm:grid-cols-3 gap-4 text-[10px] text-stone-500">
+                <div>
+                  <div className="border-b border-stone-300 w-36 mb-1" />
+                  <div>Prepared By: Accommodation Officer</div>
+                </div>
+                <div>
+                  <div className="border-b border-stone-300 w-36 mb-1" />
+                  <div>Tour Coordinator Received</div>
+                </div>
+                <div className="sm:text-right">
+                  <div className="border-b border-stone-300 w-36 mb-1 sm:ml-auto" />
+                  <div>Accounts Cashier Verification &amp; Stamp</div>
+                </div>
+              </div>
             </div>
           )}
-
-          {/* Accounts Notice */}
-          <div className="p-3 rounded-lg bg-stone-50 border border-stone-300 text-xs text-stone-700 space-y-1.5">
-            {isAToB ? (
-              <>
-                <div>
-                  <strong>Accounts Department Refund Directive:</strong> Verify the shifted zaereen names, ITS IDs, and ages listed above, write the approved Category A to B refund amount in the blank box, and issue the refund voucher.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-stone-700">
-                  <div>Refund Written ($): _________________________</div>
-                  <div>Voucher / Receipt No: _______________________</div>
-                </div>
-              </>
-            ) : (
-              <div>
-                <strong>Accounts Department Directive:</strong> Please collect the category B to A differential tariff, issue payment receipt, and reconcile against official group records.
-              </div>
-            )}
-          </div>
-
-          {/* Signatures */}
-          <div className="pt-4 border-t border-stone-200 grid grid-cols-2 sm:grid-cols-3 gap-4 text-[10px] text-stone-500">
-            <div>
-              <div className="border-b border-stone-300 w-36 mb-1" />
-              <div>Prepared By: Accommodation Officer</div>
-            </div>
-            <div>
-              <div className="border-b border-stone-300 w-36 mb-1" />
-              <div>{isAToB ? 'Zaer / Coordinator Acknowledgment' : 'Tour Coordinator Received'}</div>
-            </div>
-            <div className="sm:text-right">
-              <div className="border-b border-stone-300 w-36 mb-1 sm:ml-auto" />
-              <div>
-                {isAToB ? 'Accounts Cashier Refund & Stamp' : 'Accounts Cashier Verification & Stamp'}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

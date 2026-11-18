@@ -33,6 +33,7 @@ interface CategoryUpgradeViewProps {
   rooms?: Room[];
   onToggleMoneyGiven: (reservationId: string, status: MoneyGivenStatus) => void;
   onOpenAccountsSlip: (reservation: Reservation) => void;
+  onOpenAToBSlip?: () => void;
   onToggleShiftToCategoryA?: (reservationId: string, willShift: boolean) => void;
   onAddZaer?: (newZaer: Reservation) => boolean | void;
   onDeleteReservation?: (id: string) => void;
@@ -44,6 +45,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   rooms = [],
   onToggleMoneyGiven,
   onOpenAccountsSlip,
+  onOpenAToBSlip,
   onToggleShiftToCategoryA,
   onAddZaer,
   onDeleteReservation,
@@ -316,19 +318,31 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
           </div>
         }
         actions={
-          (onAddZaer || onToggleShiftToCategoryA) ? (
-            <button
-              type="button"
-              onClick={() => {
-                setFormError('');
-                setIsShiftModalOpen(true);
-              }}
-              className={btn.primary}
-            >
-              <Plus className="w-4 h-4 text-gold-200" />
-              Add B→A shift
-            </button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenAToBSlip && (
+              <button
+                type="button"
+                onClick={onOpenAToBSlip}
+                className={btn.secondary}
+              >
+                <FileText className="w-4 h-4 text-amber-700" />
+                A→B slip
+              </button>
+            )}
+            {(onAddZaer || onToggleShiftToCategoryA) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError('');
+                  setIsShiftModalOpen(true);
+                }}
+                className={btn.primary}
+              >
+                <Plus className="w-4 h-4 text-gold-200" />
+                Add B→A shift
+              </button>
+            )}
+          </div>
         }
       />
 

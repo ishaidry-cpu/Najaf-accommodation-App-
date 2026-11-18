@@ -19,6 +19,7 @@ import {
   Search
 } from 'lucide-react';
 import { User } from 'firebase/auth';
+import { getUserEmail, isAuthorizedAdminEmail } from '../services/firebaseAuth';
 import { GoogleSheetsConfig, Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { 
   createAccommodationSpreadsheet, 
@@ -337,7 +338,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     if (userRole !== 'admin') {
       setFeedback({ 
         type: 'error', 
-        message: 'Action Restricted: Only Administrator (logged in as ishaidry@gmail.com) can push to Google Sheet. Receptionist view can only pull from sheet.' 
+        message: 'Action Restricted: Only an authorized Administrator can push to Google Sheet. Receptionist view can only pull from sheet.' 
       });
       return;
     }
@@ -625,7 +626,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
             ) : (
               <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-[11px] flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>Receptionist View: Push to Sheet requires Admin (ishaidry@gmail.com). You can pull updates below.</span>
+                <span>Receptionist View: Push to Sheet requires an authorized Admin login. You can pull updates below.</span>
               </div>
             )}
 
@@ -714,10 +715,14 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
               </div>
               <div>
                 <div className="font-bold text-stone-900 text-[11px]">
-                  {user ? (user.displayName || user.email) : 'Not Signed In to Google'}
+                  {user ? (user.displayName || getUserEmail(user)) : 'Not Signed In to Google'}
                 </div>
                 <div className="text-[10px] text-stone-500">
-                  {user ? (user.email === 'ishaidry@gmail.com' ? 'Administrator (Full Push & Pull Rights)' : 'Receptionist View') : 'Sign in for official Google Sheets API write access'}
+                  {user
+                    ? isAuthorizedAdminEmail(getUserEmail(user))
+                      ? 'Administrator (Full Push & Pull Rights)'
+                      : 'Receptionist View'
+                    : 'Sign in for official Google Sheets API write access'}
                 </div>
               </div>
             </div>

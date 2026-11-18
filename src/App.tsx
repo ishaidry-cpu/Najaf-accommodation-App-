@@ -60,7 +60,10 @@ import {
   initAuth, 
   googleSignIn, 
   logout,
-  getSessionRemainingMs
+  getSessionRemainingMs,
+  AUTHORIZED_ADMIN_EMAILS,
+  getUserEmail,
+  isAuthorizedAdminEmail
 } from './services/firebaseAuth';
 import { 
   syncAllToGoogleSheet, 
@@ -157,6 +160,20 @@ export default function App() {
     setIsReceptionSlipOpen(true);
   };
   const [activeAccountsSlipReservation, setActiveAccountsSlipReservation] = useState<Reservation | null>(null);
+  const [isAccountsSlipOpen, setIsAccountsSlipOpen] = useState(false);
+  const [accountsSlipDirection, setAccountsSlipDirection] = useState<'B_TO_A' | 'A_TO_B'>('B_TO_A');
+  const [accountsSlipInitialIds, setAccountsSlipInitialIds] = useState<string[] | undefined>(undefined);
+
+  const handleOpenAccountsSlipModal = (
+    res: Reservation | null,
+    direction: 'B_TO_A' | 'A_TO_B' = 'B_TO_A',
+    selectedIds?: string[]
+  ) => {
+    setActiveAccountsSlipReservation(res);
+    setAccountsSlipDirection(direction);
+    setAccountsSlipInitialIds(selectedIds);
+    setIsAccountsSlipOpen(true);
+  };
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -220,7 +237,7 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => {
       setToast((prev) => (prev?.message === message ? null : prev));
-    }, 4000);
+    }, type === 'error' ? 6500 : 4000);
   };
 
   // Sync to NKERP: one live connection to the server-side sync engine, shared by the top-bar button and the Sync tab
@@ -323,15 +340,14 @@ export default function App() {
 
   // Initialize Firebase Auth listener
   // User Requirement:
-  // "When loged in via ishaidry@gmail.com it automatically gives admin access. With all other logins or without loing it gives only receptionist view.
-  // only admin view can push to sheet. without admin login no one can push to sheet they can only pull from sheet. it is only receptionist view without admin login."
+  // Authorized Admin emails automatically receive Admin access; others get Receptionist view.
   useEffect(() => {
     const unsubscribe = initAuth(
       (authUser, token) => {
         setUser(authUser);
-        setAccessToken(token);
-        const email = (authUser?.email || '').trim().toLowerCase();
-        if (email === 'ishaidry@gmail.com') {
+        setAccessToken(token || null);
+        const email = getUserEmail(authUser);
+        if (isAuthorizedAdminEmail(email)) {
           setUserRole('admin');
           saveStoredUserRole('admin');
         } else {
@@ -576,13 +592,17 @@ export default function App() {
       const res = await googleSignIn();
       if (res) {
         setUser(res.user);
-        setAccessToken(res.accessToken);
-        const email = (res.user.email || '').trim().toLowerCase();
-        if (email === 'ishaidry@gmail.com') {
+        setAccessToken(res.accessToken || null);
+        const email = getUserEmail(res.user);
+        if (isAuthorizedAdminEmail(email)) {
           setUserRole('admin');
           saveStoredUserRole('admin');
-          showToast(`Welcome Admin ${res.user.displayName || email}! Full editable rights & Push to Google Sheet enabled.`);
-          if (sheetsConfig.spreadsheetId) {
+          showToast(
+            res.accessToken
+              ? `Welcome Admin ${res.user.displayName || email}! Full editable rights & Push to Google Sheet enabled.`
+              : `Welcome Admin ${res.user.displayName || email}! Full editable rights enabled.`
+          );
+          if (sheetsConfig.spreadsheetId && res.accessToken) {
             await triggerAutoSync(reservations, rooms);
           }
         } else {
@@ -655,17 +675,22 @@ export default function App() {
   // 1-Click Two-Way Sync (User request: "once updated in google sheet it shows in the app and if updated in app it shows in google sheet with once sync button")
   const handleQuickSync = async () => {
     let currentToken = accessToken;
+    let effectiveRole: UserRole = userRole;
 
-    // If not signed in to Google yet, prompt login
+    // If not signed in to Google (or missing Sheets OAuth token), prompt login
     if (!currentToken) {
       try {
         setIsLoggingIn(true);
         const res = await googleSignIn();
         if (res) {
           setUser(res.user);
-          setAccessToken(res.accessToken);
-          currentToken = res.accessToken;
-          showToast(`Signed in to Google as ${res.user.displayName || res.user.email}`);
+          setAccessToken(res.accessToken || null);
+          currentToken = res.accessToken || null;
+          const email = getUserEmail(res.user);
+          effectiveRole = isAuthorizedAdminEmail(email) ? 'admin' : 'receptionist';
+          setUserRole(effectiveRole);
+          saveStoredUserRole(effectiveRole);
+          showToast(`Signed in to Google as ${res.user.displayName || email}`);
         } else {
           setIsSheetsModalOpen(true);
           return;
@@ -679,9 +704,17 @@ export default function App() {
       }
     }
 
-    // User Requirement: "only admin view can push to sheet. without admin login no one can push to sheet they can only pull from sheet. it is only receptionist view without admin login."
-    if (userRole !== 'admin') {
-      showToast('Action Blocked: Only Administrator (logged in as ishaidry@gmail.com) can push to sheet. Receptionist view can only pull from sheet.', 'error');
+    if (effectiveRole !== 'admin') {
+      showToast(
+        `Action Blocked: Only authorized Administrators (${AUTHORIZED_ADMIN_EMAILS.join(', ')}) can push to sheet. Receptionist view can only pull from sheet.`,
+        'error'
+      );
+      return;
+    }
+
+    if (!currentToken) {
+      showToast('Google Sheets write permission was not granted during sign-in. Open Sheet settings or add this Gmail as an OAuth Test User for Google Sheets access.', 'error');
+      setIsSheetsModalOpen(true);
       return;
     }
 
@@ -1292,6 +1325,71 @@ export default function App() {
     );
   };
 
+  // Toggle Refund Given for A to B accounts slips
+  const handleToggleRefundGiven = (reservationId: string, status: MoneyGivenStatus) => {
+    const target = reservations.find((r) => r.id === reservationId);
+    if (!target) return;
+
+    const slipDate = new Date().toISOString().slice(0, 10);
+    const updated: Reservation = {
+      ...target,
+      shiftDirection: 'A_TO_B',
+      accommodationCategory: 'Category B (Standard)',
+      refundGiven: status,
+      refundGivenDate: status === 'Yes' ? slipDate : undefined,
+      refundSlipNo:
+        target.refundSlipNo ||
+        `REF-A2B-${target.tourRefNo?.slice(-4) || 'TOUR'}-${target.family || 'FAM'}-${Date.now().toString().slice(-4)}`,
+      refundSlipDate: target.refundSlipDate || slipDate,
+      updatedAt: new Date().toISOString(),
+    };
+
+    handleUpdateReservation(updated);
+    showToast(`A to B refund status updated to "${status}" for ${target.applicantName}`);
+  };
+
+  // Batch shift selected zaereen or Tour ID to Category B (A to B slip)
+  const handleBatchShiftToCategoryB = (
+    reservationIds: string[],
+    refundGiven: MoneyGivenStatus = 'No',
+    notes?: string
+  ) => {
+    const slipDate = new Date().toISOString().slice(0, 10);
+    const idSet = new Set(reservationIds);
+    const tourSlipNoMap = new Map<string, string>();
+    const updated = reservations.map((r) => {
+      if (idSet.has(r.id)) {
+        const tourKey = (r.tourRefNo || r.tourId || 'TOUR').trim();
+        let slipNo = r.refundSlipNo || tourSlipNoMap.get(tourKey);
+        if (!slipNo) {
+          slipNo = `REF-A2B-${tourKey.slice(-4) || 'TOUR'}-${Date.now().toString().slice(-4)}`;
+          tourSlipNoMap.set(tourKey, slipNo);
+        }
+        return {
+          ...r,
+          shiftToCategoryA: false,
+          shiftDirection: 'A_TO_B' as const,
+          accommodationCategory: 'Category B (Standard)' as const,
+          refundGiven,
+          refundGivenDate: refundGiven === 'Yes' ? slipDate : undefined,
+          refundAmountNotes: notes !== undefined ? notes : r.refundAmountNotes,
+          refundSlipNo: slipNo,
+          refundSlipDate: r.refundSlipDate || slipDate,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return r;
+    });
+
+    setReservations(updated);
+    saveReservations(updated);
+    saveBackendReservations(updated);
+    triggerAutoSync(updated, rooms);
+    showToast(
+      `Saved ${reservationIds.length} pax to A ➔ B Slip (Refund Given: ${refundGiven})`
+    );
+  };
+
   // Import from Excel Sheet (User request: "When append dont append duplicates only unique should be added")
   const handleImportFromExcel = (
     imported: Reservation[],
@@ -1499,7 +1597,8 @@ export default function App() {
             onBatchDeleteReservations={handleBatchDeleteReservations}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
-            onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
+            onOpenAccountsSlip={(res) => handleOpenAccountsSlipModal(res, 'B_TO_A')}
+            onOpenAToBSlip={(res, selectedIds) => handleOpenAccountsSlipModal(res || null, 'A_TO_B', selectedIds)}
             onOpenReceptionSlip={handleOpenReceptionSlip}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
@@ -1519,7 +1618,8 @@ export default function App() {
             reservations={reservations}
             rooms={rooms}
             onToggleMoneyGiven={handleToggleMoneyGiven}
-            onOpenAccountsSlip={(res) => setActiveAccountsSlipReservation(res)}
+            onOpenAccountsSlip={(res) => handleOpenAccountsSlipModal(res, 'B_TO_A')}
+            onOpenAToBSlip={() => handleOpenAccountsSlipModal(null, 'A_TO_B')}
             onToggleShiftToCategoryA={handleToggleShiftToCategoryA}
             onAddZaer={handleAddReservation}
             onDeleteReservation={handleDeleteReservation}
@@ -1591,13 +1691,22 @@ export default function App() {
         />
       )}
 
-      {/* Category B to A Accounts Request Slip Modal */}
+      {/* Category B to A & A to B Accounts Request Slip Modal */}
       <AccountsRequestSlipModal
+        isOpen={isAccountsSlipOpen}
         reservation={activeAccountsSlipReservation}
         allReservations={reservations}
-        onClose={() => setActiveAccountsSlipReservation(null)}
+        initialDirection={accountsSlipDirection}
+        initialSelectedIds={accountsSlipInitialIds}
+        onClose={() => {
+          setIsAccountsSlipOpen(false);
+          setActiveAccountsSlipReservation(null);
+          setAccountsSlipInitialIds(undefined);
+        }}
         onToggleMoneyGiven={handleToggleMoneyGiven}
+        onToggleRefundGiven={handleToggleRefundGiven}
         onBatchShiftToCategoryA={handleBatchShiftToCategoryA}
+        onBatchShiftToCategoryB={handleBatchShiftToCategoryB}
       />
 
       {/* Google Sheets Categories Modal */}
