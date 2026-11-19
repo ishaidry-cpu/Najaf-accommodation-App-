@@ -107,6 +107,25 @@
     font: inherit;
   }
 
+  /* Every field answers the pointer and focus the same way, whatever screen it is on. */
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea) {
+    transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out), background-color 150ms var(--ease-out);
+  }
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea):hover:not(:disabled):not(:focus) {
+    border-color: var(--color-stone-300);
+  }
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea):focus-visible:not(td *) {
+    outline: none;
+    border-color: var(--color-brand-600);
+    box-shadow: 0 0 0 3px rgb(15 74 55 / 0.14);
+  }
+  :where(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--color-brand-700);
+  }
+  :where(select) {
+    cursor: pointer;
+  }
+
   ::selection {
     background: var(--color-brand-700);
     color: var(--color-gold-200);
@@ -142,6 +161,144 @@
 }
 .app-scroll-x::-webkit-scrollbar {
   display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Motion. Only things that answer an action move: menus and dialogs   */
+/* opening, a tab settling in, buttons pressing, live work running.    */
+/* ------------------------------------------------------------------ */
+:root {
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.5, 1);
+}
+
+@layer base {
+  /* A pressed button gives a little. Zero specificity, so a utility can still override it. */
+  :where(button:not(:disabled), a[href], [role="button"]):active {
+    scale: 0.975;
+  }
+  :where(button, a[href], [role="button"]) {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale, translate;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-out);
+  }
+}
+
+/* Enter animations used across the app's menus and dialogs (animate-in + fade-in / zoom-in-95 / slide-in-from-*). */
+.animate-in {
+  animation: app-enter var(--tw-duration, 180ms) var(--ease-out) both;
+}
+.fade-in { --enter-opacity: 0; }
+.zoom-in-95 { --enter-scale: 0.95; }
+.zoom-in-90 { --enter-scale: 0.9; }
+.slide-in-from-right { --enter-x: 100%; }
+.slide-in-from-left { --enter-x: -100%; }
+.slide-in-from-top-2 { --enter-y: -0.5rem; }
+.slide-in-from-bottom-2 { --enter-y: 0.5rem; }
+.slide-in-from-bottom-3 { --enter-y: 0.75rem; }
+
+@keyframes app-enter {
+  from {
+    opacity: var(--enter-opacity, 1);
+    transform: translate3d(var(--enter-x, 0), var(--enter-y, 0), 0) scale(var(--enter-scale, 1));
+  }
+}
+
+/* A tab's content settles in once when you switch to it. */
+.tab-enter {
+  animation: tab-enter 260ms var(--ease-out) both;
+}
+@keyframes tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Popovers grow from their anchor. */
+.pop-enter {
+  transform-origin: top right;
+  animation: pop-enter 190ms var(--ease-spring) both;
+}
+@keyframes pop-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+}
+
+/* Something slides up from the bottom edge (the emails action bar). */
+.rise-enter {
+  animation: rise-enter 260ms var(--ease-spring) both;
+}
+@keyframes rise-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* Signage voice: Instrument Sans at its condensed width for page titles and big numbers. */
+.type-display {
+  font-stretch: 84%;
+  font-variation-settings: "wdth" 84;
+  letter-spacing: -0.012em;
+}
+
+/* The gold thread: a thin line under the top bar while a sync or an email run is working. */
+.gold-thread {
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.gold-thread::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--color-gold-400) 30%, var(--color-gold-200) 55%, var(--color-gold-400) 75%, transparent);
+  animation: gold-thread 1.6s var(--ease-out) infinite;
+}
+@keyframes gold-thread {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(265%); }
+}
+
+/* Loading placeholder rows. */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-stone-100) 25%, var(--color-stone-200) 37%, var(--color-stone-100) 63%);
+  background-size: 400% 100%;
+  animation: skeleton 1.3s ease infinite;
+}
+@keyframes skeleton {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+/* A row that just changed state (an email sent, a run finished) glows once. */
+.flash-ok {
+  animation: flash-ok 1.4s var(--ease-out) both;
+}
+@keyframes flash-ok {
+  from { background-color: var(--color-emerald-100); }
+}
+
+/* Checkbox ticks pop when chosen. */
+.tick-pop {
+  animation: tick-pop 220ms var(--ease-spring) both;
+}
+@keyframes tick-pop {
+  from { transform: scale(0.6); opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gold-thread::before,
+  .skeleton {
+    animation: none !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

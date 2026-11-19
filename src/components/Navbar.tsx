@@ -22,7 +22,10 @@ import {
   Settings2,
   Repeat2,
   ExternalLink,
+  Mail,
+  Loader2,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { User } from 'firebase/auth';
 import { GoogleSheetsConfig, UserRole } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
@@ -30,7 +33,7 @@ import { SyncToNkerpButton } from './SyncToNkerpButton';
 import { Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 
-export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync';
+export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync' | 'emails';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -53,9 +56,12 @@ interface NavbarProps {
   roomsCount?: number;
   onOpenAddBuildingRooms?: () => void;
   nkerpSync: NkerpSyncState;
+  /** Najaf accommodation emails are being sent. */
+  emailsRunning?: boolean;
 }
 
-type NavItem = { tab: AppTab; label: string; short: string; icon: React.ElementType };
+/** mobileOnly: on desktop the top bar's "Send emails" button is the way in, so the tab would only repeat it. */
+type NavItem = { tab: AppTab; label: string; short: string; icon: React.ElementType; mobileOnly?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { tab: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutGrid },
@@ -63,7 +69,11 @@ const NAV_ITEMS: NavItem[] = [
   { tab: 'rooms', label: 'Rooms', short: 'Rooms', icon: BedDouble },
   { tab: 'upgrades', label: 'B→A shifts', short: 'B→A', icon: Repeat2 },
   { tab: 'sync', label: 'NKERP sync', short: 'Sync', icon: RefreshCcw },
+  { tab: 'emails', label: 'Najaf emails', short: 'Emails', icon: Mail, mobileOnly: true },
 ];
+
+/** The gold marker glides to the chosen tab. */
+const markerSpring = { type: 'spring', stiffness: 520, damping: 40, mass: 0.7 } as const;
 
 const ghostTrigger = (open: boolean) =>
   `flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-[13px] font-medium transition ${
@@ -91,6 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   roomsCount,
   onOpenAddBuildingRooms,
   nkerpSync,
+  emailsRunning = false,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isReceptionist = userRole === 'receptionist';
@@ -227,6 +238,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-stone-200 bg-white/90 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
+        {(nkerpSync.running || emailsRunning) && <div className="gold-thread" role="progressbar" aria-label={emailsRunning ? 'Sending Najaf emails' : 'Syncing to NKERP'} />}
         <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center gap-3 px-4 lg:px-6">
           <button
             type="button"
@@ -239,7 +251,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Desktop navigation */}
           <nav aria-label="Main" className="hidden md:flex h-full items-stretch gap-0.5 ml-2 lg:ml-6 min-w-0 overflow-x-auto app-scroll-x">
-            {NAV_ITEMS.map(({ tab, label, icon: Icon }) => {
+            {NAV_ITEMS.filter((n) => !n.mobileOnly).map(({ tab, label, icon: Icon }) => {
               const active = activeTab === tab;
               return (
                 <button
@@ -251,7 +263,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     active ? 'text-stone-950 font-semibold' : 'text-stone-500 font-medium hover:text-stone-900'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${active ? 'text-brand-700' : ''} ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''}`} />
+                  <Icon className={`w-4 h-4 transition-colors ${active ? 'text-brand-700' : ''} ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''} ${tab === 'emails' && emailsRunning ? 'animate-pulse text-gold-600' : ''}`} />
                   <span>{label}</span>
                   {tab === 'rooms' && roomsCount ? (
                     <span className="text-xs text-stone-400 tabular-nums font-normal">{roomsCount}</span>
@@ -261,12 +273,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {syncBadge}
                     </span>
                   )}
-                  <span
-                    aria-hidden
-                    className={`absolute left-2.5 right-2.5 lg:left-3 lg:right-3 -bottom-px h-[2px] rounded-full transition-colors ${
-                      active ? 'bg-gold-400' : 'bg-transparent'
-                    }`}
-                  />
+                  {active && (
+                    <motion.span
+                      layoutId="nav-marker"
+                      transition={markerSpring}
+                      aria-hidden
+                      className="absolute left-2.5 right-2.5 lg:left-3 lg:right-3 -bottom-px h-[2px] rounded-full bg-gold-400"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -288,7 +302,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         }`}
                       />
                     </span>
-                    <span className="hidden lg:inline">Sheet</span>
+                    <span className="hidden 2xl:inline">Sheet</span>
                     <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
                   </span>
                 )}
@@ -301,7 +315,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 trigger={(open) => (
                   <span className={ghostTrigger(open)}>
                     <Printer className="w-4 h-4 text-stone-500" />
-                    <span className="hidden lg:inline">Print</span>
+                    <span className="hidden 2xl:inline">Print</span>
                     <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
                   </span>
                 )}
@@ -310,6 +324,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               </Dropdown>
 
               <div className="mx-1.5 h-5 w-px bg-stone-200" />
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('emails')}
+                title="Send Najaf accommodation emails to tour operators or zaereen"
+                aria-current={activeTab === 'emails' ? 'page' : undefined}
+                aria-label={emailsRunning ? 'Sending Najaf emails' : 'Send emails'}
+                className={`group shrink-0 whitespace-nowrap flex items-center gap-1.5 h-9 px-2.5 xl:px-3 rounded-lg text-[13px] font-medium ring-1 ring-inset cursor-pointer ${
+                  activeTab === 'emails' ? 'bg-brand-50 text-brand-800 ring-brand-100' : 'bg-white text-stone-800 ring-stone-200 hover:ring-stone-300 hover:bg-stone-50'
+                }`}
+              >
+                {emailsRunning ? <Loader2 className="w-4 h-4 animate-spin text-gold-600" /> : <Mail className="w-4 h-4 text-stone-500 transition-transform duration-300 group-hover:-translate-y-px group-hover:-rotate-6" />}
+                <span className="hidden xl:inline">{emailsRunning ? 'Sending…' : 'Send emails'}</span>
+              </button>
 
               <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} />
 
@@ -354,7 +382,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         aria-label="Main"
         className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="grid grid-cols-5 h-14">
+        <div className="grid grid-cols-6 h-14">
           {NAV_ITEMS.map(({ tab, short, icon: Icon }) => {
             const active = activeTab === tab;
             return (
@@ -367,8 +395,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   active ? 'text-brand-700 font-semibold' : 'text-stone-500 font-medium'
                 }`}
               >
-                <span aria-hidden className={`absolute top-0 h-[2px] w-8 rounded-full ${active ? 'bg-gold-400' : 'bg-transparent'}`} />
-                <Icon className={`w-5 h-5 ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''}`} strokeWidth={active ? 2.2 : 1.8} />
+                {active && <motion.span layoutId="nav-marker-mobile" transition={markerSpring} aria-hidden className="absolute top-0 h-[2px] w-8 rounded-full bg-gold-400" />}
+                <Icon className={`w-5 h-5 ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''} ${tab === 'emails' && emailsRunning ? 'animate-pulse' : ''}`} strokeWidth={active ? 2.2 : 1.8} />
                 <span>{short}</span>
                 {tab === 'sync' && syncBadge > 0 && (
                   <span className="absolute top-1.5 left-1/2 ml-2 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] leading-4 text-center font-semibold">

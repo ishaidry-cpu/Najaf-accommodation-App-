@@ -5,9 +5,11 @@ import {
   ShieldAlert, Square, Terminal, User, Wifi, WifiOff, XCircle,
 } from 'lucide-react';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
-import type {
-  AttentionItem, ChatMessage, JobEvent, JobStatus, LogLevel, ReportEntry, SyncReport,
+import {
+  type AttentionItem, type ChatMessage, type JobEvent, type JobStatus, type LogLevel, type ReportEntry, scopeOptions,
+  scopeText, type SyncReport,
 } from '../services/nkerpSync';
+import { SyncScopePicker } from './SyncScopePicker';
 
 const ACTIONS = ['deallocate', 'reallocate', 'allocate'] as const;
 const ACTION_LABEL: Record<string, string> = { deallocate: 'Deallocated', reallocate: 'Reallocated', allocate: 'Allocated' };
@@ -226,7 +228,7 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
 
 // ------------------------------------------------------------------------------------------------ conversation
 
-const EXAMPLES = ['Preview', 'Sync again', 'What needs fixing?', 'Only allocations', 'Status', 'Help'];
+const EXAMPLES = ['Preview', 'Sync tomorrow only', 'What needs fixing?', 'Only allocations', 'Status', 'Help'];
 
 const ProposalCard: React.FC<{ m: ChatMessage; onConfirm: () => void; onDismiss: () => void; running: boolean }> = ({ m, onConfirm, onDismiss, running }) => {
   const p = m.proposal!;
@@ -281,7 +283,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
       <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-[#fbfcfb]">
         {sync.messages.length === 0 && (
           <div className="text-xs text-stone-600 leading-relaxed">
-            Type what should be done in plain words: <em>"preview tomorrow"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
+            Type what should be done in plain words: <em>"sync 25 Nov only"</em>, <em>"preview 20-25 Nov"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
             {' '}<em>"the sheet is correct, allow the deallocations"</em>. Safe requests run straight away; anything that loosens a safety rule asks you to confirm first.
           </div>
         )}
@@ -427,18 +429,22 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3 pb-1">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between pt-1 md:pt-3 pb-1">
         <div className="min-w-0">
-          <h1 className="text-[22px] md:text-[26px] leading-tight font-semibold tracking-[-0.02em] text-stone-950">NKERP sync</h1>
-          <p className="mt-1 text-sm text-stone-500 max-w-2xl">
-            Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Karbala and other tabs are never touched.
+          <h1 className="type-display text-[26px] md:text-[32px] leading-none font-semibold text-stone-950">NKERP sync</h1>
+          <p className="mt-2 text-sm text-stone-500 max-w-2xl">
+            Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Karbala is never touched.
             {active ? ' Keep this page open while it runs.' : ''}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           <span title={sync.connected ? 'The sync is reachable on the server' : 'The sync is not reachable on the server'}
             className={`flex items-center gap-1.5 text-[13px] px-2 h-9 ${sync.connected ? 'text-emerald-700' : 'text-stone-500'}`}>
-            {sync.connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{sync.connected ? 'Online' : 'Offline'}
+            <span className={`relative flex w-2 h-2`}>
+              {sync.connected && <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-60 animate-ping" />}
+              <span className={`relative w-2 h-2 rounded-full ${sync.connected ? 'bg-emerald-500' : 'bg-stone-400'}`} />
+            </span>
+            {sync.connected ? 'Online' : 'Offline'}
           </span>
           {config && (
             <a href={config.sheetUrl} target="_blank" rel="noreferrer"
@@ -446,6 +452,26 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
               <FileSpreadsheet className="w-3.5 h-3.5" />Sheet<ExternalLink className="w-3 h-3" />
             </a>
           )}
+          {config?.keySource === 'env' && (
+            <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
+              className="p-2 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Run bar: which arrivals, then preview or sync */}
+      <section className="rounded-2xl bg-white border border-[#e2e8e5] shadow-2xs px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="text-[13px] font-medium text-stone-800 shrink-0 lg:w-24">Arrivals</div>
+        <div className="flex-1 min-w-0">
+          <SyncScopePicker scope={sync.scope} onChange={sync.setScope} today={config?.today ?? new Date().toISOString().slice(0, 10)}
+            layout="inline" disabled={sync.running} />
+        </div>
+        <div className="flex items-center gap-2 lg:justify-end">
+          <span className="hidden xl:inline text-xs text-stone-500 mr-1" aria-live="polite">
+            {sync.scopeReady ? <>Covers <b className="font-semibold text-stone-800">{scopeText(scopeOptions(sync.scope))}</b></> : 'Pick the dates'}
+          </span>
           {sync.running ? (
             <button type="button" onClick={sync.cancel} disabled={sync.stopping}
               className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60 cursor-pointer">
@@ -454,24 +480,18 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             </button>
           ) : (
             <>
-              <button type="button" onClick={() => void sync.startPreview()} disabled={sync.busy || !config?.configured}
+              <button type="button" onClick={() => void sync.startPreview()} disabled={sync.busy || !config?.configured || !sync.scopeReady}
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 shadow-xs disabled:opacity-50 cursor-pointer">
                 <Eye className="w-3.5 h-3.5" />Preview
               </button>
-              <button type="button" onClick={() => void sync.startSync()} disabled={sync.busy || !config?.configured}
+              <button type="button" onClick={() => void sync.startSync()} disabled={sync.busy || !config?.configured || !sync.scopeReady}
                 className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs disabled:opacity-50 cursor-pointer">
-                {sync.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />}Sync to NKERP
+                {sync.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5 text-gold-200" />}Sync to NKERP
               </button>
             </>
           )}
-          {config?.keySource === 'env' && (
-            <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
-              className="p-1.5 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
-      </div>
+      </section>
 
       {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
       <Setup sync={sync} />
@@ -489,6 +509,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
               <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(shownJob.startedAt)}{shownJob.durationMs ? ` · ${fmtDuration(shownJob.durationMs)}` : ''}</span>
               {shownJob.trigger.instruction && <span>“{shownJob.trigger.instruction}”</span>}
               {shownJob.options.only && <span>only {shownJob.options.only.join(', ')}</span>}
+              <span className="font-semibold text-brand-700">{scopeText(shownJob.options)}</span>
               {shownJob.options.today && <span>from {shownJob.options.today}</span>}
               {shownJob.options.allowOverCapacity && <span className="text-amber-800 font-bold">over capacity allowed</span>}
               {shownJob.options.allowMassDeallocation && <span className="text-amber-800 font-bold">mass deallocation allowed</span>}
@@ -536,7 +557,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
         </Card>
       ) : (
         <Card title="No runs on this device yet" icon={<Terminal className="w-4 h-4" />}>
-          <div className="p-4 text-xs text-stone-600">Press <b>Sync to NKERP</b> to run it, or <b>Preview</b> to see what it would do without saving anything.</div>
+          <div className="p-4 text-xs text-stone-600">Choose the arrivals above, then press <b>Sync to NKERP</b> to run it, or <b>Preview</b> to see what it would do without saving anything.</div>
         </Card>
       )}
 

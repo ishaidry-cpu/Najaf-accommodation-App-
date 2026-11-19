@@ -2,6 +2,35 @@ import React, { useEffect, useRef, useState } from 'react';
 
 /* Shared building blocks so every screen speaks the same visual language. */
 
+/** A number that counts up to its value once, when it first appears (skipped for reduced motion). */
+export const CountUp: React.FC<{ value: number; duration?: number; className?: string }> = ({ value, duration = 700, className }) => {
+  const [shown, setShown] = useState(value);
+  const first = useRef(true);
+  useEffect(() => {
+    if (!first.current) {
+      setShown(value);
+      return;
+    }
+    first.current = false;
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || value <= 0) {
+      setShown(value);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      setShown(Math.round(value * (1 - Math.pow(1 - t, 3))));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    setShown(0);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <span className={className}>{shown}</span>;
+};
+
 export const btn = {
   primary:
     'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
@@ -19,8 +48,8 @@ export const PageHeader: React.FC<{
 }> = ({ title, description, actions, meta }) => (
   <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3 pb-1">
     <div className="min-w-0">
-      <h1 className="text-[22px] md:text-[26px] leading-tight font-semibold tracking-[-0.02em] text-stone-950">{title}</h1>
-      {description && <p className="mt-1 text-sm text-stone-500 max-w-2xl">{description}</p>}
+      <h1 className="type-display text-[26px] md:text-[32px] leading-none font-semibold text-stone-950">{title}</h1>
+      {description && <p className="mt-2 text-sm text-stone-500 max-w-2xl">{description}</p>}
       {meta && <div className="mt-2">{meta}</div>}
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}

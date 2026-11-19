@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type ChatMessage, type HistoryRun, loadKey, loadLocal, type Proposal, type RunOptions, type RunStreamLine,
-  storeKey, storeLocal, type SyncConfig, SyncHttpError, type SyncJob, syncApi,
+  scopeOptions, storeKey, storeLocal, type SyncConfig, SyncHttpError, type SyncJob, type SyncScope, syncApi,
 } from '../services/nkerpSync';
 
 export type Notify = (message: string, type?: 'success' | 'info' | 'error') => void;
@@ -36,6 +36,11 @@ export interface NkerpSyncState {
   error: string | null;
   running: boolean;
   attentionCount: number;
+  /** The arrivals the Sync and Preview buttons cover (shared by the top bar and the Sync tab). */
+  scope: SyncScope;
+  setScope: (scope: SyncScope) => void;
+  /** False when the chosen scope is incomplete (a date missing, or a range that ends before it starts). */
+  scopeReady: boolean;
   startSync: (options?: Partial<RunOptions>) => Promise<void>;
   startPreview: (options?: Partial<RunOptions>) => Promise<void>;
   cancel: () => void;
@@ -80,6 +85,16 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scope, setScopeState] = useState<SyncScope>(() => {
+    const saved = loadLocal<SyncScope | null>('scope', null);
+    return saved && ['all', 'day', 'range'].includes(saved.mode) ? saved : { mode: 'all', day: '', from: '', to: '' };
+  });
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const setScope = useCallback((next: SyncScope) => {
+    setScopeState(next);
+    storeLocal('scope', next);
+  }, []);
 
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
@@ -280,8 +295,24 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
     }
   }, [addMessage, loadHistory, withKey]);
 
-  const startSync = useCallback((o: Partial<RunOptions> = {}) => run({ ...o, apply: true }, { source: 'button' }), [run]);
-  const startPreview = useCallback((o: Partial<RunOptions> = {}) => run({ ...o, apply: false }, { source: 'button' }), [run]);
+  /** Buttons run with the chosen arrival scope unless the caller names its own. */
+  const withScope = useCallback((o: Partial<RunOptions>): Partial<RunOptions> | null => {
+    if (o.from || o.to) return o;
+    const s = scopeOptions(scopeRef.current);
+    if (!s) {
+      notifyRef.current(scopeRef.current.mode === 'day' ? 'Pick the arrival date to sync.' : 'Pick both dates of the range (the end on or after the start).', 'error');
+      return null;
+    }
+    return { ...o, ...s };
+  }, []);
+  const startSync = useCallback(async (o: Partial<RunOptions> = {}) => {
+    const opts = withScope(o);
+    if (opts) await run({ ...opts, apply: true }, { source: 'button' });
+  }, [run, withScope]);
+  const startPreview = useCallback(async (o: Partial<RunOptions> = {}) => {
+    const opts = withScope(o);
+    if (opts) await run({ ...opts, apply: false }, { source: 'button' });
+  }, [run, withScope]);
 
   const cancel = useCallback(() => {
     if (runAbort.current) {
@@ -427,7 +458,7 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
 
   return {
     config, active, last, history, historyError, messages, connected, needKey, keyError, busy, stopping, error,
-    running: Boolean(active), attentionCount, startSync, startPreview, cancel, send, confirm, dismiss, submitKey,
+    running: Boolean(active), attentionCount, scope, setScope, scopeReady: scopeOptions(scope) !== null, startSync, startPreview, cancel, send, confirm, dismiss, submitKey,
     closeKeyPrompt, forgetKey, refresh, requestKey, hasKey: Boolean(key) || syncIsOpen,
   };
 }

@@ -126,6 +126,8 @@ export interface ReportProblem {
 export interface SyncReport {
   today: string;
   mode: 'apply' | 'dry-run';
+  /** Set when the run was limited to arrivals on these dates (inclusive). */
+  scope?: { from: string; to: string };
   done: ReportEntry[];
   planned: ReportEntry[];
   problems: ReportProblem[];
@@ -144,6 +146,12 @@ export interface RunOptions {
   apply: boolean;
   /** YYYY-MM-DD start date; default today in Asia/Baghdad. */
   today?: string;
+  /**
+   * Arrival scope (inclusive, YYYY-MM-DD): only stays whose Sheet ARRIVAL falls from `from` to `to` are
+   * allocated, reallocated or deallocated. One date = from and to the same day. Unset = every arrival.
+   */
+  from?: string;
+  to?: string;
   /** Subset of actions; default all three. */
   only?: SyncAction[];
   /** Only when the user explicitly says so for this run. */

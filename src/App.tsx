@@ -86,6 +86,8 @@ import {
 
 import { Navbar, type AppTab } from './components/Navbar';
 import { NkerpSyncView } from './components/NkerpSyncView';
+import { NajafEmailsView } from './components/NajafEmailsView';
+import { useNajafEmails } from './hooks/useNajafEmails';
 import { SyncAccessKeyModal } from './components/SyncAccessKeyModal';
 import { useNkerpSync } from './hooks/useNkerpSync';
 import { Dashboard } from './components/Dashboard';
@@ -242,6 +244,7 @@ export default function App() {
 
   // Sync to NKERP: one live connection to the server-side sync engine, shared by the top-bar button and the Sync tab
   const nkerpSync = useNkerpSync(showToast);
+  const najafEmails = useNajafEmails(nkerpSync, showToast);
 
   const handleSaveRoleSettings = (newRole: UserRole, newPin: string) => {
     setUserRole(newRole);
@@ -1541,11 +1544,12 @@ export default function App() {
           setIsAddBuildingRoomsOpen(true);
         }}
         nkerpSync={nkerpSync}
+        emailsRunning={najafEmails.run.running}
       />
       <SyncAccessKeyModal sync={nkerpSync} />
 
       {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
-      <main className="mx-auto w-full max-w-[1680px] px-3 sm:px-4 lg:px-6 pt-3 md:pt-5 pb-24 md:pb-12">
+      <main key={activeTab} className="tab-enter mx-auto w-full max-w-[1680px] px-3 sm:px-4 lg:px-6 pt-3 md:pt-5 pb-24 md:pb-12">
         {activeTab === 'dashboard' && (
           <Dashboard
             reservations={reservations}
@@ -1628,6 +1632,8 @@ export default function App() {
         )}
 
         {activeTab === 'sync' && <NkerpSyncView sync={nkerpSync} />}
+
+        {activeTab === 'emails' && <NajafEmailsView emails={najafEmails} sync={nkerpSync} />}
 
         {activeTab === 'rooms' && (
           <RoomsManagementView
@@ -1994,9 +2000,10 @@ export default function App() {
       })()}
 
       {/* User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again" */}
-      {dateFullyAllottedSyncPrompt && (
+      {/* One dialog at a time: this waits until the start-of-shift prompt is closed. */}
+      {dateFullyAllottedSyncPrompt && !isStartupPromptOpen && (
         <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
+          <div role="dialog" aria-modal="true" className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">

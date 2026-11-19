@@ -48,6 +48,7 @@ import {
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
+import { CountUp } from './ui';
 
 interface DashboardProps {
   reservations: Reservation[];
@@ -766,7 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Page header: title, today's context, sheet status and the main actions */}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3">
         <div className="min-w-0">
-          <h1 className="hidden md:block text-[26px] leading-tight font-semibold tracking-[-0.02em] text-stone-950">
+          <h1 className="hidden md:block type-display text-[32px] leading-none font-semibold text-stone-950">
             Reception overview
           </h1>
           <p className="hidden md:block mt-1 text-sm text-stone-500">
@@ -902,13 +903,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {k.label}
               </dt>
               <dd className="mt-1.5 flex items-baseline gap-1.5">
-                <span className="text-[28px] leading-none font-semibold tracking-[-0.02em] text-stone-950 tabular-nums">{k.value}</span>
+                <CountUp value={k.value} className="type-display text-[34px] leading-none font-semibold text-stone-950 tabular-nums" />
                 {k.suffix && <span className="text-[13px] text-stone-400 tabular-nums">{k.suffix}</span>}
               </dd>
               {typeof k.progress === 'number' ? (
                 <div className="mt-2.5 flex items-center gap-2">
                   <div className="h-1 flex-1 rounded-full bg-stone-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-brand-600" style={{ width: `${k.progress}%` }} />
+                    <div className="h-full rounded-full bg-brand-600 transition-[width] duration-700 ease-out" style={{ width: `${k.progress}%` }} />
                   </div>
                   <span className="text-xs text-stone-500 tabular-nums">{k.progress}%</span>
                 </div>
@@ -943,7 +944,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <button
               type="button"
               onClick={onOpenAddTourGroup}
-              className="min-h-[40px] sm:min-h-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
+              className="md:hidden min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
               title="Add a Tour ID with multiple individuals across different family IDs"
             >
               <Users className="w-3.5 h-3.5" />

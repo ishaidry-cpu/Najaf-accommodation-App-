@@ -101,6 +101,8 @@ export class CookieJar {
 
 export interface NkerpClientOptions {
   allowWrite?: boolean;
+  /** The endpoints this client may call (default: the room sync's). The email client gets its own lists. */
+  endpoints?: { reads: readonly string[]; writes: readonly string[] };
   /** Cancels in-flight *reads* (never writes). */
   signal?: AbortSignal;
   /** Injection points for tests. */
@@ -111,6 +113,8 @@ export interface NkerpClientOptions {
 
 export class NkerpClient implements NkerpApi {
   readonly allowWrite: boolean;
+  private readonly reads: readonly string[];
+  private readonly writes: readonly string[];
   private cookies = new CookieJar();
   private ready = false;
   private loggingIn: Promise<void> | null = null;
@@ -123,6 +127,8 @@ export class NkerpClient implements NkerpApi {
 
   constructor(opts: NkerpClientOptions = {}) {
     this.allowWrite = Boolean(opts.allowWrite);
+    this.reads = opts.endpoints?.reads ?? READS;
+    this.writes = opts.endpoints?.writes ?? WRITES;
     this.signal = opts.signal;
     this.creds = opts.credentials ?? (() => nkerpLogin());
     this.retryDelayMs = opts.retryDelayMs ?? 3000;
@@ -195,7 +201,7 @@ export class NkerpClient implements NkerpApi {
 
   /** POST (or GET when body is undefined) to an allow-listed read endpoint, with retries. */
   async read(path: string, body?: unknown): Promise<NkRecord> {
-    if (!READS.includes(path)) throw new Error('not a read endpoint');
+    if (!this.reads.includes(path)) throw new Error('not a read endpoint');
     let relogged = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (this.signal?.aborted) throw new Error('cancelled');
@@ -220,13 +226,13 @@ export class NkerpClient implements NkerpApi {
 
   /** One write to an allow-listed write endpoint. Never retried, never aborted mid-flight. */
   async write(path: string, body: unknown): Promise<NkRecord> {
-    if (!WRITES.includes(path)) throw new Error('not a write endpoint');
+    if (!this.writes.includes(path)) throw new Error('not a write endpoint');
     if (!this.allowWrite) throw new Error('write disabled (dry run)');
     await this.login();
     return this.req(path, body);
   }
 
-  private async paged(path: string, body: NkRecord, listKey: string, key: (a: NkRecord) => string): Promise<NkRecord[]> {
+  async paged(path: string, body: NkRecord, listKey: string, key: (a: NkRecord) => string): Promise<NkRecord[]> {
     const out: NkRecord[] = [];
     const seen = new Set<string>();
     for (let page = 1; ; page++) {

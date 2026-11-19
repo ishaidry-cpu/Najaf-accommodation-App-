@@ -2106,10 +2106,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         />
                         <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[9px] border border-indigo-200"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-stone-50 text-stone-700 font-semibold text-[9px] border border-stone-200"
                             title="Exact Arrival Time (type or select)"
                           >
-                            <Clock className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                            <Clock className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
                             <input
                               type="text"
                               list="portal-standard-times"
@@ -2121,7 +2121,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   handleFieldChange(res.id, 'arrivalTime', formatted);
                                 }
                               }}
-                              className="bg-transparent text-indigo-950 font-bold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
+                              className="bg-transparent text-stone-800 font-semibold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
                               title="Exact Arrival Time"
                             />
                           </span>
@@ -2138,7 +2138,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         />
                         <div className="flex items-center justify-center gap-1 mt-0.5">
                           <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-amber-50 text-amber-800 font-bold text-[9px] border border-amber-200"
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-stone-50 text-stone-700 font-semibold text-[9px] border border-stone-200"
                             title="Exact Departure Time (type or select)"
                           >
                             <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
@@ -2153,7 +2153,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   handleFieldChange(res.id, 'departureTime', formatted);
                                 }
                               }}
-                              className="bg-transparent text-amber-950 font-bold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
+                              className="bg-transparent text-stone-800 font-semibold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
                               title="Exact Departure Time"
                             />
                           </span>

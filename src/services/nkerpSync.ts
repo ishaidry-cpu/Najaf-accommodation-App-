@@ -11,6 +11,9 @@ export type LogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error';
 export interface RunOptions {
   apply: boolean;
   today?: string;
+  /** Only stays whose Sheet ARRIVAL is from `from` to `to` (inclusive). One date: both the same. */
+  from?: string;
+  to?: string;
   only?: SyncAction[];
   allowOverCapacity?: boolean;
   maxDeallocations?: number;
@@ -59,6 +62,7 @@ export interface ReportEntry {
 export interface SyncReport {
   today: string;
   mode: 'apply' | 'dry-run';
+  scope?: { from: string; to: string };
   done: ReportEntry[];
   planned: ReportEntry[];
   problems: { action: string; group: string; people: string[]; reason: string }[];
@@ -150,6 +154,36 @@ export type RunStreamLine =
   | { type: 'event'; event: JobEvent }
   | { type: 'ping' }
   | { type: 'done'; job: Omit<SyncJob, 'events' | 'stage' | 'progress'> };
+
+/** Which arrivals a run covers: everything from today, one arrival date, or a range of arrival dates. */
+export interface SyncScope {
+  mode: 'all' | 'day' | 'range';
+  day: string;
+  from: string;
+  to: string;
+}
+
+/** The run options for a scope, or null when the scope is incomplete (a missing or reversed date). */
+export function scopeOptions(scope: SyncScope): Pick<RunOptions, 'from' | 'to'> | null {
+  if (scope.mode === 'all') return {};
+  if (scope.mode === 'day') return scope.day ? { from: scope.day, to: scope.day } : null;
+  if (!scope.from || !scope.to || scope.from > scope.to) return null;
+  return { from: scope.from, to: scope.to };
+}
+
+export function fmtDay(iso: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, opts);
+}
+
+/** Plain words for a run's scope: "every arrival from today", "arrivals on Tue 25 Nov", "arrivals 20–25 Nov". */
+export function scopeText(o: Pick<RunOptions, 'from' | 'to'> | null | undefined): string {
+  if (!o || (!o.from && !o.to)) return 'every arrival from today';
+  if (o.from && o.to && o.from === o.to) return `arrivals on ${fmtDay(o.from)}`;
+  if (o.from && o.to) return `arrivals ${fmtDay(o.from, { day: 'numeric', month: 'short' })} – ${fmtDay(o.to, { day: 'numeric', month: 'short' })}`;
+  return o.from ? `arrivals from ${fmtDay(o.from)}` : `arrivals up to ${fmtDay(o.to!)}`;
+}
 
 const KEY_STORAGE = 'nkerp-sync-access-key';
 const BASE = '/api/nkerp-sync';

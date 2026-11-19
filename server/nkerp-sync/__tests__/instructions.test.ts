@@ -58,6 +58,23 @@ describe('instruction rules', () => {
     assert.equal(say('sync').options!.today, undefined);
   });
 
+  it('reads one arrival date and a date range', () => {
+    const scope = (t: string) => { const o = say(t).options!; return [o.from, o.to, o.today]; };
+    assert.deepEqual(scope('sync 25 Nov only'), ['2026-11-25', '2026-11-25', undefined]);
+    assert.deepEqual(scope('preview arrivals on 2026-11-25'), ['2026-11-25', '2026-11-25', undefined]);
+    assert.deepEqual(scope('sync only 25 Nov'), ['2026-11-25', '2026-11-25', undefined]);
+    assert.deepEqual(scope('sync for tomorrow'), ['2026-11-17', '2026-11-17', undefined]);
+    assert.deepEqual(scope('sync on 20/11'), ['2026-11-20', '2026-11-20', undefined]);
+    assert.deepEqual(scope('sync 20-25 Nov'), ['2026-11-20', '2026-11-25', undefined]);
+    assert.deepEqual(scope('preview between 1 Dec and 3 Dec'), ['2026-12-01', '2026-12-03', undefined]);
+    assert.deepEqual(scope('sync from 20 Nov to 2 Dec'), ['2026-11-20', '2026-12-02', undefined]);
+    assert.deepEqual(scope('sync 2026-11-22 to 2026-11-20'), ['2026-11-20', '2026-11-22', undefined]);
+    assert.deepEqual(scope('sync from 20 Nov'), [undefined, undefined, '2026-11-20']);
+    assert.equal(say('sync only 25 Nov').options!.limit, undefined);
+    assert.equal(say('sync only 3 groups').options!.limit, 3);
+    assert.match(say('sync 20-25 Nov').reply, /only arrivals from 2026-11-20 to 2026-11-25/);
+  });
+
   it('reads a trial limit', () => {
     assert.equal(say('try just the first 2 groups').options!.limit, 2);
     assert.equal(say('sync, limit 5').options!.limit, 5);
@@ -112,6 +129,12 @@ describe('model output validation', () => {
       allowMassDeallocation: true, reply: 'x' }, ctx);
     assert.deepEqual(p.options, { apply: true, only: ['allocate'], today: '2026-11-18', limit: 3, allowMassDeallocation: true });
     assert.equal(p.needsConfirmation, true);
+  });
+
+  it('accepts an arrival scope from the model', () => {
+    const p = proposalFromModel({ intent: 'preview', arrivalFrom: '2026-11-25', reply: 'x' }, ctx);
+    assert.deepEqual(p.options, { apply: false, from: '2026-11-25', to: '2026-11-25' });
+    assert.throws(() => proposalFromModel({ intent: 'sync', arrivalFrom: '2026-02-31', reply: '' }, ctx));
   });
 
   it('rejects malformed output', () => {

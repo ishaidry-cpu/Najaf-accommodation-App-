@@ -74,6 +74,44 @@ export function findDate(t: string, today: string): string | null {
   return null;
 }
 
+const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*';
+/** One date expression: 2026-11-20, 20/11/2026, 20 Nov 2026, 20 Nov, Nov 20, tomorrow, today. */
+const DATE_EXPR = `(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{4}|\\d{1,2}(?:st|nd|rd|th)?(?: of)?[- ]${MON}(?:[- ]\\d{4})?|${MON} \\d{1,2}(?:st|nd|rd|th)?|tomorrow|today)`;
+
+/**
+ * An arrival scope named in the text, or null:
+ *   "sync 25 Nov only", "preview arrivals on 2026-11-25", "for tomorrow"   -> that one date
+ *   "20-25 Nov", "between 20 and 25 Nov", "from 20 Nov to 2 Dec"          -> that range (inclusive)
+ * "from 20 Nov" alone is not a scope (it moves the start date, as before).
+ */
+export function findScope(t: string, today: string): { from: string; to: string } | null {
+  const dateOf = (expr: string): string | null => (expr === 'today' ? today : findDate(expr, today));
+  const order = (a: string | null, b: string | null) => (a && b ? (a <= b ? { from: a, to: b } : { from: b, to: a }) : null);
+  // same-month shorthand: "20-25 nov", "between 20 and 25 november", "20 to 25 nov 2026"
+  const short = t.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|to|until|till|through|thru|and)\\s*(\\d{1,2})(?:st|nd|rd|th)?(?: of)? (${MON}(?: \\d{4})?)\\b`));
+  if (short) {
+    const r = order(dateOf(`${short[1]} ${short[3]}`), dateOf(`${short[2]} ${short[3]}`));
+    if (r) return r;
+  }
+  const range = t.match(new RegExp(`\\b(${DATE_EXPR})\\s*(?:-|–|to|until|till|through|thru|and)\\s*(${DATE_EXPR})\\b`));
+  if (range) {
+    const r = order(dateOf(range[1]), dateOf(range[2]));
+    if (r) return r;
+  }
+  const single = t.match(new RegExp(`\\b(?:only|just|for|on|arrivals?(?: on)?|arriving(?: on)?)\\s+(?:the\\s+)?(?:arrivals?\\s+(?:on\\s+)?)?(${DATE_EXPR})\\b`))
+    || t.match(new RegExp(`\\b(${DATE_EXPR})(?:'s)?\\s+(?:only|arrivals?)\\b`));
+  if (single) {
+    const d = dateOf(single[1]);
+    if (d) return { from: d, to: d };
+  }
+  const dm = t.match(/\b(?:only|just|for|on)\s+(?:arrivals?\s+(?:on\s+)?)?(\d{1,2}[/.]\d{1,2})\b(?![/.]\d)/);
+  if (dm) {
+    const d = findDate(`on ${dm[1]}`, today);
+    if (d) return { from: d, to: d };
+  }
+  return null;
+}
+
 const ACTION_WORDS: Record<SyncAction, RegExp> = {
   deallocate: /\bde-?allocat\w*|\bremov\w* (?:people|guests|them)|\bfree (?:up )?(?:the )?rooms?\b/,
   reallocate: /\bre-?allocat\w*|\bmov(?:e|es|ing) (?:people|guests|them)|\broom changes?\b/,
@@ -87,7 +125,9 @@ function mentionedActions(t: string): SyncAction[] {
 function describe(options: RunOptions, today: string): string {
   const acts = options.only && options.only.length < 3 ? options.only.join(' + ') : 'deallocate, reallocate and allocate';
   const parts = [`${options.apply ? 'Sync to NKERP' : 'Preview (dry run, nothing saved)'}: ${acts}`];
-  parts.push(`from ${options.today ?? today}`);
+  if (options.from && options.to) {
+    parts.push(options.from === options.to ? `only arrivals on ${options.from}` : `only arrivals from ${options.from} to ${options.to}`);
+  } else parts.push(`from ${options.today ?? today}`);
   if (options.limit) parts.push(`first ${options.limit} save group${options.limit === 1 ? '' : 's'} only`);
   if (options.maxDeallocations !== undefined) parts.push(`hold deallocations above ${options.maxDeallocations}`);
   return parts.join(', ');
@@ -108,6 +148,8 @@ export const HELP = [
   '- "Sync now" or "retry": the same as the Sync to NKERP button',
   '- "Preview" / "what would it do": a dry run that saves nothing',
   '- "Only allocations", "skip deallocations", "just reallocate"',
+  '- "Sync 25 Nov only" or "preview arrivals on 2026-11-25": just one arrival date',
+  '- "Sync 20-25 Nov" or "preview between 1 Dec and 3 Dec": a range of arrival dates',
   '- "Sync from 20 Nov" or "preview tomorrow": start from a date',
   '- "Try just the first 2 groups": a trial run',
   '- "The sheet is correct, allow mass deallocation": release held deallocations (asks you to confirm)',
@@ -174,11 +216,17 @@ export function interpretRules(raw: string, ctx: InstructionContext): Proposal {
   if (options.only && !options.only.length) {
     return { ...base, intent: 'unsupported', reply: 'That would leave no actions to run. Say which of allocate, reallocate or deallocate to do.' };
   }
-  // date
-  const date = findDate(t, ctx.today);
-  if (date) options.today = date;
+  // date: one arrival date or a range, else a start date
+  const scope = findScope(t, ctx.today);
+  if (scope) {
+    options.from = scope.from;
+    options.to = scope.to;
+  } else {
+    const date = findDate(t, ctx.today);
+    if (date) options.today = date;
+  }
   // trial size
-  const lim = t.match(/\b(?:limit(?: to)?|first|trial(?: of)?|only|just)\s+(\d{1,3})\s*(?:groups?|saves?|rooms?|batches?)?\b/);
+  const lim = t.match(/\b(?:limit(?: to)?|first|trial(?: of)?|only|just)\s+(\d{1,3})\s*(?:groups?|saves?|rooms?|batches?)?\b(?!\s*(?:st|nd|rd|th)?\s*(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|[-/.]\d))/);
   if (lim && !/deallocat/.test(t.slice(lim.index ?? 0, (lim.index ?? 0) + lim[0].length + 15))) options.limit = parseInt(lim[1], 10);
   // safety overrides (explicit only)
   if (/\b(allow|ignore|override|skip|bypass)\b[^.]{0,25}\b(capacity|full rooms?|room limits?)\b|\bover[- ]?capacity (is )?(ok|fine|allowed)\b|\boverfill\b|\beven if (it'?s |the rooms? (is|are) )?full\b/.test(t)) {
@@ -214,7 +262,9 @@ const SCHEMA = {
   properties: {
     intent: { type: 'string', enum: ['sync', 'preview', 'cancel', 'status', 'explain', 'help', 'unsupported'] },
     only: { type: 'array', items: { type: 'string', enum: ['allocate', 'reallocate', 'deallocate'] } },
-    startDate: { type: 'string', description: 'YYYY-MM-DD, only if the user named a start date' },
+    startDate: { type: 'string', description: 'YYYY-MM-DD, only if the user named a start date ("from X")' },
+    arrivalFrom: { type: 'string', description: 'YYYY-MM-DD: first arrival date when the user limits the run to one date or a date range' },
+    arrivalTo: { type: 'string', description: 'YYYY-MM-DD: last arrival date (the same as arrivalFrom for one date)' },
     limit: { type: 'integer', minimum: 1, maximum: 500 },
     allowOverCapacity: { type: 'boolean' },
     allowMassDeallocation: { type: 'boolean' },
@@ -241,7 +291,8 @@ function systemPrompt(ctx: InstructionContext): string {
     '  and what to do. Never invent facts that are not in the report.',
     '- unsupported: anything the tool cannot do; say so briefly in `reply` and suggest what it can do.',
     'Options (only when the user clearly asks for them): only (subset of actions), startDate (YYYY-MM-DD; today is',
-    `${ctx.today}, Asia/Baghdad), limit (first N save groups), allowOverCapacity, allowMassDeallocation,`,
+    `${ctx.today}, Asia/Baghdad), arrivalFrom + arrivalTo (only arrivals on one date or in a date range),`,
+    'limit (first N save groups), allowOverCapacity, allowMassDeallocation,',
     'maxDeallocations. Set allowOverCapacity / allowMassDeallocation ONLY if the user explicitly asks to allow',
     'over-capacity rooms or to release / allow the held mass deallocation (for example "the sheet is correct, go',
     'ahead with the deallocations"). When unsure, leave them out.',
@@ -279,6 +330,17 @@ export function proposalFromModel(obj: any, ctx: InstructionContext): Proposal {
     if (!iso || iso !== obj.startDate.slice(0, 10)) throw new Error('model returned a bad start date');
     options.today = iso;
   }
+  for (const [field, end] of [['arrivalFrom', 'from'], ['arrivalTo', 'to']] as const) {
+    const v = obj[field];
+    if (typeof v !== 'string' || !v) continue;
+    const iso = parseArrival(v);
+    if (!iso || iso !== v.slice(0, 10)) throw new Error('model returned a bad arrival date');
+    options[end] = iso;
+  }
+  if (options.from && !options.to) options.to = options.from;
+  if (options.to && !options.from) options.from = options.to;
+  if (options.from && options.to && options.from > options.to) [options.from, options.to] = [options.to, options.from];
+  if (options.from) delete options.today;
   if (Number.isInteger(obj.limit) && obj.limit >= 1 && obj.limit <= 500) options.limit = obj.limit;
   if (obj.allowOverCapacity === true) options.allowOverCapacity = true;
   if (obj.allowMassDeallocation === true) options.allowMassDeallocation = true;

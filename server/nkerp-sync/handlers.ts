@@ -10,12 +10,17 @@
  *                     {"type":"done","job":{...report, summary, attention...}}
  *   GET  history    applied runs, read back from the Sheet's Sync History tab
  *   POST interpret  turn a typed instruction into a validated proposal (runs nothing itself)
+ *   GET  emails       Najaf stays from today with their two accommodation-plan emails (NKERP, read only)
+ *   POST emails-send  send the chosen emails; the response streams NDJSON like run
  *
  * A run lives inside its request. On hosts with a hard time limit (Vercel: 300s by default) the engine is
  * given a deadline and starts no new save after it, so the limit can never cut a save in half.
  */
 import crypto from 'crypto';
 import { credentialStatus } from './credentials.js';
+import {
+  type EmailApi, type EmailEvent, LIST_LOOKBACK_DAYS, najafSchedule, NkerpEmailClient, runEmails, validateEmailRequest,
+} from './emails.js';
 import { runSync, type RunDeps, type RunStats } from './engine.js';
 import { attention, type AttentionItem } from './guidance.js';
 import { geminiConfigured, interpret } from './instructions.js';
@@ -23,7 +28,7 @@ import { realDeps, sheetId } from './service.js';
 import { HISTORY_TAB, SheetsApi, SyncHistoryTab } from './sheets.js';
 import type { HistoryRow, ProgressEvent, RunOptions, SyncAction, SyncReport } from './types.js';
 import { ALL_ACTIONS } from './types.js';
-import { errorMessage, parseArrival, todayIn } from './util.js';
+import { addDays, errorMessage, parseArrival, todayIn } from './util.js';
 import { googleTokens } from './service.js';
 
 export type JobStatus = 'running' | 'succeeded' | 'attention' | 'stopped' | 'failed' | 'cancelled';
@@ -58,6 +63,9 @@ export interface HandlerDeps {
   readHistory?: () => Promise<HistoryRow[]>;
   /** Seconds a run may last before no new save may start (0 = no limit). */
   maxSeconds?: number;
+  /** NKERP for the emails page (read only when allowWrite is false). */
+  emailApi?: (allowWrite: boolean, signal?: AbortSignal) => EmailApi;
+  today?: () => string;
 }
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -116,6 +124,16 @@ export function validateOptions(body: any): RunOptions {
     }
     o.today = body.today;
   }
+  for (const end of ['from', 'to'] as const) {
+    const v = body?.[end];
+    if (v === undefined || v === null || v === '') continue;
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || parseArrival(v) !== v) {
+      throw new Error(`${end} must be a YYYY-MM-DD date`);
+    }
+    o[end] = v;
+  }
+  if (o.from && o.to && o.from > o.to) throw new Error('the date range ends before it starts');
+  if (o.from && o.to && addDays(o.from, 366) < o.to) throw new Error('a date range can cover at most one year');
   if (body?.limit !== undefined && body.limit !== null) {
     if (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 500) throw new Error('limit must be a whole number from 1 to 500');
     o.limit = body.limit;
@@ -350,6 +368,104 @@ export async function handleInterpret(req: Request, d: HandlerDeps = {}): Promis
   }
 }
 
+// ------------------------------------------------------------------------------------------------ emails
+
+let emailRunning = false;
+
+function emailApi(d: HandlerDeps, allowWrite: boolean, signal?: AbortSignal): EmailApi {
+  return d.emailApi ? d.emailApi(allowWrite, signal) : new NkerpEmailClient({ allowWrite, signal });
+}
+
+/** Najaf stays from today with their email state, straight from NKERP. Reads only. */
+export async function handleEmailList(req: Request, d: HandlerDeps = {}): Promise<Response> {
+  const denied = checkAccess(req);
+  if (denied) return denied;
+  const c = (d.credentials ?? credentialStatus)();
+  if (!c.nkerp && !d.emailApi) return json({ error: 'The NKERP login is not configured on the server (NKERP_LOGIN_ID, NKERP_PASSWORD)' }, 503);
+  const today = (d.today ?? todayIn)();
+  try {
+    const rows = await emailApi(d, false).tourList(addDays(today, -LIST_LOOKBACK_DAYS));
+    return json({ ...najafSchedule(rows, today), running: emailRunning, readAt: new Date().toISOString() });
+  } catch (err) {
+    return json({ error: `Could not read NKERP: ${errorMessage(err)}` }, 502);
+  }
+}
+
+/** Send the chosen accommodation emails. Streams NDJSON: start, event..., done. */
+export async function handleEmailSend(req: Request, d: HandlerDeps = {}): Promise<Response> {
+  const denied = checkAccess(req);
+  if (denied) return denied;
+  let items;
+  try {
+    items = validateEmailRequest(await readJson(req));
+  } catch (err) {
+    return json({ error: errorMessage(err) }, 400);
+  }
+  const c = (d.credentials ?? credentialStatus)();
+  if (!c.nkerp && !d.emailApi) return json({ error: 'The NKERP login is not configured on the server (NKERP_LOGIN_ID, NKERP_PASSWORD)' }, 503);
+  if (emailRunning) return json({ error: 'Emails are already being sent' }, 409);
+  emailRunning = true;
+  const started = Date.now();
+  const limit = maxSeconds(d);
+  const deadline = limit ? started + Math.max(20, limit - 30) * 1000 : undefined;
+  const controller = new AbortController();
+  const encoder = new TextEncoder();
+  let open = true;
+  let seq = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      const write = (obj: unknown) => {
+        if (!open) return;
+        try {
+          ctrl.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+        } catch {
+          open = false;
+        }
+      };
+      const ping = setInterval(() => write({ type: 'ping' }), 15_000);
+      write({ type: 'start', total: items.length, startedAt: new Date(started).toISOString() });
+      (async () => {
+        let done: unknown;
+        try {
+          const out = await runEmails(items, {
+            api: emailApi(d, true, controller.signal), today: (d.today ?? todayIn)(), signal: controller.signal, deadline,
+            progress: (ev: EmailEvent) => {
+              const line = `[nkerp-emails] ${ev.level.toUpperCase()}: ${ev.message}`;
+              if (ev.level === 'error') console.error(line);
+              else if (ev.level !== 'debug') console.log(line);
+              write({ type: 'event', event: { ...ev, seq: ++seq, at: new Date().toISOString() } });
+            },
+          });
+          done = { type: 'done', ...out, durationMs: Date.now() - started };
+        } catch (err) {
+          done = { type: 'done', results: [], summary: null, error: errorMessage(err), durationMs: Date.now() - started };
+        } finally {
+          emailRunning = false;
+          clearInterval(ping);
+        }
+        write(done);
+        if (open) {
+          open = false;
+          try {
+            ctrl.close();
+          } catch {
+            /* already closed */
+          }
+        }
+      })();
+    },
+    cancel() {
+      open = false;
+      controller.abort();          // the current send finishes; no new one starts
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store, no-transform',
+      'X-Accel-Buffering': 'no' },
+  });
+}
+
 /** Route a request under /api/nkerp-sync/<name> to its handler (used by the Express adapter). */
 export async function dispatch(name: string, req: Request, d: HandlerDeps = {}): Promise<Response> {
   const m = req.method.toUpperCase();
@@ -358,5 +474,7 @@ export async function dispatch(name: string, req: Request, d: HandlerDeps = {}):
   if (name === 'run' && m === 'POST') return handleRun(req, d);
   if (name === 'history' && m === 'GET') return handleHistory(req, d);
   if (name === 'interpret' && m === 'POST') return handleInterpret(req, d);
+  if (name === 'emails' && m === 'GET') return handleEmailList(req, d);
+  if (name === 'emails-send' && m === 'POST') return handleEmailSend(req, d);
   return json({ error: 'Not found' }, 404);
 }

@@ -461,6 +461,8 @@ var NkerpClient = class {
     /** Count of HTTP calls by endpoint, for the run log. */
     this.calls = {};
     this.allowWrite = Boolean(opts.allowWrite);
+    this.reads = opts.endpoints?.reads ?? READS;
+    this.writes = opts.endpoints?.writes ?? WRITES;
     this.signal = opts.signal;
     this.creds = opts.credentials ?? (() => nkerpLogin());
     this.retryDelayMs = opts.retryDelayMs ?? 3e3;
@@ -538,7 +540,7 @@ var NkerpClient = class {
   }
   /** POST (or GET when body is undefined) to an allow-listed read endpoint, with retries. */
   async read(path, body) {
-    if (!READS.includes(path)) throw new Error("not a read endpoint");
+    if (!this.reads.includes(path)) throw new Error("not a read endpoint");
     let relogged = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (this.signal?.aborted) throw new Error("cancelled");
@@ -562,7 +564,7 @@ var NkerpClient = class {
   }
   /** One write to an allow-listed write endpoint. Never retried, never aborted mid-flight. */
   async write(path, body) {
-    if (!WRITES.includes(path)) throw new Error("not a write endpoint");
+    if (!this.writes.includes(path)) throw new Error("not a write endpoint");
     if (!this.allowWrite) throw new Error("write disabled (dry run)");
     await this.login();
     return this.req(path, body);
@@ -729,6 +731,256 @@ var NkerpClient = class {
     return this.write(DEALLOC, payload);
   }
 };
+
+// server/nkerp-sync/emails.ts
+var TOUR_LIST = "api/Property/getTourAccomodationList";
+var SEND_TO_OPERATOR = "api/Property/getTourAccommodationPlan";
+var SEND_TO_ZAEREEN = "api/Property/sentAccommodationPlanToApplicants/";
+var EMAIL_ENDPOINTS = { reads: [TOUR_LIST], writes: [SEND_TO_OPERATOR, SEND_TO_ZAEREEN] };
+var LIST_LOOKBACK_DAYS = 45;
+var MAX_EMAILS_PER_RUN = 400;
+var RECIPIENTS = ["operator", "zaereen"];
+var NkerpEmailClient = class {
+  constructor(opts = {}) {
+    this.client = new NkerpClient({ ...opts, endpoints: EMAIL_ENDPOINTS });
+  }
+  tourList(arrivalFrom) {
+    return this.client.paged(TOUR_LIST, {
+      FromDateFromSearch: `${arrivalFrom}T00:00:00`,
+      FromDateToSearch: null,
+      ITSNoSearch: null,
+      IsNotArrived: "",
+      ToDateFromSearch: null,
+      ToDateToSearch: null,
+      TourSearchRefNo: "",
+      TOOfficeNameSearch: "",
+      Status: "",
+      clientTimeZoneOffset: -180,
+      group: "1",
+      sortBy: "StartDateTimeZone",
+      itemsPerPage: 100,
+      maxSize: 10,
+      totalItems: 0,
+      reverse: false
+    }, "listTourAccommotionDetails", (r) => JSON.stringify([
+      r.TourReferenceId ?? null,
+      (r.TourSubvenuePlan || []).map((p) => [p.TourId, p.SubvenueId, p.StartDateTimeZone])
+    ]));
+  }
+  send(to, payload) {
+    return this.client.write(to === "operator" ? SEND_TO_OPERATOR : SEND_TO_ZAEREEN, payload);
+  }
+};
+var STATUS = { 1: "full", 2: "partial", 3: "none" };
+function stayKey(tourId, start) {
+  return `${String(tourId)}|${start}`;
+}
+function isNajaf(p) {
+  const id = Number(p.SubvenueId);
+  const name = norm(p.SubvenueName);
+  if (id === NAJAF) return name && !name.includes("NAJAF") ? null : true;
+  return false;
+}
+function najafSchedule(rows, today) {
+  const excluded = [];
+  const stays = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    for (const p of r.TourSubvenuePlan || []) {
+      const najaf = isNajaf(p);
+      const ref = String(r.TourReferenceId ?? "").trim();
+      if (najaf === null) {
+        excluded.push(`${ref}: sub-venue id 3 is named "${p.SubvenueName}", not Najaf; left out`);
+        continue;
+      }
+      if (!najaf) continue;
+      const start = day(p.StartDateTimeZone);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+        excluded.push(`${ref}: Najaf stay without a readable start date; left out`);
+        continue;
+      }
+      if (start < today) continue;
+      if (p.TourId === void 0 || p.TourId === null || p.TourId === "") {
+        excluded.push(`${ref}: Najaf stay without a tour id; left out`);
+        continue;
+      }
+      const key = stayKey(p.TourId, start);
+      if (stays.has(key)) continue;
+      const pax = Number(r.PaxCount);
+      stays.set(key, {
+        key,
+        tourId: String(p.TourId),
+        ref,
+        operator: String(r.TOName ?? "").trim(),
+        office: String(r.OfficeName ?? "").trim(),
+        pax: Number.isFinite(pax) ? pax : null,
+        arrival: r.ArrivalDate ? day(r.ArrivalDate) : null,
+        departure: r.DepartureDate ? day(r.DepartureDate) : null,
+        najafStart: start,
+        najafEnd: p.EndDateTimeZone ? day(p.EndDateTimeZone) : null,
+        allotment: STATUS[Number(p.AccomudationStatusID)] ?? "unknown",
+        operatorSent: p.IsMailSentToTO === true,
+        zaereenSent: p.IsMailSentToApplicants === true
+      });
+    }
+  }
+  const byDay = /* @__PURE__ */ new Map();
+  for (const s of stays.values()) {
+    const list = byDay.get(s.najafStart) ?? [];
+    list.push(s);
+    byDay.set(s.najafStart, list);
+  }
+  const days = [...byDay.entries()].sort(([a], [b]) => a < b ? -1 : 1).map(([date, list]) => ({ date, stays: list.sort((a, b) => a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0) }));
+  return { today, days, excluded };
+}
+function planIndex(rows, today) {
+  const out = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    for (const p of r.TourSubvenuePlan || []) {
+      if (isNajaf(p) !== true) continue;
+      const start = day(p.StartDateTimeZone);
+      if (start < today || p.TourId === void 0 || p.TourId === null) continue;
+      const key = stayKey(p.TourId, start);
+      if (!out.has(key)) out.set(key, { plan: p, row: r });
+    }
+  }
+  return out;
+}
+function validateEmailRequest(body) {
+  if (!body || !Array.isArray(body.items) || !body.items.length) throw new Error("Choose at least one email to send");
+  if (body.items.length > MAX_EMAILS_PER_RUN) throw new Error(`At most ${MAX_EMAILS_PER_RUN} emails in one run`);
+  if (body.confirm !== true) throw new Error("Sending emails needs confirm: true");
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const it of body.items) {
+    if (!it || typeof it.stay !== "string" || !/^[^|]{1,40}\|\d{4}-\d{2}-\d{2}$/.test(it.stay)) throw new Error("Each email must name a stay");
+    if (!RECIPIENTS.includes(it.to)) throw new Error("Each email must go to the operator or the zaereen");
+    if (it.resend !== void 0 && typeof it.resend !== "boolean") throw new Error("resend must be true or false");
+    const k = `${it.stay}|${it.to}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ stay: it.stay, to: it.to, ...it.resend ? { resend: true } : {} });
+  }
+  return out;
+}
+var RECIPIENT_LABEL = { operator: "tour operator", zaereen: "zaereen" };
+function nkMessage(resp) {
+  const m = resp?.ReturnMessage;
+  if (Array.isArray(m)) return m.filter(Boolean).join("; ");
+  return m === void 0 || m === null ? "" : String(m);
+}
+async function runEmails(items, deps) {
+  const progress = deps.progress ?? (() => {
+  });
+  const { api, today } = deps;
+  progress({ level: "info", message: `Reading NKERP's tour accommodation list for ${items.length} email${items.length === 1 ? "" : "s"}` });
+  const live = planIndex(await api.tourList(addDays(today, -LIST_LOOKBACK_DAYS)), today);
+  const ordered = [...items].sort((a, b) => {
+    const [, da] = a.stay.split("|");
+    const [, db] = b.stay.split("|");
+    return da !== db ? da < db ? -1 : 1 : a.stay !== b.stay ? a.stay < b.stay ? -1 : 1 : a.to === "operator" ? -1 : 1;
+  });
+  const results = [];
+  let stopped = null;
+  const report = (r, level) => {
+    results.push(r);
+    progress({
+      level,
+      message: `${r.ref || r.stay} ${r.najafStart} \u2192 ${RECIPIENT_LABEL[r.to]}: ${r.message}`,
+      result: r,
+      current: results.length,
+      total: ordered.length
+    });
+  };
+  for (const it of ordered) {
+    const [, start] = it.stay.split("|");
+    const hit = live.get(it.stay);
+    const base = { stay: it.stay, to: it.to, ref: hit ? String(hit.row.TourReferenceId ?? "") : "", najafStart: start };
+    if (stopped) {
+      report({ ...base, outcome: "not-run", message: "not sent: the run stopped before this one" }, "warn");
+      continue;
+    }
+    if (deps.signal?.aborted) {
+      stopped = "stopped from the page; emails already sent stay sent";
+      report({ ...base, outcome: "not-run", message: "not sent: stopped before this one" }, "warn");
+      continue;
+    }
+    if (deps.deadline && Date.now() >= deps.deadline) {
+      stopped = "time limit reached; press Send again for the rest (already-sent emails are skipped)";
+      report({ ...base, outcome: "not-run", message: "not sent: time limit reached" }, "warn");
+      continue;
+    }
+    if (!hit) {
+      report({ ...base, outcome: "skipped", message: "not sent: NKERP no longer lists this Najaf stay from today" }, "warn");
+      continue;
+    }
+    const { plan: plan2 } = hit;
+    if (Number(plan2.AccomudationStatusID) === 3) {
+      report({ ...base, outcome: "skipped", message: "not sent: no rooms are assigned in NKERP yet" }, "warn");
+      continue;
+    }
+    const already = it.to === "operator" ? plan2.IsMailSentToTO === true : plan2.IsMailSentToApplicants === true;
+    if (already && !it.resend) {
+      report({ ...base, outcome: "skipped", message: "not sent: NKERP shows it was already sent" }, "info");
+      continue;
+    }
+    const payload = {
+      StartDateTimeZone: plan2.StartDateTimeZone,
+      SubvenueId: plan2.SubvenueId,
+      TourId: plan2.TourId,
+      VenueId: plan2.VenueId
+    };
+    try {
+      const resp = await api.send(it.to, payload);
+      if (resp && resp.ReturnStatus === false) {
+        report({ ...base, outcome: "refused", message: `NKERP refused: ${nkMessage(resp) || "no reason given"}` }, "error");
+      } else {
+        report({ ...base, outcome: "sent", message: `sent${nkMessage(resp) ? ` (${nkMessage(resp)})` : ""}` }, "success");
+      }
+    } catch (err) {
+      if (err instanceof Rejected) {
+        report({ ...base, outcome: "refused", message: `NKERP refused: ${err.message}` }, "error");
+      } else {
+        stopped = "a send got no clear answer from NKERP, so no further emails were sent";
+        report({ ...base, outcome: "uncertain", message: `no clear answer (${errorMessage(err)}); it may have gone out. Check its envelope in NKERP before sending again` }, "error");
+      }
+    }
+  }
+  const sent = results.filter((r) => r.outcome === "sent" || r.outcome === "uncertain");
+  if (sent.length) {
+    progress({ level: "info", message: "Checking NKERP marks the emails as sent" });
+    try {
+      const after = planIndex(await api.tourList(addDays(today, -LIST_LOOKBACK_DAYS)), today);
+      for (const r of sent) {
+        const p = after.get(r.stay)?.plan;
+        const flag = p && (r.to === "operator" ? p.IsMailSentToTO === true : p.IsMailSentToApplicants === true);
+        if (flag && r.outcome === "sent") {
+          r.outcome = "confirmed";
+          r.message = "sent and confirmed by NKERP";
+        } else if (flag && r.outcome === "uncertain") {
+          r.message = "NKERP now shows it as sent (the answer was lost, but it went out)";
+          r.outcome = "confirmed";
+        } else if (r.outcome === "sent") {
+          r.message = "NKERP accepted it but does not show it as sent yet; check its envelope in NKERP";
+        }
+      }
+    } catch (err) {
+      progress({ level: "warn", message: `Could not re-read NKERP to confirm (${errorMessage(err)}); the sends themselves were accepted` });
+    }
+  }
+  const count = (o) => results.filter((r) => r.outcome === o).length;
+  const summary = {
+    requested: ordered.length,
+    confirmed: count("confirmed"),
+    sent: count("sent"),
+    refused: count("refused"),
+    skipped: count("skipped"),
+    uncertain: count("uncertain"),
+    notRun: count("not-run"),
+    stopped
+  };
+  progress({ level: summary.refused || summary.uncertain ? "warn" : "success", message: `Done: ${summary.confirmed + summary.sent} sent (${summary.confirmed} confirmed), ${summary.refused} refused, ${summary.skipped} skipped${summary.notRun ? `, ${summary.notRun} not run` : ""}` });
+  return { results, summary };
+}
 
 // server/nkerp-sync/payloads.ts
 var g = (o, k) => o == null || o[k] === void 0 ? null : o[k];
@@ -1688,6 +1940,16 @@ var Run = class {
     }
   }
 };
+function arrivalScope(opts) {
+  if (!opts.from && !opts.to) return null;
+  return { from: opts.from || "0000-01-01", to: opts.to || "9999-12-31" };
+}
+function scopeLabel(scope) {
+  if (scope.from === scope.to) return `on ${scope.from}`;
+  if (scope.to === "9999-12-31") return `from ${scope.from}`;
+  if (scope.from === "0000-01-01") return `up to ${scope.to}`;
+  return `${scope.from} to ${scope.to}`;
+}
 function verb(action) {
   return action === "allocate" ? "allocated" : action === "reallocate" ? "reallocated" : "deallocated";
 }
@@ -1740,7 +2002,9 @@ async function runSync(opts, deps) {
   const since = addDays(today, -LOOKBACK_DAYS);
   const only = new Set(opts.only && opts.only.length ? opts.only : ALL_ACTIONS);
   const maxDealloc = opts.maxDeallocations ?? MAX_DEALLOC;
-  progress({ level: "info", stage: "start", message: `${apply ? "Sync" : "Preview (dry run)"} for ${today}; actions: ${[...only].join(", ")}` });
+  const scope = arrivalScope(opts);
+  const inScope = (arrival) => !scope || Boolean(arrival) && arrival >= scope.from && arrival <= scope.to;
+  progress({ level: "info", stage: "start", message: `${apply ? "Sync" : "Preview (dry run)"} for ${today}; actions: ${[...only].join(", ")}` + (scope ? `; only arrivals ${scopeLabel(scope)}` : "") });
   progress({ level: "info", stage: "read-sheet", message: "Reading the Zaereen Lodging & Room Allotment Grid" });
   const sheet = await deps.readSheet();
   const sheetRooms = sheet.filter((r) => r.its && r.room).length;
@@ -1755,14 +2019,21 @@ async function runSync(opts, deps) {
   progress({ level: "info", stage: "read-pending", message: `NKERP: ${apps.length} applicants still have unallocated Najaf nights` });
   const R = new Run(deps.nkerp, apply, today, Boolean(opts.allowOverCapacity), opts.limit, progress, deps.signal, deps.deadline);
   const rep = R.report;
-  const { items, notes, skipped } = plan(sheet, apps, today);
+  if (scope) rep.scope = scope;
+  const { items, notes, skipped } = plan(scope ? sheet.filter((r) => r.arrival === null || inScope(r.arrival)) : sheet, apps, today);
+  const scopedMem = scope ? new Map([...mem].filter(([, m]) => inScope(m.arrival))) : mem;
   const refs = sortedStrings([
-    ...sheet.filter((r) => r.ref && r.arrival && r.arrival >= since).map((r) => r.ref),
-    ...[...mem.keys()].map((k) => parseTupleKey(k)[0])
+    ...sheet.filter((r) => r.ref && r.arrival && r.arrival >= since && inScope(r.arrival)).map((r) => r.ref),
+    ...[...scopedMem.keys()].map((k) => parseTupleKey(k)[0])
   ]);
   progress({ level: "info", stage: "read-tours", message: `Reading who is where for ${refs.length} tours`, current: 0, total: refs.length });
   const current = await readTours(deps.nkerp, refs, deps.concurrency ?? 4, progress, deps.signal, deps.deadline);
-  const sync = planSync(sheet, current, apps, mem, today);
+  const sync = planSync(sheet, current, apps, scopedMem, today);
+  if (scope) {
+    sync.moves = sync.moves.filter((mv) => inScope(sync.state.get(tupleKey(mv.ref, mv.person.its))?.arrival));
+    sync.removals = sync.removals.filter((rm) => inScope(rm.arrival));
+    sync.cleared = sync.cleared.filter((cl) => inScope(cl.arrival));
+  }
   for (const [k, v] of Object.entries(sync.notes)) (notes[k] ??= []).push(...v);
   rep.notes = notes;
   rep.skipped = skipped;
@@ -1798,6 +2069,7 @@ async function runSync(opts, deps) {
     const [ref, its] = parseTupleKey(key);
     const m = mem.get(key);
     if (st.arrival && st.arrival < since) continue;
+    if (!inScope(st.arrival)) continue;
     if (!R.acted.has(key) && (!m || m.building !== st.building || m.room !== st.room)) {
       R.log(
         "SEEN",
@@ -1996,6 +2268,33 @@ function findDate(t, today) {
   if (/\b(?:from|starting|as of)\s+today\b/.test(t)) return today;
   return null;
 }
+var MON = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*";
+var DATE_EXPR = `(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{4}|\\d{1,2}(?:st|nd|rd|th)?(?: of)?[- ]${MON}(?:[- ]\\d{4})?|${MON} \\d{1,2}(?:st|nd|rd|th)?|tomorrow|today)`;
+function findScope(t, today) {
+  const dateOf = (expr) => expr === "today" ? today : findDate(expr, today);
+  const order = (a, b) => a && b ? a <= b ? { from: a, to: b } : { from: b, to: a } : null;
+  const short = t.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|\u2013|to|until|till|through|thru|and)\\s*(\\d{1,2})(?:st|nd|rd|th)?(?: of)? (${MON}(?: \\d{4})?)\\b`));
+  if (short) {
+    const r = order(dateOf(`${short[1]} ${short[3]}`), dateOf(`${short[2]} ${short[3]}`));
+    if (r) return r;
+  }
+  const range = t.match(new RegExp(`\\b(${DATE_EXPR})\\s*(?:-|\u2013|to|until|till|through|thru|and)\\s*(${DATE_EXPR})\\b`));
+  if (range) {
+    const r = order(dateOf(range[1]), dateOf(range[2]));
+    if (r) return r;
+  }
+  const single = t.match(new RegExp(`\\b(?:only|just|for|on|arrivals?(?: on)?|arriving(?: on)?)\\s+(?:the\\s+)?(?:arrivals?\\s+(?:on\\s+)?)?(${DATE_EXPR})\\b`)) || t.match(new RegExp(`\\b(${DATE_EXPR})(?:'s)?\\s+(?:only|arrivals?)\\b`));
+  if (single) {
+    const d = dateOf(single[1]);
+    if (d) return { from: d, to: d };
+  }
+  const dm = t.match(/\b(?:only|just|for|on)\s+(?:arrivals?\s+(?:on\s+)?)?(\d{1,2}[/.]\d{1,2})\b(?![/.]\d)/);
+  if (dm) {
+    const d = findDate(`on ${dm[1]}`, today);
+    if (d) return { from: d, to: d };
+  }
+  return null;
+}
 var ACTION_WORDS = {
   deallocate: /\bde-?allocat\w*|\bremov\w* (?:people|guests|them)|\bfree (?:up )?(?:the )?rooms?\b/,
   reallocate: /\bre-?allocat\w*|\bmov(?:e|es|ing) (?:people|guests|them)|\broom changes?\b/,
@@ -2007,7 +2306,9 @@ function mentionedActions(t) {
 function describe(options, today) {
   const acts = options.only && options.only.length < 3 ? options.only.join(" + ") : "deallocate, reallocate and allocate";
   const parts = [`${options.apply ? "Sync to NKERP" : "Preview (dry run, nothing saved)"}: ${acts}`];
-  parts.push(`from ${options.today ?? today}`);
+  if (options.from && options.to) {
+    parts.push(options.from === options.to ? `only arrivals on ${options.from}` : `only arrivals from ${options.from} to ${options.to}`);
+  } else parts.push(`from ${options.today ?? today}`);
   if (options.limit) parts.push(`first ${options.limit} save group${options.limit === 1 ? "" : "s"} only`);
   if (options.maxDeallocations !== void 0) parts.push(`hold deallocations above ${options.maxDeallocations}`);
   return parts.join(", ");
@@ -2026,6 +2327,8 @@ var HELP = [
   '- "Sync now" or "retry": the same as the Sync to NKERP button',
   '- "Preview" / "what would it do": a dry run that saves nothing',
   '- "Only allocations", "skip deallocations", "just reallocate"',
+  '- "Sync 25 Nov only" or "preview arrivals on 2026-11-25": just one arrival date',
+  '- "Sync 20-25 Nov" or "preview between 1 Dec and 3 Dec": a range of arrival dates',
   '- "Sync from 20 Nov" or "preview tomorrow": start from a date',
   '- "Try just the first 2 groups": a trial run',
   '- "The sheet is correct, allow mass deallocation": release held deallocations (asks you to confirm)',
@@ -2124,9 +2427,15 @@ ${HELP}` };
   if (options.only && !options.only.length) {
     return { ...base, intent: "unsupported", reply: "That would leave no actions to run. Say which of allocate, reallocate or deallocate to do." };
   }
-  const date = findDate(t, ctx.today);
-  if (date) options.today = date;
-  const lim = t.match(/\b(?:limit(?: to)?|first|trial(?: of)?|only|just)\s+(\d{1,3})\s*(?:groups?|saves?|rooms?|batches?)?\b/);
+  const scope = findScope(t, ctx.today);
+  if (scope) {
+    options.from = scope.from;
+    options.to = scope.to;
+  } else {
+    const date = findDate(t, ctx.today);
+    if (date) options.today = date;
+  }
+  const lim = t.match(/\b(?:limit(?: to)?|first|trial(?: of)?|only|just)\s+(\d{1,3})\s*(?:groups?|saves?|rooms?|batches?)?\b(?!\s*(?:st|nd|rd|th)?\s*(?:of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|[-/.]\d))/);
   if (lim && !/deallocat/.test(t.slice(lim.index ?? 0, (lim.index ?? 0) + lim[0].length + 15))) options.limit = parseInt(lim[1], 10);
   if (/\b(allow|ignore|override|skip|bypass)\b[^.]{0,25}\b(capacity|full rooms?|room limits?)\b|\bover[- ]?capacity (is )?(ok|fine|allowed)\b|\boverfill\b|\beven if (it'?s |the rooms? (is|are) )?full\b/.test(t)) {
     options.allowOverCapacity = true;
@@ -2159,7 +2468,9 @@ var SCHEMA = {
   properties: {
     intent: { type: "string", enum: ["sync", "preview", "cancel", "status", "explain", "help", "unsupported"] },
     only: { type: "array", items: { type: "string", enum: ["allocate", "reallocate", "deallocate"] } },
-    startDate: { type: "string", description: "YYYY-MM-DD, only if the user named a start date" },
+    startDate: { type: "string", description: 'YYYY-MM-DD, only if the user named a start date ("from X")' },
+    arrivalFrom: { type: "string", description: "YYYY-MM-DD: first arrival date when the user limits the run to one date or a date range" },
+    arrivalTo: { type: "string", description: "YYYY-MM-DD: last arrival date (the same as arrivalFrom for one date)" },
     limit: { type: "integer", minimum: 1, maximum: 500 },
     allowOverCapacity: { type: "boolean" },
     allowMassDeallocation: { type: "boolean" },
@@ -2184,7 +2495,8 @@ function systemPrompt(ctx) {
     "  and what to do. Never invent facts that are not in the report.",
     "- unsupported: anything the tool cannot do; say so briefly in `reply` and suggest what it can do.",
     "Options (only when the user clearly asks for them): only (subset of actions), startDate (YYYY-MM-DD; today is",
-    `${ctx.today}, Asia/Baghdad), limit (first N save groups), allowOverCapacity, allowMassDeallocation,`,
+    `${ctx.today}, Asia/Baghdad), arrivalFrom + arrivalTo (only arrivals on one date or in a date range),`,
+    "limit (first N save groups), allowOverCapacity, allowMassDeallocation,",
     "maxDeallocations. Set allowOverCapacity / allowMassDeallocation ONLY if the user explicitly asks to allow",
     'over-capacity rooms or to release / allow the held mass deallocation (for example "the sheet is correct, go',
     'ahead with the deallocations"). When unsure, leave them out.',
@@ -2220,6 +2532,17 @@ function proposalFromModel(obj, ctx) {
     if (!iso || iso !== obj.startDate.slice(0, 10)) throw new Error("model returned a bad start date");
     options.today = iso;
   }
+  for (const [field, end] of [["arrivalFrom", "from"], ["arrivalTo", "to"]]) {
+    const v = obj[field];
+    if (typeof v !== "string" || !v) continue;
+    const iso = parseArrival(v);
+    if (!iso || iso !== v.slice(0, 10)) throw new Error("model returned a bad arrival date");
+    options[end] = iso;
+  }
+  if (options.from && !options.to) options.to = options.from;
+  if (options.to && !options.from) options.from = options.to;
+  if (options.from && options.to && options.from > options.to) [options.from, options.to] = [options.to, options.from];
+  if (options.from) delete options.today;
   if (Number.isInteger(obj.limit) && obj.limit >= 1 && obj.limit <= 500) options.limit = obj.limit;
   if (obj.allowOverCapacity === true) options.allowOverCapacity = true;
   if (obj.allowMassDeallocation === true) options.allowMassDeallocation = true;
@@ -2424,6 +2747,16 @@ function validateOptions(body) {
     }
     o.today = body.today;
   }
+  for (const end of ["from", "to"]) {
+    const v = body?.[end];
+    if (v === void 0 || v === null || v === "") continue;
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v) || parseArrival(v) !== v) {
+      throw new Error(`${end} must be a YYYY-MM-DD date`);
+    }
+    o[end] = v;
+  }
+  if (o.from && o.to && o.from > o.to) throw new Error("the date range ends before it starts");
+  if (o.from && o.to && addDays(o.from, 366) < o.to) throw new Error("a date range can cover at most one year");
   if (body?.limit !== void 0 && body.limit !== null) {
     if (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 500) throw new Error("limit must be a whole number from 1 to 500");
     o.limit = body.limit;
@@ -2660,6 +2993,102 @@ async function handleInterpret(req, d = {}) {
     return json({ error: errorMessage(err) }, 500);
   }
 }
+var emailRunning = false;
+function emailApi(d, allowWrite, signal) {
+  return d.emailApi ? d.emailApi(allowWrite, signal) : new NkerpEmailClient({ allowWrite, signal });
+}
+async function handleEmailList(req, d = {}) {
+  const denied = checkAccess(req);
+  if (denied) return denied;
+  const c = (d.credentials ?? credentialStatus)();
+  if (!c.nkerp && !d.emailApi) return json({ error: "The NKERP login is not configured on the server (NKERP_LOGIN_ID, NKERP_PASSWORD)" }, 503);
+  const today = (d.today ?? todayIn)();
+  try {
+    const rows = await emailApi(d, false).tourList(addDays(today, -LIST_LOOKBACK_DAYS));
+    return json({ ...najafSchedule(rows, today), running: emailRunning, readAt: (/* @__PURE__ */ new Date()).toISOString() });
+  } catch (err) {
+    return json({ error: `Could not read NKERP: ${errorMessage(err)}` }, 502);
+  }
+}
+async function handleEmailSend(req, d = {}) {
+  const denied = checkAccess(req);
+  if (denied) return denied;
+  let items;
+  try {
+    items = validateEmailRequest(await readJson(req));
+  } catch (err) {
+    return json({ error: errorMessage(err) }, 400);
+  }
+  const c = (d.credentials ?? credentialStatus)();
+  if (!c.nkerp && !d.emailApi) return json({ error: "The NKERP login is not configured on the server (NKERP_LOGIN_ID, NKERP_PASSWORD)" }, 503);
+  if (emailRunning) return json({ error: "Emails are already being sent" }, 409);
+  emailRunning = true;
+  const started = Date.now();
+  const limit = maxSeconds(d);
+  const deadline = limit ? started + Math.max(20, limit - 30) * 1e3 : void 0;
+  const controller = new AbortController();
+  const encoder = new TextEncoder();
+  let open = true;
+  let seq = 0;
+  const stream = new ReadableStream({
+    start(ctrl) {
+      const write = (obj) => {
+        if (!open) return;
+        try {
+          ctrl.enqueue(encoder.encode(`${JSON.stringify(obj)}
+`));
+        } catch {
+          open = false;
+        }
+      };
+      const ping = setInterval(() => write({ type: "ping" }), 15e3);
+      write({ type: "start", total: items.length, startedAt: new Date(started).toISOString() });
+      (async () => {
+        let done;
+        try {
+          const out = await runEmails(items, {
+            api: emailApi(d, true, controller.signal),
+            today: (d.today ?? todayIn)(),
+            signal: controller.signal,
+            deadline,
+            progress: (ev) => {
+              const line = `[nkerp-emails] ${ev.level.toUpperCase()}: ${ev.message}`;
+              if (ev.level === "error") console.error(line);
+              else if (ev.level !== "debug") console.log(line);
+              write({ type: "event", event: { ...ev, seq: ++seq, at: (/* @__PURE__ */ new Date()).toISOString() } });
+            }
+          });
+          done = { type: "done", ...out, durationMs: Date.now() - started };
+        } catch (err) {
+          done = { type: "done", results: [], summary: null, error: errorMessage(err), durationMs: Date.now() - started };
+        } finally {
+          emailRunning = false;
+          clearInterval(ping);
+        }
+        write(done);
+        if (open) {
+          open = false;
+          try {
+            ctrl.close();
+          } catch {
+          }
+        }
+      })();
+    },
+    cancel() {
+      open = false;
+      controller.abort();
+    }
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no"
+    }
+  });
+}
 async function dispatch(name, req, d = {}) {
   const m = req.method.toUpperCase();
   if (name === "config" && m === "GET") return handleConfig(d);
@@ -2667,6 +3096,8 @@ async function dispatch(name, req, d = {}) {
   if (name === "run" && m === "POST") return handleRun(req, d);
   if (name === "history" && m === "GET") return handleHistory(req, d);
   if (name === "interpret" && m === "POST") return handleInterpret(req, d);
+  if (name === "emails" && m === "GET") return handleEmailList(req, d);
+  if (name === "emails-send" && m === "POST") return handleEmailSend(req, d);
   return json({ error: "Not found" }, 404);
 }
 export {
@@ -2675,6 +3106,8 @@ export {
   groupHistory,
   handleAuth,
   handleConfig,
+  handleEmailList,
+  handleEmailSend,
   handleHistory,
   handleInterpret,
   handleRun,

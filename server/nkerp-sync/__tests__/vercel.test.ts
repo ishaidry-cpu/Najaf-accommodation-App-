@@ -38,6 +38,12 @@ describe('Vercel functions', () => {
       const it = await import('./api/nkerp-sync/interpret.js');
       const p = await it.POST(new Request('http://x/api/nkerp-sync/interpret', { method: 'POST', body: '{"text":"preview tomorrow"}' }));
       out.interpret = [(await p.json()).intent];
+      const em = await import('./api/nkerp-sync/emails.js');
+      out.emails = (await em.GET(new Request('http://x/api/nkerp-sync/emails'))).status;
+      const es = await import('./api/nkerp-sync/emails-send.js');
+      out.emailsMax = es.config.maxDuration;
+      const esBad = await es.POST(new Request('http://x/api/nkerp-sync/emails-send', { method: 'POST', body: '{"items":[]}' }));
+      out.emailsBad = [esBad.status, (await esBad.json()).error];
       const auth = await import('./api/nkerp-sync/auth.js');
       out.auth = auth.POST(new Request('http://x/api/nkerp-sync/auth', { method: 'POST' })).status;
       console.log(JSON.stringify(out));
@@ -50,6 +56,7 @@ describe('Vercel functions', () => {
     assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').pop()!), {
       config: [200, false], runMax: 300, runBad: [400, 'today must be a YYYY-MM-DD date'], runUnconfigured: 503,
       history: [200, 0], interpret: ['preview'], auth: 200,
+      emails: 503, emailsMax: 300, emailsBad: [400, 'Choose at least one email to send'],
     });
   });
 

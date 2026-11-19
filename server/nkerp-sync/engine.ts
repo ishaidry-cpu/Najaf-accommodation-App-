@@ -344,6 +344,19 @@ export class Run {
   }
 }
 
+/** The run's arrival scope, or null for every arrival. Missing ends are open (from alone = that day onward). */
+export function arrivalScope(opts: Pick<RunOptions, 'from' | 'to'>): { from: string; to: string } | null {
+  if (!opts.from && !opts.to) return null;
+  return { from: opts.from || '0000-01-01', to: opts.to || '9999-12-31' };
+}
+
+export function scopeLabel(scope: { from: string; to: string }): string {
+  if (scope.from === scope.to) return `on ${scope.from}`;
+  if (scope.to === '9999-12-31') return `from ${scope.from}`;
+  if (scope.from === '0000-01-01') return `up to ${scope.to}`;
+  return `${scope.from} to ${scope.to}`;
+}
+
 function verb(action: SyncAction): string {
   return action === 'allocate' ? 'allocated' : action === 'reallocate' ? 'reallocated' : 'deallocated';
 }
@@ -420,8 +433,12 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
   const since = addDays(today, -LOOKBACK_DAYS);
   const only = new Set<SyncAction>(opts.only && opts.only.length ? opts.only : ALL_ACTIONS);
   const maxDealloc = opts.maxDeallocations ?? MAX_DEALLOC;
+  const scope = arrivalScope(opts);
+  const inScope = (arrival: string | null | undefined): boolean =>
+    !scope || (Boolean(arrival) && (arrival as string) >= scope.from && (arrival as string) <= scope.to);
 
-  progress({ level: 'info', stage: 'start', message: `${apply ? 'Sync' : 'Preview (dry run)'} for ${today}; actions: ${[...only].join(', ')}` });
+  progress({ level: 'info', stage: 'start', message: `${apply ? 'Sync' : 'Preview (dry run)'} for ${today}; actions: ${[...only].join(', ')}`
+    + (scope ? `; only arrivals ${scopeLabel(scope)}` : '') });
   progress({ level: 'info', stage: 'read-sheet', message: 'Reading the Zaereen Lodging & Room Allotment Grid' });
   const sheet = await deps.readSheet();
   const sheetRooms = sheet.filter((r) => r.its && r.room).length;
@@ -439,15 +456,24 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
 
   const R = new Run(deps.nkerp, apply, today, Boolean(opts.allowOverCapacity), opts.limit, progress, deps.signal, deps.deadline);
   const rep = R.report;
+  if (scope) rep.scope = scope;
 
-  const { items, notes, skipped } = plan(sheet, apps, today);
+  // A scoped run plans allocation only for Sheet rows arriving in scope, reads only the tours that have such a
+  // row (or a remembered stay in scope), and only remembers / deallocates stays in scope. Unscoped: everything.
+  const { items, notes, skipped } = plan(scope ? sheet.filter((r) => r.arrival === null || inScope(r.arrival)) : sheet, apps, today);
+  const scopedMem = scope ? new Map([...mem].filter(([, m]) => inScope(m.arrival))) : mem;
   const refs = sortedStrings([
-    ...sheet.filter((r) => r.ref && r.arrival && r.arrival >= since).map((r) => r.ref),
-    ...[...mem.keys()].map((k) => parseTupleKey<[string, string]>(k)[0]),
+    ...sheet.filter((r) => r.ref && r.arrival && r.arrival >= since && inScope(r.arrival)).map((r) => r.ref),
+    ...[...scopedMem.keys()].map((k) => parseTupleKey<[string, string]>(k)[0]),
   ]);
   progress({ level: 'info', stage: 'read-tours', message: `Reading who is where for ${refs.length} tours`, current: 0, total: refs.length });
   const current = await readTours(deps.nkerp, refs, deps.concurrency ?? 4, progress, deps.signal, deps.deadline);
-  const sync = planSync(sheet, current, apps, mem, today);
+  const sync = planSync(sheet, current, apps, scopedMem, today);
+  if (scope) {
+    sync.moves = sync.moves.filter((mv) => inScope(sync.state.get(tupleKey(mv.ref, mv.person.its))?.arrival));
+    sync.removals = sync.removals.filter((rm) => inScope(rm.arrival));
+    sync.cleared = sync.cleared.filter((cl) => inScope(cl.arrival));
+  }
   for (const [k, v] of Object.entries(sync.notes)) (notes[k] ??= []).push(...v);
   rep.notes = notes;
   rep.skipped = skipped;
@@ -483,6 +509,7 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
     const [ref, its] = parseTupleKey<[string, string]>(key);
     const m = mem.get(key);
     if (st.arrival && st.arrival < since) continue;          // stays older than the lookback aren't remembered
+    if (!inScope(st.arrival)) continue;                       // a scoped run only remembers stays it looked at
     if (!R.acted.has(key) && (!m || m.building !== st.building || m.room !== st.room)) {
       R.log('SEEN', 'recorded', { ref, its, name: st.name, arrival: st.arrival, sheet: [st.building, st.room] },
         `Sheet room by ${st.how}`);
