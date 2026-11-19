@@ -232,13 +232,21 @@ export class NkerpClient implements NkerpApi {
     return this.req(path, body);
   }
 
-  async paged(path: string, body: NkRecord, listKey: string, key: (a: NkRecord) => string): Promise<NkRecord[]> {
+  /**
+   * All pages of a list. `rawCount`: NKERP's total counts rows it sends twice (the tour accommodation list
+   * repeats a tour as identical rows), so compare the rows received, not the unique ones, with TotalRows.
+   */
+  async paged(path: string, body: NkRecord, listKey: string, key: (a: NkRecord) => string,
+    opts: { rawCount?: boolean } = {}): Promise<NkRecord[]> {
     const out: NkRecord[] = [];
     const seen = new Set<string>();
+    let received = 0;
+    let lastPage = '';
     for (let page = 1; ; page++) {
       const r = await this.read(path, { ...body, currentPage: page });
       const chunk: NkRecord[] = r[listKey] || [];
       const total = parseInt(String(r.TotalRows ?? 0), 10) || 0;
+      received += chunk.length;
       let fresh = 0;
       for (const a of chunk) {
         delete a.ImageUrl;
@@ -249,9 +257,11 @@ export class NkerpClient implements NkerpApi {
           fresh++;
         }
       }
-      if (seen.size >= total) return out;
-      if (!chunk.length) throw new Error(`NKERP list stopped at ${seen.size} of ${total} rows; not planning on a partial list`);
-      if (!fresh) throw new Error('NKERP repeated a page of a list; not planning on a partial list');
+      if ((opts.rawCount ? received : seen.size) >= total) return out;
+      if (!chunk.length) throw new Error(`NKERP list stopped at ${opts.rawCount ? received : seen.size} of ${total} rows; not planning on a partial list`);
+      const sig = JSON.stringify(chunk.map(key));
+      if (opts.rawCount ? sig === lastPage : !fresh) throw new Error('NKERP repeated a page of a list; not planning on a partial list');
+      lastPage = sig;
     }
   }
 

@@ -569,13 +569,20 @@ var NkerpClient = class {
     await this.login();
     return this.req(path, body);
   }
-  async paged(path, body, listKey, key) {
+  /**
+   * All pages of a list. `rawCount`: NKERP's total counts rows it sends twice (the tour accommodation list
+   * repeats a tour as identical rows), so compare the rows received, not the unique ones, with TotalRows.
+   */
+  async paged(path, body, listKey, key, opts = {}) {
     const out = [];
     const seen = /* @__PURE__ */ new Set();
+    let received = 0;
+    let lastPage = "";
     for (let page = 1; ; page++) {
       const r = await this.read(path, { ...body, currentPage: page });
       const chunk = r[listKey] || [];
       const total = parseInt(String(r.TotalRows ?? 0), 10) || 0;
+      received += chunk.length;
       let fresh = 0;
       for (const a of chunk) {
         delete a.ImageUrl;
@@ -586,9 +593,11 @@ var NkerpClient = class {
           fresh++;
         }
       }
-      if (seen.size >= total) return out;
-      if (!chunk.length) throw new Error(`NKERP list stopped at ${seen.size} of ${total} rows; not planning on a partial list`);
-      if (!fresh) throw new Error("NKERP repeated a page of a list; not planning on a partial list");
+      if ((opts.rawCount ? received : seen.size) >= total) return out;
+      if (!chunk.length) throw new Error(`NKERP list stopped at ${opts.rawCount ? received : seen.size} of ${total} rows; not planning on a partial list`);
+      const sig = JSON.stringify(chunk.map(key));
+      if (opts.rawCount ? sig === lastPage : !fresh) throw new Error("NKERP repeated a page of a list; not planning on a partial list");
+      lastPage = sig;
     }
   }
   /** Every Najaf applicant that still has unallocated dates (the Manage Room Allocation list). */
@@ -765,7 +774,7 @@ var NkerpEmailClient = class {
     }, "listTourAccommotionDetails", (r) => JSON.stringify([
       r.TourReferenceId ?? null,
       (r.TourSubvenuePlan || []).map((p) => [p.TourId, p.SubvenueId, p.StartDateTimeZone])
-    ]));
+    ]), { rawCount: true });
   }
   send(to, payload) {
     return this.client.write(to === "operator" ? SEND_TO_OPERATOR : SEND_TO_ZAEREEN, payload);
@@ -811,7 +820,7 @@ function najafSchedule(rows, today) {
         tourId: String(p.TourId),
         ref,
         operator: String(r.TOName ?? "").trim(),
-        office: String(r.OfficeName ?? "").trim(),
+        office: String(r.OfficeName ?? r.PartnerOfficeName ?? "").trim(),
         pax: Number.isFinite(pax) ? pax : null,
         arrival: r.ArrivalDate ? day(r.ArrivalDate) : null,
         departure: r.DepartureDate ? day(r.DepartureDate) : null,

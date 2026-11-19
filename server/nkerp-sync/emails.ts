@@ -66,7 +66,7 @@ export class NkerpEmailClient implements EmailApi {
       clientTimeZoneOffset: -180, group: '1', sortBy: 'StartDateTimeZone', itemsPerPage: 100, maxSize: 10,
       totalItems: 0, reverse: false,
     }, 'listTourAccommotionDetails', (r) => JSON.stringify([r.TourReferenceId ?? null,
-      (r.TourSubvenuePlan || []).map((p: NkRecord) => [p.TourId, p.SubvenueId, p.StartDateTimeZone])]));
+      (r.TourSubvenuePlan || []).map((p: NkRecord) => [p.TourId, p.SubvenueId, p.StartDateTimeZone])]), { rawCount: true });
   }
 
   send(to: Recipient, payload: EmailPayload): Promise<NkRecord> {
@@ -148,7 +148,7 @@ export function najafSchedule(rows: NkRecord[], today: string): EmailList {
       if (stays.has(key)) continue;
       const pax = Number(r.PaxCount);
       stays.set(key, {
-        key, tourId: String(p.TourId), ref, operator: String(r.TOName ?? '').trim(), office: String(r.OfficeName ?? '').trim(),
+        key, tourId: String(p.TourId), ref, operator: String(r.TOName ?? '').trim(), office: String(r.OfficeName ?? r.PartnerOfficeName ?? '').trim(),
         pax: Number.isFinite(pax) ? pax : null, arrival: r.ArrivalDate ? day(r.ArrivalDate) : null,
         departure: r.DepartureDate ? day(r.DepartureDate) : null, najafStart: start,
         najafEnd: p.EndDateTimeZone ? day(p.EndDateTimeZone) : null,

@@ -182,6 +182,22 @@ describe('email requests', () => {
   });
 });
 
+describe('reading the tour list', () => {
+  it('accepts a tour NKERP lists twice (its total counts both rows) and still refuses a cut-off list', async () => {
+    const dup = tour('NKERP/TOUR/2026/3574', [plan(3574, 3, '2026-11-28')]);
+    const pages: Record<number, NkRecord[]> = { 1: [rows()[0], dup], 2: [dup] };
+    const client = new NkerpEmailClient();
+    client.client.read = (async (_p: string, body: any) => ({ listTourAccommotionDetails: structuredClone(pages[body.currentPage] ?? []), TotalRows: 3 })) as any;
+    const got = await client.tourList('2026-10-05');
+    assert.deepEqual(got.map((r) => r.TourReferenceId), ['NKERP/TOUR/2026/2211', 'NKERP/TOUR/2026/3574']);
+    pages[2] = [];
+    await assert.rejects(client.tourList('2026-10-05'), /stopped at 2 of 3 rows/);
+    pages[2] = [rows()[0], dup];
+    client.client.read = (async (_p: string, body: any) => ({ listTourAccommotionDetails: structuredClone(pages[body.currentPage === 1 ? 2 : 2]), TotalRows: 5 })) as any;
+    await assert.rejects(client.tourList('2026-10-05'), /repeated a page/);
+  });
+});
+
 describe('email HTTP handlers', () => {
   const creds = () => ({ nkerp: true, google: true, googleAccount: null, problem: null });
 
