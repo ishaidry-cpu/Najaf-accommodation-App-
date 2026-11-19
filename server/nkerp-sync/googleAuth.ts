@@ -3,19 +3,28 @@
  * assertion (RFC 7523) exchanged at the token endpoint for an access token. Tokens are cached and
  * refreshed five minutes before they expire; concurrent callers share one in-flight refresh.
  */
-import crypto from 'crypto';
 import { fetchJson, Rejected, withTransportRetry } from './http.js';
 import type { ServiceAccountKey } from './credentials.js';
 
 export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 
-function b64url(input: Buffer | string): string {
+function b64url(input: Uint8Array | string): string {
   return Buffer.from(input).toString('base64').replace(/=+$/u, '').replace(/\+/gu, '-').replace(/\//gu, '_');
 }
 
-/** The signed JWT assertion for `key`, valid for one hour from `nowSec`. */
-export function signAssertion(key: ServiceAccountKey, scope: string, nowSec: number): string {
+/** PEM (PKCS#8, as in Google key files) -> a Web Crypto RS256 signing key. */
+async function signingKey(pem: string): Promise<CryptoKey> {
+  const body = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/gu, '').replace(/\s+/gu, '');
+  return globalThis.crypto.subtle.importKey('pkcs8', Buffer.from(body, 'base64'),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+}
+
+/**
+ * The signed JWT assertion for `key`, valid for one hour from `nowSec`. Uses Web Crypto, so it runs the same
+ * on Node and on Cloudflare Workers.
+ */
+export async function signAssertion(key: ServiceAccountKey, scope: string, nowSec: number): Promise<string> {
   const header: Record<string, string> = { alg: 'RS256', typ: 'JWT' };
   if (key.private_key_id) header.kid = key.private_key_id;
   const claims = {
@@ -26,8 +35,9 @@ export function signAssertion(key: ServiceAccountKey, scope: string, nowSec: num
     exp: nowSec + 3600,
   };
   const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
-  const signature = crypto.createSign('RSA-SHA256').update(unsigned).end().sign(key.private_key);
-  return `${unsigned}.${b64url(signature)}`;
+  const signature = await globalThis.crypto.subtle.sign('RSASSA-PKCS1-v1_5', await signingKey(key.private_key),
+    new TextEncoder().encode(unsigned));
+  return `${unsigned}.${b64url(new Uint8Array(signature))}`;
 }
 
 export class GoogleTokenSource {
@@ -59,7 +69,7 @@ export class GoogleTokenSource {
   }
 
   private async refresh(): Promise<string> {
-    const assertion = signAssertion(this.key, this.scope, Math.floor(this.now() / 1000));
+    const assertion = await signAssertion(this.key, this.scope, Math.floor(this.now() / 1000));
     const body = new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
       assertion,

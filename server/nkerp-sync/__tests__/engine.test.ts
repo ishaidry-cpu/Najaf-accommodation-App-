@@ -443,8 +443,8 @@ describe('credentials and Google auth', () => {
   const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
   const key = { client_email: 'svc@example.iam.gserviceaccount.com', private_key: pem, private_key_id: 'kid1' };
 
-  it('signs a verifiable RS256 JWT assertion', () => {
-    const jwt = signAssertion(key, 'https://www.googleapis.com/auth/spreadsheets', 1_800_000_000);
+  it('signs a verifiable RS256 JWT assertion', async () => {
+    const jwt = await signAssertion(key, 'https://www.googleapis.com/auth/spreadsheets', 1_800_000_000);
     const [h, c, s] = jwt.split('.');
     const header = JSON.parse(Buffer.from(h, 'base64url').toString());
     const claims = JSON.parse(Buffer.from(c, 'base64url').toString());

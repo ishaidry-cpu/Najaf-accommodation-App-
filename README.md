@@ -13,7 +13,7 @@ This application streamlines reservation management and logistics for Zaereen ac
 ## Sync to NKERP
 
 The **Sync to NKERP** button (top bar on every screen) runs the Najaf accommodation allocation on the app's
-server side (Vercel Functions, or the app's own server), with no external AI or Claude account involved. Each run brings NKERP's Najaf rooms in line with the
+server side (a Cloudflare Worker, Vercel Functions, or the app's own server), with no external AI or Claude account involved. Each run brings NKERP's Najaf rooms in line with the
 Google Sheet *Faiz Husaini Zaereen Accommodation (Saifee & Burhani)*, in this order:
 
 1. **Deallocate** people an earlier run saw in the Sheet with a room whose row is now blank or deleted, and whom
@@ -44,11 +44,20 @@ The server needs outbound access to `to.najafkarbala.com`, `sheets.googleapis.co
 
 ### Hosting
 
-- **Vercel** (the live app): the sync runs as Vercel Functions in `api/nkerp-sync/`. Add the secrets above in the
-  Vercel project under **Settings → Environment Variables**, then redeploy. One sync can run for up to 5 minutes (the
-  Hobby plan's limit). The engine starts no new save in the last 40 seconds, so the limit never cuts a save in half;
-  if a run stops early, press Sync again to finish (a rerun is safe). Keep the Sync tab open while a sync runs.
+- **Cloudflare Workers** (the live app, Worker `najaf-accommodation`): the Vite build is served as static assets and
+  `worker/index.ts` answers `/api/*` with the same handlers. Configuration is `cloudflare.config.ts`; deploy with
+  `npm run deploy` (the `cf` CLI). Workers Builds deploys `main` automatically once the GitHub repository is connected
+  (Workers & Pages → the Worker → Settings → Build: build command `npm install`, deploy command `npx cf deploy`).
+  Add the secrets above under the Worker's **Settings → Variables and Secrets** (type *Secret*). A sync has no fixed
+  time limit there: it runs as long as the Sync tab stays open, and if the tab closes the current save still finishes.
+  Needs the Workers Paid plan (a full sync makes more outbound requests than the free plan allows per request).
+- **Vercel** (previous host, still works): the sync runs as Vercel Functions in `api/nkerp-sync/`, with secrets under
+  **Settings → Environment Variables**. One sync can run for up to 5 minutes there; the engine starts no new save in
+  the last 40 seconds, and a rerun finishes the rest.
 - **Own server** (`npm run dev` / `npm start`, Google AI Studio, Cloud Run): `server.ts` serves the same API.
+
+`vite.config.ts` turns on the Cloudflare Vite plugin only when the `cf` CLI runs the build, so a plain `vite build`,
+Vercel and `server.ts` are unaffected.
 
 The functions run a pre-built copy of the engine (`api/_lib/nkerp-sync.mjs`). After changing anything in
 `server/nkerp-sync/`, run `npm run build:api` and commit the result; `npm run test:sync` fails if it is out of date.

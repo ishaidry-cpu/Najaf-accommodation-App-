@@ -66,6 +66,12 @@ export interface HandlerDeps {
   /** NKERP for the emails page (read only when allowWrite is false). */
   emailApi?: (allowWrite: boolean, signal?: AbortSignal) => EmailApi;
   today?: () => string;
+  /**
+   * Keep a run alive after its response ends (Cloudflare Workers' ctx.waitUntil). Without it a Worker would
+   * cancel the run when the browser disconnects, possibly mid-save; with it the current save, its readback and
+   * the Sync History append still finish. Node and Vercel keep running anyway, so they need not pass it.
+   */
+  waitUntil?: (work: Promise<unknown>) => void;
 }
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -253,7 +259,7 @@ export async function handleRun(req: Request, d: HandlerDeps = {}): Promise<Resp
         write({ type: 'event', event });
       };
       write({ type: 'start', job });
-      (async () => {
+      const work = (async () => {
         try {
           const deps = (d.depsFactory ?? realDeps)(options.apply, progress, controller.signal);
           if (deadline) deps.deadline = deadline;
@@ -284,6 +290,7 @@ export async function handleRun(req: Request, d: HandlerDeps = {}): Promise<Resp
           }
         }
       })();
+      d.waitUntil?.(work);
     },
     cancel() {
       // The browser pressed Stop (or left): finish the current save, start no new ones.
@@ -424,7 +431,7 @@ export async function handleEmailSend(req: Request, d: HandlerDeps = {}): Promis
       };
       const ping = setInterval(() => write({ type: 'ping' }), 15_000);
       write({ type: 'start', total: items.length, startedAt: new Date(started).toISOString() });
-      (async () => {
+      const work = (async () => {
         let done: unknown;
         try {
           const out = await runEmails(items, {
@@ -453,6 +460,7 @@ export async function handleEmailSend(req: Request, d: HandlerDeps = {}): Promis
           }
         }
       })();
+      d.waitUntil?.(work);
     },
     cancel() {
       open = false;

@@ -11,7 +11,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:sync": "node --import tsx --test 'server/nkerp-sync/__tests__/*.test.ts'",
-    "build:api": "node scripts/build-api.mjs"
+    "build:api": "node scripts/build-api.mjs",
+    "deploy": "cf deploy",
+    "deploy:check": "cf deploy --dry-run"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -31,14 +33,16 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-rc.2",
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "cf": "1.0.0-rc.2",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   }
 }
