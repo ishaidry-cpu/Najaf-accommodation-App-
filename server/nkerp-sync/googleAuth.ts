@@ -6,6 +6,17 @@
 import { fetchJson, Rejected, withTransportRetry } from './http.js';
 import type { ServiceAccountKey } from './credentials.js';
 
+/**
+ * Google refused the service-account sign-in (wrong, revoked or deleted key). A Rejected, so existing handling
+ * still applies, but its own class so it is never mistaken for a Sheets answer such as "no such tab".
+ */
+export class GoogleSignInError extends Rejected {
+  constructor(message: string, status?: number) {
+    super(message, status);
+    this.name = 'GoogleSignInError';
+  }
+}
+
 export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 
@@ -81,12 +92,13 @@ export class GoogleTokenSource {
         { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, timeoutMs: 30_000 }));
     } catch (err) {
       if (err instanceof Rejected) {
-        throw new Rejected(`Google refused the service-account sign-in (${err.message}); check the key is current`, err.status);
+        throw new GoogleSignInError(`Google refused the service-account sign-in (${err.message}); check that `
+          + 'GOOGLE_SERVICE_ACCOUNT_JSON is the current key of an active service account', err.status);
       }
       throw err;
     }
     const token = res.body?.access_token;
-    if (!token) throw new Rejected('Google token endpoint returned no access_token');
+    if (!token) throw new GoogleSignInError('Google token endpoint returned no access_token');
     this.token = token;
     this.expiresAt = this.now() + (Number(res.body.expires_in) || 3600) * 1000;
     return token;

@@ -1397,6 +1397,98 @@ function planSync(sheet, current, apps, mem, today) {
   return { moves, removals, cleared, state, notes };
 }
 
+// server/nkerp-sync/googleAuth.ts
+var GoogleSignInError = class extends Rejected {
+  constructor(message, status) {
+    super(message, status);
+    this.name = "GoogleSignInError";
+  }
+};
+var SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+var DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
+function b64url(input) {
+  return Buffer.from(input).toString("base64").replace(/=+$/u, "").replace(/\+/gu, "-").replace(/\//gu, "_");
+}
+async function signingKey(pem) {
+  const body = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/gu, "").replace(/\s+/gu, "");
+  return globalThis.crypto.subtle.importKey(
+    "pkcs8",
+    Buffer.from(body, "base64"),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+}
+async function signAssertion(key, scope, nowSec) {
+  const header = { alg: "RS256", typ: "JWT" };
+  if (key.private_key_id) header.kid = key.private_key_id;
+  const claims = {
+    iss: key.client_email,
+    scope,
+    aud: key.token_uri || DEFAULT_TOKEN_URI,
+    iat: nowSec,
+    exp: nowSec + 3600
+  };
+  const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
+  const signature = await globalThis.crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    await signingKey(key.private_key),
+    new TextEncoder().encode(unsigned)
+  );
+  return `${unsigned}.${b64url(new Uint8Array(signature))}`;
+}
+var GoogleTokenSource = class {
+  constructor(key, scope = SHEETS_SCOPE, now = Date.now) {
+    this.key = key;
+    this.scope = scope;
+    this.now = now;
+    this.token = null;
+    this.expiresAt = 0;
+    this.inflight = null;
+  }
+  get account() {
+    return this.key.client_email;
+  }
+  async getToken() {
+    if (this.token && this.now() < this.expiresAt - 5 * 6e4) return this.token;
+    if (!this.inflight) {
+      this.inflight = this.refresh().finally(() => {
+        this.inflight = null;
+      });
+    }
+    return this.inflight;
+  }
+  /** Forget the cached token (after a 401 from an API). */
+  invalidate() {
+    this.token = null;
+    this.expiresAt = 0;
+  }
+  async refresh() {
+    const assertion = await signAssertion(this.key, this.scope, Math.floor(this.now() / 1e3));
+    const body = new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    }).toString();
+    let res;
+    try {
+      res = await withTransportRetry(() => fetchJson(
+        this.key.token_uri || DEFAULT_TOKEN_URI,
+        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, timeoutMs: 3e4 }
+      ));
+    } catch (err) {
+      if (err instanceof Rejected) {
+        throw new GoogleSignInError(`Google refused the service-account sign-in (${err.message}); check that GOOGLE_SERVICE_ACCOUNT_JSON is the current key of an active service account`, err.status);
+      }
+      throw err;
+    }
+    const token = res.body?.access_token;
+    if (!token) throw new GoogleSignInError("Google token endpoint returned no access_token");
+    this.token = token;
+    this.expiresAt = this.now() + (Number(res.body.expires_in) || 3600) * 1e3;
+    return token;
+  }
+};
+
 // server/nkerp-sync/sheets.ts
 var DEFAULT_SHEET_ID = "1kOWtRpUF9yeN52MmaiWMW7q8ddDEsIyYrvZgv0_t0uw";
 var SHEET_TAB = "Zaereen Lodging & Room Allotment Grid";
@@ -1512,6 +1604,9 @@ var SheetsApi = class {
     return parseSheet(shown, raw);
   }
 };
+function isMissingTab(err) {
+  return err instanceof Rejected && !(err instanceof GoogleSignInError) && err.status === 400 && /unable to parse range/i.test(err.message);
+}
 var SyncHistoryTab = class {
   constructor(api) {
     this.api = api;
@@ -1523,7 +1618,7 @@ var SyncHistoryTab = class {
         `${this.api.base}/values/${a1(HISTORY_TAB, "A:N")}?valueRenderOption=FORMATTED_VALUE`
       ))?.values ?? []);
     } catch (err) {
-      if (err instanceof Rejected && err.status === 400) return [];
+      if (isMissingTab(err)) return [];
       throw err;
     }
     if (!vals.length) return [];
@@ -1558,6 +1653,7 @@ var SyncHistoryTab = class {
       );
       return null;
     } catch (err) {
+      if (err instanceof GoogleSignInError) return err.message;
       if (err instanceof Rejected) {
         if (err.status === 403) {
           return "the Google service account can only view the Sheet; share the Sheet with it as Editor so runs can write the Sync History tab";
@@ -2597,92 +2693,6 @@ async function interpret(text, ctx) {
     return rules;
   }
 }
-
-// server/nkerp-sync/googleAuth.ts
-var SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-var DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
-function b64url(input) {
-  return Buffer.from(input).toString("base64").replace(/=+$/u, "").replace(/\+/gu, "-").replace(/\//gu, "_");
-}
-async function signingKey(pem) {
-  const body = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/gu, "").replace(/\s+/gu, "");
-  return globalThis.crypto.subtle.importKey(
-    "pkcs8",
-    Buffer.from(body, "base64"),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-}
-async function signAssertion(key, scope, nowSec) {
-  const header = { alg: "RS256", typ: "JWT" };
-  if (key.private_key_id) header.kid = key.private_key_id;
-  const claims = {
-    iss: key.client_email,
-    scope,
-    aud: key.token_uri || DEFAULT_TOKEN_URI,
-    iat: nowSec,
-    exp: nowSec + 3600
-  };
-  const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
-  const signature = await globalThis.crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    await signingKey(key.private_key),
-    new TextEncoder().encode(unsigned)
-  );
-  return `${unsigned}.${b64url(new Uint8Array(signature))}`;
-}
-var GoogleTokenSource = class {
-  constructor(key, scope = SHEETS_SCOPE, now = Date.now) {
-    this.key = key;
-    this.scope = scope;
-    this.now = now;
-    this.token = null;
-    this.expiresAt = 0;
-    this.inflight = null;
-  }
-  get account() {
-    return this.key.client_email;
-  }
-  async getToken() {
-    if (this.token && this.now() < this.expiresAt - 5 * 6e4) return this.token;
-    if (!this.inflight) {
-      this.inflight = this.refresh().finally(() => {
-        this.inflight = null;
-      });
-    }
-    return this.inflight;
-  }
-  /** Forget the cached token (after a 401 from an API). */
-  invalidate() {
-    this.token = null;
-    this.expiresAt = 0;
-  }
-  async refresh() {
-    const assertion = await signAssertion(this.key, this.scope, Math.floor(this.now() / 1e3));
-    const body = new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion
-    }).toString();
-    let res;
-    try {
-      res = await withTransportRetry(() => fetchJson(
-        this.key.token_uri || DEFAULT_TOKEN_URI,
-        { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, timeoutMs: 3e4 }
-      ));
-    } catch (err) {
-      if (err instanceof Rejected) {
-        throw new Rejected(`Google refused the service-account sign-in (${err.message}); check the key is current`, err.status);
-      }
-      throw err;
-    }
-    const token = res.body?.access_token;
-    if (!token) throw new Rejected("Google token endpoint returned no access_token");
-    this.token = token;
-    this.expiresAt = this.now() + (Number(res.body.expires_in) || 3600) * 1e3;
-    return token;
-  }
-};
 
 // server/nkerp-sync/service.ts
 function sheetId(env = process.env) {

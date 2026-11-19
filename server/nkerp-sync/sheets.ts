@@ -6,7 +6,7 @@
  * Nothing else in the spreadsheet is ever touched.
  */
 import { fetchJson, Rejected, withTransportRetry } from './http.js';
-import type { GoogleTokenSource } from './googleAuth.js';
+import { GoogleSignInError, type GoogleTokenSource } from './googleAuth.js';
 import type { HistoryRow, MemoryEntry, SheetRow } from './types.js';
 import { familyNo, norm, parseArrival, pyRepr, tupleKey } from './util.js';
 
@@ -116,6 +116,15 @@ export class SheetsApi {
   }
 }
 
+/**
+ * True only for Google Sheets' answer to a range on a tab that does not exist ("Unable to parse range"). A 400
+ * from the Google sign-in, or any other 400, is a real error.
+ */
+export function isMissingTab(err: unknown): boolean {
+  return err instanceof Rejected && !(err instanceof GoogleSignInError) && err.status === 400
+    && /unable to parse range/i.test(err.message);
+}
+
 /** What the engine needs from the Sync History tab (a fake implements this in tests). */
 export interface HistoryStore {
   read(): Promise<HistoryRow[]>;
@@ -133,8 +142,8 @@ export class SyncHistoryTab implements HistoryStore {
       vals = await withTransportRetry(async () => (await this.api.call<{ values?: unknown[][] }>(
         `${this.api.base}/values/${a1(HISTORY_TAB, 'A:N')}?valueRenderOption=FORMATTED_VALUE`))?.values ?? []);
     } catch (err) {
-      if (err instanceof Rejected && err.status === 400) return [];   // "Unable to parse range": no such tab yet
-      throw err;
+      if (isMissingTab(err)) return [];   // no Sync History tab yet: the first applied run creates it
+      throw err;                           // anything else (a refused Google sign-in above all) must not look empty
     }
     if (!vals.length) return [];
     const head = vals[0].map((h) => String(h ?? '').trim());
@@ -164,6 +173,7 @@ export class SyncHistoryTab implements HistoryStore {
         { method: 'PUT', body: { values: [HISTORY_COLUMNS] } });
       return null;
     } catch (err) {
+      if (err instanceof GoogleSignInError) return err.message;
       if (err instanceof Rejected) {
         if (err.status === 403) {
           return 'the Google service account can only view the Sheet; share the Sheet with it as Editor so runs '
