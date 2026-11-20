@@ -14,8 +14,213 @@ import {
   normalizeRoomNumber,
   getCanonicalRoomKey,
   reconcileOfficialSaifeeBurhaniRooms,
+  pruneLegacyBadriRooms,
   isPlausibleRoom,
 } from './storage';
+
+/**
+ * Unambiguously parses a room category string without false-matching "Category B (Standard)" as Category A.
+ */
+function parseRoomCategory(
+  rawCategory: string,
+  fallback: Room['category'] = 'Category B (Standard)'
+): Room['category'] {
+  const lower = String(rawCategory || '').toLowerCase().trim();
+  if (!lower) return fallback;
+  if (lower.includes('suite') || lower.includes('exec')) {
+    return 'Executive Suite';
+  }
+  if (
+    lower.includes('category b') ||
+    lower.includes('standard') ||
+    /\bb\b/.test(lower)
+  ) {
+    return 'Category B (Standard)';
+  }
+  if (
+    lower.includes('category a') ||
+    lower.includes('nizaam') ||
+    /\ba\b/.test(lower)
+  ) {
+    return 'Category A (Nizaam)';
+  }
+  return fallback;
+}
+
+/**
+ * Merges rooms pulled from Google Sheet into existing rooms:
+ * - Never deletes any existing room.
+ * - Never changes core room specs (capacity, buffer, floor, category, toiletType, bedType, amenities)
+ *   for rooms that already exist / were pushed to the sheet.
+ * - Only syncs operational status (blocked / cleaning / available), block details, and notes.
+ */
+export function mergeRoomsPreservingExisting(
+  existingRooms: Room[],
+  pulledRooms: Room[]
+): Room[] {
+  const cleanExisting = deduplicateRooms(Array.isArray(existingRooms) ? existingRooms : []);
+  const roomMap = new Map<string, Room>();
+
+  cleanExisting.forEach((rm) => {
+    const key = getCanonicalRoomKey(rm.building, rm.roomNumber);
+    if (key) roomMap.set(key, rm);
+  });
+
+  deduplicateRooms(Array.isArray(pulledRooms) ? pulledRooms : []).forEach((srm) => {
+    if (!isPlausibleRoom(srm.building, srm.roomNumber)) return;
+    const key = getCanonicalRoomKey(srm.building, srm.roomNumber);
+    if (!key) return;
+
+    const existing = roomMap.get(key);
+    const normalizedStatus: Room['status'] =
+      srm.status === 'blocked'
+        ? 'blocked'
+        : srm.status === 'cleaning'
+        ? 'cleaning'
+        : 'available';
+
+    if (existing) {
+      const isBlocked = normalizedStatus === 'blocked';
+      roomMap.set(key, {
+        ...existing,
+        status: normalizedStatus,
+        blockedReason: isBlocked
+          ? (srm.blockedReason || existing.blockedReason || 'Blocked by administrator')
+          : undefined,
+        expectedUnblockDate: isBlocked
+          ? (srm.expectedUnblockDate || existing.expectedUnblockDate)
+          : undefined,
+        notes: srm.notes && srm.notes.trim() !== '' ? srm.notes : existing.notes,
+      });
+    } else {
+      roomMap.set(key, {
+        ...srm,
+        status: normalizedStatus,
+      });
+    }
+  });
+
+  return reconcileOfficialSaifeeBurhaniRooms(
+    pruneLegacyBadriRooms(deduplicateRooms(Array.from(roomMap.values())))
+  );
+}
+
+/**
+ * Merges reservations pulled from Google Sheet into existing reservations:
+ * - Never deletes existing reservations that are missing from the pulled sheet.
+ * - Never deletes or clears an existing allotted room (roomNumber / building) when the sheet row is blank.
+ * - Preserves app-side financial/slip/shift/history fields when not present in the pulled sheet.
+ */
+export function mergeReservationsPreservingAllotments(
+  existingReservations: Reservation[],
+  pulledReservations: Reservation[]
+): Reservation[] {
+  const baseList = Array.isArray(existingReservations) ? existingReservations : [];
+  const incomingList = Array.isArray(pulledReservations) ? pulledReservations : [];
+
+  if (baseList.length === 0) {
+    return deduplicateReservationList(incomingList);
+  }
+  if (incomingList.length === 0) {
+    return deduplicateReservationList(baseList);
+  }
+
+  const mergedMap = new Map<string, Reservation>();
+  baseList.forEach((r) => {
+    mergedMap.set(r.id, r);
+  });
+
+  incomingList.forEach((sr) => {
+    const currentValues = Array.from(mergedMap.values());
+    const match =
+      (sr.id ? mergedMap.get(sr.id) : undefined) ||
+      currentValues.find((r) => isDuplicateReservation(r, sr));
+
+    if (match) {
+      const sheetRoom = normalizeRoomNumber(sr.roomNumber);
+      const sheetBuilding = normalizeBuildingName(sr.building);
+      const existingRoom = normalizeRoomNumber(match.roomNumber);
+      const existingBuilding = normalizeBuildingName(match.building);
+
+      // Protect allotted rooms: if sheet row has no roomNumber, ALWAYS keep the app's allotted room & building.
+      const finalRoomNumber = sheetRoom || existingRoom || '';
+      const finalBuilding = sheetRoom
+        ? (sheetBuilding || existingBuilding || '')
+        : (existingBuilding || sheetBuilding || '');
+      const finalRoomId =
+        finalRoomNumber &&
+        finalRoomNumber === existingRoom &&
+        finalBuilding.toLowerCase() === existingBuilding.toLowerCase()
+          ? (match.roomId || sr.roomId)
+          : (sr.roomId || match.roomId);
+
+      mergedMap.set(match.id, {
+        ...match,
+        applicantName: sr.applicantName || match.applicantName,
+        age:
+          sr.age !== undefined && !Number.isNaN(Number(sr.age))
+            ? Number(sr.age)
+            : match.age,
+        gender: sr.gender || match.gender,
+        officeName: sr.officeName || match.officeName,
+        family: sr.family || match.family,
+        familyNo: sr.familyNo || sr.family || match.familyNo || match.family,
+        tourRefNo: sr.tourRefNo || match.tourRefNo,
+        tourId: sr.tourId || sr.tourRefNo || match.tourId || match.tourRefNo,
+        groupLeadName: sr.groupLeadName || match.groupLeadName,
+        guestLeaderName: sr.guestLeaderName || sr.groupLeadName || match.guestLeaderName,
+        roomNumber: finalRoomNumber,
+        building: finalBuilding,
+        roomId: finalRoomId,
+        paxCount: sr.paxCount || match.paxCount,
+        pax: sr.pax || sr.paxCount || match.pax,
+        arrivalDate: sr.arrivalDate || match.arrivalDate,
+        departureDate: sr.departureDate || match.departureDate,
+        arrivalTime: sr.arrivalTime || match.arrivalTime,
+        departureTime: sr.departureTime || match.departureTime,
+        arrivalDateTime: sr.arrivalDateTime || match.arrivalDateTime,
+        departureDateTime: sr.departureDateTime || match.departureDateTime,
+        category: sr.category || match.category,
+        isSpecialGuest:
+          sr.isSpecialGuest !== undefined ? sr.isSpecialGuest : match.isSpecialGuest,
+        specialRemarks:
+          sr.specialRemarks !== undefined && sr.specialRemarks !== ''
+            ? sr.specialRemarks
+            : match.specialRemarks,
+        isUploadedToPortal:
+          sr.isUploadedToPortal !== undefined
+            ? sr.isUploadedToPortal
+            : match.isUploadedToPortal,
+        requestSlipNo: sr.requestSlipNo || match.requestSlipNo,
+        moneyGiven:
+          sr.moneyGiven && sr.moneyGiven !== 'No' ? sr.moneyGiven : match.moneyGiven,
+        paymentStatus:
+          match.paymentStatus === 'Paid' ? 'Paid' : (sr.paymentStatus || match.paymentStatus),
+        shiftToCategoryA: match.shiftToCategoryA || sr.shiftToCategoryA,
+        shiftDirection: match.shiftDirection || sr.shiftDirection,
+        accommodationCategory: match.accommodationCategory || sr.accommodationCategory,
+        assignedCategory: match.assignedCategory || sr.assignedCategory,
+        refundGiven: match.refundGiven || sr.refundGiven,
+        refundGivenDate: match.refundGivenDate || sr.refundGivenDate,
+        refundSlipNo: match.refundSlipNo || sr.refundSlipNo,
+        refundSlipDate: match.refundSlipDate || sr.refundSlipDate,
+        refundAmountNotes: match.refundAmountNotes || sr.refundAmountNotes,
+        roomChangeHistory: match.roomChangeHistory || sr.roomChangeHistory,
+        isRoomChanged: match.isRoomChanged || sr.isRoomChanged,
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      mergedMap.set(sr.id, {
+        ...sr,
+        building: normalizeBuildingName(sr.building),
+        roomNumber: normalizeRoomNumber(sr.roomNumber),
+        updatedAt: sr.updatedAt || new Date().toISOString(),
+      });
+    }
+  });
+
+  return deduplicateReservationList(Array.from(mergedMap.values()));
+}
 
 export interface SyncResult {
   success: boolean;
@@ -521,7 +726,9 @@ export async function syncAllToGoogleSheet(
     // User Request: "Zaereen Lodging & Room Allotment Grid i want this exactly in google sheet remove the present one"
     // User Request: "When append dont append duplicates only unique should be added"
     const uniqueReservations = deduplicateReservationList(reservations);
-    const uniqueRooms = deduplicateRooms(rooms);
+    const uniqueRooms = reconcileOfficialSaifeeBurhaniRooms(
+      pruneLegacyBadriRooms(deduplicateRooms(rooms))
+    );
     const { headers: gridHeaders, rows: gridRows } = generateZaereenGridRows(uniqueReservations);
 
     // 2. Prepare Rooms Header and Rows
@@ -538,6 +745,10 @@ export async function syncAllToGoogleSheet(
       'Expected Unblock Date',
       'Amenities',
       'Notes',
+      'Buffer',
+      'Floor Label',
+      'Toilet Type',
+      'Bed Type',
     ];
 
     const roomRows = uniqueRooms.map((rm) => {
@@ -552,11 +763,15 @@ export async function syncAllToGoogleSheet(
         rm.floor,
         rm.capacity, // Base beds (e.g. 2, 3, 4)
         rm.category,
-        isBlocked ? 'BLOCKED' : (rm.status === 'cleaning' ? 'CLEANING' : (rm.status === 'occupied' ? 'OCCUPIED' : 'AVAILABLE')),
+        isBlocked ? 'BLOCKED' : (rm.status === 'cleaning' ? 'CLEANING' : 'AVAILABLE'),
         isBlocked ? (rm.blockedReason || 'Blocked for Maintenance') : 'N/A',
         isBlocked ? (rm.expectedUnblockDate || 'N/A') : 'N/A',
         combinedAmenities.join(', '),
         rm.notes || '',
+        rm.buffer ?? 0,
+        rm.floorLabel || `Floor ${rm.floor}`,
+        rm.toiletType || 'WESTERN',
+        rm.bedType || 'Single Beds',
       ];
     });
 
@@ -582,22 +797,37 @@ export async function syncAllToGoogleSheet(
       'Approved By',
     ];
 
-    const upgradeRows = reservations
-      .filter((r) => r.isUpgradedFromBToA)
+    const upgradeRows = uniqueReservations
+      .filter((r) => r.isUpgradedFromBToA || r.shiftToCategoryA)
       .map((r) => [
-        r.tourId,
-        r.guestLeaderName,
-        r.guestContact,
-        r.roomNumber,
-        r.building,
+        r.tourId || r.tourRefNo,
+        r.guestLeaderName || r.groupLeadName || r.applicantName,
+        r.guestContact || '',
+        r.roomNumber || '',
+        r.building || '',
         r.upgradeReason || 'Requested B to A Nizaam upgrade',
-        r.upgradeFee,
-        r.totalCost,
-        r.amountPaid,
-        r.balanceDue,
-        r.paymentStatus,
+        r.upgradeFee || 0,
+        r.totalCost || 0,
+        r.amountPaid || 0,
+        r.balanceDue || 0,
+        r.paymentStatus || 'Pending',
         r.upgradeApprovalBy || 'Front Desk Admin',
       ]);
+
+    // Clear Zaereen Lodging & Room Allotment Grid before writing so stale old rows never linger
+    try {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+          `'${ZAEREEN_GRID_TAB}'!A1:Z5000`
+        )}:clear`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+    } catch {
+      // Ignore clear failure
+    }
 
     // Update Zaereen Lodging & Room Allotment Grid sheet (A to T, exactly 20 columns)
     await updateSheetRange(
@@ -606,21 +836,6 @@ export async function syncAllToGoogleSheet(
       `'${ZAEREEN_GRID_TAB}'!A1:T` + (gridRows.length + 10),
       [gridHeaders, ...gridRows]
     );
-
-    // Clear column U:Z if a previous sync had the 21st column
-    try {
-      await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-          `'${ZAEREEN_GRID_TAB}'!U1:Z500`
-        )}:clear`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
-      );
-    } catch {
-      // Ignore clear failure if sheet is narrower
-    }
 
     // Clear stale trailing rows in Rooms_Inventory before updating so old duplicates never remain
     try {
@@ -637,11 +852,11 @@ export async function syncAllToGoogleSheet(
       // Ignore clear failure
     }
 
-    // Update Rooms_Inventory sheet
+    // Update Rooms_Inventory sheet (A to N)
     await updateSheetRange(
       accessToken,
       spreadsheetId,
-      'Rooms_Inventory!A1:J' + (roomRows.length + 10),
+      'Rooms_Inventory!A1:N' + (roomRows.length + 10),
       [roomHeaders, ...roomRows]
     );
 
@@ -668,7 +883,21 @@ export async function syncAllToGoogleSheet(
       [timelineHeaders, ...timelineRows]
     );
 
-    // Update Category_B_to_A_Upgrades sheet
+    // Clear & Update Category_B_to_A_Upgrades sheet
+    try {
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+          'Category_B_to_A_Upgrades!A1:Z2000'
+        )}:clear`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+    } catch {
+      // Ignore clear failure
+    }
+
     await updateSheetRange(
       accessToken,
       spreadsheetId,
@@ -742,96 +971,8 @@ export async function twoWaySyncWithGoogleSheet(
     }),
   ]);
 
-  // 3. Merge reservations: Ensure only unique records are added (prevent duplicates)
-  // "When append dont append duplicates only unique should be added"
-  const mergedResMap = new Map<string, Reservation>();
-  currentReservations.forEach((r) => {
-    mergedResMap.set(r.id, r);
-  });
-
-  let uniqueFromSheetCount = 0;
-  let skippedSheetDuplicatesCount = 0;
-
-  sheetRes.forEach((sr) => {
-    const currentList = Array.from(mergedResMap.values());
-    const match = currentList.find((r) => isDuplicateReservation(r, sr));
-
-    if (match) {
-      skippedSheetDuplicatesCount++;
-      // User requirement: "do not delete rooms allottment automatically."
-      // If the incoming sheet row has no room number, preserve the app's existing room allotment!
-      const finalRoomNumber = (sr.roomNumber && sr.roomNumber.trim() !== '') ? sr.roomNumber.trim() : match.roomNumber;
-      const finalBuilding = (sr.building && sr.building.trim() !== '') ? sr.building.trim() : match.building;
-
-      const updated: Reservation = {
-        ...match,
-        applicantName: sr.applicantName || match.applicantName,
-        age: sr.age !== undefined && !Number.isNaN(Number(sr.age)) ? Number(sr.age) : match.age,
-        gender: sr.gender || match.gender,
-        officeName: sr.officeName || match.officeName,
-        family: sr.family || match.family,
-        roomNumber: finalRoomNumber,
-        building: finalBuilding,
-        paxCount: sr.paxCount || match.paxCount,
-        arrivalDate: sr.arrivalDate || match.arrivalDate,
-        departureDate: sr.departureDate || match.departureDate,
-        arrivalDateTime: sr.arrivalDateTime || match.arrivalDateTime,
-        departureDateTime: sr.departureDateTime || match.departureDateTime,
-        moneyGiven: sr.moneyGiven || match.moneyGiven,
-        category: sr.category || match.category,
-        isSpecialGuest: sr.isSpecialGuest !== undefined ? sr.isSpecialGuest : match.isSpecialGuest,
-        specialRemarks: sr.specialRemarks !== undefined ? sr.specialRemarks : match.specialRemarks,
-        isUploadedToPortal: sr.isUploadedToPortal !== undefined ? sr.isUploadedToPortal : match.isUploadedToPortal,
-        shiftToCategoryA: sr.shiftToCategoryA !== undefined ? sr.shiftToCategoryA : match.shiftToCategoryA,
-        requestSlipNo: sr.requestSlipNo || match.requestSlipNo,
-        groupLeadName: sr.groupLeadName || match.groupLeadName,
-        updatedAt: new Date().toISOString(),
-      };
-      mergedResMap.set(match.id, updated);
-    } else {
-      uniqueFromSheetCount++;
-      mergedResMap.set(sr.id, {
-        ...sr,
-        isSpecialGuest: sr.isSpecialGuest ?? false,
-        specialRemarks: sr.specialRemarks,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-  });
-
-  const mergedReservations = deduplicateReservationList(Array.from(mergedResMap.values()));
-
-  // 4. Merge rooms by canonical (building, roomNumber) key to avoid ID/casing duplicates
-  const mergedRoomsMap = new Map<string, Room>();
-  deduplicateRooms(currentRooms).forEach((rm) => {
-    const key = getCanonicalRoomKey(rm.building, rm.roomNumber);
-    if (key) mergedRoomsMap.set(key, rm);
-  });
-  deduplicateRooms(sheetRooms).forEach((srm) => {
-    const key = getCanonicalRoomKey(srm.building, srm.roomNumber);
-    if (!key) return;
-    const match = mergedRoomsMap.get(key);
-    if (match) {
-      const isBlocked = srm.status === 'blocked';
-      mergedRoomsMap.set(key, {
-        ...match,
-        building: match.building,
-        roomNumber: match.roomNumber,
-        status: srm.status,
-        capacity: srm.capacity || match.capacity,
-        pax: srm.pax || srm.capacity || match.pax || match.capacity,
-        buffer: srm.buffer !== undefined ? srm.buffer : match.buffer,
-        blockedReason: isBlocked ? (srm.blockedReason || match.blockedReason || 'Blocked by administrator') : undefined,
-        expectedUnblockDate: isBlocked ? (srm.expectedUnblockDate || match.expectedUnblockDate) : undefined,
-        notes: srm.notes ?? match.notes,
-      });
-    } else {
-      mergedRoomsMap.set(key, srm);
-    }
-  });
-  const mergedRooms = reconcileOfficialSaifeeBurhaniRooms(
-    deduplicateRooms(Array.from(mergedRoomsMap.values()))
-  );
+  const mergedReservations = mergeReservationsPreservingAllotments(currentReservations, sheetRes);
+  const mergedRooms = mergeRoomsPreservingExisting(currentRooms, sheetRooms);
 
   // 5. Write back complete updated state to Google Sheets & remove obsolete present tabs
   const pushRes = await syncAllToGoogleSheet(
@@ -851,8 +992,8 @@ export async function twoWaySyncWithGoogleSheet(
     spreadsheetUrl,
     pulledReservationsCount: sheetRes.length,
     pulledRoomsCount: sheetRooms.length,
-    uniqueAppendedCount: uniqueFromSheetCount,
-    duplicatesSkippedCount: skippedSheetDuplicatesCount,
+    uniqueAppendedCount: Math.max(0, mergedReservations.length - currentReservations.length),
+    duplicatesSkippedCount: Math.max(0, sheetRes.length - Math.max(0, mergedReservations.length - currentReservations.length)),
     mergedReservations,
     mergedRooms,
   };
@@ -1041,12 +1182,18 @@ export async function fetchRoomsFromGoogleSheet(
   let amIdx = headerRow.findIndex((h: string) => h.includes('amenit'));
   let bufIdx = headerRow.findIndex((h: string) => h === 'buffer' || h.includes('buffer'));
   let nIdx = headerRow.findIndex((h: string) => h.includes('note'));
+  let flLabelIdx = headerRow.findIndex((h: string) => h === 'floor label');
+  let toiletIdx = headerRow.findIndex((h: string) => h.includes('toilet') || h.includes('wc') || h.includes('bath'));
+  let bedIdx = headerRow.findIndex((h: string) => h.includes('bed type') || h.includes('bedding'));
 
-  // A tab without Building / Room headers is not the room inventory (e.g. the Zaereen list).
+  // A tab without Building / Room headers or shaped like Reservations/Timeline is not the room inventory.
   const looksLikeReservationTab = headerRow.some(
     (h: string) => h === 'its' || h.includes('its id') || h === 'sr #' || h.includes('applicant') || h.includes('room allot')
   );
-  if (looksLikeReservationTab || (bIdx === -1 && rIdx === -1)) {
+  const looksLikeTimelineTab = headerRow.some(
+    (h: string) => h.includes('occupancy status') || h.includes('zaer guest') || h.includes('days remaining')
+  );
+  if (looksLikeReservationTab || looksLikeTimelineTab || (bIdx === -1 && rIdx === -1)) {
     console.warn(`Tab "${targetTab}" does not look like a room inventory; keeping current rooms.`);
     return existingRooms;
   }
@@ -1144,32 +1291,21 @@ export async function fetchRoomsFromGoogleSheet(
       buffer = existing.buffer;
     }
 
-    // Category parsing
-    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '').toLowerCase() : '';
-    let category: Room['category'] = existing?.category || 'Category B (Standard)';
-    if (rawCategory.includes('a') || rawCategory.includes('nizaam')) {
-      category = 'Category A (Nizaam)';
-    } else if (rawCategory.includes('suite') || rawCategory.includes('exec')) {
-      category = 'Executive Suite';
-    }
+    // Category parsing (never false-match "Category B (Standard)" as Category A)
+    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '') : '';
+    const category = parseRoomCategory(rawCategory, existing?.category || 'Category B (Standard)');
 
-    // Status parsing: BLOCKED vs AVAILABLE / VACANT
-    // User requirement: "updates the blocked/unblock rooms too"
+    // Status parsing: BLOCKED vs CLEANING vs AVAILABLE
+    // Note: room occupancy is computed dynamically from reservations, so never persist stale 'occupied' on Room objects.
     const rawStatus = sIdx >= 0 ? String(row[sIdx] || '').toLowerCase() : '';
     const isBlocked = rawStatus.includes('block');
-    const isOccupied = rawStatus.includes('occup');
     const isCleaning = rawStatus.includes('clean');
 
-    let status: Room['status'] = 'available';
-    if (isBlocked) {
-      status = 'blocked';
-    } else if (isOccupied) {
-      status = 'occupied';
-    } else if (isCleaning) {
-      status = 'cleaning';
-    } else {
-      status = 'available';
-    }
+    const status: Room['status'] = isBlocked
+      ? 'blocked'
+      : isCleaning
+      ? 'cleaning'
+      : 'available';
 
     // Blocked details
     const rawBlockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : '';
@@ -1196,6 +1332,9 @@ export async function fetchRoomsFromGoogleSheet(
       : existing?.amenities || ['Standard Amenities'];
 
     const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : existing?.notes || '';
+    const floorLabel = flLabelIdx >= 0 && row[flLabelIdx] ? String(row[flLabelIdx]).trim() : (existing?.floorLabel || `Floor ${floor}`);
+    const toiletType = toiletIdx >= 0 && row[toiletIdx] ? String(row[toiletIdx]).trim() : (existing?.toiletType || 'WESTERN');
+    const bedType = bedIdx >= 0 && row[bedIdx] ? String(row[bedIdx]).trim() : (existing?.bedType || 'Single Beds');
 
     const id = existing
       ? existing.id
@@ -1206,7 +1345,7 @@ export async function fetchRoomsFromGoogleSheet(
       roomNumber,
       building,
       floor,
-      floorLabel: existing?.floorLabel || `Floor ${floor}`,
+      floorLabel,
       capacity,
       pax: capacity,
       buffer,
@@ -1214,25 +1353,17 @@ export async function fetchRoomsFromGoogleSheet(
       status,
       blockedReason,
       expectedUnblockDate,
-      toiletType: existing?.toiletType || 'WESTERN',
-      bedType: existing?.bedType || 'Single Beds',
+      toiletType,
+      bedType,
       amenities,
       notes: notes || undefined,
     });
   }
 
-  // Preserve any existing rooms (e.g. Badri rooms or others) that were not present in this specific sheet
-  cleanExisting.forEach((er) => {
-    const key = getCanonicalRoomKey(er.building, er.roomNumber);
-    if (key && !parsedRoomMap.has(key)) {
-      parsedRoomMap.set(key, er);
-    }
-  });
-
-    return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(parsedRoomMap.values())));
+    return mergeRoomsPreservingExisting(existingRooms, Array.from(parsedRoomMap.values()));
   } catch (err) {
     console.warn('Failed to fetch rooms from Google Sheet; retaining existing rooms:', err);
-    return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(existingRooms));
+    return reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(deduplicateRooms(existingRooms)));
   }
 }
 
@@ -1374,8 +1505,8 @@ export async function fetchReservationsFromGoogleSheet(
     const age = ageIdx !== -1 && !isNaN(parseInt(String(row[ageIdx]))) ? parseInt(String(row[ageIdx]), 10) : 38;
     const familyNo = famIdx !== -1 && row[famIdx] ? String(row[famIdx]).trim() : `F-${i}`;
     const officeName = officeIdx !== -1 && row[officeIdx] ? String(row[officeIdx]).trim() : 'Fayz E Husayni Trust Mumbai';
-    const building = bIdx !== -1 && row[bIdx] ? String(row[bIdx]).trim() : 'Saifee';
-    const rawRoomNumber = rIdx !== -1 && row[rIdx] ? String(row[rIdx]).trim().replace(/^room\s+/i, '') : '';
+    const rawBuilding = bIdx !== -1 && row[bIdx] ? normalizeBuildingName(String(row[bIdx]).trim()) : '';
+    const rawRoomNumber = rIdx !== -1 && row[rIdx] ? normalizeRoomNumber(String(row[rIdx]).trim()) : '';
     const gender = genderIdx !== -1 && row[genderIdx] ? String(row[genderIdx]).trim() : 'Male';
     const groupLeadName = leaderIdx !== -1 && row[leaderIdx] ? String(row[leaderIdx]).trim() : (applicantName || 'Group Lead');
 
@@ -1418,7 +1549,7 @@ export async function fetchReservationsFromGoogleSheet(
       if (!specialRemarksFromSheet) specialRemarksFromSheet = undefined;
     }
 
-    // Check if applicantName or rawRoomNumber contains multiple family members / rooms
+    // Only split rows that genuinely list multiple comma/slash/ampersand-separated members without an explicit per-person ITS
     const candidateNames = applicantName
       .split(/[,/;\n&+]|\band\b/i)
       .map((s) => s.trim())
@@ -1426,26 +1557,28 @@ export async function fetchReservationsFromGoogleSheet(
 
     const candidateRooms = rawRoomNumber
       .split(/[,/;&+]|\band\b/i)
-      .map((s) => s.trim().replace(/^room\s+/i, ''))
+      .map((s) => normalizeRoomNumber(s))
       .filter(Boolean);
 
-    // If multiple members are indicated in a single row by names or pax count or rooms
-    const isMultiMemberRow = (candidateNames.length > 1 || candidateRooms.length > 1 || pax > 1) && !applicantName.includes('Group');
+    const hasSingleExplicitIts = Boolean(itsId && !/[,/;&+]/.test(itsId));
+    const isMultiMemberRow =
+      !hasSingleExplicitIts &&
+      (candidateNames.length > 1 || candidateRooms.length > 1) &&
+      !applicantName.includes('Group');
     const memberCount = isMultiMemberRow
-      ? Math.max(candidateNames.length, candidateRooms.length, pax)
+      ? Math.max(candidateNames.length, candidateRooms.length)
       : 1;
 
     for (let m = 0; m < memberCount; m++) {
-      const memberName = candidateNames[m] || (m === 0 ? applicantName : `${applicantName} (Member ${m + 1})`);
-      const memberRoom = candidateRooms[m] || candidateRooms[0] || rawRoomNumber;
+      const memberName = isMultiMemberRow
+        ? (candidateNames[m] || (m === 0 ? applicantName : `${applicantName} (Member ${m + 1})`))
+        : applicantName;
+      const memberRoom = isMultiMemberRow
+        ? (candidateRooms[m] || candidateRooms[0] || rawRoomNumber)
+        : rawRoomNumber;
       const memberIts = m === 0 ? (itsId || `30${Math.floor(100000 + Math.random() * 900000)}`) : (itsId ? `${itsId}-${m + 1}` : `30${Math.floor(100000 + Math.random() * 900000)}`);
 
-      const matchingRoom = rooms.find(
-        (rm) => rm.roomNumber === memberRoom && rm.building.toLowerCase() === building.toLowerCase()
-      );
-      const roomId = matchingRoom ? matchingRoom.id : `rm-${building}-${memberRoom}`;
-
-      // Match with existing reservation to preserve internal IDs and logs
+      // Match with existing reservation to preserve internal IDs, room allotments, and logs
       const normIts = memberIts.toLowerCase();
       const normName = memberName.toLowerCase();
       const normTour = tourId ? tourId.toLowerCase() : '';
@@ -1461,6 +1594,24 @@ export async function fetchReservationsFromGoogleSheet(
         usedExistingIds.add(existing.id);
       }
 
+      // Never wipe an existing allotted room when the pulled sheet row has an empty room cell,
+      // and never coerce non-Saifee buildings (Burhani, Badri, Qasr Nobola, etc.) to Saifee.
+      const finalRoomNumber = memberRoom || existing?.roomNumber || '';
+      const finalBuilding = memberRoom
+        ? (rawBuilding || existing?.building || '')
+        : (existing?.building || rawBuilding || '');
+
+      const matchingRoom = rooms.find(
+        (rm) =>
+          normalizeRoomNumber(rm.roomNumber) === finalRoomNumber &&
+          normalizeBuildingName(rm.building).toLowerCase() === finalBuilding.toLowerCase()
+      );
+      const roomId = matchingRoom
+        ? matchingRoom.id
+        : finalRoomNumber && finalBuilding
+        ? `rm-${finalBuilding.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${finalRoomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+        : (existing?.roomId || '');
+
       // Preserve special guest status from sheet or fallback to existing
       const finalIsSpecial = isSpecialGuestFromSheet !== undefined
         ? isSpecialGuestFromSheet
@@ -1474,13 +1625,15 @@ export async function fetchReservationsFromGoogleSheet(
         ? existing.id
         : `res-sheet-${tourId || 'gen'}-${familyNo}-${i}-${m + 1}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
+      const finalShiftToA = existing?.shiftToCategoryA || shiftToCategoryA;
+
       parsedReservations.push({
         id: uniqueRecId,
         itsId: memberIts || existing?.itsId || `30${Math.floor(100000 + Math.random() * 900000)}`,
         applicantName: memberName || existing?.applicantName || 'Zaer Guest',
         age: age || 38,
-        category: rawCategory,
-        idara: '',
+        category: rawCategory || existing?.category || 'Mumineen',
+        idara: existing?.idara || '',
         gender,
         family: familyNo,
         tourRefNo: tourId || existing?.tourRefNo || 'NKERP/TOUR/2026/1333',
@@ -1492,17 +1645,28 @@ export async function fetchReservationsFromGoogleSheet(
         departureTime,
         rawArrivalStr: rawArr,
         rawDepartureStr: rawDep,
-        shiftToCategoryA,
-        accommodationCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
+        shiftToCategoryA: finalShiftToA,
+        shiftDirection: existing?.shiftDirection,
+        accommodationCategory: existing?.accommodationCategory || (finalShiftToA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
         requestSlipNo: requestSlipNo || existing?.requestSlipNo || undefined,
-        moneyGiven,
-        building: building === 'Burhani' ? 'Burhani' : 'Saifee',
-        roomNumber: memberRoom,
+        requestSlipDate: existing?.requestSlipDate,
+        moneyGiven: existing?.moneyGiven && existing.moneyGiven !== 'No' ? existing.moneyGiven : moneyGiven,
+        moneyGivenDate: existing?.moneyGivenDate,
+        moneyNotes: existing?.moneyNotes,
+        refundGiven: existing?.refundGiven,
+        refundGivenDate: existing?.refundGivenDate,
+        refundSlipNo: existing?.refundSlipNo,
+        refundSlipDate: existing?.refundSlipDate,
+        refundAmountNotes: existing?.refundAmountNotes,
+        building: finalBuilding,
+        roomNumber: finalRoomNumber,
         roomId,
+        isRoomChanged: existing?.isRoomChanged,
+        roomChangeHistory: existing?.roomChangeHistory,
         isUploadedToPortal,
         isSpecialGuest: finalIsSpecial,
         specialRemarks: finalSpecialRemarks,
-        paxCount: 1,
+        paxCount: pax > 1 ? pax : 1,
         arrivalDateTime,
         entryPort: existing ? existing.entryPort : 'Najaf Airport (NJF)',
         departureDateTime,
@@ -1514,17 +1678,17 @@ export async function fetchReservationsFromGoogleSheet(
         // Compatibility fields
         tourId: tourId || existing?.tourId || 'NKERP/TOUR/2026/1333',
         familyNo,
-        pax: 1,
-        totalGuests: 1,
+        pax: pax > 1 ? pax : 1,
+        totalGuests: pax > 1 ? pax : 1,
         tourName: existing?.tourName || 'Zaereen Group',
-        assignedCategory: shiftToCategoryA ? 'Category A (Nizaam)' : 'Category B (Standard)',
-        isUpgradedFromBToA: shiftToCategoryA,
+        assignedCategory: existing?.assignedCategory || (finalShiftToA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
+        isUpgradedFromBToA: existing?.isUpgradedFromBToA || finalShiftToA,
         baseCost: existing ? existing.baseCost : 1000,
-        upgradeFee: shiftToCategoryA ? (existing?.upgradeFee || 350) : 0,
+        upgradeFee: finalShiftToA ? (existing?.upgradeFee || 350) : 0,
         totalCost: existing ? existing.totalCost : 1000,
-        amountPaid: moneyGiven === 'Yes' ? (existing?.totalCost || 1000) : 0,
-        balanceDue: moneyGiven === 'Yes' ? 0 : (existing?.totalCost || 1000),
-        paymentStatus,
+        amountPaid: moneyGiven === 'Yes' ? (existing?.totalCost || 1000) : (existing?.amountPaid || 0),
+        balanceDue: moneyGiven === 'Yes' ? 0 : (existing?.balanceDue ?? existing?.totalCost ?? 1000),
+        paymentStatus: existing?.paymentStatus === 'Paid' ? 'Paid' : paymentStatus,
         paymentHistory: existing ? existing.paymentHistory : [],
         createdAt: existing ? existing.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1886,9 +2050,11 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
   let amIdx = headerRow.findIndex((h) => h.includes('amenit'));
   let toiletIdx = headerRow.findIndex((h) => h.includes('toilet') || h.includes('wc') || h.includes('bath'));
   let bedIdx = headerRow.findIndex((h) => h.includes('bed type') || h.includes('bedding'));
+  let flLabelIdx = headerRow.findIndex((h) => h === 'floor label');
   let catIdx = headerRow.findIndex((h) => h.includes('category') || h === 'type');
   let sIdx = headerRow.findIndex((h) => h.includes('status'));
   let brIdx = headerRow.findIndex((h) => h.includes('blocked') || h.includes('reason'));
+  let unbIdx = headerRow.findIndex((h) => h.includes('unblock') || h.includes('reopen'));
   let nIdx = headerRow.findIndex((h) => h.includes('note'));
 
   if (bIdx === -1) bIdx = 0;
@@ -1961,6 +2127,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
     } else if (rawAmenities) {
       const bMatch =
         rawAmenities.match(/buffer[:\s]*(\d+)/i) ||
+        rawAmenities.match(/\+(\d+)\s*(?:buffer|buf)?/i) ||
         rawAmenities.match(/(\d+)\s*buffer/i);
       if (bMatch) {
         buffer = parseInt(bMatch[1], 10);
@@ -1971,45 +2138,51 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       buffer = existing.buffer;
     }
 
-    const rawToilet = toiletIdx >= 0 ? String(row[toiletIdx] || '').toLowerCase() : '';
-    const toiletType = rawToilet.includes('indian') ? 'Indian Toilet' : 'Western Toilet';
+    const rawToilet = toiletIdx >= 0 ? String(row[toiletIdx] || '').trim() : '';
+    const toiletType = rawToilet
+      ? (rawToilet.toLowerCase().includes('indian') && !rawToilet.toLowerCase().includes('both') ? 'Indian Toilet' : rawToilet)
+      : (existing?.toiletType || 'Western Toilet');
 
-    const rawBed = bedIdx >= 0 ? String(row[bedIdx] || '').toLowerCase() : '';
-    let bedType = 'Single Beds';
-    if (rawBed.includes('double') && rawBed.includes('single')) {
-      bedType = 'Double & Single Bed';
-    } else if (rawBed.includes('double')) {
-      bedType = 'Double Bed';
-    } else if (rawBed.includes('suite')) {
-      bedType = 'Suite Beds';
+    const rawBed = bedIdx >= 0 ? String(row[bedIdx] || '').trim() : '';
+    let bedType = existing?.bedType || 'Single Beds';
+    if (rawBed) {
+      const lowerBed = rawBed.toLowerCase();
+      if (lowerBed.includes('both') || (lowerBed.includes('double') && lowerBed.includes('single'))) {
+        bedType = rawBed;
+      } else if (lowerBed.includes('double')) {
+        bedType = 'Double Bed';
+      } else if (lowerBed.includes('suite')) {
+        bedType = 'Suite Beds';
+      } else {
+        bedType = rawBed;
+      }
     }
 
-    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '').toLowerCase() : '';
-    let category: Room['category'] = 'Category B (Standard)';
-    if (rawCategory.includes('a') || rawCategory.includes('nizaam')) {
-      category = 'Category A (Nizaam)';
-    } else if (rawCategory.includes('suite') || rawCategory.includes('exec')) {
-      category = 'Executive Suite';
-    }
+    const rawCategory = catIdx >= 0 ? String(row[catIdx] || '') : '';
+    const category = parseRoomCategory(rawCategory, existing?.category || 'Category B (Standard)');
 
     const rawStatus = sIdx >= 0 ? String(row[sIdx] || '').toLowerCase() : '';
-    let status: Room['status'] = 'available';
-    if (rawStatus.includes('block')) {
-      status = 'blocked';
-    } else if (rawStatus.includes('occup')) {
-      status = 'occupied';
-    } else if (rawStatus.includes('clean')) {
-      status = 'cleaning';
-    }
+    const status: Room['status'] = rawStatus.includes('block')
+      ? 'blocked'
+      : rawStatus.includes('clean')
+      ? 'cleaning'
+      : 'available';
 
     const rawBlockedReason = brIdx >= 0 ? String(row[brIdx] || '').trim() : '';
+    const rawUnblockDate = unbIdx >= 0 ? String(row[unbIdx] || '').trim() : '';
     const blockedReason = status === 'blocked'
       ? (rawBlockedReason && rawBlockedReason !== 'N/A' && rawBlockedReason !== '—'
           ? rawBlockedReason
           : existing?.blockedReason || 'Maintenance hold')
       : undefined;
+    const expectedUnblockDate = status === 'blocked'
+      ? (rawUnblockDate && rawUnblockDate !== 'N/A' && rawUnblockDate !== '—'
+          ? rawUnblockDate
+          : existing?.expectedUnblockDate)
+      : undefined;
 
     const notes = nIdx >= 0 ? String(row[nIdx] || '').trim() : undefined;
+    const floorLabel = flLabelIdx >= 0 && row[flLabelIdx] ? String(row[flLabelIdx]).trim() : (existing ? existing.floorLabel : `Floor ${floor}`);
 
     const id = existing
       ? existing.id
@@ -2020,7 +2193,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       roomNumber,
       building,
       floor: existing ? existing.floor : floor,
-      floorLabel: existing ? existing.floorLabel : `Floor ${floor}`,
+      floorLabel,
       capacity,
       pax: capacity,
       buffer,
@@ -2029,6 +2202,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
       toiletType: existing ? existing.toiletType : toiletType,
       bedType: existing ? existing.bedType : bedType,
       blockedReason,
+      expectedUnblockDate,
       notes: notes ?? existing?.notes,
       amenities: existing?.amenities || ['Air Conditioning', 'WiFi', 'Clean Linens'],
     });
@@ -2039,15 +2213,7 @@ export function parseRoomsFromCsvText(csvText: string, existingRooms: Room[] = [
     return [];
   }
 
-  // Preserve existing rooms not in CSV
-  cleanExisting.forEach((er) => {
-    const key = getCanonicalRoomKey(er.building, er.roomNumber);
-    if (key && !parsedRoomMap.has(key)) {
-      parsedRoomMap.set(key, er);
-    }
-  });
-
-  return reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(parsedRoomMap.values())));
+  return mergeRoomsPreservingExisting(existingRooms, Array.from(parsedRoomMap.values()));
 }
 
 /**
@@ -2066,6 +2232,18 @@ export async function fetchRoomsAndBuildingsFromGoogleSheetUrl(
   // Extract gid if available in URL
   const gidMatch = sheetUrlOrId.match(/[#&?]gid=([0-9]+)/);
   const gidParam = gidMatch ? `&gid=${gidMatch[1]}` : '';
+
+  // 0. If OAuth access token is available (and no specific gid override), use official Sheets v4 API first
+  if (accessToken && !gidParam && sheetId !== 'faiz_husaini_attached_default') {
+    try {
+      const apiRooms = await fetchRoomsFromGoogleSheet(accessToken, sheetId, existingRooms);
+      if (apiRooms.length > 0) {
+        return apiRooms;
+      }
+    } catch (err) {
+      console.warn('OAuth room fetch fallback to CSV:', err);
+    }
+  }
 
   // 1. Try public Google visualization CSV export
   try {
@@ -2182,6 +2360,15 @@ export function parseReservationsFromCsvText(
   if (rawRows.length <= 1) return existingReservations;
 
   const headerRow = rawRows[0].map((h) => String(h || '').trim().toLowerCase());
+  // Guard: never parse Rooms_Inventory or Rooms_Availability_&_Timeline as Zaereen reservations
+  const looksLikeRoomInventoryOrTimeline =
+    headerRow.some((h) => h.includes('occupancy status') || h.includes('capacity (beds)') || h.includes('days remaining')) ||
+    (headerRow.some((h) => h === 'building') &&
+      headerRow.some((h) => h === 'room number') &&
+      !headerRow.some((h) => h === 'its' || h.includes('its id') || h.includes('applicant') || h === 'tour id' || h.includes('room allot')));
+  if (looksLikeRoomInventoryOrTimeline) {
+    return existingReservations;
+  }
   let srIdx = headerRow.findIndex((h) => h.includes('sr') || h === '#');
   let itsIdx = headerRow.findIndex((h) => h === 'its' || h.includes('its id') || h === 'its_id');
   let nameIdx = headerRow.findIndex((h) => h === 'name' || h.includes('applicant') || h.includes('zaer'));
@@ -2255,8 +2442,8 @@ export function parseReservationsFromCsvText(
     const familyNo = famIdx !== -1 && row[famIdx] ? row[famIdx].trim() : `F-${i}`;
     const officeName = officeIdx !== -1 && row[officeIdx] ? row[officeIdx].trim() : 'Faiz E Husayni';
     const tourId = tourIdx !== -1 && row[tourIdx] ? row[tourIdx].trim() : '';
-    const building = bIdx !== -1 && row[bIdx] ? row[bIdx].trim() : '';
-    const roomNumber = rIdx !== -1 && row[rIdx] ? row[rIdx].trim().replace(/^room\s+/i, '') : '';
+    const rawBuilding = bIdx !== -1 && row[bIdx] ? normalizeBuildingName(row[bIdx].trim()) : '';
+    const rawRoomNumber = rIdx !== -1 && row[rIdx] ? normalizeRoomNumber(row[rIdx].trim()) : '';
     const gender = genderIdx !== -1 && row[genderIdx] ? (row[genderIdx].trim() === 'Female' ? 'Female' : 'Male') : 'Male';
     const groupLeadName = leaderIdx !== -1 && row[leaderIdx] ? row[leaderIdx].trim() : (applicantName || 'Group Lead');
 
@@ -2291,7 +2478,7 @@ export function parseReservationsFromCsvText(
     const requestSlipNo = slipIdx !== -1 && row[slipIdx] ? row[slipIdx].trim() : '';
     const pax = paxIdx !== -1 && !isNaN(parseInt(row[paxIdx], 10)) ? parseInt(row[paxIdx], 10) : 1;
 
-    // Match with existing reservation to preserve IDs
+    // Match with existing reservation to preserve IDs, room allotments, and financial/slip metadata
     const normIts = itsId.toLowerCase();
     const normName = applicantName.toLowerCase();
     const existing = existingReservations.find(
@@ -2305,7 +2492,24 @@ export function parseReservationsFromCsvText(
       usedExistingIds.add(existing.id);
     }
 
+    // Never wipe an existing allotted room when CSV has a blank room column
+    const finalRoomNumber = rawRoomNumber || existing?.roomNumber || '';
+    const finalBuilding = rawRoomNumber
+      ? (rawBuilding || existing?.building || '')
+      : (existing?.building || rawBuilding || '');
+    const matchingRoom = rooms.find(
+      (rm) =>
+        normalizeRoomNumber(rm.roomNumber) === finalRoomNumber &&
+        normalizeBuildingName(rm.building).toLowerCase() === finalBuilding.toLowerCase()
+    );
+    const roomId = matchingRoom
+      ? matchingRoom.id
+      : (finalRoomNumber && finalBuilding
+          ? `rm-${finalBuilding.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${finalRoomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+          : existing?.roomId);
+
     const id = existing ? existing.id : `res-csv-${sr}-${itsId || i}`;
+    const finalShiftToA = existing?.shiftToCategoryA || category.includes('Category A') || category === 'B to A';
 
     parsedReservations.push({
       id,
@@ -2315,10 +2519,13 @@ export function parseReservationsFromCsvText(
       family: familyNo,
       familyNo,
       officeName,
-      tourId,
-      tourRefNo: tourId,
-      building,
-      roomNumber,
+      tourId: tourId || existing?.tourId || '',
+      tourRefNo: tourId || existing?.tourRefNo || '',
+      building: finalBuilding,
+      roomNumber: finalRoomNumber,
+      roomId,
+      isRoomChanged: existing?.isRoomChanged,
+      roomChangeHistory: existing?.roomChangeHistory,
       gender,
       groupLeadName,
       guestLeaderName: groupLeadName,
@@ -2331,18 +2538,28 @@ export function parseReservationsFromCsvText(
       arrivalDateTime: `${arrivalDate}T${arrivalTime}`,
       departureDateTime: `${departureDate}T${departureTime}`,
       category,
-      assignedCategory: (category.includes('Category A') || category === 'B to A') ? 'Category A (Nizaam)' : 'Category B (Standard)',
-      isSpecialGuest,
-      specialRemarks,
-      isUploadedToPortal,
-      requestSlipNo,
+      assignedCategory: existing?.assignedCategory || (finalShiftToA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
+      accommodationCategory: existing?.accommodationCategory || (finalShiftToA ? 'Category A (Nizaam)' : 'Category B (Standard)'),
+      isSpecialGuest: existing?.isSpecialGuest || isSpecialGuest,
+      specialRemarks: specialRemarks || existing?.specialRemarks,
+      isUploadedToPortal: existing?.isUploadedToPortal || isUploadedToPortal,
+      requestSlipNo: requestSlipNo || existing?.requestSlipNo,
+      requestSlipDate: existing?.requestSlipDate,
       paxCount: pax,
       pax,
       totalGuests: pax,
-      idara: '',
-      shiftToCategoryA: category.includes('Category A') || category === 'B to A',
-      moneyGiven: 'No',
-      paymentStatus: 'Pending',
+      idara: existing?.idara || '',
+      shiftToCategoryA: finalShiftToA,
+      shiftDirection: existing?.shiftDirection,
+      moneyGiven: existing?.moneyGiven || 'No',
+      moneyGivenDate: existing?.moneyGivenDate,
+      moneyNotes: existing?.moneyNotes,
+      refundGiven: existing?.refundGiven,
+      refundGivenDate: existing?.refundGivenDate,
+      refundSlipNo: existing?.refundSlipNo,
+      refundSlipDate: existing?.refundSlipDate,
+      refundAmountNotes: existing?.refundAmountNotes,
+      paymentStatus: existing?.paymentStatus || 'Pending',
       createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -2394,6 +2611,23 @@ export async function fetchReservationsFromGoogleSheetUrl(
   const sheetId = extractSpreadsheetId(sheetUrlOrId);
   if (!sheetId) {
     throw new Error('Please enter a valid Google Sheet URL or ID.');
+  }
+
+  // 1.5. If OAuth access token is available, prioritize official Sheets v4 API so we read the exact Zaereen Grid tab
+  if (accessToken && sheetId !== 'faiz_husaini_attached_default') {
+    try {
+      const apiRes = await fetchReservationsFromGoogleSheet(
+        accessToken,
+        sheetId,
+        rooms,
+        existingReservations
+      );
+      if (apiRes.length > 0) {
+        return apiRes;
+      }
+    } catch (err) {
+      console.warn('OAuth reservations fetch fallback to CSV:', err);
+    }
   }
 
   // 2. Try Google Sheets GViz CSV export

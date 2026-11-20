@@ -54,7 +54,8 @@ import {
   getRoomBookingsForDuration,
   deduplicateRooms,
   getCanonicalRoomKey,
-  reconcileOfficialSaifeeBurhaniRooms
+  reconcileOfficialSaifeeBurhaniRooms,
+  pruneLegacyBadriRooms
 } from './services/storage';
 import { 
   initAuth, 
@@ -70,6 +71,10 @@ import {
   twoWaySyncWithGoogleSheet,
   fetchRoomsFromGoogleSheet, 
   fetchReservationsFromGoogleSheet,
+  fetchRoomsAndBuildingsFromGoogleSheetUrl,
+  fetchReservationsFromGoogleSheetUrl,
+  mergeRoomsPreservingExisting,
+  mergeReservationsPreservingAllotments,
   fetchCategoriesFromGoogleSheet,
   fetchCategoriesFromGoogleSheetUrl
 } from './services/googleSheets';
@@ -292,7 +297,9 @@ export default function App() {
         }
 
         if (backendRooms && Array.isArray(backendRooms)) {
-          const cleanBackendRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(backendRooms));
+          const cleanBackendRooms = reconcileOfficialSaifeeBurhaniRooms(
+            pruneLegacyBadriRooms(deduplicateRooms(backendRooms))
+          );
           setRooms(cleanBackendRooms);
           saveRooms(cleanBackendRooms);
           if (cleanBackendRooms.length !== backendRooms.length || JSON.stringify(cleanBackendRooms) !== JSON.stringify(backendRooms)) {
@@ -461,6 +468,7 @@ export default function App() {
 
   // Pull rooms & reservations from linked sheet (Accessible by Receptionist & Admin)
   // User Requirement: "so when pulled by receptionist it updates the blocked/unblock rooms too"
+  // Preserves all existing rooms, pushed room specs, and allotted rooms on reservations.
   const handlePullFromGoogleSheet = useCallback(
     async (showFeedback: boolean = false) => {
       if (!sheetsConfig.spreadsheetId) return;
@@ -468,25 +476,38 @@ export default function App() {
       try {
         setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
         const [freshRooms, freshRes] = await Promise.all([
-          fetchRoomsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms).catch((err) => {
+          (accessToken
+            ? fetchRoomsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms)
+            : fetchRoomsAndBuildingsFromGoogleSheetUrl(sheetsConfig.spreadsheetId, null, rooms)
+          ).catch((err) => {
             console.warn('Rooms pull warning:', err);
             return rooms;
           }),
-          fetchReservationsFromGoogleSheet(accessToken || '', sheetsConfig.spreadsheetId, rooms, reservations),
+          accessToken
+            ? fetchReservationsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms, reservations)
+            : fetchReservationsFromGoogleSheetUrl(sheetsConfig.spreadsheetId, null, rooms, reservations),
         ]);
 
+        const mergedRooms =
+          freshRooms && freshRooms.length > 0
+            ? mergeRoomsPreservingExisting(rooms, freshRooms)
+            : rooms;
+
         if (freshRooms && freshRooms.length > 0) {
-          const cleanFreshRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(freshRooms));
-          setRooms(cleanFreshRooms);
-          saveRooms(cleanFreshRooms);
-          saveBackendRooms(cleanFreshRooms);
+          setRooms(mergedRooms);
+          saveRooms(mergedRooms);
+          saveBackendRooms(mergedRooms);
         }
 
+        const mergedRes =
+          freshRes && freshRes.length > 0
+            ? mergeReservationsPreservingAllotments(reservations, freshRes)
+            : reservations;
+
         if (freshRes && freshRes.length > 0) {
-          const uniqueRes = deduplicateReservationList(freshRes);
-          setReservations(uniqueRes);
-          saveReservations(uniqueRes);
-          saveBackendReservations(uniqueRes);
+          setReservations(mergedRes);
+          saveReservations(mergedRes);
+          saveBackendReservations(mergedRes);
         }
 
         broadcastLiveSync({ type: 'PULL_COMPLETED' });
@@ -502,7 +523,7 @@ export default function App() {
 
         if (showFeedback) {
           showToast(
-            `✓ Successfully pulled from Google Sheet! Synchronized ${freshRooms.length} rooms (with blocked/unblocked status) and ${freshRes.length} zaereen.`
+            `✓ Successfully pulled from Google Sheet! Synchronized ${mergedRooms.length} rooms (existing specs preserved, blocked/unblocked updated) and ${mergedRes.length} zaereen (allotted rooms preserved).`
           );
         }
       } catch (err: any) {
@@ -1493,7 +1514,9 @@ export default function App() {
         const existing = roomMap.get(key);
         roomMap.set(key, existing ? { ...nr, id: existing.id } : nr);
       });
-      finalRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(Array.from(roomMap.values())));
+      finalRooms = reconcileOfficialSaifeeBurhaniRooms(
+        pruneLegacyBadriRooms(deduplicateRooms(Array.from(roomMap.values())))
+      );
     }
 
     setRooms(finalRooms);
@@ -1739,19 +1762,21 @@ export default function App() {
         rooms={rooms}
         userRole={userRole}
         onRoomsFetched={(newRooms) => {
-          const cleanRooms = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(newRooms));
-          setRooms(cleanRooms);
-          saveRooms(cleanRooms);
-          saveBackendRooms(cleanRooms);
+          const mergedRooms = mergeRoomsPreservingExisting(rooms, newRooms);
+          setRooms(mergedRooms);
+          saveRooms(mergedRooms);
+          saveBackendRooms(mergedRooms);
           broadcastLiveSync({ type: 'ROOMS_UPDATED' });
-          showToast(`Imported ${cleanRooms.length} unique rooms from Google Sheet! (Verified Burhani & Saifee capacities and blocked status)`);
+          showToast(`Synchronized ${mergedRooms.length} rooms from Google Sheet! (Existing rooms & specs preserved, operational status updated)`);
         }}
-        onReservationsFetched={(newRes) => {
-          const uniqueRes = deduplicateReservationList(newRes);
-          setReservations(uniqueRes);
-          saveReservations(uniqueRes);
-          saveBackendReservations(uniqueRes);
-          showToast(`Synchronized ${uniqueRes.length} unique zaereen from Google Sheet!`);
+        onReservationsFetched={(newRes, replaceAll) => {
+          const finalRes = replaceAll
+            ? deduplicateReservationList(newRes)
+            : mergeReservationsPreservingAllotments(reservations, newRes);
+          setReservations(finalRes);
+          saveReservations(finalRes);
+          saveBackendReservations(finalRes);
+          showToast(`Synchronized ${finalRes.length} unique zaereen from Google Sheet (allotted rooms preserved)!`);
         }}
         onCategoriesFetched={(newCats) => {
           setCategories(newCats);

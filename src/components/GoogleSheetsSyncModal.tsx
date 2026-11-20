@@ -58,7 +58,7 @@ interface GoogleSheetsSyncModalProps {
   rooms: Room[];
   categories?: string[];
   onRoomsFetched?: (newRooms: Room[]) => void;
-  onReservationsFetched?: (newReservations: Reservation[]) => void;
+  onReservationsFetched?: (newReservations: Reservation[], replaceAll?: boolean) => void;
   onCategoriesFetched?: (newCategories: string[]) => void;
   onOpenAddBuildingRoomsModal?: () => void;
   userRole?: UserRole;
@@ -177,11 +177,11 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
         ]);
 
         if (onRoomsFetched && freshRooms.length > 0) onRoomsFetched(freshRooms);
-        if (onReservationsFetched && freshRes.length > 0) onReservationsFetched(freshRes);
+        if (onReservationsFetched && freshRes.length > 0) onReservationsFetched(freshRes, false);
 
         setFeedback({
           type: 'success',
-          message: `Successfully changed active Google Sheet to "${title}"! Loaded ${freshRes.length} zaereen records and ${freshRooms.length} rooms.`,
+          message: `Successfully changed active Google Sheet to "${title}"! Synchronized ${freshRes.length} zaereen records and ${freshRooms.length} rooms (existing rooms & allotments preserved).`,
         });
       } catch {
         setFeedback({
@@ -211,7 +211,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
     try {
       const res = await resetBackendToDefaultSheet();
       if (res && res.reservations && res.reservations.length > 0) {
-        if (onReservationsFetched) onReservationsFetched(res.reservations);
+        if (onReservationsFetched) onReservationsFetched(res.reservations, true);
         if (onUpdateConfig) onUpdateConfig(res.sheetsConfig || INITIAL_SHEETS_CONFIG);
         setFeedback({
           type: 'success',
@@ -220,7 +220,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
       } else {
         // Client fallback
         const fallbackRes = await fetchReservationsFromGoogleSheetUrl(DEFAULT_ATTACHED_SHEET_ID, null, rooms, reservations);
-        if (onReservationsFetched && fallbackRes.length > 0) onReservationsFetched(fallbackRes);
+        if (onReservationsFetched && fallbackRes.length > 0) onReservationsFetched(fallbackRes, true);
         onUpdateConfig(INITIAL_SHEETS_CONFIG);
         setFeedback({
           type: 'success',
@@ -311,7 +311,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
       ]);
 
       if (onRoomsFetched && freshRooms.length > 0) onRoomsFetched(freshRooms);
-      if (onReservationsFetched && freshRes.length > 0) onReservationsFetched(freshRes);
+      if (onReservationsFetched && freshRes.length > 0) onReservationsFetched(freshRes, false);
 
       onUpdateConfig({
         ...sheetsConfig,
@@ -321,7 +321,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
       setFeedback({
         type: 'success',
-        message: `Successfully imported all data: ${freshRes.length} zaereen (including all family members & allotted rooms) and ${freshRooms.length} rooms from Google Sheet!`,
+        message: `Successfully imported from Google Sheet: ${freshRes.length} zaereen (preserving all existing allotted rooms) and ${freshRooms.length} rooms (existing room specs preserved)!`,
       });
     } catch (err: any) {
       setFeedback({
