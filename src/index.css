@@ -184,9 +184,12 @@
   }
 }
 
-/* Enter animations used across the app's menus and dialogs (animate-in + fade-in / zoom-in-95 / slide-in-from-*). */
+/* Enter animations used across the app's menus and dialogs (animate-in + fade-in / zoom-in-95 / slide-in-from-*).
+   These use fill-mode `backwards`, never `both`/`forwards`: a transform animation that keeps filling after it ends
+   leaves the element with a transform, which turns it into the containing block for `position: fixed` children,
+   so pop-ups inside the page would open relative to the page instead of the screen. */
 .animate-in {
-  animation: app-enter var(--tw-duration, 180ms) var(--ease-out) both;
+  animation: app-enter var(--tw-duration, 180ms) var(--ease-out) backwards;
 }
 .fade-in { --enter-opacity: 0; }
 .zoom-in-95 { --enter-scale: 0.95; }
@@ -206,7 +209,7 @@
 
 /* A tab's content settles in once when you switch to it. */
 .tab-enter {
-  animation: tab-enter 260ms var(--ease-out) both;
+  animation: tab-enter 260ms var(--ease-out) backwards;
 }
 @keyframes tab-enter {
   from {
@@ -218,7 +221,7 @@
 /* Popovers grow from their anchor. */
 .pop-enter {
   transform-origin: top right;
-  animation: pop-enter 190ms var(--ease-spring) both;
+  animation: pop-enter 190ms var(--ease-spring) backwards;
 }
 @keyframes pop-enter {
   from {
@@ -229,7 +232,7 @@
 
 /* Something slides up from the bottom edge (the emails action bar). */
 .rise-enter {
-  animation: rise-enter 260ms var(--ease-spring) both;
+  animation: rise-enter 260ms var(--ease-spring) backwards;
 }
 @keyframes rise-enter {
   from {
@@ -288,7 +291,7 @@
 
 /* Checkbox ticks pop when chosen. */
 .tick-pop {
-  animation: tick-pop 220ms var(--ease-spring) both;
+  animation: tick-pop 220ms var(--ease-spring) backwards;
 }
 @keyframes tick-pop {
   from { transform: scale(0.6); opacity: 0.4; }
