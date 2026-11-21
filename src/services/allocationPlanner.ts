@@ -4,22 +4,23 @@
  * Plans rooms for zaereen who do not have one yet. It works from rules learned from the
  * allocations already saved in the app (current and recent stays), and from the room inventory:
  *
+ *  - only members of the same family (F-1, F-2 … within a tour) share a room; any other sharing is the
+ *    user's own choice in the planner;
  *  - a family stays together in one room when a room is big enough, and is split by gender otherwise;
  *  - the room is sized to the family (4–5 pax → 4-bed rooms, 1–3 pax → 2/3-bed rooms), using buffer beds when allowed;
- *  - people from different families share only within their own tour, and only when they are the same
- *    gender or share a surname (couples and relatives are often listed as separate families);
+ *  - starred zaereen (personal requests) always stay in Burhani and are placed first; their remarks decide the room;
  *  - a tour is kept in one building and close together on the same floors;
- *  - each office's usual buildings and categories (as allocated before) are preferred;
+ *  - each office's usual buildings and room types (as allocated before) are preferred;
  *  - infants under 3 do not take a bed;
- *  - same-day turnovers where the previous guests leave after the new guests arrive are avoided.
+ *  - same-day turnovers where the previous guests leave after the new guests arrive are avoided;
+ *  - everyone in these hotels is Category A. Zaereen shifted A→B are in external hotels and are not planned;
+ *    zaereen who do not fit are the ones to shift A→B.
  *
  * The module is pure: it never saves anything. The planner screen lets the user change the plan
  * and then allocates it through the app's normal save path.
  */
 import type { Reservation, Room } from '../types';
 import { checkTurnoverTimingConflict, getReservationEffectivePax, isInfant } from '../utils/turnoverTiming';
-
-export type CategoryLetter = 'A' | 'B';
 
 export interface PlannerOptions {
   /** First arrival date to plan (YYYY-MM-DD). */
@@ -30,12 +31,10 @@ export interface PlannerOptions {
   allowBuffer: boolean;
   /** Keep each tour in one building where possible. */
   keepTourTogether: boolean;
-  /** Prefer the buildings and categories each office was given before. */
+  /** Prefer the buildings and room types each office was given before. */
   followOfficeHabits: boolean;
   /** Also plan stays that already arrived but still have no room. */
   includeArrived: boolean;
-  /** Let different tours share a room. Off by default: this almost never happens. */
-  mixTours: boolean;
   /** Buildings the planner may use. Empty means every building. */
   buildings: string[];
 }
@@ -67,13 +66,13 @@ export interface PlanUnit {
   members: PlanMember[];
   /** Beds the unit needs (infants under 3 do not count). */
   pax: number;
-  /** Set when a member was shifted B→A (needs A) or A→B (needs B). */
-  requiredCategory?: CategoryLetter;
   /** A building already chosen for these zaereen without a room number. */
   presetBuilding?: string;
   starred: boolean;
   /** Set when the family had to be split across rooms. */
   splitFrom?: string;
+  /** The user split this family; refreshing keeps the split. */
+  userSplit?: boolean;
   /** These zaereen already have this room on another record for the same tour. */
   followRoom?: { building: string; roomNumber: string };
 }
@@ -99,7 +98,8 @@ export interface AllocationPlan {
 
 export interface RoomOption {
   room: Room;
-  ok: boolean;
+  /** free: the planner would use it; share: another family of this tour is there (your call); unsuitable: adds a warning. */
+  kind: 'free' | 'share' | 'unsuitable';
   score: number;
   freeBeds: number;
   note: string;
@@ -111,13 +111,14 @@ export interface LearnedPatterns {
   familiesTogetherPct: number;
   toursOneBuildingPct: number;
   bufferUsePct: number;
-  sharedSameGenderPct: number;
-  crossTourSharePct: number;
+  /** Rooms staff shared between different families by hand. */
+  manualSharePct: number;
   starredBurhaniPct: number;
   /** family size → most used room size and building. */
   sizeHabits: { size: string; capacity: number; building: string; pct: number; samples: number }[];
   /** office → share of its guests per `building|category`. */
   officeHabits: Record<string, Record<string, number>>;
+  /** bucket is `building|room type`. */
   officeTop: { office: string; bucket: string; pct: number; samples: number }[];
   /** family size label (1–4, 5+) → share of such families per building. */
   sizeBuildingHabits: Record<string, Record<string, number>>;
@@ -131,8 +132,10 @@ export interface LearnedPatterns {
 const lower = (v: unknown) => String(v ?? '').trim().toLowerCase();
 const day = (v?: string) => String(v || '').slice(0, 10);
 export const roomKey = (building: string, roomNumber: string) => `${lower(building)}|${lower(roomNumber)}`;
-export const categoryLetter = (room: Room): CategoryLetter => (/category a|nizaam|executive/i.test(room.category) ? 'A' : 'B');
-const bucketOf = (room: Room) => `${room.building}|${categoryLetter(room)}`;
+/** The room's type as labelled in the inventory. Every room in these hotels is Category A for the zaereen. */
+export const roomTier = (room: Room) => (/nizaam|category a|executive/i.test(room.category) ? 'Nizaam' : 'Standard');
+const bucketOf = (room: Room) => `${room.building}|${roomTier(room)}`;
+export const STARRED_BUILDING = 'Burhani';
 const maxBeds = (room: Room) => (room.capacity || room.pax || 2) + (room.buffer || 0);
 const baseBeds = (room: Room) => room.capacity || room.pax || 2;
 
@@ -161,20 +164,9 @@ const ageNum = (age: unknown) => {
   const n = parseFloat(String(age ?? ''));
   return Number.isFinite(n) ? n : NaN;
 };
-/** Adults (12+ or unknown age) decide whether a room can be shared across genders. */
+/** Adults (12+ or unknown age); a split family keeps children with the women. */
 const isAdult = (m: { age: string }) => !(ageNum(m.age) < 12);
 const genderOf = (g: string) => (/^f/i.test(g) ? 'F' : /^m/i.test(g) ? 'M' : '');
-
-/** Surname and given names used to link couples and relatives listed as separate families. */
-function nameParts(name: string) {
-  const words = lower(name).replace(/[^a-z\s]/g, ' ').split(/\s+/).filter((w) => w && !['bhai', 'bai', 'shaikh', 'mulla', 'saheb', 'sahiba'].includes(w));
-  return { surname: words.length > 1 ? words[words.length - 1] : '', given: new Set(words.slice(0, -1)) };
-}
-function relatedByName(a: string[], b: string[]) {
-  const pa = a.map(nameParts);
-  const pb = b.map(nameParts);
-  return pa.some((x) => x.surname && pb.some((y) => y.surname && (x.surname === y.surname)));
-}
 
 /**
  * The time a zair actually arrives or leaves. NKERP fills an unknown departure with 23:59 (end of day), so the
@@ -191,10 +183,9 @@ export function stayTime(r: Reservation, kind: 'arrival' | 'departure'): string 
   return raw;
 }
 
-function requiredCategoryOf(r: Reservation): CategoryLetter | undefined {
-  if (r.shiftDirection === 'A_TO_B') return 'B';
-  if (r.shiftToCategoryA || r.isUpgradedFromBToA || r.shiftDirection === 'B_TO_A' || /category a|nizaam/i.test(r.accommodationCategory || '')) return 'A';
-  return undefined;
+/** Shifted A→B: the zair stays in an external hotel, so the planner leaves them out. */
+export function shiftedOut(r: Reservation) {
+  return r.shiftDirection === 'A_TO_B' || Boolean(r.refundSlipNo) || r.accommodationCategory === 'Category B (Standard)';
 }
 
 function sortRooms(rooms: Room[]) {
@@ -233,18 +224,13 @@ export function learnPatterns(reservations: Reservation[], rooms: Room[]): Learn
     return Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v / total]));
   };
 
-  let buffer = 0, shared = 0, sharedSame = 0, crossTour = 0;
+  let buffer = 0, shared = 0;
   for (const [id, list] of stays) {
     const room = byKey.get(id.split('|').slice(0, 2).join('|'))!;
     const pax = list.reduce((s, r) => s + getReservationEffectivePax(r), 0);
     if (pax > baseBeds(room)) buffer++;
     const fams = new Set(list.map((r) => `${lower(r.tourRefNo)}|${lower(r.family)}`));
-    if (fams.size > 1) {
-      shared++;
-      const g = new Set(list.filter((r) => !(ageNum(r.age) < 12)).map((r) => genderOf(r.gender)));
-      if (g.size <= 1) sharedSame++;
-    }
-    if (new Set(list.map((r) => lower(r.tourRefNo))).size > 1) crossTour++;
+    if (fams.size > 1) shared++;
   }
 
   // Family size → room size actually used, when the whole family had one room.
@@ -295,8 +281,7 @@ export function learnPatterns(reservations: Reservation[], rooms: Room[]): Learn
     familiesTogetherPct: pct([...families.values()].filter((s) => s.size === 1).length, families.size),
     toursOneBuildingPct: pct([...tours.values()].filter((s) => s.size === 1).length, tours.size),
     bufferUsePct: pct(buffer, stays.size),
-    sharedSameGenderPct: pct(sharedSame, shared),
-    crossTourSharePct: pct(crossTour, stays.size),
+    manualSharePct: pct(shared, stays.size),
     starredBurhaniPct: pct(starred.filter((r) => r.building === 'Burhani').length, starred.length),
     sizeHabits,
     officeHabits,
@@ -311,7 +296,7 @@ export function learnPatterns(reservations: Reservation[], rooms: Room[]): Learn
 // ---------------------------------------------------------------------------------------------
 
 export function needsRoom(r: Reservation, options: PlannerOptions, today: string) {
-  if (String(r.roomNumber || '').trim()) return false;
+  if (String(r.roomNumber || '').trim() || shiftedOut(r)) return false;
   const a = day(r.arrivalDate);
   const d = day(r.departureDate) || a;
   if (!a || !r.tourRefNo) return false;
@@ -390,7 +375,6 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
   }
   for (const [key, list] of groups) {
     const first = list[0];
-    const required = list.map(requiredCategoryOf).find(Boolean);
     const preset = list.flatMap((r) => [r, ...(twinsOf.get(r.id) || [])]).map((r) => String(r.building || '').trim()).find(Boolean);
     units.push({
       key,
@@ -408,7 +392,6 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
         return twins ? { ...m, alsoIds: twins.map((t) => t.id) } : m;
       }).sort((a, b) => (ageNum(b.age) || 0) - (ageNum(a.age) || 0)),
       pax: list.reduce((s, r) => s + getReservationEffectivePax(r), 0),
-      requiredCategory: required,
       presetBuilding: preset,
       starred: list.some((r) => r.isSpecialGuest),
     });
@@ -458,6 +441,7 @@ export function splitIntoMembers(unit: PlanUnit): PlanUnit[] {
     pax: m.infant ? 0 : 1,
     starred: m.starred,
     splitFrom: unit.splitFrom || unit.key,
+    userSplit: true,
   }));
 }
 
@@ -473,8 +457,8 @@ interface Stay {
   pax: number;
   tour: string;
   family: string;
-  adultGenders: Set<string>;
-  names: string[];
+  /** Family label as shown (F-3). */
+  label: string;
   unitKey?: string;
 }
 
@@ -492,8 +476,7 @@ class Occupancy {
         arrival: day(r.arrivalDate), departure: day(r.departureDate) || day(r.arrivalDate),
         arrivalTime: stayTime(r, 'arrival'), departureTime: stayTime(r, 'departure'),
         pax: getReservationEffectivePax(r), tour: lower(r.tourRefNo), family: lower(r.family || `ITS ${r.itsId}`),
-        adultGenders: new Set(!(ageNum(r.age) < 12) ? [genderOf(r.gender)].filter(Boolean) : []),
-        names: [r.applicantName],
+        label: r.family || r.applicantName,
       });
     }
     return occ;
@@ -507,6 +490,10 @@ class Occupancy {
     this.add(key, unitStay(unit));
   }
 
+  removeUnit(key: string, unitKey: string) {
+    this.byRoom.set(key, this.stays(key).filter((s) => s.unitKey !== unitKey));
+  }
+
   stays(key: string) {
     return this.byRoom.get(key) || [];
   }
@@ -515,9 +502,7 @@ class Occupancy {
 function unitStay(unit: PlanUnit): Stay {
   return {
     arrival: unit.arrivalDate, departure: unit.departureDate, arrivalTime: unit.arrivalTime, departureTime: unit.departureTime,
-    pax: unit.pax, tour: lower(unit.tourRefNo), family: lower(unit.family),
-    adultGenders: new Set(unit.members.filter((m) => isAdult(m) && !m.infant).map((m) => genderOf(m.gender)).filter(Boolean)),
-    names: unit.members.map((m) => m.name), unitKey: unit.key,
+    pax: unit.pax, tour: lower(unit.tourRefNo), family: lower(unit.family), label: unit.family, unitKey: unit.key,
   };
 }
 
@@ -554,16 +539,25 @@ interface Evaluation {
   reject?: string;
 }
 
-function evaluate(unit: PlanUnit, room: Room, ctx: Context, force = false): Evaluation {
+/**
+ * auto: what the planner may do on its own. manual: a room the user picks, which may also be shared with
+ * another family of the same tour. force: anything, with warnings for what breaks the rules.
+ */
+type Mode = 'auto' | 'manual' | 'force';
+
+function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto'): Evaluation {
   const key = roomKey(room.building, room.roomNumber);
   const reasons: string[] = [];
   const warnings: string[] = [];
   const reject = (why: string): Evaluation => ({ ok: false, score: Infinity, freeBeds: 0, reasons, warnings, reject: why });
+  const force = mode === 'force';
 
   if (room.status === 'blocked' && !force) return reject(`Room is blocked${room.blockedReason ? `: ${room.blockedReason}` : ''}`);
-  if (ctx.options.buildings.length && !ctx.options.buildings.includes(room.building) && !force) return reject('Building not selected');
-  const cat = categoryLetter(room);
-  if (unit.requiredCategory && unit.requiredCategory !== cat && !force) return reject(`Needs Category ${unit.requiredCategory}`);
+  if (mode === 'auto' && ctx.options.buildings.length && !ctx.options.buildings.includes(room.building)) return reject('Building not selected');
+  if (unit.starred && room.building !== STARRED_BUILDING) {
+    if (mode === 'auto') return reject(`Starred zaereen stay in ${STARRED_BUILDING}`);
+    warnings.push(`Starred: normally ${STARRED_BUILDING}`);
+  }
 
   const stays = ctx.occupancy.stays(key).filter((s) => s.unitKey !== unit.key);
   const sharing = stays.filter((s) => overlaps(unit.arrivalDate, unit.departureDate, s.arrival, s.departure));
@@ -582,22 +576,18 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, force = false): Eval
     score += 50;
   }
 
-  // Sharing with another family.
+  // Only one family shares a room. Sharing with another family is the user's call.
   const otherFamilies = sharing.filter((s) => !(s.tour === lower(unit.tourRefNo) && s.family === lower(unit.family)));
+  const sharesWith = [...new Set(otherFamilies.map((s) => s.label))].join(', ');
   if (otherFamilies.length) {
-    if (!ctx.options.mixTours && otherFamilies.some((s) => s.tour !== lower(unit.tourRefNo))) {
+    if (otherFamilies.some((s) => s.tour !== lower(unit.tourRefNo))) {
       if (!force) return reject('Occupied by another tour');
       warnings.push('Shares with another tour');
-    }
-    const genders = new Set<string>([...unit.members.filter((m) => isAdult(m) && !m.infant).map((m) => genderOf(m.gender)).filter(Boolean)]);
-    for (const s of otherFamilies) s.adultGenders.forEach((g) => genders.add(g));
-    const related = relatedByName(unit.members.map((m) => m.name), otherFamilies.flatMap((s) => s.names));
-    if (genders.size > 1 && !related) {
-      if (!force) return reject('Would mix men and women from different families');
-      warnings.push('Mixes men and women from different families');
+    } else if (mode === 'auto') {
+      return reject(`${sharesWith} of this tour is there`);
     }
     score += 2;
-    reasons.push(related ? 'Shares with relatives on the same tour' : `Shares with same-gender zaereen on the tour`);
+    reasons.push(`Shares with ${sharesWith} (your choice)`);
   } else if (sharing.length) {
     score -= 4;
     reasons.push('Joins the rest of the family');
@@ -654,6 +644,11 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, force = false): Eval
     }
   }
 
+  if (unit.starred) {
+    const remarks = [...new Set(unit.members.map((m) => m.remarks).filter(Boolean))].join('; ');
+    reasons.push(`Starred: ${STARRED_BUILDING}${remarks ? `, check remarks: ${remarks}` : ''}`);
+  }
+
   // Office habit learned from earlier allocations.
   if (ctx.options.followOfficeHabits) {
     const habits = ctx.patterns.officeHabits[unit.officeName];
@@ -661,7 +656,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, force = false): Eval
     const best = Math.max(0.0001, ...Object.values(source));
     const share = source[bucketOf(room)] || 0;
     score += 8 * (1 - share / best);
-    if (habits && share / best > 0.7) reasons.push(`${unit.officeName} usually stays in ${room.building} · ${cat} (${Math.round(share * 100)}%)`);
+    if (habits && share / best > 0.7) reasons.push(`${unit.officeName} usually stays in ${room.building} ${roomTier(room)} rooms (${Math.round(share * 100)}%)`);
     // Families of this size usually went to this building (e.g. 4–5 pax to Burhani, couples to Saifee).
     const bySize = ctx.patterns.sizeBuildingHabits[unit.pax >= 5 ? '5+' : String(Math.max(1, unit.pax))];
     if (bySize) {
@@ -677,7 +672,6 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, force = false): Eval
     else score += 1.5;
   }
 
-  if (unit.requiredCategory) reasons.push(`Category ${unit.requiredCategory} as shifted`);
   return { ok: true, score, freeBeds, reasons, warnings };
 }
 
@@ -751,15 +745,15 @@ export function planAllocation(input: PlanInput): AllocationPlan {
     const choice = input.locked?.[unit.key];
     if (choice === undefined) { queue.push(unit); continue; }
     units.push(unit);
-    if (choice === null) { assignments[unit.key] = null; unplaced[unit.key] = 'Left without a room'; continue; }
+    if (choice === null) { assignments[unit.key] = null; unplaced[unit.key] = LEFT_EMPTY; continue; }
     const room = byKey.get(roomKey(choice.building, choice.roomNumber));
     if (!room) { assignments[unit.key] = null; unplaced[unit.key] = 'Chosen room is no longer in the inventory'; continue; }
-    const ev = evaluate(unit, room, ctx, true);
-    place(unit, room, { building: room.building, roomNumber: room.roomNumber, reasons: ['Chosen by you'], warnings: ev.warnings, locked: true });
+    const ev = evaluate(unit, room, ctx, 'force');
+    place(unit, room, { building: room.building, roomNumber: room.roomNumber, reasons: choice.reasons.length ? choice.reasons : ['Chosen by you'], warnings: ev.warnings, locked: true });
   }
 
-  // Earliest arrivals first; within a day, bigger tours first; within a tour, shifted
-  // zaereen, then the biggest families, so singles fill the remaining beds.
+  // Starred zaereen first, so Burhani still has room for them. Then earliest arrivals; within a day,
+  // bigger tours first; within a tour, the biggest families, so smaller ones fill the remaining rooms.
   const tourSize = new Map<string, number>();
   for (const u of queue) tourSize.set(lower(u.tourRefNo), (tourSize.get(lower(u.tourRefNo)) || 0) + u.pax);
   const tourStart = new Map<string, string>();
@@ -768,25 +762,107 @@ export function planAllocation(input: PlanInput): AllocationPlan {
     if (!tourStart.has(t) || u.arrivalDate < tourStart.get(t)!) tourStart.set(t, u.arrivalDate);
   }
   queue.sort((a, b) =>
+    Number(b.starred) - Number(a.starred) ||
     tourStart.get(lower(a.tourRefNo))!.localeCompare(tourStart.get(lower(b.tourRefNo))!) ||
     (tourSize.get(lower(b.tourRefNo))! - tourSize.get(lower(a.tourRefNo))!) ||
     lower(a.tourRefNo).localeCompare(lower(b.tourRefNo)) ||
-    Number(Boolean(b.requiredCategory)) - Number(Boolean(a.requiredCategory)) ||
     b.pax - a.pax || a.arrivalDate.localeCompare(b.arrivalDate) || a.key.localeCompare(b.key));
 
-  const planUnit = (unit: PlanUnit, depth = 0): void => {
+  const roomOfUnit = new Map<string, Room>();
+  const placedUnits = new Map<string, PlanUnit>();
+  const userChosen = new Set(Object.keys(input.locked || {}));
+  const bestRoom = (unit: PlanUnit, skip?: string) => {
     let best: { room: Room; ev: Evaluation } | null = null;
     let lastReject = '';
     for (const room of sorted) {
+      if (skip && roomKey(room.building, room.roomNumber) === skip) continue;
       const ev = evaluate(unit, room, ctx);
       if (!ev.ok) { lastReject = ev.reject || lastReject; continue; }
       if (!best || ev.score < best.ev.score) best = { room, ev };
     }
+    return { best, lastReject };
+  };
+  const placeBest = (unit: PlanUnit, room: Room, ev: Evaluation, extra: string[] = []) => {
+    const reasons = [...extra, ...new Set(ev.reasons)];
+    if (unit.splitFrom && !unit.userSplit) reasons.unshift('Family split: no single free room fits everyone');
+    if (unit.members.some((m) => m.alsoIds?.length)) reasons.push('Listed twice on this tour: both records get this room');
+    place(unit, room, { building: room.building, roomNumber: room.roomNumber, reasons, warnings: ev.warnings });
+    roomOfUnit.set(unit.key, room);
+    placedUnits.set(unit.key, unit);
+  };
+  const unplace = (unit: PlanUnit) => {
+    const room = roomOfUnit.get(unit.key)!;
+    ctx.occupancy.removeUnit(roomKey(room.building, room.roomNumber), unit.key);
+    roomOfUnit.delete(unit.key);
+    placedUnits.delete(unit.key);
+    delete assignments[unit.key];
+  };
+
+  /**
+   * Fill the gaps: when nothing is free for a family, move up to two families the planner placed
+   * earlier to other free rooms, if that frees a room that fits. Saved allocations and the user's
+   * choices never move. Limited in time so a full week can't stall the screen.
+   */
+  const deadline = Date.now() + 1000;
+  const relocate = (unit: PlanUnit): boolean => {
+    if (!unit.pax) return false;
+    const candidates = sorted
+      .filter((r) => r.status !== 'blocked' && (options.allowBuffer ? maxBeds(r) : baseBeds(r)) >= unit.pax)
+      .filter((r) => !unit.starred || r.building === STARRED_BUILDING)
+      .filter((r) => !options.buildings.length || options.buildings.includes(r.building))
+      .sort((a, b) => maxBeds(a) - maxBeds(b));
+    for (const room of candidates) {
+      if (Date.now() > deadline) return false;
+      const key = roomKey(room.building, room.roomNumber);
+      const overlapping = ctx.occupancy.stays(key).filter((s) => overlaps(unit.arrivalDate, unit.departureDate, s.arrival, s.departure));
+      if (!overlapping.length || overlapping.length > 2) continue;
+      const blockers = overlapping.map((s) => (s.unitKey ? placedUnits.get(s.unitKey) : undefined));
+      if (blockers.some((b) => !b || userChosen.has(b.key) || b.followRoom)) continue;
+      const moving = blockers as PlanUnit[];
+      const before = moving.map((b) => ({ unit: b, room: roomOfUnit.get(b.key)!, a: assignments[b.key]! }));
+      moving.forEach(unplace);
+      const fit = evaluate(unit, room, ctx);
+      if (fit.ok) {
+        placeBest(unit, room, fit);
+        const moved: PlanUnit[] = [];
+        let ok = true;
+        for (const b of moving) {
+          const { best } = bestRoom(b, key);
+          if (!best) { ok = false; break; }
+          placeBest(b, best.room, best.ev, ['Moved to make room for another family']);
+          moved.push(b);
+        }
+        if (ok) return true;
+        moved.forEach(unplace);
+        unplace(unit);
+      }
+      for (const { unit: b, room: r, a } of before) {
+        place(b, r, a);
+        roomOfUnit.set(b.key, r);
+        placedUnits.set(b.key, b);
+      }
+    }
+    return false;
+  };
+
+  const planUnit = (unit: PlanUnit, depth = 0): void => {
+    const { best, lastReject } = bestRoom(unit);
     const largestRoom = Math.max(0, ...sorted.filter((r) => r.status !== 'blocked').map((r) => (options.allowBuffer ? maxBeds(r) : baseBeds(r))));
+    if (!best && unit.pax <= largestRoom && relocate(unit)) { units.push(unit); return; }
     // A family that only fits with many empty beds (or not at all) is split in two.
     const tooBig = unit.pax > largestRoom;
     if ((!best || tooBig) && unit.members.filter((m) => !m.infant).length > 1 && depth < 4) {
+      const from = units.length;
       for (const part of splitUnit(unit)) planUnit(part, depth + 1);
+      const parts = units.slice(from);
+      if (parts.some((p) => assignments[p.key])) return;
+      // No part found a room: keep the family as one row, so it can be shifted A→B in one go.
+      units.splice(from);
+      for (const p of parts) { delete assignments[p.key]; delete unplaced[p.key]; }
+      units.push(unit);
+      assignments[unit.key] = null;
+      unplaced[unit.key] = unit.pax > largestRoom ? `No free rooms for ${unit.pax} pax from ${unit.arrivalDate} to ${unit.departureDate}`
+        : `No free room for ${unit.pax} pax from ${unit.arrivalDate} to ${unit.departureDate}`;
       return;
     }
     units.push(unit);
@@ -794,16 +870,18 @@ export function planAllocation(input: PlanInput): AllocationPlan {
       assignments[unit.key] = null;
       unplaced[unit.key] = unit.pax > largestRoom
         ? `No room has ${unit.pax} beds`
-        : `No free room for ${unit.pax} pax from ${unit.arrivalDate} to ${unit.departureDate}${lastReject ? ` (${lastReject.toLowerCase()})` : ''}`;
+        : unit.starred && lastReject.startsWith('Starred')
+          ? `No free ${STARRED_BUILDING} room from ${unit.arrivalDate} to ${unit.departureDate}`
+          : `No free room for ${unit.pax} pax from ${unit.arrivalDate} to ${unit.departureDate}`;
       return;
     }
-    const reasons = [...new Set(best.ev.reasons)];
-    if (unit.splitFrom) reasons.unshift('Family split: no single free room fits everyone');
-    if (unit.members.some((m) => m.alsoIds?.length)) reasons.push('Listed twice on this tour: both records get this room');
-    place(unit, best.room, { building: best.room.building, roomNumber: best.room.roomNumber, reasons, warnings: best.ev.warnings });
+    placeBest(unit, best.room, best.ev);
   };
 
   for (const unit of queue) planUnit(unit);
+  // A unit can lose its room to a relocation and get a new one; assignments always holds the latest.
+  for (const u of units) if (assignments[u.key] === undefined) { assignments[u.key] = null; unplaced[u.key] ||= 'No free room'; }
+  for (const u of units) if (assignments[u.key]) delete unplaced[u.key];
 
   // Keep the screen order stable: by tour, then family.
   units.sort((a, b) => tourStart.get(lower(a.tourRefNo))?.localeCompare(tourStart.get(lower(b.tourRefNo)) || '') ||
@@ -815,6 +893,43 @@ export function planAllocation(input: PlanInput): AllocationPlan {
 // ---------------------------------------------------------------------------------------------
 // Editing support
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Refresh after manual changes: keeps every room the user chose, every family left without a room on
+ * purpose and every split the user made, then re-fits everyone else (including anyone new in the date
+ * range) around them, using freed space as well as it can.
+ */
+export function refreshPlan(plan: AllocationPlan, input: Omit<PlanInput, 'units' | 'locked'>): AllocationPlan {
+  const locked: Record<string, PlanAssignment | null> = {};
+  const kept: PlanUnit[] = [];
+  // A family already in a room the user put someone else into stays there too.
+  const chosen = plan.units.filter((u) => plan.assignments[u.key]?.locked);
+  const anchored = new Set(plan.units.filter((u) => {
+    const a = plan.assignments[u.key];
+    return a && !a.locked && chosen.some((c) => {
+      const b = plan.assignments[c.key]!;
+      return roomKey(a.building, a.roomNumber) === roomKey(b.building, b.roomNumber) &&
+        overlaps(u.arrivalDate, u.departureDate, c.arrivalDate, c.departureDate);
+    });
+  }).map((u) => u.key));
+  for (const u of plan.units) {
+    const a = plan.assignments[u.key];
+    if (a && anchored.has(u.key)) locked[u.key] = { ...a, reasons: ['Kept: you placed another family in this room'], locked: true };
+    else if (a?.locked) locked[u.key] = a;
+    else if (!a && plan.unplaced[u.key] === LEFT_EMPTY) locked[u.key] = null;
+    else if (!u.userSplit) continue;
+    kept.push(u);
+  }
+  const keptIds = new Set(kept.flatMap(memberIds));
+  const fresh = collectUnits(input.reservations, input.options, input.today).flatMap((u) => {
+    const members = u.members.filter((m) => !keptIds.has(m.id));
+    if (!members.length) return [];
+    return [members.length === u.members.length ? u : { ...u, members, pax: members.filter((m) => !m.infant).length }];
+  });
+  return planAllocation({ ...input, units: [...kept, ...fresh], locked });
+}
+
+export const LEFT_EMPTY = 'Left without a room';
 
 export const memberIds = (unit: PlanUnit) => unit.members.flatMap((m) => [m.id, ...(m.alsoIds || [])]);
 
@@ -838,12 +953,19 @@ function contextWithout(plan: AllocationPlan, reservations: Reservation[], rooms
 /** Every room for one unit, best first, given the rest of the plan. */
 export function roomOptionsFor(unit: PlanUnit, plan: AllocationPlan, reservations: Reservation[], rooms: Room[], patterns: LearnedPatterns): RoomOption[] {
   const ctx = contextWithout(plan, reservations, rooms, patterns, unit.key);
+  const rank = { free: 0, share: 1, unsuitable: 2 } as const;
   return sortRooms(rooms)
-    .map((room) => {
-      const ev = evaluate(unit, room, ctx);
-      return { room, ok: ev.ok, score: ev.score, freeBeds: ev.freeBeds, note: ev.ok ? `${ev.freeBeds} free` : ev.reject || 'Not available' };
+    .map((room): RoomOption => {
+      const auto = evaluate(unit, room, ctx);
+      if (auto.ok) return { room, kind: 'free', score: auto.score, freeBeds: auto.freeBeds, note: `${auto.freeBeds} free` };
+      const manual = evaluate(unit, room, ctx, 'manual');
+      if (manual.ok && !manual.warnings.length) {
+        const shared = manual.reasons.find((r) => r.startsWith('Shares with'))?.replace(' (your choice)', '').replace('Shares with', 'Share with');
+        return { room, kind: 'share', score: manual.score, freeBeds: manual.freeBeds, note: shared ? `${shared} · ${manual.freeBeds} free` : `${manual.freeBeds} free` };
+      }
+      return { room, kind: 'unsuitable', score: auto.score, freeBeds: 0, note: manual.ok ? manual.warnings[0] : manual.reject || auto.reject || 'Not available' };
     })
-    .sort((a, b) => Number(b.ok) - Number(a.ok) || a.score - b.score);
+    .sort((a, b) => rank[a.kind] - rank[b.kind] || a.score - b.score);
 }
 
 /** Recomputes every assigned unit's warnings against the whole plan, after the user changed it. */
@@ -859,8 +981,8 @@ export function revalidatePlan(plan: AllocationPlan, reservations: Reservation[]
     const room = byKey.get(roomKey(a.building, a.roomNumber));
     if (!room) { assignments[u.key] = { ...a, warnings: ['Room is no longer in the inventory'] }; continue; }
     // evaluate() ignores the unit's own stay, so the shared context can be used as is.
-    const ev = evaluate(u, room, ctx, true);
-    const strict = evaluate(u, room, ctx);
+    const ev = evaluate(u, room, ctx, 'force');
+    const strict = evaluate(u, room, ctx, 'manual');
     const warnings = [...ev.warnings];
     if (!strict.ok && strict.reject && !warnings.length) warnings.push(strict.reject);
     assignments[u.key] = { ...a, warnings: [...new Set(warnings)] };
@@ -913,6 +1035,5 @@ export const DEFAULT_PLANNER_OPTIONS = (today = baghdadToday()): PlannerOptions 
   keepTourTogether: true,
   followOfficeHabits: true,
   includeArrived: false,
-  mixTours: false,
   buildings: [],
 });

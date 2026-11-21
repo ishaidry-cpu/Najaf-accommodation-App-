@@ -1179,6 +1179,7 @@ export default function App() {
             rooms={rooms}
             userRole={userRole}
             onApplyPlan={handleApplyPlan}
+            onShiftToB={(ids) => handleBatchShiftToCategoryB(ids, 'No')}
             onOpenSync={() => setActiveTab('sync')}
           />
         )}

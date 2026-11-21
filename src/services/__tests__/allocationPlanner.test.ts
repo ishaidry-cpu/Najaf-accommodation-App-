@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Reservation, Room } from '../../types';
 import {
-  type PlannerOptions, collectUnits, DEFAULT_PLANNER_OPTIONS, memberIds, planAllocation, revalidatePlan, learnPatterns, stayTime,
+  type AllocationPlan, type PlannerOptions, collectUnits, DEFAULT_PLANNER_OPTIONS, memberIds, planAllocation, refreshPlan, revalidatePlan,
+  learnPatterns, roomOptionsFor, stayTime,
 } from '../allocationPlanner';
 
 const TODAY = '2026-11-21';
@@ -49,21 +50,28 @@ describe('AI allocation planner', () => {
     assert.equal(roomOf(plan, fam[2].id), 'Saifee 101');
   });
 
-  it('lets single zaereen of one tour share only with the same gender', () => {
-    const men = [guest({ family: 'F-1' }), guest({ family: 'F-2' })];
-    const woman = guest({ family: 'F-3', gender: 'Female', applicantName: 'Unrelated Bai Otherwala' });
-    const rooms = [room('Saifee', '101', 2), room('Saifee', '102', 2)];
-    const plan = planAllocation({ reservations: [...men, woman], rooms, options: opts(), today: TODAY });
-    assert.equal(roomOf(plan, men[0].id), roomOf(plan, men[1].id));
-    assert.notEqual(roomOf(plan, woman.id), roomOf(plan, men[0].id));
+  it('never puts two families in one room by itself, but offers it as a manual choice', () => {
+    const a = guest({ family: 'F-1' });
+    const b = guest({ family: 'F-2', applicantName: 'Same Surname Testwala' });
+    const rooms = [room('Saifee', '101', 2)];
+    const plan = planAllocation({ reservations: [a, b], rooms, options: opts(), today: TODAY });
+    assert.equal([a, b].filter((r) => roomOf(plan, r.id)).length, 1);
+    const waiting = plan.units.find((u) => !plan.assignments[u.key])!;
+    const [option] = roomOptionsFor(waiting, plan, [a, b], rooms, learnPatterns([a, b], rooms));
+    assert.equal(option.kind, 'share');
+    assert.match(option.note, /Share with F-/i);
   });
 
-  it('lets a couple listed as two families share a room by surname', () => {
-    const husband = guest({ family: 'F-1', applicantName: 'Taher Nooruddin Hathi' });
-    const wife = guest({ family: 'F-2', gender: 'Female', applicantName: 'Fatema Taher Hathi' });
-    const plan = planAllocation({ reservations: [husband, wife], rooms: [room('Saifee', '101', 2)], options: opts(), today: TODAY });
-    assert.equal(roomOf(plan, husband.id), 'Saifee 101');
-    assert.equal(roomOf(plan, wife.id), 'Saifee 101');
+  it('puts starred zaereen in Burhani first, and nowhere else', () => {
+    const star = guest({ family: 'F-9', isSpecialGuest: true, specialRemarks: 'VIP Mumineen' });
+    const plain = guest({ family: 'F-1', tourRefNo: T2 });
+    const rooms = [room('Burhani', '201', 1), room('Saifee', '101', 1)];
+    // The plain zair arrives first but the starred one still gets Burhani.
+    const plan = planAllocation({ reservations: [plain, star], rooms, options: opts(), today: TODAY });
+    assert.equal(roomOf(plan, star.id), 'Burhani 201');
+    assert.match(plan.assignments[plan.units.find((u) => u.starred)!.key]!.reasons.join(' '), /VIP Mumineen/);
+    const full = planAllocation({ reservations: [star], rooms: [room('Saifee', '101', 1)], options: opts(), today: TODAY });
+    assert.match(Object.values(full.unplaced)[0], /No free Burhani room/);
   });
 
   it('never puts two tours together or overbooks a room already in use', () => {
@@ -95,11 +103,43 @@ describe('AI allocation planner', () => {
     assert.equal(fam.filter((r) => roomOf(strict, r.id)).length, 2);
   });
 
-  it('gives a zair shifted B→A a Category A room', () => {
-    const shifted = guest({ shiftToCategoryA: true });
-    const rooms = [room('Burhani', '201', 1), room('Saifee', '701', 2, { category: 'Category A (Nizaam)' })];
-    const plan = planAllocation({ reservations: [shifted], rooms, options: opts(), today: TODAY });
-    assert.equal(roomOf(plan, shifted.id), 'Saifee 701');
+  it('leaves out zaereen shifted A→B and plans zaereen shifted B→A like everyone else', () => {
+    const out = guest({ shiftDirection: 'A_TO_B', refundSlipNo: 'REF-1' });
+    const inn = guest({ family: 'F-2', shiftToCategoryA: true, accommodationCategory: 'Category A (Nizaam)' });
+    const plan = planAllocation({ reservations: [out, inn], rooms: [room('Burhani', '201', 1)], options: opts(), today: TODAY });
+    assert.deepEqual(plan.units.flatMap(memberIds), [inn.id]);
+    assert.equal(roomOf(plan, inn.id), 'Burhani 201');
+  });
+
+  it('moves an earlier family to another room when that lets a bigger family fit', () => {
+    // F-1 (2 pax, preset Burhani) would take the only 4-bed room; F-2 (4 pax) then fits only if F-1 moves.
+    const small = [guest({ family: 'F-1', building: 'Burhani' }), guest({ family: 'F-1', gender: 'Female', building: 'Burhani' })];
+    const big = [0, 1, 2, 3].map((i) => guest({ family: 'F-2', gender: i % 2 ? 'Female' : 'Male', arrivalDate: '2026-11-23' }));
+    const rooms = [room('Burhani', '201', 4), room('Saifee', '101', 2)];
+    const plan = planAllocation({ reservations: [...small, ...big], rooms, options: opts(), today: TODAY });
+    assert.equal(Object.keys(plan.unplaced).length, 0);
+    assert.equal(roomOf(plan, big[0].id), 'Burhani 201');
+    assert.equal(roomOf(plan, small[0].id), 'Saifee 101');
+  });
+
+  it('refresh keeps manual changes and fills the space they free', () => {
+    // Two single women on one tour, two rooms; a third family has no room until the user puts the singles together.
+    const s1 = guest({ family: 'F-1', gender: 'Female' });
+    const s2 = guest({ family: 'F-2', gender: 'Female' });
+    const third = guest({ family: 'F-3' });
+    const rooms = [room('Saifee', '101', 2), room('Saifee', '102', 2)];
+    const all = [s1, s2, third];
+    const plan = planAllocation({ reservations: all, rooms, options: opts(), today: TODAY });
+    assert.equal(Object.keys(plan.unplaced).length, 1);
+    const u1 = plan.units.find((u) => memberIds(u).includes(s1.id))!;
+    const u2 = plan.units.find((u) => memberIds(u).includes(s2.id))!;
+    const target = plan.assignments[u1.key]!;
+    const edited: AllocationPlan = { ...plan, assignments: { ...plan.assignments, [u2.key]: { ...target, reasons: ['Chosen by you'], locked: true } } };
+    const refreshed = refreshPlan(edited, { reservations: all, rooms, options: opts(), today: TODAY });
+    assert.equal(roomOf(refreshed, s2.id), roomOf(refreshed, s1.id));
+    assert.ok(roomOf(refreshed, third.id));
+    assert.notEqual(roomOf(refreshed, third.id), roomOf(refreshed, s1.id));
+    assert.equal(Object.keys(refreshed.unplaced).length, 0);
   });
 
   it('plans a zair listed twice on a tour once, and follows a room their other record already has', () => {

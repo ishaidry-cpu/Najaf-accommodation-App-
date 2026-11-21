@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, BedDouble, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, Lock,
-  RotateCcw, Search, Sparkles, Split, Star, Trash2, Users, X,
+  LogOut, RefreshCw, Search, Sparkles, Split, Star, Trash2, Users, X,
 } from 'lucide-react';
 import type { Reservation, Room, UserRole } from '../types';
 import {
-  type AllocationPlan, type PlanAssignment, type PlannerOptions, type PlanUnit, type RoomOption,
-  baghdadToday, categoryLetter, collectUnits, DEFAULT_PLANNER_OPTIONS, learnPatterns, nightlyLoad, planAllocation,
-  planSummary, revalidatePlan, roomKey, roomOptionsFor, splitIntoMembers,
+  type AllocationPlan, type PlannerOptions, type PlanUnit, type RoomOption,
+  baghdadToday, collectUnits, DEFAULT_PLANNER_OPTIONS, LEFT_EMPTY, learnPatterns, memberIds, nightlyLoad, planAllocation,
+  planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
 } from '../services/allocationPlanner';
 import { btn, PageHeader } from './ui';
 
@@ -24,12 +24,16 @@ interface Props {
   rooms: Room[];
   userRole: UserRole;
   onApplyPlan: (items: PlanAllocationItem[]) => { applied: number; skipped: number };
+  /** Shift these records A→B: they move to an external hotel. */
+  onShiftToB: (reservationIds: string[]) => void;
   onOpenSync: () => void;
 }
 
 interface Draft {
   plan: AllocationPlan;
   excluded: string[];
+  /** Manual changes since the plan was last generated or refreshed. */
+  changes?: number;
 }
 
 const OPTIONS_KEY = 'najaf-ai-planner-options-v1';
@@ -59,9 +63,9 @@ const shortDate = (d: string) => {
 };
 const tourLabel = (ref: string) => ref.replace(/^NKERP\/TOUR\//i, '');
 
-/** Drops members who got a room elsewhere (or left), so an old draft never overwrites newer work. */
+/** Drops members who got a room elsewhere, shifted A→B or left, so an old draft never overwrites newer work. */
 function freshen(plan: AllocationPlan, reservations: Reservation[]): AllocationPlan {
-  const open = new Map(reservations.filter((r) => !String(r.roomNumber || '').trim()).map((r) => [r.id, r]));
+  const open = new Map(reservations.filter((r) => !String(r.roomNumber || '').trim() && !shiftedOut(r)).map((r) => [r.id, r]));
   const units: PlanUnit[] = [];
   for (const u of plan.units) {
     const members = u.members.filter((m) => open.has(m.id));
@@ -73,14 +77,15 @@ function freshen(plan: AllocationPlan, reservations: Reservation[]): AllocationP
   return { ...plan, units, assignments: pick(plan.assignments), unplaced: pick(plan.unplaced) };
 }
 
-export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, userRole, onApplyPlan, onOpenSync }) => {
+export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, userRole, onApplyPlan, onShiftToB, onOpenSync }) => {
   const today = baghdadToday();
   const [options, setOptions] = useState<PlannerOptions>(() => {
     const saved = load<PlannerOptions>(OPTIONS_KEY);
     const base = DEFAULT_PLANNER_OPTIONS(today);
     if (!saved) return base;
     // Keep the saved choices, but never start the range in the past.
-    const merged = { ...base, ...saved };
+    const { mixTours: _dropped, ...rest } = saved as PlannerOptions & { mixTours?: boolean };
+    const merged = { ...base, ...rest };
     if (merged.fromDate < today) merged.fromDate = today;
     if (merged.toDate < merged.fromDate) merged.toDate = base.toDate;
     return merged;
@@ -162,7 +167,8 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     };
   }, [plan, excluded]);
 
-  const generate = (keepChoices: boolean) => {
+  /** refresh: keep every manual change and re-fit everyone else around them. */
+  const generate = (refresh: boolean) => {
     setBusy(true);
     setResult(null);
     setConfirming(false);
@@ -170,19 +176,10 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     // Let the button show its spinner before the planner takes the main thread.
     window.setTimeout(() => {
       try {
-        let next: AllocationPlan;
-        if (keepChoices && plan) {
-          const locked: Record<string, PlanAssignment | null> = {};
-          for (const u of plan.units) {
-            const a = plan.assignments[u.key];
-            if (a?.locked) locked[u.key] = a;
-            else if (!a && plan.unplaced[u.key] === 'Left without a room') locked[u.key] = null;
-          }
-          next = planAllocation({ reservations, rooms, options, patterns, locked, units: plan.units, today });
-        } else {
-          next = planAllocation({ reservations, rooms, options, patterns, today });
-        }
-        setDraft({ plan: next, excluded: keepChoices ? draft?.excluded || [] : [] });
+        const next = refresh && plan
+          ? refreshPlan(plan, { reservations, rooms, options, patterns, today })
+          : planAllocation({ reservations, rooms, options, patterns, today });
+        setDraft({ plan: next, excluded: refresh ? draft?.excluded || [] : [], changes: 0 });
         const attention = new Set(next.units.filter((u) => !next.assignments[u.key] || next.assignments[u.key]!.warnings.length).map((u) => u.tourRefNo));
         setExpanded(attention);
       } finally {
@@ -193,7 +190,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
 
   const updatePlan = (fn: (p: AllocationPlan) => AllocationPlan) => {
     if (!draft || !plan) return;
-    setDraft({ ...draft, plan: fn(plan) });
+    setDraft({ ...draft, plan: fn(plan), changes: (draft.changes || 0) + 1 });
   };
 
   const chooseRoom = (unit: PlanUnit, room: Room | null) => {
@@ -205,7 +202,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
         assignments[unit.key] = { building: room.building, roomNumber: room.roomNumber, reasons: ['Chosen by you'], warnings: [], locked: true };
       } else {
         assignments[unit.key] = null;
-        unplaced[unit.key] = 'Left without a room';
+        unplaced[unit.key] = LEFT_EMPTY;
       }
       return { ...p, assignments, unplaced };
     });
@@ -248,7 +245,13 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     setResult(outcome);
   };
 
+  const shiftToB = (unit: PlanUnit) => {
+    onShiftToB(memberIds(unit));
+    // They leave the plan on the next render: zaereen shifted A→B are not planned.
+  };
+
   const isAdmin = userRole === 'admin';
+  const changes = draft?.changes || 0;
   const setOpt = <K extends keyof PlannerOptions>(key: K, value: PlannerOptions[K]) => setOptions((o) => ({ ...o, [key]: value }));
   const peak = nightly.length ? Math.max(...nightly.map((d) => Math.max(d.beds, d.saved + d.planned + d.waiting))) : 1;
   const overflowNights = nightly.filter((d) => d.waiting > 0 && d.saved + d.planned + d.waiting > d.beds);
@@ -260,8 +263,9 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
         description="Plans rooms for zaereen who don't have one yet, using patterns learned from your current and past allocations. Review the plan, change anything, then allocate everything in one go."
         actions={plan && (
           <>
-            <button type="button" className={btn.secondary} onClick={() => generate(true)} disabled={busy} title="Plan again, keeping the rooms you chose yourself">
-              <RotateCcw className="w-4 h-4" />Re-plan the rest
+            <button type="button" className={changes ? btn.primary : btn.secondary} onClick={() => generate(true)} disabled={busy}
+              title="Keep your changes, re-fit everyone else around them and fill the space that is free">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}Refresh plan
             </button>
             <button type="button" className={btn.ghost} onClick={() => { setDraft(null); setResult(null); }} disabled={busy}>
               <Trash2 className="w-4 h-4" />Discard plan
@@ -315,7 +319,6 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
             ['keepTourTogether', 'Keep each tour in one building'],
             ['followOfficeHabits', 'Follow learned habits'],
             ['includeArrived', 'Include zaereen already arrived'],
-            ['mixTours', 'Let tours share rooms'],
           ] as const).map(([key, label]) => (
             <label key={key} className="inline-flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" checked={options[key]} onChange={(e) => setOpt(key, e.target.checked)} className="w-4 h-4 accent-brand-700" />
@@ -342,11 +345,12 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
         {showLearned && (
           <div className="px-4 pb-4 grid gap-4 md:grid-cols-2 text-[13px] text-stone-700">
             <ul className="space-y-1.5">
+              <Learned>Only one family (F-1, F-2 …) shares a room. Putting different families together is your call: pick a room marked "Share with" in the room list.</Learned>
               <Learned>Families stay together in one room ({patterns.familiesTogetherPct}% of families). Bigger families are split by gender, with children staying with the women.</Learned>
+              <Learned>Starred zaereen always stay in {STARRED_BUILDING} and are placed first. Their remarks decide the exact room, so check them.</Learned>
               <Learned>Each tour stays in one building ({patterns.toursOneBuildingPct}% of tours) and close together on the same floors.</Learned>
-              <Learned>Different families share a room only within their own tour, and only when they are the same gender or share a surname ({patterns.sharedSameGenderPct}% of shared rooms are same gender).</Learned>
               <Learned>Buffer beds are used when that keeps a family together ({patterns.bufferUsePct}% of rooms). Infants under 3 don't take a bed.</Learned>
-              <Learned>Starred zaereen are personal requests. The planner can't know those requests, so it plans starred zaereen like everyone else. Check them before you allocate.</Learned>
+              <Learned>Everyone in these hotels is Category A. Zaereen already shifted A→B are in external hotels and are left out. Anyone who doesn't fit is the one to shift A→B.</Learned>
               <Learned>Same-day turnovers where the last guests leave after the new guests arrive are avoided.</Learned>
             </ul>
             <div className="space-y-3">
@@ -369,7 +373,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                     {patterns.officeTop.slice(0, 8).map((o) => (
                       <li key={o.office} className="flex justify-between gap-3">
                         <span className="truncate">{o.office}</span>
-                        <span className="shrink-0 text-stone-500">{o.bucket.replace('|', ' · ')} <span className="text-stone-400">{o.pct}%</span></span>
+                        <span className="shrink-0 text-stone-500">{o.bucket.replace('|', ' · ')} rooms <span className="text-stone-400">{o.pct}%</span></span>
                       </li>
                     ))}
                   </ul>
@@ -409,7 +413,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
             <Stat label="Zaereen planned" value={`${summary.placed}/${summary.zaereen}`} />
             <Stat label="Rooms used" value={summary.rooms} />
             <Stat label="Tours" value={summary.tours} />
-            <Stat label="Without a room" value={summary.unplaced} tone={summary.unplaced ? 'rose' : undefined} />
+            <Stat label="No room: shift A→B" value={summary.unplaced} tone={summary.unplaced ? 'rose' : undefined} />
             <Stat label="Need a look" value={summary.warnings} tone={summary.warnings ? 'amber' : undefined} />
             <Stat label="Starred to review" value={summary.starred} tone={summary.starred ? 'gold' : undefined} />
           </section>
@@ -449,9 +453,21 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
               {overflowNights.length > 0 && (
                 <p className="mt-3 text-xs text-rose-700 flex items-start gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  Not enough beds on {overflowNights.map((d) => shortDate(d.date)).join(', ')}. Up to {Math.max(...overflowNights.map((d) => d.saved + d.planned + d.waiting - d.beds))} more beds are needed. Some zaereen will need another hotel or a manual arrangement.
+                  Not enough beds on {overflowNights.map((d) => shortDate(d.date)).join(', ')}. Up to {Math.max(...overflowNights.map((d) => d.saved + d.planned + d.waiting - d.beds))} more beds are needed. Zaereen who don't fit need to shift A→B to an external hotel.
                 </p>
               )}
+            </section>
+          )}
+
+          {changes > 0 && (
+            <section className="rounded-2xl bg-brand-50 border border-brand-100 px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Info className="w-4 h-4 text-brand-700 shrink-0" />
+              <p className="flex-1 text-sm text-brand-800">
+                You made {plural(changes, 'change')}. <b>Refresh plan</b> keeps them and re-fits everyone else around them, filling any space they freed.
+              </p>
+              <button type="button" className={btn.primary} onClick={() => generate(true)} disabled={busy}>
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}Refresh plan
+              </button>
             </section>
           )}
 
@@ -514,7 +530,9 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                           onPick={() => setPicking(picking === u.key ? null : u.key)}
                           options={picking === u.key ? roomOptionsFor(u, plan, reservations, rooms, patterns) : []}
                           onChoose={(room) => chooseRoom(u, room)}
-                          onSplit={() => splitFamily(u)} />
+                          onSplit={() => splitFamily(u)}
+                          canShift={isAdmin}
+                          onShiftToB={() => shiftToB(u)} />
                       ))}
                     </div>
                   )}
@@ -596,9 +614,12 @@ const UnitRow: React.FC<{
   onPick: () => void;
   onChoose: (room: Room | null) => void;
   onSplit: () => void;
-}> = ({ unit, plan, room, picking, options, onPick, onChoose, onSplit }) => {
+  canShift: boolean;
+  onShiftToB: () => void;
+}> = ({ unit, plan, room, picking, options, onPick, onChoose, onSplit, canShift, onShiftToB }) => {
   const a = plan.assignments[unit.key];
   const why = plan.unplaced[unit.key];
+  const [confirmShift, setConfirmShift] = useState(false);
   return (
     <div className="px-3 sm:px-4 py-3 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)] lg:items-start">
       <div className="min-w-0">
@@ -606,7 +627,6 @@ const UnitRow: React.FC<{
           <span className="font-medium text-stone-700">{unit.family}</span>
           <span>{plural(unit.members.length, 'zair', 'zaereen')}{unit.pax !== unit.members.length ? ` · ${plural(unit.pax, 'bed')}` : ''}</span>
           {unit.splitFrom && <span className="inline-flex items-center gap-1 text-stone-500"><Split className="w-3 h-3" />part of family</span>}
-          {unit.requiredCategory && <span className="text-brand-700">Needs {unit.requiredCategory}</span>}
         </div>
         <ul className="mt-1 space-y-0.5">
           {unit.members.map((m) => (
@@ -632,14 +652,15 @@ const UnitRow: React.FC<{
                 {room.building} {room.roomNumber}
               </div>
               <div className="text-xs text-stone-500">
-                {room.floorLabel || `Floor ${room.floor}`} · {room.capacity}{room.buffer ? `+${room.buffer}` : ''} beds · Cat {categoryLetter(room)}
+                {room.floorLabel || `Floor ${room.floor}`} · {room.capacity}{room.buffer ? `+${room.buffer}` : ''} beds · {roomTier(room)}
                 {room.toiletType ? ` · ${room.toiletType.toLowerCase().includes('both') ? 'both toilets' : room.toiletType.toLowerCase()}` : ''}
               </div>
             </div>
           </div>
         ) : (
           <div className="text-sm text-rose-700 flex items-start gap-1.5">
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />{why || 'No room yet'}
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{why || 'No room yet'}{why !== LEFT_EMPTY && <span className="block text-xs text-rose-600">Shift A→B to an external hotel, or free a room and refresh.</span>}</span>
           </div>
         )}
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -651,6 +672,19 @@ const UnitRow: React.FC<{
               <Split className="w-3.5 h-3.5" />Split
             </button>
           )}
+          {!a && canShift && !unit.followRoom && (confirmShift ? (
+            <>
+              <button type="button" className={`${btn.primary} h-8 px-2.5 text-xs bg-rose-700 hover:bg-rose-800`} onClick={onShiftToB}>
+                <LogOut className="w-3.5 h-3.5" />Shift {plural(unit.members.length, 'zair', 'zaereen')} A→B
+              </button>
+              <button type="button" className={`${btn.ghost} h-8 px-2.5 text-xs`} onClick={() => setConfirmShift(false)}>Cancel</button>
+            </>
+          ) : (
+            <button type="button" className={`${btn.ghost} h-8 px-2.5 text-xs text-rose-700`} onClick={() => setConfirmShift(true)}
+              title="Move them to an external hotel. They are added to the A→B refund slip list.">
+              <LogOut className="w-3.5 h-3.5" />Shift A→B
+            </button>
+          ))}
         </div>
         {picking && (
           <div className="mt-2 max-h-64 overflow-y-auto rounded-lg ring-1 ring-stone-200 bg-white divide-y divide-stone-100">
@@ -659,15 +693,17 @@ const UnitRow: React.FC<{
             </button>
             {options.map((o, i) => (
               <React.Fragment key={o.room.id}>
-              {!o.ok && (i === 0 || options[i - 1].ok) && (
-                <div className="px-2.5 py-1.5 text-[11px] font-medium text-stone-500 bg-stone-50">Full or unsuitable · choosing one adds a warning</div>
+              {o.kind !== 'free' && (i === 0 || options[i - 1].kind !== o.kind) && (
+                <div className="px-2.5 py-1.5 text-[11px] font-medium text-stone-500 bg-stone-50">
+                  {o.kind === 'share' ? 'Share with another family of this tour · your call' : 'Full or unsuitable · choosing one adds a warning'}
+                </div>
               )}
               <button type="button" onClick={() => onChoose(o.room)}
-                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs hover:bg-stone-50 cursor-pointer ${o.ok ? 'text-stone-800' : 'text-stone-400'}`}>
+                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-400' : 'text-stone-800'}`}>
                 <span className="font-medium">{o.room.building} {o.room.roomNumber}
-                  <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {o.room.capacity}{o.room.buffer ? `+${o.room.buffer}` : ''} · {categoryLetter(o.room)}</span>
+                  <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {o.room.capacity}{o.room.buffer ? `+${o.room.buffer}` : ''} · {roomTier(o.room)}</span>
                 </span>
-                <span className={o.ok ? 'text-emerald-700' : 'text-amber-700'}>{o.note}</span>
+                <span className={o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-brand-700' : 'text-amber-700'}>{o.note}</span>
               </button>
               </React.Fragment>
             ))}
@@ -686,7 +722,7 @@ const UnitRow: React.FC<{
             {a.warnings.map((w) => <li key={w} className="flex gap-1.5"><AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />{w}</li>)}
           </ul>
         )}
-        {unit.starred && <p className="mt-1 text-amber-800">Starred: check for a personal request before allocating.</p>}
+        {unit.starred && <p className="mt-1 text-amber-800">Starred: always {STARRED_BUILDING}. The remarks decide the exact room.</p>}
       </div>
     </div>
   );
