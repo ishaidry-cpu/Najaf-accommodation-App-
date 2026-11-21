@@ -36,7 +36,7 @@ import {
   Star,
   ArrowRightLeft
 } from 'lucide-react';
-import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
+import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole, type TravelLeg } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
 import { PageHeader, Dropdown, MenuItem, MenuDivider, btn } from './ui';
 import { SwitchRoomTarget } from './SwitchRoomModal';
@@ -84,6 +84,37 @@ const STANDARD_TIMES = [
   '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM',
   '10:00 PM', '11:00 PM', '01:00 AM', '02:00 AM', '03:00 AM', '04:00 AM'
 ];
+
+function TravelDetails({ legs, date, direction }: {
+  legs?: TravelLeg[];
+  date: string;
+  direction: 'arrival' | 'departure';
+}) {
+  const visible = legs?.filter(leg => leg.serviceDate === date.slice(0, 10));
+  if (!visible?.length) return null;
+  const incoming = direction === 'arrival';
+  return (
+    <ul className="mt-1 space-y-1 text-[11px] leading-tight text-stone-700">
+      {visible.map(leg => {
+        const kind = leg.kind === 'subvenue' ? 'SBVN' : leg.kind === 'flight' ? 'Flight' : leg.kind === 'land' ? 'Land' : '';
+        const route = leg.location && `${incoming ? 'from' : 'to'} ${leg.location}`;
+        const time = leg.localTime?.slice(11, 16);
+        const eventDate = leg.localTime?.slice(0, 10);
+        const event = leg.kind === 'flight' ? (incoming ? 'Lands' : 'Takes off') : (incoming ? 'Arrival' : 'Departure');
+        return (
+          <li key={JSON.stringify(leg)} className="rounded border border-emerald-100 bg-emerald-50/60 px-1.5 py-1">
+            <div className="break-words font-semibold text-emerald-950">{[kind, leg.flightCode, route].filter(Boolean).join(' ')}</div>
+            {time && (
+              <div title="Baghdad time" className="tabular-nums">
+                {event} {eventDate !== leg.serviceDate && `${eventDate} `}{time}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export const ReservationsView: React.FC<ReservationsViewProps> = ({
   reservations,
@@ -1443,6 +1474,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       Arr: <strong className="text-stone-900">{res.arrivalDate?.slice(0, 10) || '—'}</strong> ({res.arrivalTime || '11:00 AM'}) ➔ Dep:{' '}
                       <strong className="text-stone-900">{res.departureDate?.slice(0, 10) || '—'}</strong> ({res.departureTime || '01:00 AM'})
                     </div>
+                    {(res.arrivalTravel?.length || res.departureTravel?.length) ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
+                        <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Category + Portal + Actions */}
@@ -2126,6 +2163,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             />
                           </span>
                         </div>
+                        <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
                       </td>
 
                       {/* 12. Departure Date & Time */}
@@ -2158,6 +2196,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             />
                           </span>
                         </div>
+                        <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
                       </td>
 
                       {/* 13. Category */}

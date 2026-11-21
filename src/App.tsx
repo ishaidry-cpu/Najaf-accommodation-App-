@@ -275,7 +275,11 @@ export default function App() {
     try {
       const result = await pullNkerp();
       await handleRefreshLiveComputerData(false);
-      showToast(`Pulled ${result.received} NKERP stays · ${result.changed} saved changes.`);
+      const travel = result.travel;
+      const transport = travel ? ` Travel updated for ${travel.changed} stays.` : '';
+      const pending = travel?.pending ? ` ${travel.pending} travel checks are pending.` :
+        travel?.failed ? ` ${travel.failed} travel checks will retry.` : '';
+      showToast(`Pulled ${result.received} NKERP stays · ${result.changed} saved changes.${transport}${pending}`);
     } catch (err) {
       showToast((err as Error).message, 'error');
     } finally {

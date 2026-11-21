@@ -31,7 +31,12 @@ export async function loadAccommodation() {
   return {reservations,rooms,settings};
 }
 export const fetchBackendStatus = () => request<{ pull: PullStatus; revision: number; events: boolean }>('status');
-export const pullNkerp = () => request<{received:number; changed:number; expired:number}>('nkerp/pull',{});
+export const pullNkerp = () => request<{
+  received: number;
+  changed: number;
+  expired: number;
+  travel: { changed: number; checked: number; pending: number; failed: number };
+}>('nkerp/pull', {});
 
 export async function saveChanges<T extends {id:string}>(collection: 'rooms' | 'reservations', before: T[], after: T[]) {
   const old = new Map(before.map(row => [row.id,row]));

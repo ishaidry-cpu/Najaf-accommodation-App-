@@ -95,6 +95,14 @@ export interface ZaereenGuest {
   isLeader?: boolean;
 }
 
+export interface TravelLeg {
+  kind: 'subvenue' | 'flight' | 'saffan' | 'land';
+  serviceDate: string;
+  location: string;
+  localTime?: string;
+  flightCode?: string;
+}
+
 export interface Reservation {
   id: string;
   // Specific sequence from Excel sheet:
@@ -119,6 +127,8 @@ export interface Reservation {
   departureTime?: string;   // Departure Time (e.g. '01:00 AM')
   rawArrivalStr?: string;   // Original raw arrival text (e.g. '01-10-2026 11:00 AM')
   rawDepartureStr?: string; // Original raw departure text (e.g. '06-10-2026 01:00 AM')
+  arrivalTravel?: TravelLeg[];
+  departureTravel?: TravelLeg[];
 
   // Accommodation Shift (B to A upgrade OR A to B refund):
   shiftToCategoryA?: boolean;      // True if shifted from B to A (Nizaam)

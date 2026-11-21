@@ -44,7 +44,7 @@ function saveChanges(input: unknown) {
         const existing = row as unknown as Record<string,unknown> | undefined;
         const next = {...row};
         for (const [key,value] of Object.entries(after)) {
-          if (['id','localFields','nkerpBaseline','createdAt','updatedAt','__proto__','constructor','prototype'].includes(key)) continue;
+          if (['id','localFields','nkerpBaseline','arrivalTravel','departureTravel','createdAt','updatedAt','__proto__','constructor','prototype'].includes(key)) continue;
           if (existing && !isDeepStrictEqual(existing[key] ?? null,before?.[key] ?? null) &&
               !isDeepStrictEqual(existing[key] ?? null,value)) throw new SaveConflict('This record changed. Reload the latest values and retry.');
           Object.assign(next,{[key]:value === null ? undefined : value});

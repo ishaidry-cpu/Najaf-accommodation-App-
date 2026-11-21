@@ -8,6 +8,7 @@ import { peopleOnTour } from './nkerp-sync/planner.js';
 import { addDays, day, norm, todayIn } from './nkerp-sync/util.js';
 import type { NkRecord } from './nkerp-sync/types.js';
 import { expiry, guests, identityHash, read, rooms, stayKey, write, transaction, prune } from './accommodation-store.js';
+import { prioritizeTravel, readTravel, reconcileTravel, travelEndpoints, travelRequests } from './nkerp-travel.js';
 
 export interface StoredReservation extends Reservation {
   nkerpBaseline?: { building: string; roomNumber: string };
@@ -184,7 +185,8 @@ export async function collectNkerp(client: Pick<NkerpClient,'pending'|'currentFo
 }
 
 export function createPull(onChange: () => void) {
-  let running: Promise<ReturnType<typeof reconcileNkerp>> | undefined;
+  type Outcome = ReturnType<typeof reconcileNkerp> & { travel: ReturnType<typeof reconcileTravel> };
+  let running: Promise<Outcome> | undefined;
   const status = { running:false, lastSyncedAt: null as string | null, error: null as string | null };
   function pull() {
     if (running) return running;
@@ -194,12 +196,28 @@ export function createPull(onChange: () => void) {
       const signal = AbortSignal.timeout(55_000);
       const client = new NkerpClient({signal});
       const tours = new NkerpEmailClient({signal});
-      const incoming = await collectNkerp(client,tours);
-      const outcome = reconcileNkerp(incoming);
+      const travelSignal = AbortSignal.timeout(48_000);
+      const travelClient = new NkerpClient({ signal: travelSignal, endpoints: travelEndpoints });
+      const checked = read<Record<string, number>>('travel-checked', {});
+      const today = todayIn();
+      const requests = prioritizeTravel(travelRequests(guests()), today, checked);
+      const [accommodation, travel] = await Promise.allSettled([
+        collectNkerp(client, tours, today),
+        readTravel(travelClient, requests, travelSignal),
+      ]);
+      const outcome = accommodation.status === 'fulfilled' ? reconcileNkerp(accommodation.value) : undefined;
+      if (travel.status === 'rejected') throw travel.reason;
+      const requested = new Set(requests.map(request => request.key));
+      const extra = travelRequests(guests()).filter(request => !requested.has(request.key));
+      const additional = await readTravel(travelClient, prioritizeTravel(extra, today, checked), travelSignal);
+      for (const [key, rows] of additional.results) travel.value.results.set(key, rows);
+      const transport = reconcileTravel(travel.value.results, travel.value.failed + additional.failed);
+      if (outcome?.changed || outcome?.expired || transport.changed) onChange();
+      if (accommodation.status === 'rejected') throw accommodation.reason;
+      if (!outcome) throw new Error('NKERP accommodation did not refresh.');
       status.lastSyncedAt = new Date().toISOString();
       status.error = null;
-      if (outcome.changed || outcome.expired) onChange();
-      return outcome;
+      return { ...outcome, travel: transport };
     })().catch(err => {
       status.error = err instanceof Error ? err.message : 'NKERP pull failed.';
       throw err;

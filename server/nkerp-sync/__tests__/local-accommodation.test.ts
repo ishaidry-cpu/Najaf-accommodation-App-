@@ -10,6 +10,7 @@ process.env.NAJAF_DATA_DIR = mkdtempSync(path.join(tmpdir(), 'najaf-local-test-'
 const { expiry, guests, prune, rooms, setup, write, read, transaction, localStore } = await import('../../local-store.js');
 const { withStore } = await import('../../accommodation-store.js');
 const { collectNkerp, reconcileNkerp, removalKey } = await import('../../nkerp-pull.js');
+const { travelRequests, readTravel, reconcileTravel } = await import('../../nkerp-travel.js');
 
 const now = Date.parse('2026-11-21T10:00:00+03:00');
 const source = (ref: string, arrivalDate = '2026-11-20'): Reservation => ({
@@ -75,4 +76,52 @@ test('uses the scoped pending search and joins allocated nights to the correct N
   },'2026-11-21',now);
   assert.equal(records.length,1);
   assert.deepEqual([records[0].age,records[0].building,records[0].roomNumber],['42','Burhani','101']);
+});
+
+test('adds Najaf flight, Saffan and SBVN travel to the correct saved stay without altering the accommodation', async () => {
+  const flight = { ...source('FLIGHT'), building: 'Burhani', roomNumber: '101' };
+  const otherVisit = { ...source('FLIGHT','2026-11-23'), departureDate: '2026-11-26' };
+  const transfer = source('TRANSFER');
+  const stays = [flight, otherVisit, transfer];
+  const signal = new AbortController().signal;
+  const arrival = { TourReferenceNo: 'flight', SubVenue: 'NAJAF', FlightCode: 'TK 302', ArrivalPort: 'Baghdad Airport',
+    ArrivalTime: '2026-11-19T21:35:00', ArrivalTimeWithTimeZone: '2026-11-20T00:35:00' };
+  const requests = travelRequests(stays, now);
+  assert.equal(requests.filter(request => request.date === '2026-11-20' && request.list === 'arrival').length, 1);
+  const travel = await readTravel({
+    read: async (path, data) => {
+      const query = data as { Date: string; SubVenueId: number };
+      assert.equal(query.SubVenueId, 3);
+      const date = query.Date.slice(0, 10);
+      if (path.endsWith('getArrivals')) return { ReturnStatus: true, arrivalRequest: date === '2026-11-20' ?
+        [arrival, arrival, { ...arrival, SubVenue: 'KARBALA', FlightCode: 'NOT NAJAF' }] : [] };
+      if (path.endsWith('getDepartures')) return { ReturnStatus: true, departureRequest: date === '2026-11-22' ?
+        [{ TourReferenceNo: 'FLIGHT', SubVenue: 'NAJAF', FlightCode: 'NA 10 AM', DeparturePort: 'Saffan',
+          DepartureTimeWithTimeZone: '2026-11-22T10:00:00' }] : [] };
+      return { ReturnStatus: true, subVenueTransferRequest: date === '2026-11-20' ?
+        [{ TourReferenceNo:'TRANSFER', SubVenueFrom:'KARBALA', SubVenueTo:'NAJAF',
+          DepartureTime:'2026-11-20T00:00:00', ArrivalDepartureTime:'2026-11-20T11:00:00' }] : date === '2026-11-22' ?
+        [{ TourReferenceNo:'TRANSFER', SubVenueFrom:'NAJAF', SubVenueTo:'KARBALA', DepartureTime:'2026-11-22T00:00:00' }] : [] };
+    },
+  }, requests, signal);
+  withStore(localStore, () => {
+    write('reservations', stays);
+    assert.deepEqual(reconcileTravel(travel.results, travel.failed, now), { changed: 2, checked: requests.length, pending: 0, failed: 0 });
+    const [booked, repeated, fromSubvenue] = guests();
+    assert.deepEqual(booked.arrivalTravel, [{ kind:'flight', serviceDate:'2026-11-20', location:'Baghdad Airport',
+      localTime:'2026-11-20T00:35', flightCode:'TK 302' }]);
+    assert.deepEqual(booked.departureTravel, [{ kind:'saffan', serviceDate:'2026-11-22', location:'Saffan', localTime:'2026-11-22T10:00' }]);
+    assert.equal(repeated.arrivalTravel, undefined);
+    assert.equal(fromSubvenue.arrivalTravel?.[0]?.localTime, '2026-11-20T11:00');
+    assert.equal(fromSubvenue.departureTravel?.[0]?.location, 'KARBALA');
+    assert.equal(fromSubvenue.departureTravel?.[0]?.localTime, undefined);
+    assert.equal(booked.roomNumber, '101');
+    assert.equal(booked.departureTime, flight.departureTime);
+    assert.equal(booked.updatedAt, flight.updatedAt);
+    assert.equal(reconcileTravel(new Map(), 1, now).changed, 0);
+    assert.deepEqual(guests()[0].arrivalTravel, booked.arrivalTravel);
+    assert.equal(reconcileTravel(new Map([['2026-11-20/arrival', new Map()]]), 0, now).changed, 1);
+    assert.equal(guests()[0].arrivalTravel, undefined);
+    assert.deepEqual(guests()[0].departureTravel, booked.departureTravel);
+  });
 });
