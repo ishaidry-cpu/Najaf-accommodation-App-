@@ -232,13 +232,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     return Array.from(new Set(reservations.map((r) => r.tourRefNo).filter(Boolean))).sort();
   }, [reservations]);
 
-  // Distinct buildings from rooms and reservations
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
-    reservations.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
-    return Array.from(set).sort();
-  }, [rooms, reservations]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   // Distinct families for selected batch Tour ID
   const familiesInBatchTour = useMemo(() => {
@@ -1936,6 +1933,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           {distinctBuildings.map((bldg) => (
                             <option key={bldg} value={bldg}>{bldg}</option>
                           ))}
+                          {chosenBldg && !distinctBuildings.includes(chosenBldg) && (
+                            <option value={chosenBldg}>{chosenBldg}</option>
+                          )}
                         </select>
                       </td>
 

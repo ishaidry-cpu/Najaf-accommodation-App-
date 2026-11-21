@@ -501,7 +501,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
           </div>
 
           <p className="text-[11px] text-emerald-900 leading-relaxed">
-            Contains <strong>1,074 Zaereen records</strong>, exact arrival &amp; departure times, 121 rooms across Saifee (70), Burhani (44), Badri (6) &amp; Qasr Nobola (1), and verified categories.
+            Contains <strong>1,074 Zaereen records</strong>, exact arrival &amp; departure times, 120 rooms across Burhani (44), Saifee (70) &amp; Badri (6), and verified categories.
           </p>
 
           {/* Reset Confirmation Dialog */}
@@ -800,7 +800,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
                     Hotel Buildings & Rooms Inventory ({rooms.length} Rooms)
                   </div>
                   <div className="text-[11px] text-stone-600">
-                    Saifee (70), Burhani (44), Badri (6), Qasr Nobola (1). Add rooms or sync inventory.
+                    Burhani (44), Saifee (70), Badri (6). Add rooms or sync inventory.
                   </div>
                 </div>
               </div>

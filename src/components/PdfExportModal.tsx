@@ -692,9 +692,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 onChange={(e) => setBuildingFilter(e.target.value)}
                 className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none cursor-pointer"
               >
-                <option value="ALL">All Hotels (Saifee & Burhani)</option>
-                <option value="Saifee">Saifee Hotel (70 Rooms)</option>
+                <option value="ALL">All Hotels (Burhani, Saifee &amp; Badri)</option>
                 <option value="Burhani">Burhani Hotel (44 Rooms)</option>
+                <option value="Saifee">Saifee Hotel (70 Rooms)</option>
+                <option value="Badri">Badri Hotel (6 Rooms)</option>
               </select>
             </div>
 

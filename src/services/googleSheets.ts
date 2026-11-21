@@ -16,6 +16,7 @@ import {
   reconcileOfficialSaifeeBurhaniRooms,
   pruneLegacyBadriRooms,
   isPlausibleRoom,
+  isOfficialThreeBuilding,
 } from './storage';
 
 /**
@@ -68,6 +69,7 @@ export function mergeRoomsPreservingExisting(
 
   deduplicateRooms(Array.isArray(pulledRooms) ? pulledRooms : []).forEach((srm) => {
     if (!isPlausibleRoom(srm.building, srm.roomNumber)) return;
+    if (!isOfficialThreeBuilding(srm.building)) return;
     const key = getCanonicalRoomKey(srm.building, srm.roomNumber);
     if (!key) return;
 

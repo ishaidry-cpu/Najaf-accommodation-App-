@@ -122,13 +122,8 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
   );
 
   const distinctBuildings = useMemo(() => {
-    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => {
-      const nb = normalizeBuildingName(r.building);
-      if (nb) set.add(nb);
-    });
-    return Array.from(set).sort();
-  }, [rooms]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   const floorOptions = useMemo(() => {
     const set: string[] = [];

@@ -21,7 +21,7 @@ import {
   Users
 } from 'lucide-react';
 import { Room, RoomStatus, RoomCategory, Reservation, GoogleSheetsConfig } from '../types';
-import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName } from '../services/storage';
+import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, OFFICIAL_THREE_BUILDINGS } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { SwitchRoomTarget } from './SwitchRoomModal';
 import { PageHeader, btn } from './ui';
@@ -67,11 +67,10 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
   // Canonical deduplicated rooms list
   const cleanRooms = useMemo(() => deduplicateRooms(rooms), [rooms]);
 
-  // Dynamic distinct buildings list (normalized to prevent case/suffix duplicates)
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const list = Array.from(new Set(cleanRooms.map((r) => normalizeBuildingName(r.building)).filter(Boolean)));
-    return list.sort();
-  }, [cleanRooms]);
+    return [...OFFICIAL_THREE_BUILDINGS];
+  }, []);
 
   // Available floors for current building
   const availableFloorLabels = useMemo(() => {
@@ -137,10 +136,10 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               type="button"
               onClick={onResetRoomsToSaifeeBurhani}
               className={btn.ghost}
-              title="Reset room inventory back to the official 114 rooms across Saifee and Burhani"
+              title="Reset room inventory back to the official 120 rooms across Burhani (44), Saifee (70), and Badri (6)"
             >
               <RotateCcw className="w-4 h-4" />
-              Reset to 114 rooms
+              Reset to 120 rooms
             </button>
             <button
               type="button"
@@ -543,21 +542,37 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               </div>
 
               <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between gap-2">
-                {onDeleteRoom ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm(`Delete Room ${inspectingRoom.roomNumber} (${inspectingRoom.building}) from inventory?`)) {
-                        onDeleteRoom(inspectingRoom.id);
-                        setInspectingRoom(null);
-                      }
-                    }}
-                    className="min-h-[44px] px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Room</span>
-                  </button>
-                ) : <div />}
+                {onDeleteRoom ? (() => {
+                  const inspNum = normalizeRoomNumber(inspectingRoom.roomNumber);
+                  const inspBldg = normalizeBuildingName(inspectingRoom.building).toLowerCase();
+                  const hasAnyAllotted = reservations.some(
+                    (res) =>
+                      normalizeRoomNumber(res.roomNumber) === inspNum &&
+                      normalizeBuildingName(res.building).toLowerCase() === inspBldg
+                  );
+                  return (
+                    <button
+                      type="button"
+                      disabled={hasAnyAllotted}
+                      onClick={() => {
+                        if (hasAnyAllotted) return;
+                        if (window.confirm(`Delete Room ${inspectingRoom.roomNumber} (${inspectingRoom.building}) from inventory?`)) {
+                          onDeleteRoom(inspectingRoom.id);
+                          setInspectingRoom(null);
+                        }
+                      }}
+                      title={hasAnyAllotted ? 'Cannot delete: this room has allotted Zaereen' : 'Delete room from inventory'}
+                      className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        hasAnyAllotted
+                          ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                          : 'bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer'
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{hasAnyAllotted ? 'Allotted (Protected)' : 'Delete Room'}</span>
+                    </button>
+                  );
+                })() : <div />}
 
                 <button
                   type="button"

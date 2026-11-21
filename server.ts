@@ -194,26 +194,15 @@ export function parseAttachedCsvReservations(): any[] {
 // Initialize seed data if not present
 function initializeData() {
   if (!fs.existsSync(ROOMS_FILE)) {
-    console.log('Seeding initial rooms across Saifee, Burhani, Badri, and Qasr Nobola...');
-    const initialRooms = deduplicateRooms([
-      ...generateSaifeeBurhani114Rooms(),
-      ...generateBadriRooms(),
-      {
-        id: 'rm-qasr-1',
-        roomNumber: '1',
-        building: 'Qasr Nobola',
-        floor: 1,
-        floorLabel: 'Floor 1',
-        capacity: 4,
-        pax: 4,
-        buffer: 0,
-        toiletType: 'WESTERN',
-        bedType: 'Single Beds',
-        category: 'Category A (Nizaam)',
-        status: 'available',
-        amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-      },
-    ]);
+    console.log('Seeding initial rooms across Burhani (44), Saifee (70), and Badri (6)...');
+    const initialRooms = reconcileOfficialSaifeeBurhaniRooms(
+      pruneLegacyBadriRooms(
+        deduplicateRooms([
+          ...generateSaifeeBurhani114Rooms(),
+          ...generateBadriRooms(),
+        ])
+      )
+    );
     writeJsonFile(ROOMS_FILE, initialRooms);
   } else {
     const existingRooms = readJsonFile<any[]>(ROOMS_FILE, []);
@@ -223,42 +212,20 @@ function initializeData() {
     const needsBadriSync =
       currentBadri.length !== BADRI_OFFICIAL_ROOM_NUMBERS.length ||
       currentBadri.some((r) => !allowedBadriSet.has(normalizeRoomNumber(r.roomNumber)));
-    const hasQasr = updated.some((r) => normalizeBuildingName(r.building).toLowerCase() === 'qasr nobola');
     if (needsBadriSync) {
       console.log('Synchronizing Badri rooms to official 6 rooms (103, 104, 105, 106, 107, 201)...');
       updated = pruneLegacyBadriRooms(updated);
     }
-    if (!hasQasr) {
-      console.log('Adding Qasr Nobola room to server rooms storage...');
-      updated = deduplicateRooms([
-        ...updated,
-        {
-          id: 'rm-qasr-1',
-          roomNumber: '1',
-          building: 'Qasr Nobola',
-          floor: 1,
-          floorLabel: 'Floor 1',
-          capacity: 4,
-          pax: 4,
-          buffer: 0,
-          toiletType: 'WESTERN',
-          bedType: 'Single Beds',
-          category: 'Category A (Nizaam)',
-          status: 'available',
-          amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-        },
-      ]);
-    }
     updated = reconcileOfficialSaifeeBurhaniRooms(updated);
     if (updated.length !== existingRooms.length || JSON.stringify(updated) !== JSON.stringify(existingRooms)) {
-      console.log(`[Server] Reconciled & deduplicated room inventory: ${existingRooms.length} -> ${updated.length} rooms.`);
+      console.log(`[Server] Reconciled & enforced 3 buildings (Burhani, Saifee, Badri): ${existingRooms.length} -> ${updated.length} rooms.`);
       writeJsonFile(ROOMS_FILE, updated);
     }
   }
 
-  // Check if reservations need seeding from the user's default attached Google Sheet
+  // Check if reservations need initial seeding from the user's default attached Google Sheet
   const existingRes = readJsonFile<any[]>(RESERVATIONS_FILE, []);
-  if (!fs.existsSync(RESERVATIONS_FILE) || existingRes.length < 500) {
+  if (!fs.existsSync(RESERVATIONS_FILE) || existingRes.length === 0) {
     console.log('Seeding 1,074 reservations from default attached Google Sheet CSV...');
     const defaultReservations = parseAttachedCsvReservations();
     writeJsonFile(RESERVATIONS_FILE, defaultReservations);
@@ -444,31 +411,18 @@ app.put('/api/rooms/:id', (req, res) => {
   }
 });
 
-// POST reset rooms to official inventory (Saifee 70, Burhani 44, Badri 6, Qasr Nobola 1)
+// POST reset rooms to official inventory (Burhani 44, Saifee 70, Badri 6 = 120 rooms)
 app.post('/api/rooms/reset', (req, res) => {
   const freshRooms = reconcileOfficialSaifeeBurhaniRooms(
-    deduplicateRooms([
-      ...generateSaifeeBurhani114Rooms(),
-      ...generateBadriRooms(),
-      {
-        id: 'rm-qasr-1',
-        roomNumber: '1',
-        building: 'Qasr Nobola',
-        floor: 1,
-        floorLabel: 'Floor 1',
-        capacity: 4,
-        pax: 4,
-        buffer: 0,
-        toiletType: 'WESTERN',
-        bedType: 'Single Beds',
-        category: 'Category A (Nizaam)',
-        status: 'available',
-        amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-      },
-    ])
+    pruneLegacyBadriRooms(
+      deduplicateRooms([
+        ...generateSaifeeBurhani114Rooms(),
+        ...generateBadriRooms(),
+      ])
+    )
   );
   writeJsonFile(ROOMS_FILE, freshRooms);
-  console.log('[API] Reset rooms to official inventory (121 rooms).');
+  console.log('[API] Reset rooms to official inventory (120 rooms across Burhani, Saifee, Badri).');
   broadcastLiveChange('ROOMS_UPDATED');
   res.json({ success: true, rooms: freshRooms });
 });

@@ -55,13 +55,10 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   const [amenityFilter, setAmenityFilter] = useState<'ALL' | 'western' | 'indian' | 'double' | 'single'>('ALL');
   const [allotMode, setAllotMode] = useState<'single' | 'family'>('single');
 
-  // Dynamic distinct buildings list
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { const nb = normalizeBuildingName(r.building); if (nb) set.add(nb); });
-    reservations.forEach((res) => { const nb = normalizeBuildingName(res.building); if (nb) set.add(nb); });
-    return Array.from(set).sort();
-  }, [rooms, reservations]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   const arrivalDate = targetReservation ? (targetReservation.arrivalDate || targetReservation.arrivalDateTime || targetReservation.rawArrivalStr || '') : '';
   const departureDate = targetReservation ? (targetReservation.departureDate || targetReservation.departureDateTime || targetReservation.rawDepartureStr || '') : '';

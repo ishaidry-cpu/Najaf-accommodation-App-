@@ -28,6 +28,7 @@ import {
   normalizeBuildingName,
   normalizeRoomNumber,
   getCanonicalRoomKey,
+  OFFICIAL_THREE_BUILDINGS,
 } from '../services/storage';
 
 interface AddBuildingAndRoomsModalProps {
@@ -58,25 +59,20 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
     }
   }, [isOpen, initialTab]);
 
-  // Existing distinct building names (normalized)
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const existingBuildingNames = useMemo(() => {
-    const list = existingRooms.map((r) => normalizeBuildingName(r.building)).filter(Boolean);
-    const defaults = ['Saifee', 'Burhani', 'Badri'];
-    const combined = Array.from(new Set([...defaults, ...list]));
-    return combined.sort();
-  }, [existingRooms]);
+    return [...OFFICIAL_THREE_BUILDINGS];
+  }, []);
 
   // ==========================================
   // TAB 1: MANUAL ADDITION STATE
   // ==========================================
   const [manualMode, setManualMode] = useState<'single' | 'batch'>('batch');
   
-  // Building selection
-  const [buildingType, setBuildingType] = useState<'existing' | 'new'>('existing');
-  const [selectedBuildingName, setSelectedBuildingName] = useState<string>(existingBuildingNames[0] || 'Saifee');
-  const [newBuildingNameInput, setNewBuildingNameInput] = useState<string>('');
+  // Building selection (locked to the 3 official buildings)
+  const [selectedBuildingName, setSelectedBuildingName] = useState<string>('Burhani');
 
-  const activeBuildingName = buildingType === 'new' ? newBuildingNameInput.trim() : selectedBuildingName;
+  const activeBuildingName = selectedBuildingName;
 
   // Single Room fields
   const [singleRoomNumber, setSingleRoomNumber] = useState<string>('');
@@ -412,68 +408,31 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                 </div>
               </div>
 
-              {/* Building Selection Section */}
+              {/* Building Selection Section (Only 3 Official Buildings: Burhani, Saifee, Badri) */}
               <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                     <Building2 className="w-4 h-4 text-[#0f4a37]" />
-                    <span>Target Hotel / Building:</span>
+                    <span>Target Hotel / Building (3 Official Buildings):</span>
                   </label>
-                  <div className="flex items-center gap-2 text-xs">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="buildingType"
-                        checked={buildingType === 'existing'}
-                        onChange={() => setBuildingType('existing')}
-                        className="text-[#0f4a37] focus:ring-[#0f4a37]"
-                      />
-                      <span>Existing Building</span>
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="buildingType"
-                        checked={buildingType === 'new'}
-                        onChange={() => setBuildingType('new')}
-                        className="text-[#0f4a37] focus:ring-[#0f4a37]"
-                      />
-                      <span className="font-bold text-[#0f4a37]">+ Create New Building</span>
-                    </label>
-                  </div>
                 </div>
 
-                {buildingType === 'existing' ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {existingBuildingNames.map((bldg) => (
-                      <button
-                        key={bldg}
-                        type="button"
-                        onClick={() => setSelectedBuildingName(bldg)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                          selectedBuildingName === bldg
-                            ? 'bg-[#0f4a37] text-white border-[#0f4a37] shadow-xs'
-                            : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
-                        }`}
-                      >
-                        {bldg} Hotel ({existingRooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length} Rooms)
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="e.g. Al-Rawda Hotel, Najaf Grand, Building C..."
-                      value={newBuildingNameInput}
-                      onChange={(e) => setNewBuildingNameInput(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-stone-50 border border-stone-300 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
-                    />
-                    <p className="text-[11px] text-stone-500 mt-1">
-                      This will create a brand new hotel building in the system.
-                    </p>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {existingBuildingNames.map((bldg) => (
+                    <button
+                      key={bldg}
+                      type="button"
+                      onClick={() => setSelectedBuildingName(bldg)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        selectedBuildingName === bldg
+                          ? 'bg-[#0f4a37] text-white border-[#0f4a37] shadow-xs'
+                          : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      }`}
+                    >
+                      {bldg} Hotel ({existingRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length} Rooms)
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Single Room Form */}

@@ -55,7 +55,10 @@ import {
   deduplicateRooms,
   getCanonicalRoomKey,
   reconcileOfficialSaifeeBurhaniRooms,
-  pruneLegacyBadriRooms
+  pruneLegacyBadriRooms,
+  isOfficialThreeBuilding,
+  normalizeBuildingName,
+  normalizeRoomNumber
 } from './services/storage';
 import { 
   initAuth, 
@@ -1423,8 +1426,36 @@ export default function App() {
     let feedbackToast = '';
 
     if (mode === 'replace') {
-      finalReservations = deduplicateReservationList(imported);
-      feedbackToast = `Replaced all zaereen with ${finalReservations.length} records from Excel. Saved to backend.`;
+      const matchedExistingIds = new Set<string>();
+      const preservedImports = deduplicateReservationList(imported).map((imp) => {
+        const match = reservations.find((ex) => isDuplicateReservation(ex, imp));
+        if (!match) return imp;
+        matchedExistingIds.add(match.id);
+        const existingRoom = normalizeRoomNumber(match.roomNumber);
+        const impRoom = normalizeRoomNumber(imp.roomNumber);
+        return {
+          ...imp,
+          id: match.id,
+          roomNumber: existingRoom || impRoom || '',
+          building: existingRoom ? (match.building || imp.building || '') : (imp.building || match.building || ''),
+          roomId: existingRoom ? (match.roomId || imp.roomId) : imp.roomId,
+          isRoomChanged: match.isRoomChanged || imp.isRoomChanged,
+          roomChangeHistory: match.roomChangeHistory || imp.roomChangeHistory,
+          isSpecialGuest: match.isSpecialGuest !== undefined ? match.isSpecialGuest : imp.isSpecialGuest,
+          specialRemarks: match.specialRemarks || imp.specialRemarks,
+          shiftToCategoryA: match.shiftToCategoryA || imp.shiftToCategoryA,
+          shiftDirection: match.shiftDirection || imp.shiftDirection,
+          moneyGiven: match.moneyGiven && match.moneyGiven !== 'No' ? match.moneyGiven : imp.moneyGiven,
+          requestSlipNo: match.requestSlipNo || imp.requestSlipNo,
+          refundGiven: match.refundGiven || imp.refundGiven,
+          refundSlipNo: match.refundSlipNo || imp.refundSlipNo,
+        };
+      });
+      const preservedUnmatchedAllotted = reservations.filter(
+        (ex) => !matchedExistingIds.has(ex.id) && !!normalizeRoomNumber(ex.roomNumber)
+      );
+      finalReservations = deduplicateReservationList([...preservedImports, ...preservedUnmatchedAllotted]);
+      feedbackToast = `Imported ${preservedImports.length} records from Excel while preserving ${preservedUnmatchedAllotted.length > 0 ? 'all ' : ''}existing allotted rooms. Saved to backend.`;
     } else {
       const { uniqueToAppend, totalDuplicatesSkipped, updatedExistingCount, finalReservations: merged } = deduplicateForAppend(
         reservations,
@@ -1484,23 +1515,30 @@ export default function App() {
   };
 
   const handleResetToSaifeeBurhaniRooms = () => {
-    if (window.confirm('Reset hotel inventory to the official 114 rooms across Burhani (44) and Saifee (70)?')) {
+    if (window.confirm('Reset hotel inventory to the official 120 rooms across Burhani (44), Saifee (70), and Badri (6)?')) {
       const freshRooms = resetToSaifeeBurhani114Rooms();
       setRooms(freshRooms);
       saveRooms(freshRooms);
       resetBackendRooms();
-      showToast('Restored official 114 rooms across Burhani (44) and Saifee (70).');
+      showToast('Restored official 120 rooms across Burhani (44), Saifee (70), and Badri (6).');
       triggerAutoSync(reservations, freshRooms);
       broadcastLiveSync({ type: 'ROOMS_RESET_114' });
     }
   };
 
-  // Add or sync rooms / buildings
+  // Add or sync rooms / buildings (restricted strictly to Burhani, Saifee, Badri)
   const handleAddRooms = (newRoomsToAdd: Room[], replaceExisting: boolean = false) => {
-    const cleanIncoming = deduplicateRooms(newRoomsToAdd);
+    const cleanIncoming = deduplicateRooms(newRoomsToAdd).filter((r) =>
+      isOfficialThreeBuilding(r.building)
+    );
+    if (cleanIncoming.length === 0) {
+      showToast('Only the 3 official buildings (Burhani, Saifee, Badri) are permitted.', 'error');
+      return;
+    }
+
     let finalRooms: Room[];
     if (replaceExisting) {
-      finalRooms = cleanIncoming;
+      finalRooms = reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(cleanIncoming));
     } else {
       // Merge by canonical (building, roomNumber), preserving existing canonical IDs
       const roomMap = new Map<string, Room>();
@@ -1532,6 +1570,24 @@ export default function App() {
   };
 
   const handleDeleteRoom = (roomId: string) => {
+    const targetRoom = rooms.find((r) => r.id === roomId);
+    if (targetRoom) {
+      const targetNum = normalizeRoomNumber(targetRoom.roomNumber);
+      const targetBldg = normalizeBuildingName(targetRoom.building).toLowerCase();
+      const hasAllottedGuests = reservations.some(
+        (res) =>
+          normalizeRoomNumber(res.roomNumber) === targetNum &&
+          normalizeBuildingName(res.building).toLowerCase() === targetBldg
+      );
+      if (hasAllottedGuests) {
+        showToast(
+          `Cannot delete ${targetRoom.building} Room ${targetRoom.roomNumber} because it has allotted Zaereen. Rooms allotted should not be deleted.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     const updated = rooms.filter((r) => r.id !== roomId);
     setRooms(updated);
     saveRooms(updated);

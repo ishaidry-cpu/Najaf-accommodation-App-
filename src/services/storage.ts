@@ -18,7 +18,13 @@ const RESERVATIONS_STORAGE_KEY = 'zaereen_accommodation_reservations_saifee_burh
 const SHEETS_CONFIG_KEY = 'zaereen_accommodation_sheets_config_saifee_burhani_v5';
 const CATEGORIES_STORAGE_KEY = 'zaereen_accommodation_categories_v1';
 
-export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri', 'Qasr Nobola'];
+export const OFFICIAL_THREE_BUILDINGS = ['Burhani', 'Saifee', 'Badri'] as const;
+export const INITIAL_BUILDINGS = ['Burhani', 'Saifee', 'Badri'];
+
+export function isOfficialThreeBuilding(building?: string): boolean {
+  const nb = normalizeBuildingName(building).toLowerCase();
+  return nb === 'burhani' || nb === 'saifee' || nb === 'badri';
+}
 
 /**
  * Normalizes hotel/building names to prevent duplicate building sections or duplicate room keys
@@ -513,11 +519,12 @@ export function reconcileOfficialSaifeeBurhaniRooms(rooms: Room[]): Room[] {
   });
 
   const nonOfficialRooms = deduped.filter((r) => {
+    if (!isOfficialThreeBuilding(r.building)) return false;
     const key = getCanonicalRoomKey(r.building, r.roomNumber);
     return key && !officialKeys.has(key);
   });
 
-  return deduplicateRooms([...reconciledOfficial, ...nonOfficialRooms]);
+  return pruneLegacyBadriRooms(deduplicateRooms([...reconciledOfficial, ...nonOfficialRooms]));
 }
 
 export const BADRI_OFFICIAL_ROOM_NUMBERS = ['103', '104', '105', '106', '107', '201'] as const;
@@ -586,21 +593,6 @@ export function pruneLegacyBadriRooms(rooms: Room[]): Room[] {
 export const INITIAL_ROOMS: Room[] = deduplicateRooms([
   ...generateSaifeeBurhani114Rooms(),
   ...generateBadriRooms(),
-  {
-    id: 'rm-qasr-1',
-    roomNumber: '1',
-    building: 'Qasr Nobola',
-    floor: 1,
-    floorLabel: 'Floor 1',
-    capacity: 4,
-    pax: 4,
-    buffer: 0,
-    toiletType: 'WESTERN',
-    bedType: 'Single Beds',
-    category: 'Category A (Nizaam)',
-    status: 'available',
-    amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-  },
 ]);
 
 /**
@@ -1876,7 +1868,7 @@ export function getStoredRooms(): Room[] {
 
 export function saveRooms(rooms: Room[]): void {
   try {
-    const deduped = reconcileOfficialSaifeeBurhaniRooms(deduplicateRooms(rooms));
+    const deduped = reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(deduplicateRooms(rooms)));
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(deduped));
   } catch (err) {
     console.error('Failed to save rooms to localStorage', err);
@@ -1887,21 +1879,6 @@ export function resetToSaifeeBurhani114Rooms(): Room[] {
   const rooms = deduplicateRooms([
     ...generateSaifeeBurhani114Rooms(),
     ...generateBadriRooms(),
-    {
-      id: 'rm-qasr-1',
-      roomNumber: '1',
-      building: 'Qasr Nobola',
-      floor: 1,
-      floorLabel: 'Floor 1',
-      capacity: 4,
-      pax: 4,
-      buffer: 0,
-      toiletType: 'WESTERN',
-      bedType: 'Single Beds',
-      category: 'Category A (Nizaam)',
-      status: 'available',
-      amenities: ['WESTERN Toilet', 'Single Beds', 'Air Conditioning', 'Wi-Fi'],
-    },
   ]);
   saveRooms(rooms);
   return rooms;

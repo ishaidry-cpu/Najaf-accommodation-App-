@@ -85,12 +85,10 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const [groupLeadName, setGroupLeadName] = useState('');
   const [defaultCategory, setDefaultCategory] = useState(categories[0] || 'Mumineen');
 
-  // Dynamic distinct buildings list
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
-    return Array.from(set).sort();
-  }, [rooms]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   const [defaultBuilding, setDefaultBuilding] = useState<string>('Saifee');
 

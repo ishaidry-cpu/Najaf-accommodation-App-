@@ -84,19 +84,10 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Number of days to display in the top row: 7, 14, 21, or 30 days
   const [dayRange, setDayRange] = useState<number>(14);
 
-  // Dynamic distinct buildings list (normalized)
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => {
-      const nb = normalizeBuildingName(r.building);
-      if (nb) bSet.add(nb);
-    });
-    reservations.forEach((res) => {
-      const nb = normalizeBuildingName(res.building);
-      if (nb) bSet.add(nb);
-    });
-    return Array.from(bSet).sort();
-  }, [rooms, reservations]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   // Existing Tour IDs for auto-suggestion datalist
   const existingTourIds = useMemo(() => {

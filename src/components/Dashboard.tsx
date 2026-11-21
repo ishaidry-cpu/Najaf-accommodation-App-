@@ -143,19 +143,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Dynamic distinct buildings list (normalized so casing/suffix variants never duplicate)
+  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const distinctBuildings = useMemo(() => {
-    const bSet = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => {
-      const nb = normalizeBuildingName(r.building);
-      if (nb) bSet.add(nb);
-    });
-    reservations.forEach((res) => {
-      const nb = normalizeBuildingName(res.building);
-      if (nb) bSet.add(nb);
-    });
-    return Array.from(bSet).sort();
-  }, [rooms, reservations]);
+    return ['Burhani', 'Saifee', 'Badri'];
+  }, []);
 
   // Hotel selector: 'ALL' | building name
   const [selectedHotel, setSelectedHotel] = useState<string>('ALL');
