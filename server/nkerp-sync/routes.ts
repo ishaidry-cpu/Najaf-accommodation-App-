@@ -1,8 +1,4 @@
-/**
- * Express adapter for the Sync to NKERP API, for hosts that run the app's own server (server.ts: local,
- * Google AI Studio, Cloud Run). It forwards /api/nkerp-sync/<name> to the same web-standard handlers the
- * Vercel Functions in api/nkerp-sync/ use (handlers.ts), so both hosts behave identically.
- */
+/** Express adapter for the app’s local NKERP API. */
 import express from 'express';
 import { Readable } from 'stream';
 import { dispatch, type HandlerDeps } from './handlers.js';

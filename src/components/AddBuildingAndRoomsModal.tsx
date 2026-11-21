@@ -6,7 +6,6 @@ import {
   CheckCircle2, 
   AlertCircle, 
   X, 
-  FileSpreadsheet, 
   Sparkles, 
   Layers, 
   Copy, 
@@ -17,12 +16,8 @@ import {
   BedDouble,
   Download
 } from 'lucide-react';
-import { Room, RoomCategory, RoomStatus, GoogleSheetsConfig } from '../types';
+import { Room, RoomCategory, RoomStatus } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
-import { 
-  fetchRoomsAndBuildingsFromGoogleSheetUrl, 
-  parseRoomsFromCsvText 
-} from '../services/googleSheets';
 import {
   deduplicateRooms,
   normalizeBuildingName,
@@ -36,9 +31,6 @@ interface AddBuildingAndRoomsModalProps {
   onClose: () => void;
   existingRooms: Room[];
   onAddRooms: (newRooms: Room[], replaceExisting?: boolean) => void;
-  accessToken?: string | null;
-  sheetsConfig?: GoogleSheetsConfig;
-  initialTab?: 'manual' | 'sheet';
 }
 
 export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> = ({
@@ -46,19 +38,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   onClose,
   existingRooms,
   onAddRooms,
-  accessToken,
-  sheetsConfig,
-  initialTab = 'manual',
 }) => {
-  // Main Tab: 'manual' or 'sheet'
-  const [activeTab, setActiveTab] = useState<'manual' | 'sheet'>(initialTab);
-
-  useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [isOpen, initialTab]);
-
   // Strictly the 3 official buildings (Burhani, Saifee, Badri)
   const existingBuildingNames = useMemo(() => {
     return [...OFFICIAL_THREE_BUILDINGS];
@@ -222,82 +202,6 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   };
 
   // ==========================================
-  // TAB 2: GOOGLE SHEETS SYNC STATE
-  // ==========================================
-  const defaultSheetUrl = sheetsConfig?.spreadsheetUrl || 
-    (sheetsConfig?.spreadsheetId ? `https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit` : '');
-
-  const [sheetUrlInput, setSheetUrlInput] = useState<string>(defaultSheetUrl);
-  const [isFetchingSheet, setIsFetchingSheet] = useState<boolean>(false);
-  const [sheetError, setSheetError] = useState<string | null>(null);
-  const [parsedSheetRooms, setParsedSheetRooms] = useState<Room[] | null>(null);
-  const [sheetImportMode, setSheetImportMode] = useState<'merge' | 'replace'>('merge');
-  const [showFormatGuide, setShowFormatGuide] = useState<boolean>(false);
-  const [copiedSample, setCopiedSample] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (defaultSheetUrl && !sheetUrlInput) {
-      setSheetUrlInput(defaultSheetUrl);
-    }
-  }, [defaultSheetUrl, sheetUrlInput]);
-
-  const sampleCsvHeader = 'Building,Room,Floor,Capacity,Buffer,Toilet Type,Bed Type,Category,Status\nSaifee,101,1,3,0,Western Toilet,Single Beds,Category B (Standard),available\nBurhani,201,2,4,1,Indian Toilet,Double & Single Bed,Category A (Nizaam),available\nAl-Rawda,301,3,2,0,Western Toilet,Double Bed,Executive Suite,available';
-
-  const handleCopySample = () => {
-    navigator.clipboard.writeText(sampleCsvHeader);
-    setCopiedSample(true);
-    setTimeout(() => setCopiedSample(false), 2000);
-  };
-
-  const handleDownloadSampleCsv = () => {
-    const blob = new Blob([sampleCsvHeader], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'hotel_buildings_and_rooms_template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleFetchRoomsFromSheet = async () => {
-    if (!sheetUrlInput.trim()) {
-      setSheetError('Please enter a Google Sheet URL or Spreadsheet ID.');
-      return;
-    }
-
-    setIsFetchingSheet(true);
-    setSheetError(null);
-    setParsedSheetRooms(null);
-
-    try {
-      const fetched = deduplicateRooms(
-        await fetchRoomsAndBuildingsFromGoogleSheetUrl(
-          sheetUrlInput.trim(),
-          accessToken,
-          existingRooms
-        )
-      );
-
-      if (fetched.length === 0) {
-        setSheetError('No valid room rows found in the Google Sheet. Please check your columns (Building, Room, Floor, Capacity).');
-      } else {
-        setParsedSheetRooms(fetched);
-      }
-    } catch (err: any) {
-      setSheetError(err.message || 'Failed to fetch rooms from Google Sheet.');
-    } finally {
-      setIsFetchingSheet(false);
-    }
-  };
-
-  const handleConfirmSheetSync = () => {
-    if (!parsedSheetRooms || parsedSheetRooms.length === 0) return;
-    onAddRooms(parsedSheetRooms, sheetImportMode === 'replace');
-    onClose();
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -317,7 +221,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               </span>
             </div>
             <p className="text-xs text-stone-200 mt-1 max-w-xl">
-              Add new rooms to Saifee & Burhani, or create a brand new hotel building. Add manually or sync directly from your Google Sheet.
+              Add or update rooms in Burhani, Saifee, and Badri.
             </p>
           </div>
 
@@ -330,47 +234,12 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
           </button>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="bg-stone-200/80 px-4 py-2 border-b border-stone-300 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-stone-300 text-xs font-bold shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setActiveTab('manual')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'manual'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
-              <span>Add Manually</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('sheet')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'sheet'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Sync from Google Sheet</span>
-            </button>
-          </div>
-
-          <div className="text-xs text-stone-600 font-semibold hidden sm:block">
-            Current Inventory: <strong className="text-[#0f4a37]">{existingRooms.length} Rooms</strong> across {existingBuildingNames.length} Building(s)
-          </div>
-        </div>
-
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
           
           {/* ============================================================ */}
           {/* TAB 1: ADD MANUALLY                                          */}
           {/* ============================================================ */}
-          {activeTab === 'manual' && (
             <div className="space-y-5">
               
               {/* Manual Sub-mode: Single vs Batch */}
@@ -776,285 +645,6 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               </div>
 
             </div>
-          )}
-
-          {/* ============================================================ */}
-          {/* TAB 2: SYNC FROM GOOGLE SHEET                                */}
-          {/* ============================================================ */}
-          {activeTab === 'sheet' && (
-            <div className="space-y-4">
-              {/* Google Sheet Sync Explainer */}
-              <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs">
-                <div>
-                  <div className="flex items-center gap-2 font-bold text-sm text-[#0f4a37]">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                    <span>Sync Hotel Buildings & Rooms from Google Sheets</span>
-                  </div>
-                  <p className="text-xs text-emerald-800/80 mt-0.5">
-                    Paste your Google Sheet link or ID. The sheet can have multiple buildings and rooms with capacities, floors, and toilet specs.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowFormatGuide(!showFormatGuide)}
-                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-emerald-900 border border-emerald-300 shadow-2xs hover:bg-emerald-100 transition whitespace-nowrap cursor-pointer"
-                >
-                  {showFormatGuide ? 'Hide Column Guide' : 'View Expected Columns'}
-                </button>
-              </div>
-
-              {/* Format Guide Dropdown */}
-              {showFormatGuide && (
-                <div className="bg-white p-3.5 rounded-xl border border-stone-300 shadow-xs text-xs space-y-2.5 animate-in fade-in">
-                  <div className="flex items-center justify-between font-bold text-stone-800 flex-wrap gap-2">
-                    <span>Expected Columns in your Google Sheet:</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCopySample}
-                        className="flex items-center gap-1 text-[11px] font-bold text-[#0f4a37] hover:text-[#0b3a2b] bg-stone-100 hover:bg-stone-200 px-2 py-1 rounded transition cursor-pointer"
-                      >
-                        {copiedSample ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedSample ? 'Copied CSV!' : 'Copy Sample CSV'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDownloadSampleCsv}
-                        className="flex items-center gap-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100/70 hover:bg-emerald-200/80 px-2 py-1 rounded transition cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Download CSV Template</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto border border-stone-200 rounded-lg">
-                    <table className="w-full text-left text-[11px] border-collapse">
-                      <thead className="bg-stone-100 text-stone-700 font-medium">
-                        <tr>
-                          <th className="p-1.5 border-b">Building</th>
-                          <th className="p-1.5 border-b">Room</th>
-                          <th className="p-1.5 border-b">Floor</th>
-                          <th className="p-1.5 border-b">Capacity</th>
-                          <th className="p-1.5 border-b">Buffer</th>
-                          <th className="p-1.5 border-b">Toilet Type</th>
-                          <th className="p-1.5 border-b">Bed Type</th>
-                          <th className="p-1.5 border-b">Category</th>
-                          <th className="p-1.5 border-b">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100 text-stone-600 font-mono text-[10px]">
-                        <tr>
-                          <td className="p-1.5 font-bold text-stone-900">Saifee</td>
-                          <td className="p-1.5 font-bold">101</td>
-                          <td className="p-1.5">1</td>
-                          <td className="p-1.5">3</td>
-                          <td className="p-1.5">0</td>
-                          <td className="p-1.5">Western Toilet</td>
-                          <td className="p-1.5">Single Beds</td>
-                          <td className="p-1.5">Category B (Standard)</td>
-                          <td className="p-1.5 text-emerald-700 font-bold">available</td>
-                        </tr>
-                        <tr>
-                          <td className="p-1.5 font-bold text-stone-900">Burhani</td>
-                          <td className="p-1.5 font-bold">201</td>
-                          <td className="p-1.5">2</td>
-                          <td className="p-1.5">4</td>
-                          <td className="p-1.5">1</td>
-                          <td className="p-1.5">Indian Toilet</td>
-                          <td className="p-1.5">Double & Single Bed</td>
-                          <td className="p-1.5">Category A (Nizaam)</td>
-                          <td className="p-1.5 text-emerald-700 font-bold">available</td>
-                        </tr>
-                        <tr>
-                          <td className="p-1.5 font-bold text-stone-900">Najaf Grand</td>
-                          <td className="p-1.5 font-bold">301</td>
-                          <td className="p-1.5">3</td>
-                          <td className="p-1.5">2</td>
-                          <td className="p-1.5">0</td>
-                          <td className="p-1.5">Western Toilet</td>
-                          <td className="p-1.5">Double Bed</td>
-                          <td className="p-1.5">Executive Suite</td>
-                          <td className="p-1.5 text-emerald-700 font-bold">available</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="text-[10px] text-stone-500">
-                    * Make sure your Google Sheet sharing setting is set to: <strong>"Anyone with the link can view"</strong>.
-                  </p>
-                </div>
-              )}
-
-              {/* Input for Sheet URL */}
-              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3">
-                {sheetsConfig?.spreadsheetId && (
-                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
-                    <div className="flex items-center gap-2 truncate">
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
-                      <span className="text-emerald-950 font-bold truncate">
-                        Linked Spreadsheet: {sheetsConfig.spreadsheetName || sheetsConfig.spreadsheetId}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = sheetsConfig.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`;
-                        setSheetUrlInput(url);
-                      }}
-                      className="px-2.5 py-1 rounded bg-[#0f4a37] text-white font-bold text-[11px] hover:bg-[#0b3a2b] transition shrink-0 cursor-pointer shadow-2xs"
-                    >
-                      Use Connected Sheet
-                    </button>
-                  </div>
-                )}
-
-                <label className="block text-xs font-bold text-stone-800">
-                  Google Sheet Link or Spreadsheet ID:
-                </label>
-                <div className="flex flex-col sm:flex-row items-center gap-2">
-                  <input
-                    type="text"
-                    value={sheetUrlInput}
-                    onChange={(e) => setSheetUrlInput(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-xs font-mono font-medium focus:ring-2 focus:ring-[#0f4a37] focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleFetchRoomsFromSheet}
-                    disabled={isFetchingSheet}
-                    className="w-full sm:w-auto px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    {isFetchingSheet ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4 text-[#ecdcae]" />
-                    )}
-                    <span>{isFetchingSheet ? 'Fetching...' : 'Fetch & Preview Rooms'}</span>
-                  </button>
-                </div>
-
-                {sheetError && (
-                  <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-1.5">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>{sheetError}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Preview of Parsed Rooms from Google Sheet */}
-              {parsedSheetRooms && (
-                <div className="bg-white p-4 rounded-xl border border-stone-300 shadow-xs space-y-3 animate-in fade-in">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-stone-200">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span className="font-bold text-xs text-stone-900">
-                        Parsed from Google Sheet: <strong className="text-[#0f4a37]">{parsedSheetRooms.length} Rooms</strong>
-                      </span>
-                      <span className="text-[11px] font-semibold text-stone-500">
-                        across {Array.from(new Set(parsedSheetRooms.map((r) => r.building))).length} Building(s):{' '}
-                        {Array.from(new Set(parsedSheetRooms.map((r) => r.building))).join(', ')}
-                      </span>
-                    </div>
-
-                    {/* Import Mode: Merge or Replace */}
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-stone-500 font-semibold">Mode:</span>
-                      <select
-                        value={sheetImportMode}
-                        onChange={(e) => setSheetImportMode(e.target.value as any)}
-                        className="px-2 py-1 rounded-lg border border-stone-300 text-xs font-bold bg-stone-50 text-stone-800"
-                      >
-                        <option value="merge">Merge & Add New Rooms</option>
-                        <option value="replace">Replace Entire Inventory</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Room Preview Table */}
-                  <div className="max-h-60 overflow-y-auto border border-stone-200 rounded-lg">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[10px] font-medium sticky top-0">
-                        <tr>
-                          <th className="py-2 px-2.5">Building</th>
-                          <th className="py-2 px-2.5">Room #</th>
-                          <th className="py-2 px-2.5">Floor</th>
-                          <th className="py-2 px-2.5">Capacity</th>
-                          <th className="py-2 px-2.5">Buffer</th>
-                          <th className="py-2 px-2.5">Toilet Type</th>
-                          <th className="py-2 px-2.5">Bed Type</th>
-                          <th className="py-2 px-2.5">Category</th>
-                          <th className="py-2 px-2.5">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200">
-                        {parsedSheetRooms.map((rm) => {
-                          const isExisting = existingRooms.some(
-                            (er) => er.roomNumber === rm.roomNumber && er.building.toLowerCase() === rm.building.toLowerCase()
-                          );
-                          return (
-                            <tr key={rm.id} className="hover:bg-stone-50">
-                              <td className="py-1.5 px-2.5 font-bold text-stone-900">
-                                {rm.building}
-                              </td>
-                              <td className="py-1.5 px-2.5 font-mono font-black text-[#0f4a37]">
-                                Room {rm.roomNumber}
-                              </td>
-                              <td className="py-1.5 px-2.5 text-stone-600">
-                                Fl {rm.floor}
-                              </td>
-                              <td className="py-1.5 px-2.5 font-bold text-stone-800">
-                                {rm.capacity} Pax
-                              </td>
-                              <td className="py-1.5 px-2.5 text-stone-600">
-                                +{rm.buffer || 0}
-                              </td>
-                              <td className="py-1.5 px-2.5 text-stone-700">
-                                {rm.toiletType}
-                              </td>
-                              <td className="py-1.5 px-2.5 text-stone-700">
-                                {rm.bedType}
-                              </td>
-                              <td className="py-1.5 px-2.5 text-stone-800">
-                                {rm.category}
-                              </td>
-                              <td className="py-1.5 px-2.5">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  rm.status === 'blocked' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
-                                }`}>
-                                  {rm.status}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Confirm Sync Button */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-200">
-                    <button
-                      type="button"
-                      onClick={() => setParsedSheetRooms(null)}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 transition cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmSheetSync}
-                      className="px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
-                      <span>Confirm & Sync {parsedSheetRooms.length} Rooms to Inventory</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
 
         </div>
 

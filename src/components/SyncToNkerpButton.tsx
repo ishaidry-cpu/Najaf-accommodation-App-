@@ -121,7 +121,7 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
             compact ? 'fixed left-3 right-3 top-16' : 'absolute right-0 top-[calc(100%+8px)] w-[23rem]'}`}>
           <div className="mb-3">
             <div className="text-[15px] font-semibold text-stone-950">Sync to NKERP</div>
-            <p className="mt-0.5 text-xs leading-relaxed text-stone-500">Brings Najaf rooms in NKERP in line with the Google Sheet, for the arrivals you choose.</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-stone-500">Brings Najaf rooms in NKERP in line with saved app allocations, for the arrivals you choose.</p>
           </div>
           {notConfigured && (
             <p className="mb-3 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900 ring-1 ring-inset ring-amber-200">

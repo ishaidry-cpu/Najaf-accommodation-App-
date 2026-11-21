@@ -14,67 +14,28 @@ import {
   Info,
   Check
 } from 'lucide-react';
-import { User } from 'firebase/auth';
 import { DEFAULT_ZAEREEN_CATEGORIES } from '../types';
-import { fetchCategoriesFromGoogleSheetUrl } from '../services/googleSheets';
 
-interface GoogleSheetCategoriesModalProps {
+interface CategoriesModalProps {
   isOpen: boolean;
   onClose: () => void;
   categories: string[];
   onSaveCategories: (newCategories: string[]) => void;
-  user: User | null;
-  accessToken: string | null;
 }
 
-export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProps> = ({
+export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   isOpen,
   onClose,
   categories,
   onSaveCategories,
-  user,
-  accessToken,
 }) => {
   if (!isOpen) return null;
 
-  const [sheetUrl, setSheetUrl] = useState('');
   const [currentList, setCurrentList] = useState<string[]>(categories && categories.length > 0 ? categories : DEFAULT_ZAEREEN_CATEGORIES);
   const [newCategoryInput, setNewCategoryInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Fetch categories from Google Sheet URL or ID
-  const handleFetchFromSheet = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sheetUrl.trim()) {
-      setErrorMsg('Please enter a Google Sheet URL or Spreadsheet ID.');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      const fetched = await fetchCategoriesFromGoogleSheetUrl(sheetUrl.trim(), accessToken);
-      if (fetched.length === 0) {
-        throw new Error('No category names found in the specified Google Sheet. Please check the sheet format.');
-      }
-
-      // Merge with existing or replace
-      const merged = Array.from(new Set([...currentList, ...fetched]));
-      setCurrentList(merged);
-      setSuccessMsg(`Successfully fetched ${fetched.length} categories: ${fetched.join(', ')}`);
-    } catch (err: any) {
-      console.error('Error fetching categories from Google Sheet:', err);
-      setErrorMsg(err.message || 'Failed to fetch categories from Google Sheet.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Add category manually
   const handleAddManualCategory = () => {
     const trimmed = newCategoryInput.trim();
     if (!trimmed) return;
@@ -124,13 +85,13 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>Google Sheet Categories</span>
+                <span>Zaereen categories</span>
                 <span className="text-[11px] bg-[#ecdcae] text-[#0f4a37] px-2 py-0.5 rounded-full font-extrabold uppercase">
                   {currentList.length} Active
                 </span>
               </h2>
               <p className="text-xs text-emerald-100/80">
-                Fetch and configure Zaereen categories (Mumineen, Muntasbeen, Qasreali, Baitezainy)
+                Configure Zaereen categories (Mumineen, Muntasbeen, Qasreali, Baitezainy)
               </p>
             </div>
           </div>
@@ -159,64 +120,6 @@ export const GoogleSheetCategoriesModal: React.FC<GoogleSheetCategoriesModalProp
               <div className="flex-1 font-medium">{successMsg}</div>
             </div>
           )}
-
-          {/* Section 1: Fetch From Google Sheet */}
-          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-2xs space-y-3">
-            <div className="flex items-center gap-2">
-              <LinkIcon className="w-4 h-4 text-[#0f4a37]" />
-              <h3 className="text-sm font-bold text-[#0f4a37]">Fetch From Your Google Sheet</h3>
-            </div>
-            <p className="text-xs text-stone-600">
-              Paste the link to your Google Sheet below. To allow instant fetching without login, make sure your sheet sharing is set to <strong className="text-stone-800">"Anyone with the link can view"</strong>.
-            </p>
-
-            <form onSubmit={handleFetchFromSheet} className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                  value={sheetUrl}
-                  onChange={(e) => setSheetUrl(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37] focus:bg-white"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="px-4 py-2.5 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Fetching...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-[#ecdcae]" />
-                    <span>Fetch Categories</span>
-                  </>
-                )}
-              </button>
-            </form>
-
-            {/* Google Sheet Format Helper */}
-            <div className="bg-stone-50 border border-stone-200/80 rounded-xl p-3 text-[11px] text-stone-600 space-y-1.5">
-              <div className="font-bold text-stone-800 flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-stone-500" />
-                <span>How to format your Google Sheet:</span>
-              </div>
-              <p>
-                Create a column named <span className="font-mono font-bold text-emerald-800">Category</span> with rows like:
-              </p>
-              <div className="font-mono text-[11px] bg-white border border-stone-200 rounded p-2 text-stone-800 max-w-xs">
-                <div>Category</div>
-                <div className="text-emerald-700">Mumineen</div>
-                <div className="text-emerald-700">Muntasbeen</div>
-                <div className="text-emerald-700">Qasreali</div>
-                <div className="text-emerald-700">Baitezainy</div>
-              </div>
-            </div>
-          </div>
 
           {/* Section 2: Current Active Categories */}
           <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-2xs space-y-3">

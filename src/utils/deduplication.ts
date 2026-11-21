@@ -26,12 +26,8 @@ export function normalizeText(val?: string | number | null): string {
 
 /**
  * Checks whether two reservations represent the same person/entry (a duplicate).
- * A record is considered a duplicate if ANY of the following hold:
- * 1. Both have the same valid non-empty ITS ID.
- * 2. Both belong to the same Tour ID and have the exact same Applicant Name.
- * 3. Both have the exact same non-empty Request Slip Number.
- * 4. Both have the exact same internal record ID.
- * 5. Both have the same Tour ID, same Family, and same Applicant Name.
+ * An ITS ID can return with a different tour. Compare the tour and stay before
+ * matching the guest, and keep allocation changes on the same reservation.
  */
 export function isDuplicateReservation(a: Reservation, b: Reservation): boolean {
   // 1. Direct ID match
@@ -39,41 +35,17 @@ export function isDuplicateReservation(a: Reservation, b: Reservation): boolean 
     return true;
   }
 
-  // 2. ITS ID match (ITS is the primary unique Dawoodi Bohra Mumineen identifier)
-  const itsA = normalizeItsId(a.itsId);
-  const itsB = normalizeItsId(b.itsId);
-  if (itsA && itsB && itsA === itsB) {
-    const nameA = normalizeText(a.applicantName || a.guestLeaderName);
-    const nameB = normalizeText(b.applicantName || b.guestLeaderName);
-    // If both have names and their names are different, they are DIFFERENT family members
-    // sharing the same family/HOF ITS ID (or registered together)! They are NOT duplicates!
-    if (nameA && nameB && nameA !== nameB) {
-      return false;
-    }
-    // Also if they have different allotted rooms, they are different family members
-    const roomA = normalizeText(a.roomNumber);
-    const roomB = normalizeText(b.roomNumber);
-    if (roomA && roomB && roomA !== roomB) {
-      return false;
-    }
-    return true;
-  }
-
-  // 3. Tour Reference + Applicant Name match
   const tourA = normalizeText(a.tourRefNo || a.tourId);
   const tourB = normalizeText(b.tourRefNo || b.tourId);
+  if (tourA && tourB && tourA !== tourB) return false;
+  if (a.arrivalDate && b.arrivalDate && a.arrivalDate !== b.arrivalDate) return false;
+
+  const itsA = normalizeItsId(a.itsId);
+  const itsB = normalizeItsId(b.itsId);
   const nameA = normalizeText(a.applicantName || a.guestLeaderName);
   const nameB = normalizeText(b.applicantName || b.guestLeaderName);
-
-  if (tourA && tourB && nameA && nameB && tourA === tourB && nameA === nameB) {
-    // If they have different rooms allotted, they might be different allotments
-    const roomA = normalizeText(a.roomNumber);
-    const roomB = normalizeText(b.roomNumber);
-    if (roomA && roomB && roomA !== roomB) {
-      return false;
-    }
-    return true;
-  }
+  if (itsA && itsB) return itsA === itsB && (!nameA || !nameB || nameA === nameB);
+  if (tourA && tourB && nameA && nameA === nameB) return true;
 
   // 4. Request Slip Number match (for accounts/shifts)
   const slipA = normalizeText(a.requestSlipNo);

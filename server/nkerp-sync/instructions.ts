@@ -14,7 +14,6 @@
  * Nothing here can reach NKERP except through the same RunOptions the button uses, so every safety rule
  * of the engine (order, capacity, readback, mass-deallocation guard, Karbala untouched) still applies.
  */
-import { GoogleGenAI } from '@google/genai';
 import { attention } from './guidance.js';
 import type { RunOptions, SyncAction, SyncReport } from './types.js';
 import { ALL_ACTIONS } from './types.js';
@@ -350,52 +349,4 @@ export function proposalFromModel(obj: any, ctx: InstructionContext): Proposal {
   const overrides = overridesOf(options);
   return { ...base, intent: obj.intent, options, overrides, needsConfirmation: overrides.length > 0 && options.apply,
     reply: describe(options, ctx.today) };
-}
-
-export function geminiConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  const key = env.GEMINI_API_KEY?.trim();
-  return Boolean(key && key !== 'MY_GEMINI_API_KEY');
-}
-
-async function interpretGemini(text: string, ctx: InstructionContext): Promise<Proposal> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-  const res = await ai.models.generateContent({
-    model: process.env.GEMINI_MODEL?.trim() || 'gemini-flash-latest',
-    contents: [{ role: 'user', parts: [{ text: text.slice(0, 2000) }] }],
-    config: {
-      systemInstruction: systemPrompt(ctx),
-      responseMimeType: 'application/json',
-      responseJsonSchema: SCHEMA,
-      temperature: 0,
-      abortSignal: AbortSignal.timeout(20_000),
-    },
-  });
-  return proposalFromModel(JSON.parse(res.text ?? ''), ctx);
-}
-
-/**
- * Interpret an instruction. Gemini first when configured (falls back to the rules on any failure); the
- * rules alone otherwise. Safety overrides are only kept when the *rules* also see an explicit request for
- * them, or the user confirms them in the UI.
- */
-export async function interpret(text: string, ctx: InstructionContext): Promise<Proposal> {
-  const rules = interpretRules(text, ctx);
-  if (!geminiConfigured()) return rules;
-  try {
-    const model = await interpretGemini(text, ctx);
-    if (model.options) {
-      // Belt and braces: an override the model invented without clear words in the text is dropped.
-      if (model.options.allowOverCapacity && !rules.options?.allowOverCapacity) delete model.options.allowOverCapacity;
-      if (model.options.allowMassDeallocation && !rules.options?.allowMassDeallocation
-        && !/\bde-?allocat/i.test(text)) delete model.options.allowMassDeallocation;
-      model.overrides = overridesOf(model.options);
-      model.cautions = scopeCautions(text.toLowerCase());
-      model.needsConfirmation = model.options.apply && (model.overrides.length > 0 || model.cautions.length > 0);
-      model.reply = describe(model.options, ctx.today);
-    }
-    return model;
-  } catch (err) {
-    console.warn('[nkerp-sync] Gemini interpretation failed, using rules:', (err as Error).message);
-    return rules;
-  }
 }

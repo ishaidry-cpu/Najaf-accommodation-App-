@@ -15,9 +15,7 @@ import {
   Edit3,
   LogIn
 } from 'lucide-react';
-import { User } from 'firebase/auth';
 import { UserRole } from '../types';
-import { getUserEmail, isAuthorizedAdminEmail } from '../services/firebaseAuth';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
@@ -25,8 +23,6 @@ interface RoleManagementModalProps {
   currentRole: UserRole;
   adminPin: string;
   onSaveRoleSettings: (newRole: UserRole, newPin: string) => void;
-  user?: User | null;
-  onGoogleSignIn?: () => void;
 }
 
 export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
@@ -35,8 +31,6 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   currentRole,
   adminPin,
   onSaveRoleSettings,
-  user,
-  onGoogleSignIn,
 }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(currentRole);
   const [pinInput, setPinInput] = useState('');
@@ -106,58 +100,6 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleApplyRole} className="p-5 space-y-4">
           
-          {/* User Account & Role Status Banner */}
-          {user ? (
-            <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-              isAuthorizedAdminEmail(getUserEmail(user))
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                : 'bg-amber-50 border-amber-300 text-amber-950'
-            }`}>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-[#0f4a37] text-white flex items-center justify-center font-bold text-xs">
-                  {getUserEmail(user) ? getUserEmail(user)[0].toUpperCase() : 'U'}
-                </div>
-                <div>
-                  <div className="font-bold">{getUserEmail(user) || user.displayName}</div>
-                  <div className="text-[10px] text-stone-500">
-                    {isAuthorizedAdminEmail(getUserEmail(user))
-                      ? '✓ Verified Admin Account — Full push & edit rights active'
-                      : 'Non-Admin Account — Defaults to Receptionist view'}
-                  </div>
-                </div>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                isAuthorizedAdminEmail(getUserEmail(user))
-                  ? 'bg-emerald-200 text-emerald-950'
-                  : 'bg-amber-200 text-amber-950'
-              }`}>
-                {isAuthorizedAdminEmail(getUserEmail(user)) ? 'Admin Access' : 'Receptionist View'}
-              </span>
-            </div>
-          ) : (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs space-y-2">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold">Not Logged In:</span>
-                  <p className="text-[11px] text-amber-900 mt-0.5">
-                    Logging in with an authorized Admin Gmail ID automatically grants full Admin access and Push to Google Sheet. Without login, the system operates in Receptionist view.
-                  </p>
-                </div>
-              </div>
-              {onGoogleSignIn && (
-                <button
-                  type="button"
-                  onClick={onGoogleSignIn}
-                  className="w-full py-1.5 px-3 rounded-lg bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Sign in with Google</span>
-                </button>
-              )}
-            </div>
-          )}
-
           {errorMsg && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />

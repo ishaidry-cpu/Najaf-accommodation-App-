@@ -76,10 +76,10 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
   const [connected, setConnected] = useState(false);
   const [key, setKey] = useState<string>(() => loadKey());
   const [active, setActive] = useState<SyncJob | null>(null);
-  const [last, setLast] = useState<SyncJob | null>(() => loadLocal<SyncJob | null>('last-run', null));
+  const [last, setLast] = useState<SyncJob | null>(null);
   const [history, setHistory] = useState<HistoryRun[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadLocal<ChatMessage[]>('messages', []));
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [needKey, setNeedKey] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,12 +113,6 @@ export function useNkerpSync(notify: Notify = () => {}): NkerpSyncState {
   const syncIsOpen = config?.keySource === null;
 
   // ---- persistence on this device
-  useEffect(() => {
-    storeLocal('messages', messages.slice(-KEEP_MESSAGES));
-  }, [messages]);
-  useEffect(() => {
-    storeLocal('last-run', last ? { ...last, events: last.events.slice(-KEEP_EVENTS) } : null);
-  }, [last]);
 
   const addMessage = useCallback((m: Omit<ChatMessage, 'id' | 'at'>): ChatMessage => {
     const msg: ChatMessage = { id: newId(), at: new Date().toISOString(), ...m };

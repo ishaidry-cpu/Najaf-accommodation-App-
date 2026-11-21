@@ -882,7 +882,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     Excel template
                   </MenuItem>
                   {onOpenCategoriesModal && (
-                    <MenuItem icon={FileSpreadsheet} onClick={() => { close(); onOpenCategoriesModal(); }} hint={`${categories.length} categories from the Google Sheet`}>
+                    <MenuItem icon={FileSpreadsheet} onClick={() => { close(); onOpenCategoriesModal(); }} hint={`${categories.length} saved categories`}>
                       Zaereen categories
                     </MenuItem>
                   )}

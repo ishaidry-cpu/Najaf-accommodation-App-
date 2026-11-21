@@ -1,21 +1,4 @@
-/**
- * The Sync to NKERP HTTP API as web-standard handlers (Request in, Response out). They need no state
- * between requests, so the same code runs as Vercel Functions (api/nkerp-sync/*) and inside the app's own
- * Express server (routes.ts adapts them):
- *
- *   GET  config     what is configured (booleans and the service-account address only); never needs the key
- *   POST auth       check an access key (the sync is open when NKERP_SYNC_ACCESS_KEY is not set)
- *   POST run        run a sync or a preview; the response streams the run as NDJSON lines:
- *                     {"type":"start","job":{...}}  {"type":"event","event":{...}}  {"type":"ping"}
- *                     {"type":"done","job":{...report, summary, attention...}}
- *   GET  history    applied runs, read back from the Sheet's Sync History tab
- *   POST interpret  turn a typed instruction into a validated proposal (runs nothing itself)
- *   GET  emails       Najaf stays from today with their two accommodation-plan emails (NKERP, read only)
- *   POST emails-send  send the chosen emails; the response streams NDJSON like run
- *
- * A run lives inside its request. On hosts with a hard time limit (Vercel: 300s by default) the engine is
- * given a deadline and starts no new save after it, so the limit can never cut a save in half.
- */
+/** Local HTTP handlers for NKERP allocation, history, instructions, and accommodation emails. */
 import crypto from 'crypto';
 import { credentialStatus } from './credentials.js';
 import {
@@ -23,13 +6,10 @@ import {
 } from './emails.js';
 import { runSync, type RunDeps, type RunStats } from './engine.js';
 import { attention, type AttentionItem } from './guidance.js';
-import { geminiConfigured, interpret } from './instructions.js';
-import { realDeps, sheetId } from './service.js';
-import { HISTORY_TAB, SheetsApi, SyncHistoryTab } from './sheets.js';
+import { interpretRules } from './instructions.js';
 import type { HistoryRow, ProgressEvent, RunOptions, SyncAction, SyncReport } from './types.js';
 import { ALL_ACTIONS } from './types.js';
 import { addDays, errorMessage, parseArrival, todayIn } from './util.js';
-import { googleTokens } from './service.js';
 
 export type JobStatus = 'running' | 'succeeded' | 'attention' | 'stopped' | 'failed' | 'cancelled';
 
@@ -184,7 +164,7 @@ function maxSeconds(d: HandlerDeps): number {
   if (d.maxSeconds !== undefined) return d.maxSeconds;
   const env = parseInt(process.env.NKERP_SYNC_MAX_SECONDS || '', 10);
   if (Number.isFinite(env) && env >= 0) return env;
-  return process.env.VERCEL ? 300 : 0;
+  return 0;
 }
 
 /** One run per server instance at a time (NKERP saves from two runs must not interleave). */
@@ -194,11 +174,9 @@ let running: string | null = null;
 
 export function handleConfig(d: HandlerDeps = {}): Response {
   const c = (d.credentials ?? credentialStatus)();
-  const id = sheetId();
   return json({
-    configured: c.nkerp && c.google, nkerp: c.nkerp, google: c.google, googleAccount: c.googleAccount,
-    problem: c.problem, sheetId: id, sheetUrl: `https://docs.google.com/spreadsheets/d/${id}/edit`,
-    gemini: geminiConfigured(), keySource: process.env.NKERP_SYNC_ACCESS_KEY?.trim() ? 'env' : null,
+    configured: c.nkerp && Boolean(d.depsFactory), nkerp: c.nkerp, problem: c.problem,
+    keySource: process.env.NKERP_SYNC_ACCESS_KEY?.trim() ? 'env' : null,
     today: todayIn(), running: Boolean(running), maxSeconds: maxSeconds(d),
   });
 }
@@ -215,11 +193,12 @@ export async function handleRun(req: Request, d: HandlerDeps = {}): Promise<Resp
   try {
     body = await readJson(req);
     options = validateOptions(body);
+    options.today ??= d.today?.();
   } catch (err) {
     return json({ error: errorMessage(err) }, 400);
   }
   const c = (d.credentials ?? credentialStatus)();
-  if (!c.nkerp || !c.google) return json({ error: `Sync is not configured on the server: ${c.problem}` }, 503);
+  if (!c.nkerp || !d.depsFactory) return json({ error: `Sync is not configured on the server: ${c.problem}` }, 503);
   if (running) return json({ error: 'A sync is already running', jobId: running }, 409);
 
   const started = new Date();
@@ -253,22 +232,19 @@ export async function handleRun(req: Request, d: HandlerDeps = {}): Promise<Resp
       const ping = setInterval(() => write({ type: 'ping' }), 15_000);
       const progress = (ev: ProgressEvent) => {
         const event = { ...ev, seq: ++seq, at: new Date().toISOString() };
-        const line = `[nkerp-sync ${job.id}] ${ev.level.toUpperCase()} ${ev.stage}: ${ev.message}`;
-        if (ev.level === 'error') console.error(line);
-        else if (ev.level !== 'debug') console.log(line);
         write({ type: 'event', event });
       };
       write({ type: 'start', job });
       const work = (async () => {
         try {
-          const deps = (d.depsFactory ?? realDeps)(options.apply, progress, controller.signal);
+          const deps = d.depsFactory!(options.apply, progress, controller.signal);
           if (deadline) deps.deadline = deadline;
           const { report, stats } = await runSync(options, deps);
           job.report = report;
           job.stats = stats;
           job.summary = summarize(report);
           job.status = finalStatus(report);
-          job.attention = attention(report, c.googleAccount);
+          job.attention = attention(report, null);
         } catch (err) {
           job.error = errorMessage(err);
           job.status = controller.signal.aborted ? 'cancelled' : 'failed';
@@ -342,11 +318,10 @@ export function groupHistory(rows: HistoryRow[], limit = 30): HistoryRun[] {
 export async function handleHistory(req: Request, d: HandlerDeps = {}): Promise<Response> {
   const denied = checkAccess(req);
   if (denied) return denied;
-  const c = (d.credentials ?? credentialStatus)();
-  if (!c.google && !d.readHistory) return json({ runs: [], error: 'Google service account is not configured' });
+  if (!d.readHistory) return json({ runs: [], error: 'Local Sync History is unavailable.' });
   try {
-    const rows = d.readHistory ? await d.readHistory() : await new SyncHistoryTab(new SheetsApi(sheetId(), googleTokens())).read();
-    return json({ runs: groupHistory(rows), tab: HISTORY_TAB });
+    const rows = await d.readHistory();
+    return json({ runs: groupHistory(rows) });
   } catch (err) {
     return json({ runs: [], error: `Could not read Sync History: ${errorMessage(err)}` });
   }
@@ -365,10 +340,9 @@ export async function handleInterpret(req: Request, d: HandlerDeps = {}): Promis
   if (!text) return json({ error: 'Type an instruction' }, 400);
   const report: SyncReport | null = body?.report && typeof body.report === 'object' && Array.isArray(body.report.problems)
     ? body.report : null;
-  const c = (d.credentials ?? credentialStatus)();
   try {
-    const proposal = await interpret(text, { today: todayIn(), running: Boolean(body?.running) || Boolean(running),
-      report, account: c.googleAccount });
+    const proposal = interpretRules(text, { today: todayIn(), running: Boolean(body?.running) || Boolean(running),
+      report, account: null });
     return json(proposal);
   } catch (err) {
     return json({ error: errorMessage(err) }, 500);

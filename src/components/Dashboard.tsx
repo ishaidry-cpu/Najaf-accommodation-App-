@@ -35,7 +35,8 @@ import {
   Star,
   FileText
 } from 'lucide-react';
-import { Reservation, Room, UserRole, GoogleSheetsConfig } from '../types';
+import type { PullStatus } from '../services/api';
+import { Reservation, Room, UserRole } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import {
   getRoomStatusOnDate,
@@ -69,11 +70,11 @@ interface DashboardProps {
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
   onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
-  sheetsConfig?: GoogleSheetsConfig;
-  onOpenSheetsModal?: () => void;
-  onOpenGoogleSheet?: () => void;
-  onQuickSync?: () => void;
   isLiveBackendConnected?: boolean;
+  pullStatus: PullStatus | null;
+  isPulling: boolean;
+  onPullNkerp: () => void;
+  onExportRoomAllocation: () => void;
   onOpenAddBuildingRooms?: () => void;
   onRefreshLiveComputerData?: () => Promise<void> | void;
   onOpenPdfModal?: (reportType?: any, tourId?: string) => void;
@@ -98,11 +99,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   userRole = 'admin',
   onOpenQuickAllotModal,
   onOpenSwitchRoomModal,
-  sheetsConfig,
-  onOpenSheetsModal,
-  onOpenGoogleSheet,
-  onQuickSync,
   isLiveBackendConnected = true,
+  pullStatus,
+  isPulling,
+  onPullNkerp,
+  onExportRoomAllocation,
   onOpenAddBuildingRooms,
   onRefreshLiveComputerData,
   onOpenPdfModal,
@@ -767,58 +768,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {rooms.length} rooms in {distinctBuildings.join(', ')}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-            <span className="inline-flex items-center gap-1.5 text-stone-600">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  sheetsConfig?.isSyncing ? 'bg-amber-500 animate-pulse' : sheetsConfig?.spreadsheetId ? 'bg-emerald-500' : 'bg-stone-300'
-                }`}
-              />
-              {sheetsConfig?.isSyncing
-                ? 'Syncing with Google Sheet…'
-                : sheetsConfig?.spreadsheetId
-                  ? sheetsConfig?.lastSyncedAt
-                    ? `Google Sheet synced at ${new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Google Sheet connected'
-                  : 'No Google Sheet connected'}
+            <span className={pullStatus?.error ? 'text-rose-700' : 'text-stone-600'} role="status">
+              {!isLiveBackendConnected ? 'Local database unavailable' : pullStatus?.running ? 'Pulling from NKERP…' :
+                pullStatus?.error ? pullStatus.error : pullStatus?.lastSyncedAt
+                  ? `NKERP pulled at ${new Date(pullStatus.lastSyncedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+                  : 'Waiting for the first NKERP pull'}
             </span>
-            {sheetsConfig?.spreadsheetId ? (
-              <>
-                <button
-                  type="button"
-                  onClick={onOpenGoogleSheet || onOpenSheetsModal}
-                  className="inline-flex items-center gap-1 font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer"
-                >
-                  Open sheet
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
-                {userRole === 'admin' ? (
-                  <button
-                    type="button"
-                    onClick={onQuickSync}
-                    disabled={sheetsConfig?.isSyncing}
-                    className="font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer disabled:opacity-50"
-                  >
-                    Push now
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenSheetsModal}
-                    className="font-medium text-brand-700 hover:text-brand-800 hover:underline underline-offset-2 cursor-pointer"
-                  >
-                    Pull latest
-                  </button>
-                )}
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenSheetsModal}
-                className="font-medium text-brand-700 hover:underline underline-offset-2 cursor-pointer"
-              >
-                Connect sheet
-              </button>
-            )}
+            <button type="button" className="font-medium text-brand-700 hover:underline" onClick={onPullNkerp} disabled={isPulling}>Pull from NKERP</button>
+            <button type="button" className="font-medium text-brand-700 hover:underline" onClick={onExportRoomAllocation}>Export room allocation</button>
           </div>
         </div>
 

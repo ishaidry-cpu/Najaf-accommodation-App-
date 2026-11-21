@@ -735,7 +735,7 @@ export function generateAdministrativePdf(
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Zaereen Accommodation & Google Sheets Reservation Management System — Page ${i} of ${totalPages}`,
+      `Najaf Accommodation — Page ${i} of ${totalPages}`,
       40,
       pageHeight - 12
     );

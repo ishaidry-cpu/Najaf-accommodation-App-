@@ -926,3 +926,34 @@ export function convertRowsToReservations(
     };
   });
 }
+
+export function roomAllocationWorkbook(reservations: Reservation[], rooms: import('../types').Room[]) {
+  const book = XLSX.utils.book_new();
+  const assigned = reservations.filter(r => r.building && r.roomNumber).map(r => ({
+    'Building': r.building,
+    'Room Allottment': r.roomNumber,
+    'ITS': r.itsId,
+    'Name': r.applicantName,
+    'Family': r.family,
+    'Tour ID': r.tourRefNo,
+    'Office Name': r.officeName,
+    'Group Lead': r.groupLeadName,
+    'Arrival': [r.arrivalDate, r.arrivalTime].filter(Boolean).join(' '),
+    'Departure': [r.departureDate, r.departureTime].filter(Boolean).join(' '),
+    'Category': r.category,
+    'Special Guest': r.isSpecialGuest ? 'YES' : 'NO',
+    'Special Remarks': r.specialRemarks || '',
+    'Main Portal': r.isUploadedToPortal ? 'Uploaded' : 'Pending',
+    'Request Slip No.': r.requestSlipNo || '',
+    'Pax Count': r.paxCount ?? r.pax ?? 1,
+  }));
+  XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(assigned), 'Room Allocation');
+  XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rooms.map(r => ({
+    Building:r.building, 'Room Number':r.roomNumber, Floor:r.floor, Capacity:r.capacity, Status:r.status, Category:r.category,
+  }))), 'Rooms Inventory');
+  return book;
+}
+
+export function exportRoomAllocation(reservations: Reservation[], rooms: import('../types').Room[]) {
+  XLSX.writeFile(roomAllocationWorkbook(reservations, rooms), 'Najaf Room Allocation.xlsx');
+}

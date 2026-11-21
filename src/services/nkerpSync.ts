@@ -11,7 +11,7 @@ export type LogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error';
 export interface RunOptions {
   apply: boolean;
   today?: string;
-  /** Only stays whose Sheet ARRIVAL is from `from` to `to` (inclusive). One date: both the same. */
+  /** Only stays whose app arrival is from `from` to `to` (inclusive). One date: both the same. */
   from?: string;
   to?: string;
   only?: SyncAction[];
@@ -24,12 +24,7 @@ export interface RunOptions {
 export interface SyncConfig {
   configured: boolean;
   nkerp: boolean;
-  google: boolean;
-  googleAccount: string | null;
   problem: string | null;
-  sheetId: string;
-  sheetUrl: string;
-  gemini: boolean;
   /** 'env': an access key is required; null: the sync is open (no key set on the server). */
   keySource: 'env' | null;
   today: string;

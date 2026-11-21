@@ -199,7 +199,7 @@ describe('reading the tour list', () => {
 });
 
 describe('email HTTP handlers', () => {
-  const creds = () => ({ nkerp: true, google: true, googleAccount: null, problem: null });
+  const creds = () => ({ nkerp: true, problem: null });
 
   it('lists the Najaf stays', async () => {
     const fake = new FakeEmailNkerp(rows());

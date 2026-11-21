@@ -5,11 +5,8 @@
  *   npm run test:sync
  */
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import { describe, it } from 'node:test';
-import { credentialStatus, googleServiceAccount } from '../credentials';
 import { commit, runSync } from '../engine';
-import { signAssertion } from '../googleAuth';
 import { CookieJar, NkerpClient } from '../nkerpClient';
 import { allocNeed, allocPayload, capacityProblems } from '../payloads';
 import { plan } from '../planner';
@@ -435,35 +432,5 @@ describe('app-only behaviour', () => {
     for (const stage of ['start', 'read-sheet', 'read-history', 'read-pending', 'read-tours', 'plan', 'allocate']) {
       assert.ok(events.includes(stage), stage);
     }
-  });
-});
-
-describe('credentials and Google auth', () => {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
-  const key = { client_email: 'svc@example.iam.gserviceaccount.com', private_key: pem, private_key_id: 'kid1' };
-
-  it('signs a verifiable RS256 JWT assertion', async () => {
-    const jwt = await signAssertion(key, 'https://www.googleapis.com/auth/spreadsheets', 1_800_000_000);
-    const [h, c, s] = jwt.split('.');
-    const header = JSON.parse(Buffer.from(h, 'base64url').toString());
-    const claims = JSON.parse(Buffer.from(c, 'base64url').toString());
-    assert.deepEqual(header, { alg: 'RS256', typ: 'JWT', kid: 'kid1' });
-    assert.deepEqual(claims, { iss: key.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets',
-      aud: 'https://oauth2.googleapis.com/token', iat: 1_800_000_000, exp: 1_800_003_600 });
-    assert.ok(crypto.createVerify('RSA-SHA256').update(`${h}.${c}`).verify(publicKey, Buffer.from(s, 'base64url')));
-  });
-
-  it('reads the key from JSON, base64 or escaped newlines; never exposes it', () => {
-    const json = JSON.stringify(key);
-    assert.equal(googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: json }).client_email, key.client_email);
-    assert.equal(googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: Buffer.from(json).toString('base64') }).private_key, pem);
-    const escaped = JSON.stringify({ ...key, private_key: pem.replace(/\n/g, '\\n') });
-    assert.equal(googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: escaped }).private_key, pem);
-    assert.throws(() => googleServiceAccount({ GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({ ...key, private_key: 'x' }) }),
-      /no usable private_key/);
-    const status = credentialStatus({ GOOGLE_SERVICE_ACCOUNT_JSON: json });
-    assert.deepEqual([status.nkerp, status.google, status.googleAccount], [false, true, key.client_email]);
-    assert.ok(!JSON.stringify(status).includes('PRIVATE KEY'));
   });
 });

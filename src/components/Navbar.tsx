@@ -26,8 +26,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { User } from 'firebase/auth';
-import { GoogleSheetsConfig, UserRole } from '../types';
+import { UserRole } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { SyncToNkerpButton } from './SyncToNkerpButton';
 import { Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
@@ -38,21 +37,14 @@ export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync
 interface NavbarProps {
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
-  user: User | null;
-  sheetsConfig: GoogleSheetsConfig;
   userRole: UserRole;
+  onPullNkerp: () => void;
+  isPulling: boolean;
   onOpenRoleModal: () => void;
-  onOpenSheetsModal: () => void;
-  onOpenGoogleSheet?: () => void;
   onOpenPdfModal: (reportType?: any, tourId?: string) => void;
   onOpenUploadExcel: () => void;
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenAToBReceipt?: () => void;
-  onGoogleSignIn: () => void;
-  onGoogleLogout: () => void;
-  isLoggingIn: boolean;
-  onQuickSync: () => void;
-  isLiveBackendConnected?: boolean;
   roomsCount?: number;
   onOpenAddBuildingRooms?: () => void;
   nkerpSync: NkerpSyncState;
@@ -83,21 +75,14 @@ const ghostTrigger = (open: boolean) =>
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
-  user,
-  sheetsConfig,
   userRole,
+  onPullNkerp,
+  isPulling,
   onOpenRoleModal,
-  onOpenSheetsModal,
-  onOpenGoogleSheet,
   onOpenPdfModal,
   onOpenUploadExcel,
   onOpenReceptionSlip,
   onOpenAToBReceipt,
-  onGoogleSignIn,
-  onGoogleLogout,
-  isLoggingIn,
-  onQuickSync,
-  isLiveBackendConnected = true,
   roomsCount,
   onOpenAddBuildingRooms,
   nkerpSync,
@@ -105,12 +90,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isReceptionist = userRole === 'receptionist';
-  const hasLinkedSheet = Boolean(sheetsConfig.spreadsheetId);
-  const lastSynced = sheetsConfig.lastSyncedAt
-    ? new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : null;
-  const initial = user?.email ? user.email[0].toUpperCase() : null;
-
   useEffect(() => {
     if (!isMobileMenuOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsMobileMenuOpen(false);
@@ -149,53 +128,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     </>
   );
 
-  const sheetItems = (close: () => void) => (
-    <>
-      <div className="px-2.5 pt-1.5 pb-2">
-        <div className="text-[13px] font-semibold text-stone-900 leading-snug">
-          {sheetsConfig.spreadsheetName || (hasLinkedSheet ? 'Google Sheet' : 'No sheet connected')}
-        </div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
-          <span className={`w-1.5 h-1.5 rounded-full ${hasLinkedSheet ? 'bg-emerald-500' : 'bg-stone-300'}`} />
-          {hasLinkedSheet ? (lastSynced ? `Last synced ${lastSynced}` : 'Connected') : 'Connect a sheet to back up data'}
-        </div>
-      </div>
-      <MenuDivider />
-      {hasLinkedSheet ? (
-        <>
-          <MenuItem icon={ExternalLink} onClick={() => { close(); (onOpenGoogleSheet || onOpenSheetsModal)(); }}>
-            Open in Google Sheets
-          </MenuItem>
-          {isReceptionist ? (
-            <MenuItem icon={Download} onClick={() => { close(); onOpenSheetsModal(); }} hint="Get the latest zaereen and rooms">
-              Pull from sheet
-            </MenuItem>
-          ) : (
-            <MenuItem
-              icon={UploadCloud}
-              disabled={sheetsConfig.isSyncing}
-              onClick={() => { close(); onQuickSync(); }}
-              hint="Send this app's records to the sheet"
-            >
-              {sheetsConfig.isSyncing ? 'Pushing…' : 'Push to sheet'}
-            </MenuItem>
-          )}
-          <MenuItem icon={Settings2} onClick={() => { close(); onOpenSheetsModal(); }}>
-            Sheet settings
-          </MenuItem>
-        </>
-      ) : (
-        <MenuItem icon={FileSpreadsheet} onClick={() => { close(); onOpenSheetsModal(); }}>
-          Connect Google Sheet
-        </MenuItem>
-      )}
-    </>
-  );
-
   const accountItems = (close: () => void) => (
     <>
       <div className="px-2.5 pt-1.5 pb-2">
-        <div className="text-[13px] font-semibold text-stone-900 truncate">{user?.email || 'Not signed in'}</div>
+        <div className="text-[13px] font-semibold text-stone-900 truncate">Local access</div>
         <div className="mt-0.5 text-xs text-stone-500">
           {isReceptionist ? 'Receptionist · view only' : 'Admin · can edit'}
         </div>
@@ -221,16 +157,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </MenuItem>
           )}
         </>
-      )}
-      <MenuDivider />
-      {user ? (
-        <MenuItem icon={LogOut} tone="danger" onClick={() => { close(); onGoogleLogout(); }}>
-          Sign out
-        </MenuItem>
-      ) : (
-        <MenuItem icon={LogIn} disabled={isLoggingIn} onClick={() => { close(); onGoogleSignIn(); }}>
-          {isLoggingIn ? 'Signing in…' : 'Sign in with Google'}
-        </MenuItem>
       )}
     </>
   );
@@ -289,26 +215,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="ml-auto flex items-center gap-1">
             {/* Desktop utilities */}
             <div className="hidden md:flex items-center gap-1">
-              <Dropdown
-                label="Google Sheet"
-                width="w-72"
-                trigger={(open) => (
-                  <span className={ghostTrigger(open)} title={isLiveBackendConnected ? 'Data is saved on the server and synced with the Google Sheet' : undefined}>
-                    <span className="relative flex">
-                      <FileSpreadsheet className="w-4 h-4 text-stone-500" />
-                      <span
-                        className={`absolute -right-0.5 -top-0.5 w-2 h-2 rounded-full ring-2 ring-white ${
-                          sheetsConfig.isSyncing ? 'bg-amber-500 animate-pulse' : hasLinkedSheet ? 'bg-emerald-500' : 'bg-stone-300'
-                        }`}
-                      />
-                    </span>
-                    <span className="hidden 2xl:inline">Sheet</span>
-                    <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
-                  </span>
-                )}
-              >
-                {sheetItems}
-              </Dropdown>
+              <button type="button" className={ghostTrigger(false)} disabled={isPulling} onClick={onPullNkerp}>
+                <Download className="w-4 h-4" /> {isPulling ? 'Pulling…' : 'Pull from NKERP'}
+              </button>
 
               <Dropdown
                 label="Print and export"
@@ -350,7 +259,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                   >
                     <span className="w-7 h-7 rounded-full bg-brand-700 text-gold-200 flex items-center justify-center text-xs font-semibold">
-                      {initial ?? <LogIn className="w-3.5 h-3.5" />}
+                      <ShieldCheck className="w-3.5 h-3.5" />
                     </span>
                     <span className="text-xs font-medium text-stone-700">{isReceptionist ? 'Reception' : 'Admin'}</span>
                     <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
@@ -436,9 +345,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <MenuHeading>Print</MenuHeading>
               {printItems(() => setIsMobileMenuOpen(false))}
               <MenuDivider />
-              <MenuHeading>Google Sheet</MenuHeading>
-              {sheetItems(() => setIsMobileMenuOpen(false))}
               <MenuDivider />
+              <MenuItem icon={Download} disabled={isPulling} onClick={() => { setIsMobileMenuOpen(false); onPullNkerp(); }}>
+                {isPulling ? 'Pulling…' : 'Pull from NKERP'}
+              </MenuItem>
               <MenuHeading>Account</MenuHeading>
               {accountItems(() => setIsMobileMenuOpen(false))}
             </div>

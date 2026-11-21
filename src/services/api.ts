@@ -1,284 +1,66 @@
-import { Reservation, Room, GoogleSheetsConfig, UserRole } from '../types';
+import type { Reservation, Room } from '../types';
 
-export interface BackendStatus {
-  status: string;
-  liveBackend: boolean;
-  serverTime: string;
-  reservationsCount: number;
-  roomsCount: number;
-  storageLocation: string;
+export interface PullStatus {
+  running: boolean;
+  lastSyncedAt: string | null;
+  error: string | null;
 }
-
-export interface BackendSettings {
-  sheetsConfig: GoogleSheetsConfig;
+interface BackendSettings {
   categories: string[];
-  userRole: UserRole;
   adminPin: string;
 }
-
-/**
- * Check if the backend API is alive and responding
- */
-export async function checkBackendHealth(): Promise<BackendStatus | null> {
-  try {
-    const res = await fetch('/api/status');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+async function request<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch('/api/'+path, body === undefined ? undefined : {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || 'The local app could not save or load data.');
   }
+  return response.json();
 }
+export async function loadAccommodation() {
+  const [reservations,rooms,settings] = await Promise.all([
+    request<Reservation[]>('reservations'),
+    request<Room[]>('rooms'),
+    request<BackendSettings>('settings'),
+  ]);
+  return {reservations,rooms,settings};
+}
+export async function fetchPullStatus() {
+  return (await request<{pull:PullStatus}>('status')).pull;
+}
+export const pullNkerp = () => request<{received:number; changed:number; expired:number}>('nkerp/pull',{});
 
-/**
- * Load all reservations from the live backend
- */
-export async function fetchBackendReservations(): Promise<Reservation[] | null> {
-  try {
-    const res = await fetch('/api/reservations');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not fetch reservations from backend:', err);
-    return null;
+export async function saveChanges<T extends {id:string}>(collection: 'rooms' | 'reservations', before: T[], after: T[]) {
+  const old = new Map(before.map(row => [row.id,row]));
+  const changes: {id:string; before:object|null; after:object|null}[] = [];
+  for (const row of after) {
+    const previous = old.get(row.id);
+    old.delete(row.id);
+    if (!previous) {
+      changes.push({id:row.id,before:null,after:row});
+      continue;
+    }
+    const patch: Record<string,unknown> = {};
+    for (const key of new Set([...Object.keys(row),...Object.keys(previous)])) {
+      if (['updatedAt','createdAt'].includes(key)) continue;
+      const prev = previous[key as keyof T];
+      const next = row[key as keyof T];
+      if (JSON.stringify(prev) !== JSON.stringify(next)) patch[key] = next ?? null;
+    }
+    if (Object.keys(patch).length) changes.push({id:row.id,before:previous,after:patch});
   }
+  for (const row of old.values()) changes.push({id:row.id,before:row,after:null});
+  if (changes.length) await request('changes',{collection,changes});
 }
-
-/**
- * Save all reservations to the live backend
- */
-export async function saveBackendReservations(reservations: Reservation[]): Promise<boolean> {
-  try {
-    const res = await fetch('/api/reservations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservations }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not save reservations to backend:', err);
-    return false;
-  }
-}
-
-/**
- * Upsert a single reservation on the backend
- */
-export async function upsertBackendReservation(reservation: Reservation): Promise<boolean> {
-  try {
-    const res = await fetch('/api/reservations/upsert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reservation),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not upsert reservation on backend:', err);
-    return false;
-  }
-}
-
-/**
- * Delete a single reservation on the backend
- */
-export async function deleteBackendReservation(id: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/reservations/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not delete reservation on backend:', err);
-    return false;
-  }
-}
-
-/**
- * Batch delete reservations on the backend
- */
-export async function batchDeleteBackendReservations(ids: string[]): Promise<boolean> {
-  try {
-    const res = await fetch('/api/reservations/batch-delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not batch delete reservations on backend:', err);
-    return false;
-  }
-}
-
-/**
- * Load all 114 rooms from the live backend
- */
-export async function fetchBackendRooms(): Promise<Room[] | null> {
-  try {
-    const res = await fetch('/api/rooms');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not fetch rooms from backend:', err);
-    return null;
-  }
-}
-
-/**
- * Save all rooms to the live backend
- */
-export async function saveBackendRooms(rooms: Room[]): Promise<boolean> {
-  try {
-    const res = await fetch('/api/rooms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rooms }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not save rooms to backend:', err);
-    return false;
-  }
-}
-
-/**
- * Update an individual room on the backend
- */
-export async function updateBackendRoom(id: string, updates: Partial<Room>): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/rooms/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not update room on backend:', err);
-    return false;
-  }
-}
-
-/**
- * Reset rooms on the backend to official 114 inventory
- */
 export async function resetBackendRooms(): Promise<Room[] | null> {
-  try {
-    const res = await fetch('/api/rooms/reset', {
-      method: 'POST',
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.rooms || null;
-  } catch (err) {
-    console.warn('[API] Could not reset rooms on backend:', err);
-    return null;
-  }
+  try { return (await request<{rooms:Room[]}>('rooms/reset',{})).rooms; }
+  catch { return null; }
 }
-
-/**
- * Load backend settings
- */
-export async function fetchBackendSettings(): Promise<BackendSettings | null> {
-  try {
-    const res = await fetch('/api/settings');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not fetch settings from backend:', err);
-    return null;
-  }
+export async function saveBackendSettings(settings: Partial<BackendSettings>) {
+  try { await request('settings',settings); return true; }
+  catch { return false; }
 }
-
-/**
- * Save backend settings
- */
-export async function saveBackendSettings(settings: Partial<BackendSettings>): Promise<boolean> {
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not save settings to backend:', err);
-    return false;
-  }
-}
-
-/**
- * Reset backend data store back to the default attached Google Sheet (1,074 records)
- */
-export async function resetBackendToDefaultSheet(): Promise<{
-  success: boolean;
-  count: number;
-  sheetsConfig: GoogleSheetsConfig;
-  reservations: Reservation[];
-} | null> {
-  try {
-    const res = await fetch('/api/sheets/reset-default', {
-      method: 'POST',
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not reset backend to default sheet:', err);
-    return null;
-  }
-}
-
-/**
- * Fetch default attached sheet information
- */
-export async function fetchDefaultSheetInfo(): Promise<{
-  defaultSheetName: string;
-  spreadsheetId: string;
-  spreadsheetUrl: string;
-  fileName: string;
-  recordsCount: number;
-  description: string;
-} | null> {
-  try {
-    const res = await fetch('/api/sheets/default');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not fetch default sheet info:', err);
-    return null;
-  }
-}
-
-/**
- * Fetch default reservations from the attached sheet
- */
-export async function fetchDefaultSheetReservations(): Promise<Reservation[] | null> {
-  try {
-    const res = await fetch('/api/sheets/default-reservations');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.warn('[API] Could not fetch default sheet reservations:', err);
-    return null;
-  }
-}
-
-/**
- * Switch active Google Sheet URL/ID on the backend
- */
-export async function switchBackendSheet(
-  spreadsheetId: string,
-  spreadsheetUrl: string,
-  spreadsheetName?: string
-): Promise<boolean> {
-  try {
-    const res = await fetch('/api/sheets/switch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spreadsheetId, spreadsheetUrl, spreadsheetName }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.warn('[API] Could not switch backend sheet:', err);
-    return false;
-  }
-}
-

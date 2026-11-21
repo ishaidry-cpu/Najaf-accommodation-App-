@@ -15,12 +15,11 @@ import {
   Calendar,
   X,
   RotateCcw,
-  FileSpreadsheet,
   DoorClosed,
   ArrowRightLeft,
   Users
 } from 'lucide-react';
-import { Room, RoomStatus, RoomCategory, Reservation, GoogleSheetsConfig } from '../types';
+import { Room, RoomStatus, RoomCategory, Reservation } from '../types';
 import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, OFFICIAL_THREE_BUILDINGS } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { SwitchRoomTarget } from './SwitchRoomModal';
@@ -34,8 +33,6 @@ interface RoomsManagementViewProps {
   onResetRoomsToSaifeeBurhani: () => void;
   onAddRooms?: (newRooms: Room[], replaceExisting?: boolean) => void;
   onDeleteRoom?: (roomId: string) => void;
-  accessToken?: string | null;
-  sheetsConfig?: GoogleSheetsConfig;
   onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
 }
 
@@ -47,8 +44,6 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
   onResetRoomsToSaifeeBurhani,
   onAddRooms,
   onDeleteRoom,
-  accessToken,
-  sheetsConfig,
   onOpenSwitchRoomModal,
 }) => {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('ALL');
@@ -62,7 +57,6 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
   const [inspectingRoom, setInspectingRoom] = useState<Room | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [addModalTab, setAddModalTab] = useState<'manual' | 'sheet'>('manual');
 
   // Canonical deduplicated rooms list
   const cleanRooms = useMemo(() => deduplicateRooms(rooms), [rooms]);
@@ -144,18 +138,6 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                setAddModalTab('sheet');
-                setIsAddModalOpen(true);
-              }}
-              className={btn.secondary}
-            >
-              <FileSpreadsheet className="w-4 h-4 text-stone-500" />
-              Import from sheet
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAddModalTab('manual');
                 setIsAddModalOpen(true);
               }}
               className={btn.primary}
@@ -598,9 +580,6 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               onAddRooms(newRooms, replace);
             }
           }}
-          accessToken={accessToken}
-          sheetsConfig={sheetsConfig}
-          initialTab={addModalTab}
         />
       )}
     </div>

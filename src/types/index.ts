@@ -186,14 +186,3 @@ export interface Reservation {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface GoogleSheetsConfig {
-  spreadsheetId: string | null;
-  spreadsheetUrl: string | null;
-  spreadsheetName: string;
-  lastSyncedAt: string | null;
-  autoSync: boolean;
-  isSyncing: boolean;
-  syncError: string | null;
-  customCategories?: string[]; // Categories fetched from Google Sheets or configured
-}

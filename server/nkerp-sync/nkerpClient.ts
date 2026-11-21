@@ -279,9 +279,14 @@ export class NkerpClient implements NkerpApi {
 
   /** One tour's allocated Najaf room-nights (Manage Room Deallocation search by Tour Reference No.). */
   current(ref: string): Promise<NkRecord[]> {
+    return this.currentForTours([ref]);
+  }
+
+  currentForTours(refs: string[], from?: string): Promise<NkRecord[]> {
+    if (!refs.length) return Promise.resolve([]);
     const body = {
-      FamilyID: '', FloorNo: '', OccupiedDateFrom: null, OccupiedDateTo: null, PropertyId: [], RoomNo: '',
-      RoomTypeId: '', SubVenueID: String(NAJAF), TimeZone: 3, TourRefenceNO: [ref], VenueID: String(VENUE),
+      FamilyID: '', FloorNo: '', OccupiedDateFrom: from ?? null, OccupiedDateTo: null, PropertyId: [], RoomNo: '',
+      RoomTypeId: '', SubVenueID: String(NAJAF), TimeZone: 3, TourRefenceNO: refs, VenueID: String(VENUE),
       itemsPerPage: 500, maxSize: 10, reverse: false, sortBy: 'OccupiedDate',
     };
     return this.paged(CURRENT, body, 'lstAllocationDetails',

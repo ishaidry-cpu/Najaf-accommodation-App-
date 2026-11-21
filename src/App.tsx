@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User } from 'firebase/auth';
 import { 
   Building2, 
   BedDouble, 
@@ -28,26 +27,16 @@ import {
   Room, 
   PaymentStatus, 
   MoneyGivenStatus, 
-  GoogleSheetsConfig, 
   RoomStatus,
   DEFAULT_ZAEREEN_CATEGORIES,
   UserRole
 } from './types';
 import { 
-  getStoredRooms, 
-  saveRooms, 
-  getStoredReservations, 
-  saveReservations, 
-  getStoredSheetsConfig, 
-  saveSheetsConfig,
   getStoredCategories,
-  saveStoredCategories,
-  resetToSaifeeBurhani114Rooms,
   isRoomBookedForDuration,
   getStoredUserRole,
   saveStoredUserRole,
   getStoredAdminPin,
-  saveStoredAdminPin,
   checkRoomAllotmentAvailability,
   isInfant,
   countEffectivePax,
@@ -60,37 +49,13 @@ import {
   normalizeBuildingName,
   normalizeRoomNumber
 } from './services/storage';
-import { 
-  initAuth, 
-  googleSignIn, 
-  logout,
-  getSessionRemainingMs,
-  AUTHORIZED_ADMIN_EMAILS,
-  getUserEmail,
-  isAuthorizedAdminEmail
-} from './services/firebaseAuth';
-import { 
-  syncAllToGoogleSheet, 
-  twoWaySyncWithGoogleSheet,
-  fetchRoomsFromGoogleSheet, 
-  fetchReservationsFromGoogleSheet,
-  fetchRoomsAndBuildingsFromGoogleSheetUrl,
-  fetchReservationsFromGoogleSheetUrl,
-  mergeRoomsPreservingExisting,
-  mergeReservationsPreservingAllotments,
-  fetchCategoriesFromGoogleSheet,
-  fetchCategoriesFromGoogleSheetUrl
-} from './services/googleSheets';
 import { downloadSampleExcelTemplate } from './services/excelService';
 import { 
   deduplicateForAppend, 
   deduplicateReservationList, 
   isDuplicateReservation 
 } from './utils/deduplication';
-import { 
-  broadcastLiveSync, 
-  subscribeToMultiWindowSync 
-} from './utils/multiWindowSync';
+import { subscribeToMultiWindowSync } from './utils/multiWindowSync';
 
 import { Navbar, type AppTab } from './components/Navbar';
 import { NkerpSyncView } from './components/NkerpSyncView';
@@ -105,8 +70,7 @@ import { RoomsManagementView } from './components/RoomsManagementView';
 import { ExcelUploadModal } from './components/ExcelUploadModal';
 import { ReceptionDailySlipModal } from './components/ReceptionDailySlipModal';
 import { AccountsRequestSlipModal } from './components/AccountsRequestSlipModal';
-import { GoogleSheetsSyncModal } from './components/GoogleSheetsSyncModal';
-import { GoogleSheetCategoriesModal } from './components/GoogleSheetCategoriesModal';
+import { CategoriesModal } from './components/CategoriesModal';
 import { PdfExportModal } from './components/PdfExportModal';
 import { PdfExportOptions } from './services/pdfExport';
 import { RoleManagementModal } from './components/RoleManagementModal';
@@ -115,20 +79,8 @@ import { SwitchRoomModal, SwitchRoomTarget } from './components/SwitchRoomModal'
 import { AddZaerModal } from './components/AddZaerModal';
 import { AddTourGroupModal } from './components/AddTourGroupModal';
 import { AddBuildingAndRoomsModal } from './components/AddBuildingAndRoomsModal';
-import { 
-  checkBackendHealth,
-  fetchBackendReservations,
-  saveBackendReservations,
-  upsertBackendReservation,
-  deleteBackendReservation,
-  batchDeleteBackendReservations,
-  fetchBackendRooms,
-  saveBackendRooms,
-  updateBackendRoom,
-  resetBackendRooms,
-  fetchBackendSettings,
-  saveBackendSettings,
-} from './services/api';
+import { loadAccommodation, saveChanges, fetchPullStatus, pullNkerp, resetBackendRooms, saveBackendSettings, type PullStatus } from './services/api';
+import { exportRoomAllocation } from './services/excelService';
 
 export default function App() {
   // Navigation tabs: dashboard | reservations | upgrades | rooms
@@ -140,7 +92,7 @@ export default function App() {
   const [categories, setCategories] = useState<string[]>(DEFAULT_ZAEREEN_CATEGORIES);
 
   // Live Backend Connection Status
-  const [isLiveBackendConnected, setIsLiveBackendConnected] = useState<boolean>(true);
+  const [isLiveBackendConnected, setIsLiveBackendConnected] = useState<boolean>(false);
 
   // User Role & Permissions (Admin: editable, Receptionist: view-only)
   const [userRole, setUserRole] = useState<UserRole>(() => getStoredUserRole());
@@ -149,12 +101,14 @@ export default function App() {
   const [quickAllotTarget, setQuickAllotTarget] = useState<Reservation | null>(null);
   const [switchRoomTarget, setSwitchRoomTarget] = useState<SwitchRoomTarget | null>(null);
 
-  // Auth & Google Sheets State
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isFetchingCategories, setIsFetchingCategories] = useState(false);
-  const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(getStoredSheetsConfig());
+  const [pullStatus, setPullStatus] = useState<PullStatus | null>(null);
+  const [manualPullRunning, setManualPullRunning] = useState(false);
+  const saveQueue = useRef(Promise.resolve());
+  const pendingSaves = useRef(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const dataVersion = useRef(0);
+  const reservationsRef = useRef<Reservation[]>([]);
+  const roomsRef = useRef<Room[]>([]);
 
   // Modals state
   const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
@@ -184,7 +138,6 @@ export default function App() {
     setAccountsSlipInitialIds(selectedIds);
     setIsAccountsSlipOpen(true);
   };
-  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfModalInitialReportType, setPdfModalInitialReportType] = useState<PdfExportOptions['reportType']>('all_reservations');
@@ -201,32 +154,6 @@ export default function App() {
   const [isAddZaerOpen, setIsAddZaerOpen] = useState(false);
   const [isAddTourGroupOpen, setIsAddTourGroupOpen] = useState(false);
   const [isAddBuildingRoomsOpen, setIsAddBuildingRoomsOpen] = useState(false);
-  const [addBuildingRoomsInitialTab, setAddBuildingRoomsInitialTab] = useState<'manual' | 'sheet'>('manual');
-
-  // User request: "when the app is opened first ask to upload excel and then sync the document"
-  const [isStartupPromptOpen, setIsStartupPromptOpen] = useState<boolean>(() => {
-    try {
-      return !sessionStorage.getItem('faiz_startup_prompt_dismissed');
-    } catch {
-      return true;
-    }
-  });
-
-  // User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again"
-  const [dateFullyAllottedSyncPrompt, setDateFullyAllottedSyncPrompt] = useState<{
-    date: string;
-    totalZaereen: number;
-  } | null>(null);
-  const promptedAllottedDatesRef = useRef<Set<string>>(new Set());
-  // Dates already fully allotted when the data first loads are not prompted again;
-  // only a date that becomes fully allotted during this session asks to sync.
-  const allottedDatesSeededRef = useRef(false);
-
-  // Post-Excel upload sync prompt
-  const [afterExcelSyncPrompt, setAfterExcelSyncPrompt] = useState<{
-    count: number;
-  } | null>(null);
-
   // Notice dialog for allocation confirmation (Same-day turnover hour difference & Room not vacant force allocation)
   const [allocationNotice, setAllocationNotice] = useState<{
     title: string;
@@ -253,13 +180,13 @@ export default function App() {
   // Sync to NKERP: one live connection to the server-side sync engine, shared by the top-bar button and the Sync tab
   const nkerpSync = useNkerpSync(showToast);
   const najafEmails = useNajafEmails(nkerpSync, showToast);
+  const syncWithSavedData = isSaving ? {...nkerpSync, busy:true} : nkerpSync;
 
   const handleSaveRoleSettings = (newRole: UserRole, newPin: string) => {
     setUserRole(newRole);
     setAdminPin(newPin);
     saveStoredUserRole(newRole);
-    saveStoredAdminPin(newPin);
-    saveBackendSettings({ userRole: newRole, adminPin: newPin });
+    void saveBackendSettings({ adminPin: newPin }).then(ok => { if (!ok) showToast('The admin PIN could not be saved.', 'error'); });
     showToast(
       `Access rights set to ${
         newRole === 'admin' ? 'Administrator (Full Editable Rights)' : 'Receptionist (View-Only Rights)'
@@ -267,530 +194,88 @@ export default function App() {
     );
   };
 
-  // User Requirement: "when refeshed it should take all the data which is fed in the same computer"
-  // And "in compact button matrix I want to add live change when multiple windows are open."
   const handleRefreshLiveComputerData = useCallback(async (showFeedback = true) => {
-    // 1. Initial immediate hydrate from local storage
-    const localRooms = getStoredRooms();
-    const localReservations = getStoredReservations();
-    const localSheetsConfig = getStoredSheetsConfig();
-    const localCategories = getStoredCategories();
-
-    setRooms(localRooms);
-    setReservations(localReservations);
-    setSheetsConfig(localSheetsConfig);
-    setCategories(localCategories);
-
-    // 2. Query live server backend for latest data fed across windows
+    const version = dataVersion.current;
     try {
-      const health = await checkBackendHealth();
-      if (health) {
-        setIsLiveBackendConnected(true);
-        const [backendRes, backendRooms, backendSettings] = await Promise.all([
-          fetchBackendReservations(),
-          fetchBackendRooms(),
-          fetchBackendSettings(),
-        ]);
-
-        if (backendRes && Array.isArray(backendRes)) {
-          setReservations(backendRes);
-          saveReservations(backendRes);
-        } else if (localReservations.length > 0) {
-          saveBackendReservations(localReservations);
-        }
-
-        if (backendRooms && Array.isArray(backendRooms)) {
-          const cleanBackendRooms = reconcileOfficialSaifeeBurhaniRooms(
-            pruneLegacyBadriRooms(deduplicateRooms(backendRooms))
-          );
-          setRooms(cleanBackendRooms);
-          saveRooms(cleanBackendRooms);
-          if (cleanBackendRooms.length !== backendRooms.length || JSON.stringify(cleanBackendRooms) !== JSON.stringify(backendRooms)) {
-            saveBackendRooms(cleanBackendRooms);
-          }
-        } else if (localRooms.length > 0) {
-          saveBackendRooms(localRooms);
-        }
-
-        if (backendSettings) {
-          if (backendSettings.sheetsConfig) {
-            setSheetsConfig(backendSettings.sheetsConfig);
-            saveSheetsConfig(backendSettings.sheetsConfig);
-          }
-          if (backendSettings.categories) {
-            setCategories(backendSettings.categories);
-            saveStoredCategories(backendSettings.categories);
-          }
-        }
-      }
-      if (showFeedback) {
-        showToast('✓ Successfully refreshed all latest accommodation & zaereen data on this computer.');
-      }
-    } catch (err) {
-      console.warn('Backend sync refreshed from local cache:', err);
-      if (showFeedback) {
-        showToast('Refreshed data from computer cache.', 'info');
-      }
+      const data = await loadAccommodation();
+      if (version !== dataVersion.current || pendingSaves.current) return;
+      reservationsRef.current = data.reservations;
+      roomsRef.current = data.rooms;
+      setReservations(data.reservations);
+      setRooms(data.rooms);
+      setCategories(data.settings.categories);
+      setAdminPin(data.settings.adminPin);
+      setIsLiveBackendConnected(true);
+      if (showFeedback) showToast('Loaded the latest saved accommodation data.');
+    } catch {
+      setIsLiveBackendConnected(false);
+      if (showFeedback) showToast('Could not reach the local app database.', 'error');
     }
   }, []);
 
-  // Initial data load on mount
   useEffect(() => {
-    handleRefreshLiveComputerData(false);
+    for (const key of Object.keys(localStorage)) {
+      if (/^zaereen_accommodation_(reservations|sheets|rooms)/.test(key) ||
+          ['nkerp-sync-last-run','nkerp-sync-messages','faize_google_session_v1'].includes(key)) localStorage.removeItem(key);
+    }
+    const refresh = () => void handleRefreshLiveComputerData(false);
+    const status = () => fetchPullStatus().then(setPullStatus).catch(() => setPullStatus(null));
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (pendingSaves.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    refresh();
+    void status();
+    const unsubscribe = subscribeToMultiWindowSync(refresh);
+    const timer = window.setInterval(status, 5000);
+    return () => { unsubscribe(); window.clearInterval(timer); window.removeEventListener('beforeunload',beforeUnload); };
   }, [handleRefreshLiveComputerData]);
 
-  // Live Multi-Window synchronization listener (BroadcastChannel + Window Storage + SSE)
-  // When another open window on this computer makes any allotment or data change, silently refresh
-  useEffect(() => {
-    const unsubscribe = subscribeToMultiWindowSync(() => {
-      handleRefreshLiveComputerData(false);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [handleRefreshLiveComputerData]);
-
-  // Initialize Firebase Auth listener
-  // User Requirement:
-  // Authorized Admin emails automatically receive Admin access; others get Receptionist view.
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (authUser, token) => {
-        setUser(authUser);
-        setAccessToken(token || null);
-        const email = getUserEmail(authUser);
-        if (isAuthorizedAdminEmail(email)) {
-          setUserRole('admin');
-          saveStoredUserRole('admin');
-        } else {
-          setUserRole('receptionist');
-          saveStoredUserRole('receptionist');
-        }
-      },
-      () => {
-        setUser(null);
-        setAccessToken(null);
-        setUserRole('receptionist');
-        saveStoredUserRole('receptionist');
-      }
-    );
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  // User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again"
-  useEffect(() => {
-    if (reservations.length === 0) return;
-    const dateMap = new Map<string, Reservation[]>();
-    reservations.forEach((r) => {
-      const arr = (r.arrivalDate || '').slice(0, 10);
-      if (arr) {
-        const list = dateMap.get(arr) || [];
-        list.push(r);
-        dateMap.set(arr, list);
-      }
-    });
-
-    const isSeeding = !allottedDatesSeededRef.current;
-    allottedDatesSeededRef.current = true;
-
-    dateMap.forEach((resList, dateKey) => {
-      if (resList.length > 0) {
-        const allAllotted = resList.every((r) => !!r.roomNumber && r.roomNumber.trim() !== '');
-        if (allAllotted) {
-          if (!promptedAllottedDatesRef.current.has(dateKey)) {
-            promptedAllottedDatesRef.current.add(dateKey);
-            if (isSeeding) return;
-            setDateFullyAllottedSyncPrompt({
-              date: dateKey,
-              totalZaereen: resList.length,
-            });
-          }
-        } else {
-          promptedAllottedDatesRef.current.delete(dateKey);
-        }
-      }
-    });
-  }, [reservations]);
-
-  // Sync to Google Sheets if configured (strictly Admin only)
-  const triggerAutoSync = useCallback(
-    async (currentReservations: Reservation[], currentRooms: Room[], force: boolean = false) => {
-      // User Requirement: without admin login no one can push to sheet
-      if (userRole !== 'admin') {
-        return;
-      }
-      if (!accessToken || !sheetsConfig.spreadsheetId) {
-        return;
-      }
-      if (!force && !sheetsConfig.autoSync) {
-        return;
-      }
-
-      try {
-        setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
-        const res = await syncAllToGoogleSheet(
-          accessToken,
-          sheetsConfig.spreadsheetId,
-          currentReservations,
-          currentRooms
-        );
-
-        if (res.success) {
-          const updated = {
-            ...sheetsConfig,
-            lastSyncedAt: new Date().toISOString(),
-            isSyncing: false,
-            syncError: null,
-          };
-          setSheetsConfig(updated);
-          saveSheetsConfig(updated);
-          if (force) {
-            showToast('⭐ Special status updated & synced to Google Sheet!', 'success');
-          }
-        } else {
-          setSheetsConfig((prev) => ({
-            ...prev,
-            isSyncing: false,
-            syncError: res.error || 'Sync error',
-          }));
-        }
-      } catch (e: any) {
-        setSheetsConfig((prev) => ({
-          ...prev,
-          isSyncing: false,
-          syncError: e.message || 'Auto sync failed',
-        }));
-      }
-    },
-    [accessToken, sheetsConfig, userRole, showToast]
-  );
-
-  // Pull rooms & reservations from linked sheet (Accessible by Receptionist & Admin)
-  // User Requirement: "so when pulled by receptionist it updates the blocked/unblock rooms too"
-  // Preserves all existing rooms, pushed room specs, and allotted rooms on reservations.
-  const handlePullFromGoogleSheet = useCallback(
-    async (showFeedback: boolean = false) => {
-      if (!sheetsConfig.spreadsheetId) return;
-
-      try {
-        setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
-        const [freshRooms, freshRes] = await Promise.all([
-          (accessToken
-            ? fetchRoomsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms)
-            : fetchRoomsAndBuildingsFromGoogleSheetUrl(sheetsConfig.spreadsheetId, null, rooms)
-          ).catch((err) => {
-            console.warn('Rooms pull warning:', err);
-            return rooms;
-          }),
-          accessToken
-            ? fetchReservationsFromGoogleSheet(accessToken, sheetsConfig.spreadsheetId, rooms, reservations)
-            : fetchReservationsFromGoogleSheetUrl(sheetsConfig.spreadsheetId, null, rooms, reservations),
-        ]);
-
-        const mergedRooms =
-          freshRooms && freshRooms.length > 0
-            ? mergeRoomsPreservingExisting(rooms, freshRooms)
-            : rooms;
-
-        if (freshRooms && freshRooms.length > 0) {
-          setRooms(mergedRooms);
-          saveRooms(mergedRooms);
-          saveBackendRooms(mergedRooms);
-        }
-
-        const mergedRes =
-          freshRes && freshRes.length > 0
-            ? mergeReservationsPreservingAllotments(reservations, freshRes)
-            : reservations;
-
-        if (freshRes && freshRes.length > 0) {
-          setReservations(mergedRes);
-          saveReservations(mergedRes);
-          saveBackendReservations(mergedRes);
-        }
-
-        broadcastLiveSync({ type: 'PULL_COMPLETED' });
-
-        const updated: GoogleSheetsConfig = {
-          ...sheetsConfig,
-          lastSyncedAt: new Date().toISOString(),
-          isSyncing: false,
-          syncError: null,
-        };
-        setSheetsConfig(updated);
-        saveSheetsConfig(updated);
-
-        if (showFeedback) {
-          showToast(
-            `✓ Successfully pulled from Google Sheet! Synchronized ${mergedRooms.length} rooms (existing specs preserved, blocked/unblocked updated) and ${mergedRes.length} zaereen (allotted rooms preserved).`
-          );
-        }
-      } catch (err: any) {
-        console.warn('Google Sheet pull error:', err);
-        setSheetsConfig((prev) => ({
-          ...prev,
-          isSyncing: false,
-          syncError: err.message || 'Pull failed',
-        }));
-        if (showFeedback) {
-          showToast(err.message || 'Failed to pull from Google Sheet', 'error');
-        }
-      }
-    },
-    [accessToken, sheetsConfig, rooms, reservations, showToast]
-  );
-
-  // Logout Handler
-  const handleGoogleLogout = useCallback(async () => {
-    try {
-      await logout();
-      setUser(null);
-      setAccessToken(null);
-      setUserRole('receptionist');
-      saveStoredUserRole('receptionist');
-      showToast('Signed out of Google. Switched to Receptionist view.', 'info');
-    } catch (err) {
-      console.error('Logout error', err);
-    }
-  }, [showToast]);
-
-  // 1-Hour Session & Recurring Auto Push/Pull Lifecycle:
-  // User Requirement:
-  // "2: Receptionist should have live update. the admin should push after every one hour and receptionist view should pull after every one hour. (manual push and pull should be intact as logic given before)
-  //  3: keep signed in for 1 hour without need to log in again and after 1 hr logout automatically and before that push if admin and pull if receptionist view"
-  useEffect(() => {
-    const ONE_HOUR = 60 * 60 * 1000;
-
-    // Hourly Interval for Auto-Push (Admin) and Auto-Pull (Receptionist)
-    const hourlySyncInterval = setInterval(async () => {
-      if (userRole === 'admin') {
-        if (accessToken && sheetsConfig.spreadsheetId) {
-          try {
-            await triggerAutoSync(reservations, rooms, true);
-            showToast('⏰ Hourly Admin Push: Pushed latest Zaereen and blocked/unblocked room details to Google Sheet.', 'info');
-          } catch (e) {
-            console.warn('Hourly auto-push error:', e);
-          }
-        }
-      } else {
-        // Receptionist view pulls after every 1 hour
-        if (sheetsConfig.spreadsheetId) {
-          await handlePullFromGoogleSheet(true);
-        }
-      }
-    }, ONE_HOUR);
-
-    // Session Timeout Checker (Every 30 seconds):
-    // Keeps signed in for 1 hour without needing to re-login.
-    // When 1 hour expires, pushes if admin / pulls if receptionist, and automatically logs out.
-    const sessionTimer = setInterval(async () => {
-      if (user) {
-        const remaining = getSessionRemainingMs();
-        if (remaining <= 0) {
-          try {
-            if (userRole === 'admin' && accessToken && sheetsConfig.spreadsheetId) {
-              await syncAllToGoogleSheet(accessToken, sheetsConfig.spreadsheetId, reservations, rooms);
-            } else if (sheetsConfig.spreadsheetId) {
-              await handlePullFromGoogleSheet(false);
-            }
-          } catch (e) {
-            console.warn('Pre-logout auto-sync error:', e);
-          }
-          await handleGoogleLogout();
-          showToast('🔒 1-hour session expired. Final sync executed to Google Sheet and automatically signed out.', 'info');
-        }
-      }
-    }, 30000);
-
-    return () => {
-      clearInterval(hourlySyncInterval);
-      clearInterval(sessionTimer);
-    };
-  }, [user, userRole, accessToken, sheetsConfig, reservations, rooms, triggerAutoSync, handlePullFromGoogleSheet, handleGoogleLogout, showToast]);
-
-  // Sign In Handler
-  const handleGoogleSignIn = async () => {
-    setIsLoggingIn(true);
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        setUser(res.user);
-        setAccessToken(res.accessToken || null);
-        const email = getUserEmail(res.user);
-        if (isAuthorizedAdminEmail(email)) {
-          setUserRole('admin');
-          saveStoredUserRole('admin');
-          showToast(
-            res.accessToken
-              ? `Welcome Admin ${res.user.displayName || email}! Full editable rights & Push to Google Sheet enabled.`
-              : `Welcome Admin ${res.user.displayName || email}! Full editable rights enabled.`
-          );
-          if (sheetsConfig.spreadsheetId && res.accessToken) {
-            await triggerAutoSync(reservations, rooms);
-          }
-        } else {
-          setUserRole('receptionist');
-          saveStoredUserRole('receptionist');
-          showToast(`Logged in as ${email}. Receptionist view active (View-only, Pull from Google Sheet allowed).`);
-        }
-      }
-    } catch (err: any) {
-      console.error('Sign-in failed', err);
-      showToast(err.message || 'Sign in failed. Please try again.', 'error');
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  // Update sheets config
-  const handleUpdateSheetsConfig = (newConfig: GoogleSheetsConfig) => {
-    setSheetsConfig(newConfig);
-    saveSheetsConfig(newConfig);
-    showToast('Google Sheets configuration updated.');
-  };
-
-  // Save Categories handler
-  const handleSaveCategories = (newCategories: string[]) => {
-    setCategories(newCategories);
-    saveStoredCategories(newCategories);
-    showToast(`Saved ${newCategories.length} categories: ${newCategories.join(', ')}`);
-  };
-
-  // Fetch categories dynamically from Google Sheet
-  const handleFetchCategoriesFromGoogleSheet = async () => {
-    if (!accessToken || !sheetsConfig.spreadsheetId) {
-      setIsCategoriesModalOpen(true);
-      return;
-    }
-
-    setIsFetchingCategories(true);
-    try {
-      const freshCats = await fetchCategoriesFromGoogleSheet(
-        accessToken,
-        sheetsConfig.spreadsheetId
-      );
-      setCategories(freshCats);
-      saveStoredCategories(freshCats);
-      showToast(`Loaded ${freshCats.length} categories from Google Sheet: ${freshCats.join(', ')}`);
-    } catch (err: any) {
-      console.error('Fetch categories error:', err);
-      showToast(err.message || 'Failed to fetch categories from Google Sheet.', 'error');
-    } finally {
-      setIsFetchingCategories(false);
-    }
-  };
-
-  // Open Google Sheet directly
-  const handleOpenGoogleSheet = () => {
-    if (sheetsConfig.spreadsheetUrl && sheetsConfig.spreadsheetUrl.startsWith('http')) {
-      window.open(sheetsConfig.spreadsheetUrl, '_blank');
-    } else if (
-      sheetsConfig.spreadsheetId &&
-      sheetsConfig.spreadsheetId !== 'faiz_husaini_attached_default' &&
-      !sheetsConfig.spreadsheetId.includes('default')
-    ) {
-      window.open(`https://docs.google.com/spreadsheets/d/${sheetsConfig.spreadsheetId}/edit`, '_blank');
+  function persist<T extends Reservation | Room>(collection: 'reservations' | 'rooms', next: T[]) {
+    const ref = collection === 'reservations' ? reservationsRef : roomsRef;
+    const before = ref.current as T[];
+    if (collection === 'reservations') {
+      reservationsRef.current = next as Reservation[];
+      setReservations(reservationsRef.current);
     } else {
-      setIsSheetsModalOpen(true);
+      roomsRef.current = next as Room[];
+      setRooms(roomsRef.current);
+    }
+    dataVersion.current++;
+    pendingSaves.current++;
+    setIsSaving(true);
+    saveQueue.current = saveQueue.current.then(async () => {
+      try { await saveChanges(collection, before, next); }
+      catch (error) { showToast((error as Error).message, 'error'); }
+      finally {
+        pendingSaves.current--;
+        if (!pendingSaves.current) {
+          setIsSaving(false);
+          await handleRefreshLiveComputerData(false);
+        }
+      }
+    });
+  }
+
+  const handlePullNkerp = async () => {
+    setManualPullRunning(true);
+    try {
+      const result = await pullNkerp();
+      await handleRefreshLiveComputerData(false);
+      showToast(`Pulled ${result.received} NKERP stays · ${result.changed} saved changes.`);
+    } catch (err) {
+      showToast((err as Error).message, 'error');
+    } finally {
+      setManualPullRunning(false);
+      fetchPullStatus().then(setPullStatus).catch(() => setPullStatus(null));
     }
   };
 
-  // 1-Click Two-Way Sync (User request: "once updated in google sheet it shows in the app and if updated in app it shows in google sheet with once sync button")
-  const handleQuickSync = async () => {
-    let currentToken = accessToken;
-    let effectiveRole: UserRole = userRole;
-
-    // If not signed in to Google (or missing Sheets OAuth token), prompt login
-    if (!currentToken) {
-      try {
-        setIsLoggingIn(true);
-        const res = await googleSignIn();
-        if (res) {
-          setUser(res.user);
-          setAccessToken(res.accessToken || null);
-          currentToken = res.accessToken || null;
-          const email = getUserEmail(res.user);
-          effectiveRole = isAuthorizedAdminEmail(email) ? 'admin' : 'receptionist';
-          setUserRole(effectiveRole);
-          saveStoredUserRole(effectiveRole);
-          showToast(`Signed in to Google as ${res.user.displayName || email}`);
-        } else {
-          setIsSheetsModalOpen(true);
-          return;
-        }
-      } catch (err: any) {
-        showToast(err.message || 'Google sign-in is required to sync with Google Sheets.', 'error');
-        setIsSheetsModalOpen(true);
-        return;
-      } finally {
-        setIsLoggingIn(false);
-      }
-    }
-
-    if (effectiveRole !== 'admin') {
-      showToast(
-        `Action Blocked: Only authorized Administrators (${AUTHORIZED_ADMIN_EMAILS.join(', ')}) can push to sheet. Receptionist view can only pull from sheet.`,
-        'error'
-      );
-      return;
-    }
-
-    if (!currentToken) {
-      showToast('Google Sheets write permission was not granted during sign-in. Open Sheet settings or add this Gmail as an OAuth Test User for Google Sheets access.', 'error');
-      setIsSheetsModalOpen(true);
-      return;
-    }
-
-    if (!sheetsConfig.spreadsheetId) {
-      setIsSheetsModalOpen(true);
-      return;
-    }
-
-    setSheetsConfig((prev) => ({ ...prev, isSyncing: true }));
-    try {
-      // User requirement: "otherwise there should be no two way sync only 'Push to sheet'"
-      // Push current app state to Google Sheet (Zaereen grid, room allotments, timeline)
-      const syncResult = await syncAllToGoogleSheet(
-        currentToken,
-        sheetsConfig.spreadsheetId,
-        reservations,
-        rooms
-      );
-
-      if (syncResult.success) {
-        const updatedConfig: GoogleSheetsConfig = {
-          ...sheetsConfig,
-          spreadsheetUrl: syncResult.spreadsheetUrl || sheetsConfig.spreadsheetUrl,
-          lastSyncedAt: new Date().toISOString(),
-          isSyncing: false,
-          syncError: null,
-        };
-
-        setSheetsConfig(updatedConfig);
-        saveSheetsConfig(updatedConfig);
-        if (isLiveBackendConnected) {
-          saveBackendSettings({ sheetsConfig: updatedConfig });
-        }
-
-        showToast(
-          `✓ Successfully pushed latest Zaereen records and room allotments to Google Sheet!`
-        );
-      } else {
-        throw new Error(syncResult.error || 'Push to sheet failed');
-      }
-    } catch (err: any) {
-      console.error('Push to Google Sheet error:', err);
-      setSheetsConfig((prev) => ({
-        ...prev,
-        isSyncing: false,
-        syncError: err.message || 'Sync failed',
-      }));
-      showToast(err.message || 'Quick sync failed', 'error');
-    }
+  const handleSaveCategories = async (next: string[]) => {
+    if (await saveBackendSettings({categories:next})) {
+      setCategories(next);
+      showToast('Categories saved.');
+    } else showToast('Categories could not be saved.', 'error');
   };
 
   // Add Reservation (ensures unique zaereen only)
@@ -804,12 +289,11 @@ export default function App() {
       return false;
     }
     const updated = [newReservation, ...reservations];
-    setReservations(updated);
-    saveReservations(updated);
-    upsertBackendReservation(newReservation);
+    persist('reservations', updated);
+
     showToast(`Added Zair record for ${newReservation.applicantName}`);
-    triggerAutoSync(updated, rooms);
-    broadcastLiveSync({ type: 'RESERVATION_ADDED', reservationId: newReservation.id });
+
+
     return true;
   };
 
@@ -826,9 +310,8 @@ export default function App() {
       return false;
     }
 
-    setReservations(finalReservations);
-    saveReservations(finalReservations);
-    saveBackendReservations(finalReservations);
+    persist('reservations', finalReservations);
+
 
     const tourId = newBatch[0]?.tourRefNo || 'Tour Group';
     const famCount = new Set(uniqueToAppend.map((r) => r.family.trim()).filter(Boolean)).size;
@@ -843,39 +326,20 @@ export default function App() {
         `Added Tour ${tourId}: ${uniqueToAppend.length} zaereen across ${famCount} families successfully!`
       );
     }
-    triggerAutoSync(finalReservations, rooms);
-    broadcastLiveSync({ type: 'TOUR_BATCH_ADDED', tourId });
+
+
     return true;
   };
 
   // Update Reservation
   const handleUpdateReservation = (updatedReservation: Reservation) => {
-    setReservations((prev) => {
-      const updated = prev.map((r) =>
-        r.id === updatedReservation.id ? updatedReservation : r
-      );
-      saveReservations(updated);
-      const isSpecialToggled = updatedReservation.isSpecialGuest !== undefined;
-      triggerAutoSync(updated, rooms, isSpecialToggled);
-      return updated;
-    });
-    upsertBackendReservation(updatedReservation);
-    broadcastLiveSync({ type: 'RESERVATION_UPDATED', reservationId: updatedReservation.id });
+    persist('reservations', reservationsRef.current.map(r => r.id === updatedReservation.id ? updatedReservation : r));
   };
 
-  // Batch Update Reservations
   const handleBatchUpdateReservations = (updatedList: Reservation[]) => {
-    if (!updatedList || updatedList.length === 0) return;
-    const map = new Map(updatedList.map((r) => [r.id, r]));
-    setReservations((prev) => {
-      const updated = prev.map((r) => map.get(r.id) || r);
-      saveReservations(updated);
-      const anySpecialToggled = updatedList.some((r) => r.isSpecialGuest !== undefined);
-      triggerAutoSync(updated, rooms, anySpecialToggled);
-      return updated;
-    });
-    updatedList.forEach((r) => upsertBackendReservation(r));
-    broadcastLiveSync({ type: 'RESERVATIONS_BATCH_UPDATED', count: updatedList.length });
+    if (!updatedList.length) return;
+    const updates = new Map(updatedList.map(r => [r.id, r]));
+    persist('reservations', reservationsRef.current.map(r => updates.get(r.id) || r));
   };
 
   // Helper: check if a reservation is a B to A record
@@ -903,12 +367,11 @@ export default function App() {
     }
 
     const updated = reservations.filter((r) => r.id !== id);
-    setReservations(updated);
-    saveReservations(updated);
-    deleteBackendReservation(id);
+    persist('reservations', updated);
+
     showToast(`Deleted zaer record for ${target.applicantName} (${target.itsId || target.tourRefNo})`);
-    triggerAutoSync(updated, rooms);
-    broadcastLiveSync({ type: 'RESERVATION_DELETED', reservationId: id });
+
+
   };
 
   // Delete Multiple Reservations (Batch) - Protected: B to A records require Admin role
@@ -928,12 +391,11 @@ export default function App() {
     const idSet = new Set(ids);
     const count = ids.length;
     const updated = reservations.filter((r) => !idSet.has(r.id));
-    setReservations(updated);
-    saveReservations(updated);
-    batchDeleteBackendReservations(ids);
+    persist('reservations', updated);
+
     showToast(`Deleted ${count} zaer record${count > 1 ? 's' : ''}`);
-    triggerAutoSync(updated, rooms);
-    broadcastLiveSync({ type: 'RESERVATIONS_BATCH_DELETED', count });
+
+
   };
 
   // Toggle Money Given for accounts
@@ -1343,10 +805,9 @@ export default function App() {
       return r;
     });
 
-    setReservations(updated);
-    saveReservations(updated);
-    saveBackendReservations(updated);
-    triggerAutoSync(updated, rooms);
+    persist('reservations', updated);
+
+
     showToast(
       `Shifted ${reservationIds.length} pilgrim(s) to Category A (Payment / Money Given: ${moneyGiven})`
     );
@@ -1408,10 +869,9 @@ export default function App() {
       return r;
     });
 
-    setReservations(updated);
-    saveReservations(updated);
-    saveBackendReservations(updated);
-    triggerAutoSync(updated, rooms);
+    persist('reservations', updated);
+
+
     showToast(
       `Saved ${reservationIds.length} pax to A ➔ B Slip (Refund Given: ${refundGiven})`
     );
@@ -1480,50 +940,38 @@ export default function App() {
     const mergedCats = Array.from(new Set([...categories, ...importedCats]));
     if (mergedCats.length > categories.length) {
       setCategories(mergedCats);
-      saveStoredCategories(mergedCats);
-      saveBackendSettings({ categories: mergedCats });
+      void handleSaveCategories(mergedCats);
     }
 
-    setReservations(finalReservations);
-    saveReservations(finalReservations);
-    saveBackendReservations(finalReservations);
+    persist('reservations', finalReservations);
+
     showToast(feedbackToast);
-    triggerAutoSync(finalReservations, rooms);
-    broadcastLiveSync({ type: 'EXCEL_IMPORTED', count: finalReservations.length });
+
+
     setActiveTab('reservations');
-    // Prompt to sync document with Google Sheet after uploading Excel
-    setAfterExcelSyncPrompt({ count: finalReservations.length });
+
   };
 
   // Room status updater (e.g. block / unblock)
   const handleUpdateRoomStatus = (roomId: string, status: RoomStatus) => {
     const updatedRooms = rooms.map((r) => (r.id === roomId ? { ...r, status } : r));
-    setRooms(updatedRooms);
-    saveRooms(updatedRooms);
-    updateBackendRoom(roomId, { status });
-    triggerAutoSync(reservations, updatedRooms);
-    broadcastLiveSync({ type: 'ROOM_STATUS_UPDATED', roomId, status });
+    persist('rooms', updatedRooms);
+
   };
 
   const handleUpdateRoomDetails = (updatedRoom: Room) => {
     const updatedRooms = rooms.map((r) => (r.id === updatedRoom.id ? updatedRoom : r));
-    setRooms(updatedRooms);
-    saveRooms(updatedRooms);
-    updateBackendRoom(updatedRoom.id, updatedRoom);
-    triggerAutoSync(reservations, updatedRooms);
-    broadcastLiveSync({ type: 'ROOM_DETAILS_UPDATED', roomId: updatedRoom.id });
+    persist('rooms', updatedRooms);
+
   };
 
-  const handleResetToSaifeeBurhaniRooms = () => {
-    if (window.confirm('Reset hotel inventory to the official 120 rooms across Burhani (44), Saifee (70), and Badri (6)?')) {
-      const freshRooms = resetToSaifeeBurhani114Rooms();
-      setRooms(freshRooms);
-      saveRooms(freshRooms);
-      resetBackendRooms();
-      showToast('Restored official 120 rooms across Burhani (44), Saifee (70), and Badri (6).');
-      triggerAutoSync(reservations, freshRooms);
-      broadcastLiveSync({ type: 'ROOMS_RESET_114' });
-    }
+  const handleResetToSaifeeBurhaniRooms = async () => {
+    if (!window.confirm('Reset hotel inventory to the official 120 rooms across Burhani (44), Saifee (70), and Badri (6)?')) return;
+    await saveQueue.current;
+    const freshRooms = await resetBackendRooms();
+    if (!freshRooms) return showToast('Could not reset the room inventory.', 'error');
+    await handleRefreshLiveComputerData(false);
+    showToast('Restored the official 120 rooms.');
   };
 
   // Add or sync rooms / buildings (restricted strictly to Burhani, Saifee, Badri)
@@ -1557,11 +1005,7 @@ export default function App() {
       );
     }
 
-    setRooms(finalRooms);
-    saveRooms(finalRooms);
-    saveBackendRooms(finalRooms);
-    triggerAutoSync(reservations, finalRooms);
-    broadcastLiveSync({ type: 'ROOMS_ADDED', count: cleanIncoming.length });
+    persist('rooms', finalRooms);
 
     const distinctNewBuildings = Array.from(new Set(cleanIncoming.map((r) => r.building)));
     showToast(
@@ -1589,11 +1033,8 @@ export default function App() {
     }
 
     const updated = rooms.filter((r) => r.id !== roomId);
-    setRooms(updated);
-    saveRooms(updated);
-    saveBackendRooms(updated);
-    triggerAutoSync(reservations, updated);
-    broadcastLiveSync({ type: 'ROOM_DELETED', roomId });
+    persist('rooms', updated);
+
     showToast('Room removed from inventory.');
   };
 
@@ -1603,26 +1044,19 @@ export default function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        user={user}
-        sheetsConfig={sheetsConfig}
         userRole={userRole}
         onOpenRoleModal={() => setIsRoleModalOpen(true)}
-        onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-        onOpenGoogleSheet={handleOpenGoogleSheet}
         onOpenPdfModal={handleOpenPdfModal}
         onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
         onOpenReceptionSlip={handleOpenReceptionSlip}
-        onGoogleSignIn={handleGoogleSignIn}
-        onGoogleLogout={handleGoogleLogout}
-        isLoggingIn={isLoggingIn}
-        onQuickSync={handleQuickSync}
-        isLiveBackendConnected={isLiveBackendConnected}
+        onPullNkerp={handlePullNkerp}
+        isPulling={manualPullRunning}
         roomsCount={rooms.length}
         onOpenAddBuildingRooms={() => {
-          setAddBuildingRoomsInitialTab('manual');
+
           setIsAddBuildingRoomsOpen(true);
         }}
-        nkerpSync={nkerpSync}
+        nkerpSync={syncWithSavedData}
         emailsRunning={najafEmails.run.running}
       />
       <SyncAccessKeyModal sync={nkerpSync} />
@@ -1654,14 +1088,14 @@ export default function App() {
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
             onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
-            sheetsConfig={sheetsConfig}
-            onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
-            onOpenGoogleSheet={handleOpenGoogleSheet}
-            onQuickSync={handleQuickSync}
             isLiveBackendConnected={isLiveBackendConnected}
+            pullStatus={pullStatus}
+            isPulling={manualPullRunning}
+            onPullNkerp={handlePullNkerp}
+            onExportRoomAllocation={() => exportRoomAllocation(reservations, rooms)}
             onRefreshLiveComputerData={() => handleRefreshLiveComputerData(true)}
             onOpenAddBuildingRooms={() => {
-              setAddBuildingRoomsInitialTab('manual');
+
               setIsAddBuildingRoomsOpen(true);
             }}
             onOpenPdfModal={handleOpenPdfModal}
@@ -1710,7 +1144,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'sync' && <NkerpSyncView sync={nkerpSync} />}
+        {activeTab === 'sync' && <NkerpSyncView sync={syncWithSavedData} />}
 
         {activeTab === 'emails' && <NajafEmailsView emails={najafEmails} sync={nkerpSync} />}
 
@@ -1724,8 +1158,6 @@ export default function App() {
             onAddRooms={handleAddRooms}
             onDeleteRoom={handleDeleteRoom}
             onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
-            accessToken={accessToken}
-            sheetsConfig={sheetsConfig}
           />
         )}
       </main>
@@ -1794,66 +1226,18 @@ export default function App() {
         onBatchShiftToCategoryB={handleBatchShiftToCategoryB}
       />
 
-      {/* Google Sheets Categories Modal */}
-      <GoogleSheetCategoriesModal
-        isOpen={isCategoriesModalOpen}
+      {isCategoriesModalOpen && <CategoriesModal
+        isOpen
         onClose={() => setIsCategoriesModalOpen(false)}
         categories={categories}
         onSaveCategories={handleSaveCategories}
-        user={user}
-        accessToken={accessToken}
-      />
+      />}
 
-      {/* Google Sheets Sync Modal */}
-      <GoogleSheetsSyncModal
-        isOpen={isSheetsModalOpen}
-        onClose={() => setIsSheetsModalOpen(false)}
-        user={user}
-        accessToken={accessToken}
-        sheetsConfig={sheetsConfig}
-        categories={categories}
-        onUpdateConfig={handleUpdateSheetsConfig}
-        onGoogleSignIn={handleGoogleSignIn}
-        reservations={reservations}
-        rooms={rooms}
-        userRole={userRole}
-        onRoomsFetched={(newRooms) => {
-          const mergedRooms = mergeRoomsPreservingExisting(rooms, newRooms);
-          setRooms(mergedRooms);
-          saveRooms(mergedRooms);
-          saveBackendRooms(mergedRooms);
-          broadcastLiveSync({ type: 'ROOMS_UPDATED' });
-          showToast(`Synchronized ${mergedRooms.length} rooms from Google Sheet! (Existing rooms & specs preserved, operational status updated)`);
-        }}
-        onReservationsFetched={(newRes, replaceAll) => {
-          const finalRes = replaceAll
-            ? deduplicateReservationList(newRes)
-            : mergeReservationsPreservingAllotments(reservations, newRes);
-          setReservations(finalRes);
-          saveReservations(finalRes);
-          saveBackendReservations(finalRes);
-          showToast(`Synchronized ${finalRes.length} unique zaereen from Google Sheet (allotted rooms preserved)!`);
-        }}
-        onCategoriesFetched={(newCats) => {
-          setCategories(newCats);
-          saveStoredCategories(newCats);
-          showToast(`Synchronized ${newCats.length} categories from Google Sheet!`);
-        }}
-        onOpenAddBuildingRoomsModal={() => {
-          setAddBuildingRoomsInitialTab('sheet');
-          setIsAddBuildingRoomsOpen(true);
-        }}
-      />
-
-      {/* Add Hotel Buildings & Rooms Modal (Manual Entry & Google Sheet Sync) */}
       <AddBuildingAndRoomsModal
         isOpen={isAddBuildingRoomsOpen}
         onClose={() => setIsAddBuildingRoomsOpen(false)}
         existingRooms={rooms}
         onAddRooms={handleAddRooms}
-        accessToken={accessToken}
-        sheetsConfig={sheetsConfig}
-        initialTab={addBuildingRoomsInitialTab}
       />
 
       {/* Administrative PDF Export Modal */}
@@ -1873,8 +1257,6 @@ export default function App() {
         currentRole={userRole}
         adminPin={adminPin}
         onSaveRoleSettings={handleSaveRoleSettings}
-        user={user}
-        onGoogleSignIn={handleGoogleSignIn}
       />
 
       {/* Quick Room Allotment Modal (Easy Allotment with capacity and buffer) */}
@@ -1980,216 +1362,7 @@ export default function App() {
       )}
 
       {/* User request: "when the app is opened first ask to upload excel and then sync the document" */}
-      {isStartupPromptOpen && (() => {
-        const dismissStartup = () => {
-          setIsStartupPromptOpen(false);
-          try { sessionStorage.setItem('faiz_startup_prompt_dismissed', 'true'); } catch {}
-        };
-        return (
-          <div
-            className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-3 sm:p-4 animate-in fade-in"
-            onClick={dismissStartup}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="startup-title"
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-6 pt-6 pb-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 id="startup-title" className="text-xl font-semibold tracking-[-0.01em] text-stone-950">
-                      Start your shift
-                    </h3>
-                    <p className="mt-1 text-sm text-stone-500">
-                      Bring in today's zaereen list, then sync it so everyone works from the same data.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={dismissStartup}
-                    className="-mr-2 -mt-1 p-2 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 cursor-pointer"
-                    aria-label="Close"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <ol className="px-3 py-3 space-y-1">
-                {[
-                  {
-                    n: 1,
-                    title: 'Upload the zaereen Excel',
-                    body: 'ITS, name, family, tour ID and dates.',
-                    action: 'Upload',
-                    icon: Upload,
-                    primary: true,
-                    onClick: () => { dismissStartup(); setIsExcelUploadOpen(true); },
-                  },
-                  {
-                    n: 2,
-                    title: 'Sync with Google Sheets',
-                    body: 'Update the sheet with rooms and the latest list.',
-                    action: 'Sync',
-                    icon: RefreshCw,
-                    primary: false,
-                    onClick: () => { dismissStartup(); handleQuickSync(); },
-                  },
-                ].map((step) => (
-                  <li key={step.n} className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-stone-50">
-                    <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center justify-center shrink-0 tabular-nums">
-                      {step.n}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-stone-900">{step.title}</div>
-                      <div className="text-[13px] text-stone-500">{step.body}</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={step.onClick}
-                      className={`h-9 px-3 rounded-lg text-[13px] font-medium flex items-center gap-1.5 shrink-0 cursor-pointer transition ${
-                        step.primary
-                          ? 'bg-brand-700 hover:bg-brand-800 text-white shadow-xs'
-                          : 'bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50'
-                      }`}
-                    >
-                      <step.icon className={`w-4 h-4 ${step.primary ? 'text-gold-200' : 'text-stone-500'}`} />
-                      {step.action}
-                    </button>
-                  </li>
-                ))}
-              </ol>
-
-              <div className="flex items-center justify-between gap-3 px-6 py-4 bg-stone-50 border-t border-stone-100">
-                <span className="text-[13px] text-stone-500 tabular-nums">
-                  {reservations.length} zaereen, {rooms.length} rooms loaded
-                </span>
-                <button
-                  type="button"
-                  onClick={dismissStartup}
-                  className="text-[13px] font-medium text-stone-700 hover:text-stone-950 cursor-pointer"
-                >
-                  Skip for now
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* User request: "when all rooms for one date are allotted ask once to sync with google sheet so that when it is opened again the list is updated and ready to be synced again" */}
-      {/* One dialog at a time: this waits until the start-of-shift prompt is closed. */}
-      {dateFullyAllottedSyncPrompt && !isStartupPromptOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in">
-          <div role="dialog" aria-modal="true" className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-stone-900 text-base leading-tight">
-                    Rooms allotted for {dateFullyAllottedSyncPrompt.date}
-                  </h3>
-                  <p className="text-xs text-stone-500">
-                    All {dateFullyAllottedSyncPrompt.totalZaereen} zaereen arriving that day have rooms
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDateFullyAllottedSyncPrompt(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-stone-700 leading-relaxed">
-              Every zair arriving on <strong>{dateFullyAllottedSyncPrompt.date}</strong> now has a room. Sync with Google Sheets now so the sheet shows these rooms next time the app opens.
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setDateFullyAllottedSyncPrompt(null)}
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
-              >
-                Later
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDateFullyAllottedSyncPrompt(null);
-                  handleQuickSync();
-                }}
-                className="px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-[#ecdcae]" />
-                <span>Sync now</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Post-Excel upload follow-up sync prompt */}
-      {afterExcelSyncPrompt && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-5 space-y-4 text-stone-800">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-blue-100 text-blue-800">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-stone-900 text-base leading-tight">
-                    Excel imported
-                  </h3>
-                  <p className="text-xs text-stone-500">
-                    {afterExcelSyncPrompt.count} zaereen saved
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAfterExcelSyncPrompt(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-stone-700 leading-relaxed">
-              The list is saved. Sync with Google Sheets now to back it up and share it.
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setAfterExcelSyncPrompt(null)}
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
-              >
-                Later
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAfterExcelSyncPrompt(null);
-                  handleQuickSync();
-                }}
-                className="px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-[#ecdcae]" />
-                <span>Sync now</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isSaving && <div role="status" className="fixed bottom-5 left-5 rounded-lg bg-stone-900 px-3 py-2 text-xs text-white">Saving to the app…</div>}
 
       {/* Toast Notification */}
       {toast && (

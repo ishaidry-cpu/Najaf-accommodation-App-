@@ -1,76 +1,27 @@
-# Zaereen Accommodation & Google Sheets Reservation Manager
+# Najaf Accommodation
 
-## Overview
-This application streamlines reservation management and logistics for Zaereen accommodations. It acts as an intelligent assistant to parse booking details and organize them for seamless integration into our Google Sheets tracking workflows.
+Run the app on the computer that holds the accommodation database. Use Node.js 24 or later.
 
-
-
-## Usage
-1. Enter the required Gemini API Key to unlock the interface.
-2. Paste raw booking details or administrative queries into the chat.
-3. Copy the AI-formatted output directly into the master spreadsheet tracker.
-
-## Sync to NKERP
-
-The **Sync to NKERP** button (top bar on every screen) runs the Najaf accommodation allocation on the app's
-server side (a Cloudflare Worker, Vercel Functions, or the app's own server), with no external AI or Claude account involved. Each run brings NKERP's Najaf rooms in line with the
-Google Sheet *Faiz Husaini Zaereen Accommodation (Saifee & Burhani)*, in this order:
-
-1. **Deallocate** people an earlier run saw in the Sheet with a room whose row is now blank or deleted, and whom
-   NKERP still has in that same room (tonight onward only).
-2. **Reallocate** people NKERP has in a different building or room than the Sheet (tonight onward only).
-3. **Allocate** people NKERP still lists as unallocated, for Sheet rows arriving today or later.
-
-Every save is one NKERP call (emails off), confirmed by a fresh read and never retried. A save that cannot be
-confirmed stops the run. Room capacity is checked night by night. More than 20 deallocations, or a Sheet that
-looks empty, holds all deallocations. Applied runs are logged in the Sheet's **Sync History** tab, which is also
-the sync's memory between runs (don't edit its rows). Karbala, other sub-venues and other tabs are never touched.
-
-The **Sync** tab shows the live log, a **Needs you** list (each problem with what to do about it), what was
-done, the run history, and an instruction box. Type what should happen in plain words, for example "preview
-tomorrow", "only allocations", "why was Saifee 107 held?" or "the sheet is correct, allow the deallocations".
-Safe requests run straight away. Anything that loosens a safety rule asks for confirmation first.
-
-### Server configuration
-
-| Secret | Purpose |
-| --- | --- |
-| `NKERP_LOGIN_ID`, `NKERP_PASSWORD` | NKERP account with the *Tour and Accomodation Admin* role |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` (or `GOOGLE_SERVICE_ACCOUNT_FILE`) | Google service-account key. Share the Sheet with its `client_email` as **Editor** |
-| `NKERP_SYNC_ACCESS_KEY` (optional) | Key staff enter once per device to use the sync. Without it there is no key: anyone who can open the app can run the sync |
-| `GEMINI_API_KEY` (optional) | Lets the instruction box understand free-form phrasing. Without it, built-in rules are used |
-
-The server needs outbound access to `to.najafkarbala.com`, `sheets.googleapis.com` and `oauth2.googleapis.com`.
-
-### Hosting
-
-- **Cloudflare Workers** (the live app, Worker `najaf-accommodation`): the Vite build is served as static assets and
-  `worker/index.ts` answers `/api/*` with the same handlers. Configuration is `cloudflare.config.ts`; deploy with
-  `npm run deploy` (the `cf` CLI). Workers Builds deploys `main` automatically once the GitHub repository is connected
-  (Workers & Pages → the Worker → Settings → Build: build command `npm install`, deploy command `npx cf deploy`).
-  Add the secrets above under the Worker's **Settings → Variables and Secrets** (type *Secret*). A sync has no fixed
-  time limit there: it runs as long as the Sync tab stays open, and if the tab closes the current save still finishes.
-  Needs the Workers Paid plan (a full sync makes more outbound requests than the free plan allows per request).
-- **Vercel** (previous host, still works): the sync runs as Vercel Functions in `api/nkerp-sync/`, with secrets under
-  **Settings → Environment Variables**. One sync can run for up to 5 minutes there; the engine starts no new save in
-  the last 40 seconds, and a rerun finishes the rest.
-- **Own server** (`npm run dev` / `npm start`, Google AI Studio, Cloud Run): `server.ts` serves the same API.
-
-`vite.config.ts` turns on the Cloudflare Vite plugin only when the `cf` CLI runs the build, so a plain `vite build`,
-Vercel and `server.ts` are unaffected.
-
-The functions run a pre-built copy of the engine (`api/_lib/nkerp-sync.mjs`). After changing anything in
-`server/nkerp-sync/`, run `npm run build:api` and commit the result; `npm run test:sync` fails if it is out of date.
-
-### Engine and tests
-
-The engine lives in `server/nkerp-sync/`. It is a TypeScript port of the `najaf-accommodation-allocation` skill.
-The skill's Python scripts are kept in `server/nkerp-sync/reference/` as the specification.
-
-```bash
-npm run test:sync
+```sh
+npm install
+cp .env.example .env
+npm run dev
 ```
 
-This runs the skill's full test suite (ported), HTTP integration tests, instruction-interpreter tests, and a
-differential test. The differential test runs the TypeScript engine and the skill's Python code on hundreds of
-random scenarios and requires identical reports, history rows and NKERP payloads (`PARITY_CASES=3000` for more).
+Set the NKERP account in `.env`, then open [http://127.0.0.1:3000](http://127.0.0.1:3000). For a production build, run `npm run build` followed by `NODE_ENV=production npm start`. The app stores changes in SQLite under `~/.local/share/najaf-accommodation` by default. Set `NAJAF_DATA_DIR` to use a different permanent directory. Working copies on the same computer use the same default database.
+
+The server pulls Najaf applicant, stay, and room-allocation data from NKERP at startup and every minute while running. **Pull from NKERP** starts the same read-only refresh. A second request joins a pull already in progress. Profiles and stay dates come from the Najaf allocation search and tour accommodation plan. Current room assignments come from NKERP’s room-allocation records. NKERP’s allocated-room response supplies fewer profile fields than the applicant search, so previously saved values are preserved when the upstream field is absent.
+
+The app keeps repeat trips separate by tour reference, guest, and arrival. Saves use the app database. The scheduled cleanup removes a stay and its sync history 72 hours after its departure time in Baghdad. A departure date without a time is retained through that date’s end before the 72 hours begin. Room inventory and settings persist independently. **Export room allocation** downloads the saved allocations and inventory as an Excel file.
+
+**Sync to NKERP** still previews or applies deallocations, reallocations, and allocations from the saved app records using the existing Najaf allocation checks. The applied-run history lives in the app. Automatic pulls do not send allocation updates or emails.
+
+## One-time migration for another installation
+
+Stop the previous app. Export the live workbook as Excel. If the previous installation has a local `data/reservations.json` with app edits, provide its path to preserve app-only fields. The exporter abbreviates the grid tab name to meet Excel’s length limit.
+
+```sh
+npm run import:workbook -- /path/to/final-export.xlsx --legacy-reservations /path/to/old/reservations.json
+```
+
+Omit the legacy flag for a new installation. This command verifies the tabs and imports the grid, linked upgrade details, and allocation sync history in one transaction. The app derives its timeline from the saved bookings and seeds the same official inventory from its room definitions. Run the import against the same `NAJAF_DATA_DIR` as the new app. A successful import is recorded in the database, and repeating the same export returns its original result.

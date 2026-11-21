@@ -439,10 +439,10 @@ export async function runSync(opts: RunOptions, deps: RunDeps): Promise<{ report
 
   progress({ level: 'info', stage: 'start', message: `${apply ? 'Sync' : 'Preview (dry run)'} for ${today}; actions: ${[...only].join(', ')}`
     + (scope ? `; only arrivals ${scopeLabel(scope)}` : '') });
-  progress({ level: 'info', stage: 'read-sheet', message: 'Reading the Zaereen Lodging & Room Allotment Grid' });
+  progress({ level: 'info', stage: 'read-sheet', message: 'Reading saved app allocations' });
   const sheet = await deps.readSheet();
   const sheetRooms = sheet.filter((r) => r.its && r.room).length;
-  progress({ level: 'info', stage: 'read-sheet', message: `Sheet: ${sheet.length} rows, ${sheetRooms} with ITS and a room` });
+  progress({ level: 'info', stage: 'read-sheet', message: `App allocations: ${sheet.length} rows, ${sheetRooms} with ITS and a room` });
 
   const histRows = await deps.history.read();
   const mem = memory(histRows, since);

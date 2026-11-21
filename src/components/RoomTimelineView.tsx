@@ -692,7 +692,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={onOpenAddBuildingRooms}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white border border-[#c9a85a]/40 shadow-2xs transition cursor-pointer"
-                title="Add Hotel Building & Rooms manually or sync from Google Sheet"
+                title="Add hotel rooms"
               >
                 <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
                 <span>Add Rooms</span>

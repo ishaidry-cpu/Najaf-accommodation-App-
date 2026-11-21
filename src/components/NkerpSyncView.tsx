@@ -15,7 +15,7 @@ const ACTIONS = ['deallocate', 'reallocate', 'allocate'] as const;
 const ACTION_LABEL: Record<string, string> = { deallocate: 'Deallocated', reallocate: 'Reallocated', allocate: 'Allocated' };
 const ACTION_PLANNED: Record<string, string> = { deallocate: 'Would deallocate', reallocate: 'Would reallocate', allocate: 'Would allocate' };
 const STAGE_LABEL: Record<string, string> = {
-  start: 'Starting', 'read-sheet': 'Reading the Google Sheet', 'read-history': 'Reading Sync History',
+  start: 'Starting', 'read-sheet': 'Reading saved reservations', 'read-history': 'Reading Sync History',
   'read-pending': 'Reading NKERP unallocated list', 'read-tours': 'Reading who is where in NKERP', plan: 'Planning',
   deallocate: 'Deallocating', reallocate: 'Reallocating', allocate: 'Allocating', history: 'Logging to Sync History',
   finish: 'Finishing', cancel: 'Cancelling',
@@ -284,7 +284,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
         {sync.messages.length === 0 && (
           <div className="text-xs text-stone-600 leading-relaxed">
             Type what should be done in plain words: <em>"sync 25 Nov only"</em>, <em>"preview 20-25 Nov"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
-            {' '}<em>"the sheet is correct, allow the deallocations"</em>. Safe requests run straight away; anything that loosens a safety rule asks you to confirm first.
+            {' '}<em>"the app allocations are correct, allow the deallocations"</em>. Safe requests run straight away; anything that loosens a safety rule asks you to confirm first.
           </div>
         )}
         {sync.messages.map((m) => (
@@ -356,9 +356,7 @@ const Setup: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
     <Card title="Set up the sync" icon={<ShieldAlert className="w-4 h-4" />}>
       <ul className="p-3.5 space-y-2 text-xs">
         <Row ok={c.nkerp} label="NKERP login">server secrets <code>NKERP_LOGIN_ID</code> and <code>NKERP_PASSWORD</code> (an account with the Tour and Accomodation Admin role).</Row>
-        <Row ok={c.google} label="Google service account">server secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> (the key file's JSON), then share the Sheet with that account as <b>Editor</b>.</Row>
         <Row ok label="Access key (optional)">{c.keySource === 'env' ? 'set: staff enter it once per device.' : <>not set, so anyone who can open the app can run the sync. Set <code>NKERP_SYNC_ACCESS_KEY</code> to require a key.</>}</Row>
-        <Row ok={c.gemini} label="Plain-language instructions (optional)">server secret <code>GEMINI_API_KEY</code>; without it, the built-in instruction rules are used.</Row>
       </ul>
     </Card>
   );
@@ -399,7 +397,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             <p className="mt-1 text-sm text-stone-500 max-w-sm mx-auto">
               {sync.connected
                 ? 'Loading the sync settings from the server.'
-                : 'Sync to NKERP runs on the app server. Check the internet connection, then reload this page. If it keeps happening, the server may need its NKERP and Google settings.'}
+                : 'Sync to NKERP runs on the app server. Check the internet connection, then reload this page. If it keeps happening, the server may need its NKERP settings.'}
             </p>
             <button type="button" onClick={() => window.location.reload()} className="mt-5 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 cursor-pointer">
               <RefreshCcw className="w-4 h-4 text-stone-500" />
@@ -433,7 +431,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
         <div className="min-w-0">
           <h1 className="type-display text-[26px] md:text-[32px] leading-none font-semibold text-stone-950">NKERP sync</h1>
           <p className="mt-2 text-sm text-stone-500 max-w-2xl">
-            Najaf rooms in NKERP brought in line with the Google Sheet: deallocate, then reallocate, then allocate. Karbala is never touched.
+            Najaf rooms in NKERP brought in line with saved app allocations: deallocate, then reallocate, then allocate. Karbala is never touched.
             {active ? ' Keep this page open while it runs.' : ''}
           </p>
         </div>
@@ -446,12 +444,6 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             </span>
             {sync.connected ? 'Online' : 'Offline'}
           </span>
-          {config && (
-            <a href={config.sheetUrl} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-200/60">
-              <FileSpreadsheet className="w-3.5 h-3.5" />Sheet<ExternalLink className="w-3 h-3" />
-            </a>
-          )}
           {config?.keySource === 'env' && (
             <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
               className="p-2 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
@@ -541,14 +533,13 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             )}
             {shownJob.stats && (
               <div className="text-[10px] text-stone-500">
-                Sheet {shownJob.stats.sheetRows} rows ({shownJob.stats.sheetRooms} with a room) · NKERP {shownJob.stats.pending} unallocated, {shownJob.stats.peopleInNkerp} allocated across {shownJob.stats.toursRead} tours · {shownJob.stats.remembered} remembered from Sync History
+                App {shownJob.stats.sheetRows} rows ({shownJob.stats.sheetRooms} with a room) · NKERP {shownJob.stats.pending} unallocated, {shownJob.stats.peopleInNkerp} allocated across {shownJob.stats.toursRead} tours · {shownJob.stats.remembered} remembered from Sync History
               </div>
             )}
             {shownJob.error && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-900">
                 <div className="font-bold">{shownJob.error}</div>
                 {/could not reach to\.najafkarbala\.com|ran out of time while reading NKERP/.test(shownJob.error) && <div>NKERP did not answer in time from this server. Check NKERP is up, then sync again. Nothing was saved.</div>}
-                {/sheets\.googleapis|oauth2\.googleapis|Google|private_key/.test(shownJob.error) && <div>The Google Sheet could not be read. Check the GOOGLE_SERVICE_ACCOUNT_JSON key and that the Sheet is shared with it. Nothing was saved.</div>}
                 {/NKERP login failed|role is missing/.test(shownJob.error) && <div>Check the NKERP login configured on the server (NKERP_LOGIN_ID / NKERP_PASSWORD) and that it has the Tour and Accomodation Admin role. Nothing was saved.</div>}
               </div>
             )}
@@ -575,7 +566,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
         </div>
         <div className="lg:col-span-2 space-y-3">
           <Card title="Tell the sync" icon={<MessageSquare className="w-4 h-4" />}
-            right={<span className="text-[10px] text-stone-500">{config?.gemini ? 'Gemini + rules' : 'Built-in rules'}</span>}>
+            right={<span className="text-[10px] text-stone-500">Built-in rules</span>}>
             <Conversation sync={sync} draft={draft} setDraft={setDraft} inputRef={inputRef} />
           </Card>
           <Card title="Sync history" icon={<History className="w-4 h-4" />}
@@ -583,7 +574,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             <ul className="max-h-72 overflow-y-auto">
               {sync.historyError && <li className="px-3.5 py-2 text-[11px] text-rose-700">{sync.historyError}</li>}
               {!sync.historyError && sync.history.length === 0 && (
-                <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in the Sheet's Sync History yet.</li>
+                <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in local Sync History yet.</li>
               )}
               {sync.history.map((h) => (
                 <li key={h.runId} className="px-3.5 py-2 border-t border-[#eef2f0] first:border-t-0">
@@ -607,7 +598,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
       </div>
       <div className="flex items-start gap-1.5 text-[10px] text-stone-500">
         <Circle className="w-2 h-2 fill-current mt-1 shrink-0" />
-        <span>Every applied run is logged in the Sheet's <b>Sync History</b> tab, which is the sync's memory: don't edit or delete its rows.</span>
+        <span>Every applied run is logged in the app’s <b>Sync History</b>, which is the sync's memory: don't edit or delete its rows.</span>
       </div>
     </div>
   );

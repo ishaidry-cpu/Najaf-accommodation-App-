@@ -20,7 +20,7 @@ let lastFake: FakeNKERP;
 let lastTab: FakeTab;
 let applies: boolean[] = [];
 
-const configured = () => ({ nkerp: true, google: true, googleAccount: 'svc@example.com', problem: null });
+const configured = () => ({ nkerp: true, problem: null });
 
 function fakeDeps(apply: boolean, progress: RunDeps['progress'], signal: AbortSignal): RunDeps {
   applies.push(apply);
@@ -36,7 +36,7 @@ function fakeDeps(apply: boolean, progress: RunDeps['progress'], signal: AbortSi
 }
 
 const deps: HandlerDeps = {
-  depsFactory: fakeDeps, credentials: configured, maxSeconds: 0,
+  depsFactory: fakeDeps, credentials: configured, maxSeconds: 0, today: () => '2026-11-16',
   readHistory: async () => [
     { 'Run At': '2026-11-16 10:00', 'Run ID': '20261116-100000', Action: 'ALLOCATE', Result: 'done', 'Tour ID': T1, ITS: '1' },
     { 'Run At': '2026-11-16 10:00', 'Run ID': '20261116-100000', Action: 'REALLOCATE', Result: 'held', 'Tour ID': T1, ITS: '2' },
@@ -71,7 +71,7 @@ after(() => {
   delete process.env.NKERP_SYNC_ACCESS_KEY;
 });
 
-describe('handlers (as Vercel Functions call them)', () => {
+describe('local sync handlers', () => {
   it('config is public, carries no secrets, and says whether a key is needed', async () => {
     const body = await (await call('config', { key: null })).json();
     assert.equal(body.configured, true);
@@ -101,7 +101,7 @@ describe('handlers (as Vercel Functions call them)', () => {
 
   it('refuses to run when the server is not configured', async () => {
     const r = await dispatch('run', web('run', { body: {} }), { ...deps,
-      credentials: () => ({ nkerp: false, google: true, googleAccount: null, problem: 'NKERP login is not configured' }) });
+      credentials: () => ({ nkerp: false, problem: 'NKERP login is not configured' }) });
     assert.equal(r.status, 503);
   });
 
@@ -188,7 +188,7 @@ describe('handlers (as Vercel Functions call them)', () => {
   });
 });
 
-describe('time limit (hosted functions)', () => {
+describe('local sync time limit', () => {
   it('no new save starts after the deadline; the run says to sync again', async () => {
     const fake = new FakeNKERP({ apps: [applicant(1, T1, '111'), applicant(2, T2, '222')] });
     const save = fake.save.bind(fake);
