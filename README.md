@@ -4,7 +4,7 @@ The hosted Worker serves both the web app and its API. A SQLite-backed Durable O
 
 ## Cloudflare deployment
 
-From a Cloudflare-authenticated checkout use `npm run deploy:check`, then `npm run deploy`. Configure `NKERP_LOGIN_ID` and `NKERP_PASSWORD` as Worker secrets. Set a strong unique `NAJAF_APP_ACCESS_KEY` for staff sign-in. Browser sessions last 12 hours.
+From a Cloudflare-authenticated checkout use `npm run deploy:check`, then `npm run deploy`. Configure `NKERP_LOGIN_ID` and `NKERP_PASSWORD` as Worker secrets. The hosted app is publicly accessible and opens without a sign-in.
 
 For the first deployment, temporarily set `NAJAF_IMPORT_KEY` to a separate random secret. Send the migrated database snapshot as JSON to `POST /api/admin/import` with that secret in the bearer header. The snapshot contains `reservations`, `rooms`, `history`, and `settings` from the Node app database. It may also contain `removed-stays`. The Worker accepts only the first import. Remove the import secret after verification.
 

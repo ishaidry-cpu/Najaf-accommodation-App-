@@ -11,43 +11,15 @@ import seedSettings from '../data/config.json';
 interface Env {
   ASSETS: Fetcher;
   ACCOMMODATION: DurableObjectNamespace<Accommodation>;
-  NAJAF_APP_ACCESS_KEY?: string;
   NAJAF_IMPORT_KEY?: string;
 }
 
-const AUTH = 'najaf_session';
-const SESSION_SECONDS = 12 * 60 * 60;
 function signature(key: string, value: string) {
   return createHmac('sha256', key).update(value).digest('base64url');
 }
 function matches(key: string, input: string) {
   return timingSafeEqual(Buffer.from(signature(key, key)), Buffer.from(signature(key, input)));
 }
-function hasSession(req: Request, key: string) {
-  const token = req.headers.get('cookie')?.match(/(?:^|;\s*)najaf_session=([^;]+)/)?.[1];
-  if (!token) return false;
-  const [expires, proof] = token.split('.');
-  return /^\d{10}$/.test(expires) && Number(expires) > Math.floor(Date.now()/1000) &&
-    Boolean(proof) && matches(signature(key, expires), proof);
-}
-function login(error = false) {
-  return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Sign in · Najaf Accommodation</title>
-    <style>body{font:16px system-ui;background:#f5f5f0;color:#19332c;margin:0;padding:12vh 1rem}
-    main{box-sizing:border-box;max-width:28rem;margin:auto;background:#fff;padding:2rem;border-radius:1rem}
-    h1{margin:0 0 1.5rem}label,input,button{display:block;box-sizing:border-box;width:100%;margin-top:.6rem}
-    input,button{font:inherit;padding:.7rem;border-radius:.4rem;border:1px solid #718077}
-    button{margin-top:1rem;background:#0f4a37;color:white;cursor:pointer}p{color:#9e212b}</style>
-    <main><h1>Najaf Accommodation</h1>
-    ${error ? '<p role="alert">The access key was incorrect.</p>' : ''}
-    <form method="post" action="/_access"><label for="key">App access key</label>
-    <input id="key" name="key" type="password" autocomplete="current-password" maxlength="256" required autofocus>
-    <button type="submit">Sign in</button></form></main></html>`, {
-    status: error ? 401 : 200,
-    headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"},
-  });
-}
-
 export class Accommodation extends DurableObject<Env> {
   private readonly store: StorageDriver;
   private readonly api = accommodationApi();
@@ -119,24 +91,11 @@ export default {
       if (req.method !== 'POST' || !key || !matches(key,bearer)) return json({error:'API route unavailable.'},404);
       return database().fetch(req);
     }
-    const key = env.NAJAF_APP_ACCESS_KEY;
-    if (!key) return json({error:'The hosted app access key is missing.'},503);
-    if (url.pathname === '/_access' && req.method === 'POST') {
-      if (origin !== url.origin) return json({error:'Invalid sign-in origin.'},403);
-      const input = String((await req.formData()).get('key') || '');
-      if (!input || input.length > 256 || !matches(key,input)) return login(true);
-      const expires = Math.floor(Date.now()/1000) + SESSION_SECONDS;
-      return new Response(null,{status:303,headers:{
-        location:'/', 'cache-control':'no-store',
-        'set-cookie':`${AUTH}=${expires}.${signature(key,String(expires))}; Path=/; Max-Age=${SESSION_SECONDS}; Secure; HttpOnly; SameSite=Strict`,
-      }});
-    }
     if (url.pathname.startsWith('/api/')) {
       if (origin && origin !== url.origin) return json({error:'Invalid app origin.'},403);
-      if (!hasSession(req,key)) return json({error:'Your app session expired. Reload to sign in again.'},401);
       return database().fetch(req);
     }
-    return hasSession(req,key) ? env.ASSETS.fetch(req) : login();
+    return env.ASSETS.fetch(req);
   },
   async scheduled(_event: ScheduledController, env: Env) {
     await env.ACCOMMODATION.getByName('najaf').tick();

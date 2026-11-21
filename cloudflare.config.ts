@@ -13,7 +13,7 @@ export default defineConfig({
     compatibilityFlags: ['nodejs_compat'],
     assets: {
       notFoundHandling: 'single-page-application',
-      runWorkerFirst: ['/', '/api/*', '/_access'],
+      runWorkerFirst: ['/api/*'],
     },
     // A full sync reads every tour from NKERP; it mostly waits on the network, but give it CPU headroom.
     limits: { cpuMs: 300_000 },
