@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Mail,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserRole } from '../types';
@@ -32,7 +33,7 @@ import { SyncToNkerpButton } from './SyncToNkerpButton';
 import { Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 
-export type AppTab = 'dashboard' | 'reservations' | 'upgrades' | 'rooms' | 'sync' | 'emails';
+export type AppTab = 'dashboard' | 'reservations' | 'planner' | 'upgrades' | 'rooms' | 'sync' | 'emails';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -58,6 +59,7 @@ type NavItem = { tab: AppTab; label: string; short: string; icon: React.ElementT
 const NAV_ITEMS: NavItem[] = [
   { tab: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutGrid },
   { tab: 'reservations', label: 'Zaereen', short: 'Zaereen', icon: CalendarDays },
+  { tab: 'planner', label: 'AI Planner', short: 'Planner', icon: Sparkles },
   { tab: 'rooms', label: 'Rooms', short: 'Rooms', icon: BedDouble },
   { tab: 'upgrades', label: 'B→A shifts', short: 'B→A', icon: Repeat2 },
   { tab: 'sync', label: 'NKERP sync', short: 'Sync', icon: RefreshCcw },
@@ -176,7 +178,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Desktop navigation */}
-          <nav aria-label="Main" className="hidden md:flex h-full items-stretch gap-0.5 ml-2 lg:ml-6 min-w-0 overflow-x-auto app-scroll-x">
+          <nav aria-label="Main" className="hidden md:flex h-full items-stretch gap-0.5 ml-2 lg:ml-4 2xl:ml-6 min-w-0 overflow-x-auto app-scroll-x">
             {NAV_ITEMS.filter((n) => !n.mobileOnly).map(({ tab, label, icon: Icon }) => {
               const active = activeTab === tab;
               return (
@@ -185,14 +187,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   aria-current={active ? 'page' : undefined}
-                  className={`relative flex items-center gap-1.5 px-2.5 lg:px-3 text-[13px] whitespace-nowrap transition cursor-pointer ${
+                  className={`relative flex items-center gap-1.5 px-2.5 2xl:px-3 text-[13px] whitespace-nowrap transition cursor-pointer ${
                     active ? 'text-stone-950 font-semibold' : 'text-stone-500 font-medium hover:text-stone-900'
                   }`}
                 >
                   <Icon className={`w-4 h-4 transition-colors ${active ? 'text-brand-700' : ''} ${tab === 'sync' && nkerpSync.running ? 'animate-spin' : ''} ${tab === 'emails' && emailsRunning ? 'animate-pulse text-gold-600' : ''}`} />
                   <span>{label}</span>
                   {tab === 'rooms' && roomsCount ? (
-                    <span className="text-xs text-stone-400 tabular-nums font-normal">{roomsCount}</span>
+                    <span className="hidden 2xl:inline text-xs text-stone-400 tabular-nums font-normal">{roomsCount}</span>
                   ) : null}
                   {tab === 'sync' && syncBadge > 0 && (
                     <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[18px] text-center font-semibold tabular-nums">
@@ -204,7 +206,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       layoutId="nav-marker"
                       transition={markerSpring}
                       aria-hidden
-                      className="absolute left-2.5 right-2.5 lg:left-3 lg:right-3 -bottom-px h-[2px] rounded-full bg-gold-400"
+                      className="absolute left-2.5 right-2.5 2xl:left-3 2xl:right-3 -bottom-px h-[2px] rounded-full bg-gold-400"
                     />
                   )}
                 </button>
@@ -215,8 +217,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="ml-auto flex items-center gap-1">
             {/* Desktop utilities */}
             <div className="hidden md:flex items-center gap-1">
-              <button type="button" className={ghostTrigger(false)} disabled={isPulling} onClick={onPullNkerp}>
-                <Download className="w-4 h-4" /> {isPulling ? 'Pulling…' : 'Pull from NKERP'}
+              <button type="button" className={`${ghostTrigger(false)} whitespace-nowrap`} disabled={isPulling} onClick={onPullNkerp}
+                title="Pull from NKERP" aria-label={isPulling ? 'Pulling from NKERP' : 'Pull from NKERP'}>
+                <Download className="w-4 h-4" /> <span className="hidden 2xl:inline">{isPulling ? 'Pulling…' : 'Pull from NKERP'}</span>
               </button>
 
               <Dropdown
@@ -291,7 +294,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         aria-label="Main"
         className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="grid grid-cols-6 h-14">
+        <div className="grid grid-cols-7 h-14">
           {NAV_ITEMS.map(({ tab, short, icon: Icon }) => {
             const active = activeTab === tab;
             return (

@@ -67,6 +67,7 @@ import { Dashboard } from './components/Dashboard';
 import { ReservationsView } from './components/ReservationsView';
 import { CategoryUpgradeView } from './components/CategoryUpgradeView';
 import { RoomsManagementView } from './components/RoomsManagementView';
+import { AllocationPlannerView, type PlanAllocationItem } from './components/AllocationPlannerView';
 import { ExcelUploadModal } from './components/ExcelUploadModal';
 import { ReceptionDailySlipModal } from './components/ReceptionDailySlipModal';
 import { AccountsRequestSlipModal } from './components/AccountsRequestSlipModal';
@@ -692,6 +693,31 @@ export default function App() {
     executeBatchFamilyAllot(tourRefNo, family, building, roomNumber, matches, matchIds);
   };
 
+  // AI Planner: allocate a reviewed plan in one save. A zair who got a room meanwhile keeps it.
+  const handleApplyPlan = (items: PlanAllocationItem[]) => {
+    const byId = new Map(items.map((i) => [i.reservationId, i]));
+    const now = new Date().toISOString();
+    const people = new Set<string>();
+    let records = 0;
+    const next = reservationsRef.current.map((r) => {
+      const item = byId.get(r.id);
+      if (!item || String(r.roomNumber || '').trim()) return r;
+      records++;
+      people.add(item.personId);
+      return { ...r, building: item.building, roomNumber: item.roomNumber, updatedAt: now };
+    });
+    const applied = people.size;
+    const skipped = new Set(items.map((i) => i.personId)).size - applied;
+    if (records) persist('reservations', next);
+    showToast(
+      applied
+        ? `Allocated ${applied} zaereen from the AI plan.${skipped ? ` ${skipped} already had a room.` : ''}`
+        : 'Nothing allocated: everyone in the plan already has a room.',
+      applied ? 'success' : 'info'
+    );
+    return { applied, skipped };
+  };
+
   // Switch or Atomically Swap Rooms between Guest/Family A and Guest/Family B
   const handleSwapRooms = (
     sourceReservationIds: string[],
@@ -1144,6 +1170,16 @@ export default function App() {
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
             onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
+          />
+        )}
+
+        {activeTab === 'planner' && (
+          <AllocationPlannerView
+            reservations={reservations}
+            rooms={rooms}
+            userRole={userRole}
+            onApplyPlan={handleApplyPlan}
+            onOpenSync={() => setActiveTab('sync')}
           />
         )}
 
