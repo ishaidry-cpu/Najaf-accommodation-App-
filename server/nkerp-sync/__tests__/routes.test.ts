@@ -73,12 +73,12 @@ after(() => {
 
 describe('local sync handlers', () => {
   it('config is public, carries no secrets, and says whether a key is needed', async () => {
-    const body = await (await call('config', { key: null })).json();
+    const body = await (await call('config', { key: null })).json() as any;
     assert.equal(body.configured, true);
     assert.equal(body.keySource, 'env');
     assert.ok(!JSON.stringify(body).includes(KEY));
     delete process.env.NKERP_SYNC_ACCESS_KEY;
-    assert.equal((await (await call('config', { key: null })).json()).keySource, null);
+    assert.equal((await (await call('config', { key: null })).json() as {keySource:unknown}).keySource, null);
   });
 
   it('with a key set everything else needs it; with none set the sync is open', async () => {
@@ -96,7 +96,7 @@ describe('local sync handlers', () => {
     assert.equal((await call('run', { body: { limit: 0 } })).status, 400);
     const r = await call('run', { body: { allowMassDeallocation: true } });
     assert.equal(r.status, 400);
-    assert.match((await r.json()).error, /confirmOverrides/);
+    assert.match((await r.json() as {error:string}).error, /confirmOverrides/);
   });
 
   it('refuses to run when the server is not configured', async () => {
@@ -152,18 +152,18 @@ describe('local sync handlers', () => {
     release!();
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(lastFake.writes.length, 0);
-    assert.equal((await (await call('config', { key: null })).json()).running, false);
+    assert.equal((await (await call('config', { key: null })).json() as {running:boolean}).running, false);
   });
 
   it('history groups Sync History rows into runs, newest first', async () => {
-    const body = await (await call('history')).json();
+    const body = await (await call('history')).json() as any;
     assert.deepEqual(body.runs.map((r: any) => [r.runId, r.people, r.done.allocate, r.problems, r.seen]),
       [['20261117-090000', 1, 0, 0, 1], ['20261116-100000', 2, 1, 1, 0]]);
     assert.deepEqual(groupHistory([{ Action: 'SEEN' }]), []);       // rows without a Run ID are ignored
   });
 
   it('interpret proposes, never runs', async () => {
-    const p = await (await call('interpret', { body: { text: 'the sheet is correct, sync and allow mass deallocation', report: null } })).json();
+    const p = await (await call('interpret', { body: { text: 'the sheet is correct, sync and allow mass deallocation', report: null } })).json() as any;
     assert.equal(p.intent, 'sync');
     assert.equal(p.options.allowMassDeallocation, true);
     assert.equal(p.needsConfirmation, true);
@@ -171,7 +171,7 @@ describe('local sync handlers', () => {
     assert.equal((await call('interpret', { body: { text: '' } })).status, 400);
     const q = await (await call('interpret', { body: { text: 'why was 108 held?', report: {
       today: '2026-11-16', mode: 'apply', done: [], planned: [], notes: {}, skipped: {},
-      problems: [{ action: 'reallocate', group: `${T1} Saifee 108`, people: ['A'], reason: `room already occupied by ${T2}: x` }] } } })).json();
+      problems: [{ action: 'reallocate', group: `${T1} Saifee 108`, people: ['A'], reason: `room already occupied by ${T2}: x` }] } } })).json() as any;
     assert.equal(q.intent, 'explain');
     assert.match(q.reply, /3044/);
   });

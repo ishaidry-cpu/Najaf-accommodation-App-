@@ -1,6 +1,16 @@
 # Najaf Accommodation
 
-Run the app on the computer that holds the accommodation database. Use Node.js 24 or later.
+The hosted Worker serves both the web app and its API. A SQLite-backed Durable Object stores reservations, room inventory, settings, and sync history. The Worker talks directly to NKERP. A one-minute Cloudflare trigger runs the automatic pull and retention cleanup.
+
+## Cloudflare deployment
+
+From a Cloudflare-authenticated checkout use `npm run deploy:check`, then `npm run deploy`. Configure `NKERP_LOGIN_ID` and `NKERP_PASSWORD` as Worker secrets. Set a strong unique `NAJAF_APP_ACCESS_KEY` for staff sign-in. Browser sessions last 12 hours.
+
+For the first deployment, temporarily set `NAJAF_IMPORT_KEY` to a separate random secret. Send the migrated database snapshot as JSON to `POST /api/admin/import` with that secret in the bearer header. The snapshot contains `reservations`, `rooms`, `history`, and `settings` from the Node app database. It may also contain `removed-stays`. The Worker accepts only the first import. Remove the import secret after verification.
+
+## Optional local development
+
+Use Node.js 24 or later.
 
 ```sh
 npm install
@@ -10,7 +20,7 @@ npm run dev
 
 Set the NKERP account in `.env`, then open [http://127.0.0.1:3000](http://127.0.0.1:3000). For a production build, run `npm run build` followed by `NODE_ENV=production npm start`. The app stores changes in SQLite under `~/.local/share/najaf-accommodation` by default. Set `NAJAF_DATA_DIR` to use a different permanent directory. Working copies on the same computer use the same default database.
 
-The server pulls Najaf applicant, stay, and room-allocation data from NKERP at startup and every minute while running. **Pull from NKERP** starts the same read-only refresh. A second request joins a pull already in progress. Profiles and stay dates come from the Najaf allocation search and tour accommodation plan. Current room assignments come from NKERP’s room-allocation records. NKERP’s allocated-room response supplies fewer profile fields than the applicant search, so previously saved values are preserved when the upstream field is absent.
+The app pulls Najaf applicant, stay, and room-allocation data from NKERP at startup and every minute while running. **Pull from NKERP** starts the same read-only refresh. A second request joins a pull already in progress. Profiles and stay dates come from the Najaf allocation search and tour accommodation plan. Current room assignments come from NKERP’s room-allocation records. NKERP’s allocated-room response supplies fewer profile fields than the applicant search, so previously saved values are preserved when the upstream field is absent.
 
 The app keeps repeat trips separate by tour reference, guest, and arrival. Saves use the app database. The scheduled cleanup removes a stay and its sync history 72 hours after its departure time in Baghdad. A departure date without a time is retained through that date’s end before the 72 hours begin. Room inventory and settings persist independently. **Export room allocation** downloads the saved allocations and inventory as an Excel file.
 

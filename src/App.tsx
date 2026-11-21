@@ -79,7 +79,7 @@ import { SwitchRoomModal, SwitchRoomTarget } from './components/SwitchRoomModal'
 import { AddZaerModal } from './components/AddZaerModal';
 import { AddTourGroupModal } from './components/AddTourGroupModal';
 import { AddBuildingAndRoomsModal } from './components/AddBuildingAndRoomsModal';
-import { loadAccommodation, saveChanges, fetchPullStatus, pullNkerp, resetBackendRooms, saveBackendSettings, type PullStatus } from './services/api';
+import { loadAccommodation, saveChanges, fetchBackendStatus, pullNkerp, resetBackendRooms, saveBackendSettings, type PullStatus } from './services/api';
 import { exportRoomAllocation } from './services/excelService';
 
 export default function App() {
@@ -209,7 +209,7 @@ export default function App() {
       if (showFeedback) showToast('Loaded the latest saved accommodation data.');
     } catch {
       setIsLiveBackendConnected(false);
-      if (showFeedback) showToast('Could not reach the local app database.', 'error');
+      if (showFeedback) showToast('Could not reach the app database.', 'error');
     }
   }, []);
 
@@ -219,16 +219,29 @@ export default function App() {
           ['nkerp-sync-last-run','nkerp-sync-messages','faize_google_session_v1'].includes(key)) localStorage.removeItem(key);
     }
     const refresh = () => void handleRefreshLiveComputerData(false);
-    const status = () => fetchPullStatus().then(setPullStatus).catch(() => setPullStatus(null));
+    let active = true;
+    let lastRevision: number | undefined;
+    let unsubscribe = () => {};
+    const status = () => fetchBackendStatus().then(result => {
+      if (!active) return;
+      setPullStatus(result.pull);
+      if (lastRevision === undefined) unsubscribe = subscribeToMultiWindowSync(refresh, result.events);
+      if (lastRevision !== result.revision) refresh();
+      lastRevision = result.revision;
+    }).catch(() => { if (active) setPullStatus(null); });
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (pendingSaves.current) { event.preventDefault(); event.returnValue = ''; }
     };
     window.addEventListener('beforeunload', beforeUnload);
     refresh();
     void status();
-    const unsubscribe = subscribeToMultiWindowSync(refresh);
     const timer = window.setInterval(status, 5000);
-    return () => { unsubscribe(); window.clearInterval(timer); window.removeEventListener('beforeunload',beforeUnload); };
+    return () => {
+      active = false;
+      unsubscribe();
+      window.clearInterval(timer);
+      window.removeEventListener('beforeunload',beforeUnload);
+    };
   }, [handleRefreshLiveComputerData]);
 
   function persist<T extends Reservation | Room>(collection: 'reservations' | 'rooms', next: T[]) {
@@ -267,7 +280,7 @@ export default function App() {
       showToast((err as Error).message, 'error');
     } finally {
       setManualPullRunning(false);
-      fetchPullStatus().then(setPullStatus).catch(() => setPullStatus(null));
+      fetchBackendStatus().then(status => setPullStatus(status.pull)).catch(() => setPullStatus(null));
     }
   };
 

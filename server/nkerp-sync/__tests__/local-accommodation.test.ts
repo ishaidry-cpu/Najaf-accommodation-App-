@@ -7,7 +7,8 @@ import type { Reservation } from '../../../src/types/index.js';
 import { isDuplicateReservation } from '../../../src/utils/deduplication.js';
 
 process.env.NAJAF_DATA_DIR = mkdtempSync(path.join(tmpdir(), 'najaf-local-test-'));
-const { expiry, guests, prune, rooms, setup, write, read, transaction } = await import('../../local-store.js');
+const { expiry, guests, prune, rooms, setup, write, read, transaction, localStore } = await import('../../local-store.js');
+const { withStore } = await import('../../accommodation-store.js');
 const { collectNkerp, reconcileNkerp, removalKey } = await import('../../nkerp-pull.js');
 
 const now = Date.parse('2026-11-21T10:00:00+03:00');
@@ -18,7 +19,7 @@ const source = (ref: string, arrivalDate = '2026-11-20'): Reservation => ({
   departureDate:'2026-11-22', departureTime:'9:00 AM', createdAt:'', updatedAt:'',
 });
 
-test('preserves room inventory, allocates persistent local records, and keeps repeated trips separate', () => {
+test('preserves room inventory, allocates persistent local records, and keeps repeated trips separate', () => withStore(localStore, () => {
   setup();
   assert.deepEqual(rooms().reduce<Record<string,number>>((out,r) => {
     out[r.building] = (out[r.building] || 0)+1; return out;
@@ -37,9 +38,9 @@ test('preserves room inventory, allocates persistent local records, and keeps re
   write('reservations',guests().filter(r=>r.id!==removed.id));
   write('removed-stays',{[removalKey(removed)]:expiry(removed)});
   assert.equal(reconcileNkerp([second],now).changed,0);
-});
+}));
 
-test('expires the guest and their local sync history exactly 72 hours after Baghdad departure', () => {
+test('expires the guest and their local sync history exactly 72 hours after Baghdad departure', () => withStore(localStore, () => {
   const first = source('EXPIRY');
   write('reservations',[first]);
   write('history',[{'Tour ID':first.tourRefNo, ITS:first.itsId, Arrival:first.arrivalDate, 'Run At':'2026-11-24 12:00'}]);
@@ -50,7 +51,7 @@ test('expires the guest and their local sync history exactly 72 hours after Bagh
   assert.equal(transaction(() => prune(cutoff)),1);
   assert.deepEqual(read('history',[]),[]);
   assert.equal(rooms().length,120);
-});
+}));
 
 test('uses the scoped pending search and joins allocated nights to the correct Najaf tour and stay', async () => {
   const start = '2026-11-20T11:00:00';

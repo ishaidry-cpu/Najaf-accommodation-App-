@@ -15,8 +15,9 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body),
   });
+  if (response.status === 401) window.location.reload();
   if (!response.ok) {
-    const data = await response.json().catch(() => null);
+    const data = await response.json().catch(() => null) as { error?: string } | null;
     throw new Error(data?.error || 'The local app could not save or load data.');
   }
   return response.json();
@@ -29,9 +30,7 @@ export async function loadAccommodation() {
   ]);
   return {reservations,rooms,settings};
 }
-export async function fetchPullStatus() {
-  return (await request<{pull:PullStatus}>('status')).pull;
-}
+export const fetchBackendStatus = () => request<{ pull: PullStatus; revision: number; events: boolean }>('status');
 export const pullNkerp = () => request<{received:number; changed:number; expired:number}>('nkerp/pull',{});
 
 export async function saveChanges<T extends {id:string}>(collection: 'rooms' | 'reservations', before: T[], after: T[]) {

@@ -10,7 +10,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:sync": "node --import tsx --test 'server/nkerp-sync/__tests__/*.test.ts'",
-    "import:workbook": "tsx server.ts --import-workbook"
+    "import:workbook": "tsx server.ts --import-workbook",
+    "deploy": "cf deploy",
+    "deploy:check": "cf deploy --dry-run"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -36,6 +38,9 @@
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@cloudflare/vite-plugin": "2.0.0-rc.2",
+    "cf": "1.0.0-rc.2",
+    "@cloudflare/workers-types": "5.20261121.1"
   }
 }

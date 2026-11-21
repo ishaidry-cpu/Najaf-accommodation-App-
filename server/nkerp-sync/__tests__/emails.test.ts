@@ -204,7 +204,7 @@ describe('email HTTP handlers', () => {
   it('lists the Najaf stays', async () => {
     const fake = new FakeEmailNkerp(rows());
     const res = await dispatch('emails', new Request('http://x/api/nkerp-sync/emails'), { emailApi: () => fake, credentials: creds, today: () => TODAY });
-    const body = await res.json();
+    const body = await res.json() as any;
     assert.equal(res.status, 200);
     assert.deepEqual(body.days.map((d: any) => d.date), ['2026-11-24', '2026-11-26']);
   });

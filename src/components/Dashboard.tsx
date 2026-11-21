@@ -769,7 +769,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
             <span className={pullStatus?.error ? 'text-rose-700' : 'text-stone-600'} role="status">
-              {!isLiveBackendConnected ? 'Local database unavailable' : pullStatus?.running ? 'Pulling from NKERP…' :
+              {!isLiveBackendConnected ? 'App database unavailable' : pullStatus?.running ? 'Pulling from NKERP…' :
                 pullStatus?.error ? pullStatus.error : pullStatus?.lastSyncedAt
                   ? `NKERP pulled at ${new Date(pullStatus.lastSyncedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
                   : 'Waiting for the first NKERP pull'}

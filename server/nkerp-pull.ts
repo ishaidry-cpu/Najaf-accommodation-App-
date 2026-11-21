@@ -7,7 +7,7 @@ import { NkerpEmailClient } from './nkerp-sync/emails.js';
 import { peopleOnTour } from './nkerp-sync/planner.js';
 import { addDays, day, norm, todayIn } from './nkerp-sync/util.js';
 import type { NkRecord } from './nkerp-sync/types.js';
-import { expiry, guests, identityHash, read, rooms, stayKey, write, transaction, prune } from './local-store.js';
+import { expiry, guests, identityHash, read, rooms, stayKey, write, transaction, prune } from './accommodation-store.js';
 
 export interface StoredReservation extends Reservation {
   nkerpBaseline?: { building: string; roomNumber: string };
@@ -185,16 +185,15 @@ export async function collectNkerp(client: Pick<NkerpClient,'pending'|'currentFo
 
 export function createPull(onChange: () => void) {
   let running: Promise<ReturnType<typeof reconcileNkerp>> | undefined;
-  let client: NkerpClient;
-  let tours: NkerpEmailClient;
   const status = { running:false, lastSyncedAt: null as string | null, error: null as string | null };
   function pull() {
     if (running) return running;
     status.running = true;
     running = (async () => {
       nkerpLogin();
-      client ??= new NkerpClient();
-      tours ??= new NkerpEmailClient();
+      const signal = AbortSignal.timeout(55_000);
+      const client = new NkerpClient({signal});
+      const tours = new NkerpEmailClient({signal});
       const incoming = await collectNkerp(client,tours);
       const outcome = reconcileNkerp(incoming);
       status.lastSyncedAt = new Date().toISOString();

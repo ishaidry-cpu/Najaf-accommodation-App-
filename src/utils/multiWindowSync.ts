@@ -55,7 +55,8 @@ export function broadcastLiveSync(payload: Partial<SyncEventPayload> = {}): void
  * Subscribe to live changes occurring from any other window or server mutation
  */
 export function subscribeToMultiWindowSync(
-  onSync: (detail: SyncEventPayload) => void
+  onSync: (detail: SyncEventPayload) => void,
+  serverEvents = true,
 ): () => void {
   let isSubscribed = true;
   let lastProcessedTimestamp = 0;
@@ -114,20 +115,17 @@ export function subscribeToMultiWindowSync(
   // 4. Server-Sent Events (SSE) Listener
   let eventSource: EventSource | null = null;
   try {
-    eventSource = new EventSource('/api/events');
-    eventSource.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.type && parsed.type !== 'CONNECTED') {
-          handleTrigger(parsed);
+    if (serverEvents) {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type && parsed.type !== 'CONNECTED') handleTrigger(parsed);
+        } catch (err) {
+          console.warn('[Sync] Failed to parse SSE event data', err);
         }
-      } catch (err) {
-        console.warn('[Sync] Failed to parse SSE event data', err);
-      }
-    };
-    eventSource.onerror = () => {
-      // Browser EventSource automatically attempts reconnection
-    };
+      };
+    }
   } catch (err) {
     console.warn('[Sync] SSE not supported or connection error:', err);
   }
