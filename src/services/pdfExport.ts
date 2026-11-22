@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Reservation, Room } from '../types';
 import { normalizeDate } from './excelService';
+import { getRoomBedCount } from './storage';
 
 export interface PdfExportOptions {
   reportType: 'all_reservations' | 'category_upgrades' | 'rooms_inventory' | 'tour_manifest';
@@ -275,7 +276,7 @@ export function generateAdministrativePdf(
         rm.building,
         `Room ${rm.roomNumber}`,
         `Floor ${rm.floor}`,
-        `${rm.capacity} beds`,
+        `${getRoomBedCount(rm)} beds · sleeps ${rm.capacity}`,
         rm.category,
         rm.status.toUpperCase(),
         rm.status === 'blocked' ? (rm.blockedReason || 'Maintenance') : '—',

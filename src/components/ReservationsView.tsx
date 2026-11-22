@@ -46,7 +46,8 @@ import {
   checkRoomAllotmentAvailability,
   isInfant,
   countEffectivePax,
-  normalizeBuildingName
+  normalizeBuildingName,
+  getRoomBedCount,
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
@@ -1240,7 +1241,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <option value="">-- Select Vacant Room --</option>
               {vacantRoomsForFamily.map((rm) => (
                 <option key={rm.id} value={rm.roomNumber}>
-                  Room {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
+                  Room {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • {getRoomBedCount(rm)} beds • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
                 </option>
               ))}
             </select>

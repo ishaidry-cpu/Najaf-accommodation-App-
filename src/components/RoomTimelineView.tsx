@@ -29,6 +29,7 @@ import {
 import { Room, Reservation, UserRole } from '../types';
 import { 
   getRoomMaxCapacity, 
+  getRoomBedCount,
   getRoomBookingsOnDate, 
   getRoomStatusOnDate,
   checkRoomAllotmentAvailability,
@@ -97,7 +98,14 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Filters
   const [hotelFilter, setHotelFilter] = useState<string>('ALL');
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
-  const [capacityFilter, setCapacityFilter] = useState<'ALL' | '2' | '3' | '4'>('ALL');
+  const [capacityFilter, setCapacityFilter] = useState<string>('ALL');
+  // One chip per room size in the inventory, so custom room sizes can be filtered too.
+  const capacityOptions = useMemo(
+    () => Array.from(new Set(rooms.map((r) => Number(r.capacity || r.pax || 0)).filter((n) => n > 0)))
+      .sort((a, b) => a - b)
+      .map(String),
+    [rooms]
+  );
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'vacant' | 'departing' | 'occupied'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -726,36 +734,19 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
               >
                 All
               </button>
-              <button
-                type="button"
-                onClick={() => setCapacityFilter('2')}
-                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '2' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="Filter 2 Pax rooms"
-              >
-                2 Pax
-              </button>
-              <button
-                type="button"
-                onClick={() => setCapacityFilter('3')}
-                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '3' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="Filter 3 Pax rooms"
-              >
-                3 Pax
-              </button>
-              <button
-                type="button"
-                onClick={() => setCapacityFilter('4')}
-                className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                  capacityFilter === '4' ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
-                }`}
-                title="Filter 4 Pax rooms"
-              >
-                4 Pax
-              </button>
+              {capacityOptions.map((cap) => (
+                <button
+                  key={cap}
+                  type="button"
+                  onClick={() => setCapacityFilter(cap)}
+                  className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
+                    capacityFilter === cap ? 'bg-[#0f4a37] font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                  title={`Filter ${cap} Pax rooms`}
+                >
+                  {cap} Pax
+                </button>
+              ))}
             </div>
 
             {/* Status filter: Highlight departing/vacant */}
@@ -1047,7 +1038,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                             <span>{room.floorLabel || `Fl ${room.floor}`}</span>
                             <span>•</span>
                             <span className="truncate max-w-[100px]" title={room.bedType}>
-                              {room.bedType || 'Beds'}
+                              {getRoomBedCount(room)} {room.bedType || 'Beds'}
                             </span>
                           </div>
                         </div>

@@ -21,6 +21,7 @@ import { Room, Reservation } from '../types';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
 import { 
   getRoomMaxCapacity, 
+  getRoomBedCount,
   checkRoomAllotmentAvailability, 
   getRoomBookingsForDuration,
   isInfant,
@@ -618,7 +619,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                             🚽 {room.toiletType || 'Standard'}
                           </span>
                           <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 truncate">
-                            🛏️ {room.bedType || 'Single Beds'}
+                            🛏️ {getRoomBedCount(room)} × {room.bedType || 'Single Beds'}
                           </span>
                         </div>
 

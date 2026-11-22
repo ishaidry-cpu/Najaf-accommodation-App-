@@ -949,7 +949,9 @@ export function roomAllocationWorkbook(reservations: Reservation[], rooms: impor
   }));
   XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(assigned), 'Room Allocation');
   XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rooms.map(r => ({
-    Building:r.building, 'Room Number':r.roomNumber, Floor:r.floor, Capacity:r.capacity, Status:r.status, Category:r.category,
+    Building:r.building, 'Room Number':r.roomNumber, Floor:r.floor, 'Floor Label':r.floorLabel || '', Beds:r.beds || r.capacity,
+    Capacity:r.capacity, Buffer:r.buffer || 0, 'Bed Type':r.bedType || '', Toilet:r.toiletType || '', Status:r.status, Category:r.category,
+    Notes:r.notes || '',
   }))), 'Rooms Inventory');
   return book;
 }

@@ -71,9 +71,10 @@ export interface Room {
   building: string; // 'Burhani' or 'Saifee' (also matches 'BURHANI' / 'SAIFEE')
   floor: number;
   floorLabel?: string; // e.g. 'Ground', 'Mezzanine', 'Floor 1'
-  capacity: number; // Pax
+  capacity: number; // Pax (guests the room sleeps; drives allocation)
   pax?: number;
-  buffer?: number; // Buffer count
+  buffer?: number; // Buffer count (extra guests allowed over capacity)
+  beds?: number; // Number of physical beds in the room (a double bed counts as 1)
   toiletType?: string; // 'WESTERN' | 'INDIAN' | 'Both WESTERN & INDIAN'
   bedType?: string; // 'Single Beds' | 'Double Bed' | 'Both Single Bed & double Bed'
   category: RoomCategory;

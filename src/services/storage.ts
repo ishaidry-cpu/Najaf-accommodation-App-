@@ -664,6 +664,77 @@ export function getRoomMaxCapacity(room: Room): number {
   return base + buf;
 }
 
+export const ROOM_TOILET_TYPES = [
+  { value: 'WESTERN', label: 'Western' },
+  { value: 'INDIAN', label: 'Indian' },
+  { value: 'Both WESTERN & INDIAN', label: 'Western & Indian' },
+] as const;
+
+export const ROOM_BED_TYPES = ['Single Beds', 'Double Bed', 'Both Single Bed & double Bed', 'Suite Beds'] as const;
+
+export const ROOM_CATEGORIES: RoomCategory[] = ['Category A (Nizaam)', 'Category B (Standard)', 'Executive Suite'];
+
+/** Physical beds in a room. Rooms saved before bed counts existed fall back to their pax capacity. */
+export function getRoomBedCount(room: Room): number {
+  const beds = Number(room.beds);
+  return Number.isFinite(beds) && beds > 0 ? beds : (room.capacity || room.pax || 2);
+}
+
+/** Short spec line used across the app, e.g. "3 beds · Sleeps 4 +1". */
+export function describeRoomCapacity(room: Room): string {
+  const beds = getRoomBedCount(room);
+  const sleeps = room.capacity || room.pax || 2;
+  return `${beds} ${beds === 1 ? 'bed' : 'beds'} · Sleeps ${sleeps}${room.buffer ? ` +${room.buffer}` : ''}`;
+}
+
+/** Amenity tags derived from a room's specs plus any custom features. */
+export function buildRoomAmenities(spec: Pick<Room, 'toiletType' | 'bedType' | 'buffer'>, features: string[] = []): string[] {
+  const toilet = spec.toiletType === 'Both WESTERN & INDIAN'
+    ? 'Western & Indian Toilet'
+    : spec.toiletType ? `${spec.toiletType} Toilet` : '';
+  return Array.from(new Set([
+    toilet,
+    spec.bedType || '',
+    'Air Conditioning',
+    'Wi-Fi',
+    'Prayer Mats',
+    ...features.map((f) => f.trim()),
+    ...(spec.buffer ? [`Buffer: ${spec.buffer}`] : []),
+  ].filter(Boolean)));
+}
+
+/** Custom features of a room: its amenities minus the tags derived from its specs. */
+export function getRoomCustomFeatures(room: Room): string[] {
+  const derived = new Set(buildRoomAmenities(room).map((a) => a.toLowerCase()));
+  return (room.amenities || []).filter((a) => {
+    const t = String(a || '').trim();
+    if (!t || derived.has(t.toLowerCase())) return false;
+    if (/^buffer[:\s]*\d+/i.test(t) || /toilet$/i.test(t)) return false;
+    if (/^(wi-?fi|air conditioning|clean linens|prayer mats)$/i.test(t)) return false;
+    return !(ROOM_BED_TYPES as readonly string[]).some((b) => b.toLowerCase() === t.toLowerCase());
+  });
+}
+
+/**
+ * Merges added or edited rooms into the inventory by building + room number.
+ * An existing room keeps its id and any details the incoming room does not set.
+ * Custom rooms and edited specs are kept as entered.
+ */
+export function mergeRoomsIntoInventory(existing: Room[], incoming: Room[]): Room[] {
+  const roomMap = new Map<string, Room>();
+  existing.forEach((r) => {
+    const key = getCanonicalRoomKey(r.building, r.roomNumber) || `id::${r.id}`;
+    roomMap.set(key, r);
+  });
+  deduplicateRooms(incoming).forEach((nr) => {
+    const key = getCanonicalRoomKey(nr.building, nr.roomNumber);
+    if (!key) return;
+    const current = roomMap.get(key);
+    roomMap.set(key, current ? { ...current, ...nr, id: current.id } : nr);
+  });
+  return Array.from(roomMap.values());
+}
+
 /**
  * Checks all reservations occupying a room on a specific calendar date (YYYY-MM-DD)
  */

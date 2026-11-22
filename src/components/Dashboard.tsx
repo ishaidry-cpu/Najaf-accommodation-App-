@@ -45,6 +45,7 @@ import {
   countEffectivePax,
   getVacantRoomsForDuration,
   normalizeBuildingName,
+  getRoomBedCount,
 } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
@@ -535,7 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const tooltipLines = [
       `Room ${room.roomNumber} (${room.building})`,
       `Occupancy: ${state.currentOccupancy} / ${state.maxCapacity} Pax${state.remainingSlots > 0 ? ` (${state.remainingSlots} space left)` : ' (No space)'}`,
-      `Bed: ${room.bedType || 'Single Beds'} • Toilet: ${room.toiletType || 'Standard'}`,
+      `Beds: ${getRoomBedCount(room)} × ${room.bedType || 'Single Beds'} • Toilet: ${room.toiletType || 'Standard'}`,
       state.status === 'blocked'
         ? `Status: BLOCKED (${room.blockedReason || 'Maintenance buffer'})`
         : state.status === 'full'
@@ -2106,7 +2107,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {inspectedRoom.building} Hotel — Room {inspectedRoom.roomNumber}
                 </span>
                 <span className="text-[11px] px-2 py-0.5 rounded bg-white text-stone-700 border border-stone-200 font-medium">
-                  {inspectedRoom.floorLabel || `Floor ${inspectedRoom.floor}`} • Pax: {inspectedRoom.capacity}{inspectedRoom.buffer ? ` (+${inspectedRoom.buffer} Buffer)` : ''} • Toilet: {inspectedRoom.toiletType || 'Standard'} • Bed: {inspectedRoom.bedType || 'Single Beds'} • {inspectedRoom.category}
+                  {inspectedRoom.floorLabel || `Floor ${inspectedRoom.floor}`} • Beds: {getRoomBedCount(inspectedRoom)} • Pax: {inspectedRoom.capacity}{inspectedRoom.buffer ? ` (+${inspectedRoom.buffer} Buffer)` : ''} • Toilet: {inspectedRoom.toiletType || 'Standard'} • Bed: {inspectedRoom.bedType || 'Single Beds'} • {inspectedRoom.category}
                 </span>
               </div>
               <button

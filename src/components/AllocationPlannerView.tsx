@@ -10,6 +10,7 @@ import {
   planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
 } from '../services/allocationPlanner';
 import { btn, PageHeader } from './ui';
+import { describeRoomCapacity } from '../services/storage';
 
 export interface PlanAllocationItem {
   reservationId: string;
@@ -652,7 +653,7 @@ const UnitRow: React.FC<{
                 {room.building} {room.roomNumber}
               </div>
               <div className="text-xs text-stone-500">
-                {room.floorLabel || `Floor ${room.floor}`} · {room.capacity}{room.buffer ? `+${room.buffer}` : ''} beds · {roomTier(room)}
+                {room.floorLabel || `Floor ${room.floor}`} · {describeRoomCapacity(room)} · {roomTier(room)}
                 {room.toiletType ? ` · ${room.toiletType.toLowerCase().includes('both') ? 'both toilets' : room.toiletType.toLowerCase()}` : ''}
               </div>
             </div>
@@ -701,7 +702,7 @@ const UnitRow: React.FC<{
               <button type="button" onClick={() => onChoose(o.room)}
                 className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-400' : 'text-stone-800'}`}>
                 <span className="font-medium">{o.room.building} {o.room.roomNumber}
-                  <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {o.room.capacity}{o.room.buffer ? `+${o.room.buffer}` : ''} · {roomTier(o.room)}</span>
+                  <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {describeRoomCapacity(o.room)} · {roomTier(o.room)}</span>
                 </span>
                 <span className={o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-brand-700' : 'text-amber-700'}>{o.note}</span>
               </button>

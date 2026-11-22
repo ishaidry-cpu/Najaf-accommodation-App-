@@ -25,7 +25,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus, UserRole } from '../types';
-import { normalizeBuildingName } from '../services/storage';
+import { normalizeBuildingName, getRoomBedCount } from '../services/storage';
 import { PageHeader, btn } from './ui';
 
 interface CategoryUpgradeViewProps {
@@ -836,7 +836,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       <datalist id="available-rooms-list">
                         {availableRoomsForBuilding.map((rm) => (
                           <option key={rm.id} value={rm.roomNumber}>
-                            Room {rm.roomNumber} ({rm.capacity} beds - {rm.status})
+                            Room {rm.roomNumber} ({getRoomBedCount(rm)} beds, sleeps {rm.capacity} - {rm.status})
                           </option>
                         ))}
                       </datalist>

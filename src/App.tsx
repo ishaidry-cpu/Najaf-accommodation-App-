@@ -43,8 +43,7 @@ import {
   getRoomBookingsForDuration,
   deduplicateRooms,
   getCanonicalRoomKey,
-  reconcileOfficialSaifeeBurhaniRooms,
-  pruneLegacyBadriRooms,
+  mergeRoomsIntoInventory,
   isOfficialThreeBuilding,
   normalizeBuildingName,
   normalizeRoomNumber
@@ -1017,43 +1016,27 @@ export default function App() {
     showToast('Restored the official 120 rooms.');
   };
 
-  // Add or sync rooms / buildings (restricted strictly to Burhani, Saifee, Badri)
-  const handleAddRooms = (newRoomsToAdd: Room[], replaceExisting: boolean = false) => {
+  // Add or update rooms in Burhani, Saifee or Badri. Custom rooms and edited specs are kept as entered.
+  const handleAddRooms = (newRoomsToAdd: Room[]) => {
     const cleanIncoming = deduplicateRooms(newRoomsToAdd).filter((r) =>
       isOfficialThreeBuilding(r.building)
     );
     if (cleanIncoming.length === 0) {
-      showToast('Only the 3 official buildings (Burhani, Saifee, Badri) are permitted.', 'error');
+      showToast('Rooms can only be added to Burhani, Saifee or Badri.', 'error');
       return;
     }
 
-    let finalRooms: Room[];
-    if (replaceExisting) {
-      finalRooms = reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(cleanIncoming));
-    } else {
-      // Merge by canonical (building, roomNumber), preserving existing canonical IDs
-      const roomMap = new Map<string, Room>();
-      deduplicateRooms(rooms).forEach((r) => {
-        const key = getCanonicalRoomKey(r.building, r.roomNumber);
-        if (key) roomMap.set(key, r);
-      });
-      cleanIncoming.forEach((nr) => {
-        const key = getCanonicalRoomKey(nr.building, nr.roomNumber);
-        if (!key) return;
-        const existing = roomMap.get(key);
-        roomMap.set(key, existing ? { ...nr, id: existing.id } : nr);
-      });
-      finalRooms = reconcileOfficialSaifeeBurhaniRooms(
-        pruneLegacyBadriRooms(deduplicateRooms(Array.from(roomMap.values())))
-      );
-    }
+    const existingKeys = new Set(rooms.map((r) => getCanonicalRoomKey(r.building, r.roomNumber)));
+    const updated = cleanIncoming.filter((r) => existingKeys.has(getCanonicalRoomKey(r.building, r.roomNumber))).length;
+    const added = cleanIncoming.length - updated;
+    const finalRooms = mergeRoomsIntoInventory(rooms, cleanIncoming);
 
     persist('rooms', finalRooms);
 
-    const distinctNewBuildings = Array.from(new Set(cleanIncoming.map((r) => r.building)));
-    showToast(
-      `Saved ${cleanIncoming.length} unique room(s) across building(s): ${distinctNewBuildings.join(', ')}! Total inventory: ${finalRooms.length} rooms.`
-    );
+    const buildings = Array.from(new Set(cleanIncoming.map((r) => r.building))).join(', ');
+    const summary = [added && `added ${added} room${added === 1 ? '' : 's'}`, updated && `updated ${updated}`]
+      .filter(Boolean).join(', ');
+    showToast(`${summary.charAt(0).toUpperCase()}${summary.slice(1)} in ${buildings}. Inventory: ${finalRooms.length} rooms.`);
   };
 
   const handleDeleteRoom = (roomId: string) => {

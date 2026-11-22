@@ -20,6 +20,7 @@ import {
   countEffectivePax,
   isInfant,
   normalizeBuildingName,
+  getRoomBedCount,
 } from '../services/storage';
 
 export interface SwitchRoomTarget {
@@ -629,7 +630,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                             {room.building} · Room {room.roomNumber}
                           </div>
                           <div className="text-[11px] text-stone-500">
-                            {room.floorLabel || `Floor ${room.floor}`} · Cap {room.capacity}
+                            {room.floorLabel || `Floor ${room.floor}`} · {getRoomBedCount(room)} beds · Cap {room.capacity}
                             {room.buffer ? ` (+${room.buffer})` : ''} · {room.bedType || 'Single Beds'} ·{' '}
                             {room.toiletType || 'Standard'}
                           </div>
