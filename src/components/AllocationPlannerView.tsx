@@ -7,7 +7,7 @@ import type { Reservation, Room, UserRole } from '../types';
 import {
   type AllocationPlan, type PlannerOptions, type PlanUnit, type RoomOption,
   baghdadToday, collectUnits, DEFAULT_PLANNER_OPTIONS, LEFT_EMPTY, learnPatterns, memberIds, nightlyLoad, planAllocation,
-  planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
+  planEmptyBeds, planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
 } from '../services/allocationPlanner';
 import { btn, PageHeader } from './ui';
 import { describeRoomCapacity } from '../services/storage';
@@ -38,7 +38,8 @@ interface Draft {
 }
 
 const OPTIONS_KEY = 'najaf-ai-planner-options-v1';
-const DRAFT_KEY = 'najaf-ai-planner-draft-v1';
+// v2: plans group households by HOF ID and group ID; older drafts grouped by family number only.
+const DRAFT_KEY = 'najaf-ai-planner-draft-v2';
 
 function load<T>(key: string): T | null {
   try {
@@ -118,6 +119,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
   }, [draft, reservations, rooms, patterns]);
   const excluded = useMemo(() => new Set(draft?.excluded || []), [draft]);
   const summary = useMemo(() => (plan ? planSummary(plan) : null), [plan]);
+  const emptyBeds = useMemo(() => (plan ? planEmptyBeds(plan, rooms, reservations) : 0), [plan, rooms, reservations]);
   const nightly = useMemo(() => {
     if (!plan) return [];
     const first = plan.units.reduce((m, u) => (u.arrivalDate < m ? u.arrivalDate : m), plan.options.fromDate);
@@ -410,9 +412,10 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
       {plan && summary && (
         <>
           {/* Summary */}
-          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
             <Stat label="Zaereen planned" value={`${summary.placed}/${summary.zaereen}`} />
             <Stat label="Rooms used" value={summary.rooms} />
+            <Stat label="Empty beds" value={emptyBeds} />
             <Stat label="Tours" value={summary.tours} />
             <Stat label="No room: shift A→B" value={summary.unplaced} tone={summary.unplaced ? 'rose' : undefined} />
             <Stat label="Need a look" value={summary.warnings} tone={summary.warnings ? 'amber' : undefined} />
@@ -629,6 +632,7 @@ const UnitRow: React.FC<{
           <span>{plural(unit.members.length, 'zair', 'zaereen')}{unit.pax !== unit.members.length ? ` · ${plural(unit.pax, 'bed')}` : ''}</span>
           {unit.splitFrom && <span className="inline-flex items-center gap-1 text-stone-500"><Split className="w-3 h-3" />part of family</span>}
         </div>
+        {unit.familyNote && <div className="text-xs text-stone-500">{unit.familyNote}</div>}
         <ul className="mt-1 space-y-0.5">
           {unit.members.map((m) => (
             <li key={m.id} className="text-[13px] text-stone-800 flex items-start gap-1.5">

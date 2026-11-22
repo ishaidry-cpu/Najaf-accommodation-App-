@@ -619,12 +619,15 @@ export default function App() {
     family: string,
     building: string,
     roomNumber: string,
-    forceConfirmed: boolean = false
+    forceConfirmed: boolean = false,
+    memberIds?: string[]
   ) => {
     const safeTour = String(tourRefNo || '').trim().toLowerCase();
     const safeFam = String(family || '').trim().toLowerCase();
+    const chosen = memberIds?.length ? new Set(memberIds) : null;
 
-    const matches = reservations.filter((r) => {
+    // The room pop-up names the exact members (the family on this trip, or a household grouped by HOF ID).
+    const matches = chosen ? reservations.filter((r) => chosen.has(r.id)) : reservations.filter((r) => {
       const rFam = String(r.family || '').trim().toLowerCase();
       const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
       const matchFamily = rFam === safeFam;

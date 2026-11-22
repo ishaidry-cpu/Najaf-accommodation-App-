@@ -18,6 +18,7 @@ import {
   ArrowRightLeft
 } from 'lucide-react';
 import { Room, Reservation } from '../types';
+import { familyGroups, groupOf } from '../utils/familyGroups';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
 import { 
   getRoomMaxCapacity, 
@@ -36,7 +37,7 @@ interface QuickRoomAllotModalProps {
   rooms: Room[];
   reservations: Reservation[];
   onAllotRoom: (reservationId: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
-  onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string, forceConfirmed?: boolean) => void;
+  onBatchAllotFamily?: (tourRefNo: string, family: string, building: string, roomNumber: string, forceConfirmed?: boolean, memberIds?: string[]) => void;
   onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
 }
 
@@ -67,18 +68,29 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   const targetFam = targetReservation ? String(targetReservation.family || '').trim().toLowerCase() : '';
   const targetTour = targetReservation ? String(targetReservation.tourRefNo || targetReservation.tourId || '').trim().toLowerCase() : '';
 
-  // Other family members sharing the same tour and family code
+  // The zair's family group on this trip: same tour, same family (or household by HOF / group ID), overlapping dates.
+  const groups = useMemo(() => familyGroups(reservations), [reservations]);
+  const targetGroup = targetReservation ? groupOf(groups, targetReservation) : null;
+  const sameGroup = (r: Reservation) => {
+    if (!targetReservation || !targetGroup) return false;
+    const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
+    return (!targetTour || !rTour || rTour === targetTour) && groupOf(groups, r).key === targetGroup.key;
+  };
   const familyMembers = useMemo(() => {
-    if (!targetReservation || !targetFam) return [];
+    if (!targetReservation || !targetGroup) return [];
+    const day = (v?: string) => String(v || '').slice(0, 10);
+    const a = day(targetReservation.arrivalDate);
+    const d = day(targetReservation.departureDate) || a;
     return reservations.filter((r) => {
-      if (!r.family) return false;
-      const rFam = String(r.family || '').trim().toLowerCase();
-      const rTour = String(r.tourRefNo || r.tourId || '').trim().toLowerCase();
-      const matchFamily = rFam === targetFam;
-      const matchTour = !targetTour || !rTour || rTour === targetTour;
-      return matchFamily && matchTour;
+      if (r.id === targetReservation.id) return true;
+      if (!sameGroup(r)) return false;
+      const ra = day(r.arrivalDate);
+      const rd = day(r.departureDate) || ra;
+      return ra === a || (ra < d && a < rd);
     });
-  }, [reservations, targetReservation, targetFam, targetTour]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reservations, targetReservation, targetGroup?.key, targetTour, groups]);
+  const familyName = targetGroup?.label || targetReservation?.family || '';
 
   const isFamily = familyMembers.length > 1;
   const requestedPax =
@@ -127,12 +139,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
       const remainingSlots = Math.max(0, maxCap - currentOccupancy);
 
       // Check if family members are already in this room
-      const familyInRoom = occupants.filter((o) => {
-        if (!o.family || !targetFam) return false;
-        const oFam = String(o.family || '').trim().toLowerCase();
-        const oTour = String(o.tourRefNo || o.tourId || '').trim().toLowerCase();
-        return oFam === targetFam && (!targetTour || !oTour || oTour === targetTour);
-      });
+      const familyInRoom = occupants.filter(sameGroup);
 
       const isCurrent =
         String(targetReservation.building || '').trim().toLowerCase() === String(room.building || '').trim().toLowerCase() &&
@@ -187,7 +194,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
         conflictReason,
       };
     });
-  }, [rooms, reservations, targetReservation, arrivalDate, departureDate, requestedPax, allotMode, familyMembers, targetFam, targetTour]);
+  }, [rooms, reservations, targetReservation, arrivalDate, departureDate, requestedPax, allotMode, familyMembers, targetFam, targetTour, groups, targetGroup?.key]);
 
   // Filter evaluated rooms
   const filteredRooms = useMemo(() => {
@@ -255,7 +262,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     const safeTour = String(targetReservation.tourRefNo || targetReservation.tourId || '');
     const safeFam = String(targetReservation.family || '');
     if (allotMode === 'family' && isFamily && onBatchAllotFamily) {
-      onBatchAllotFamily(safeTour, safeFam, bldg, rNum, isForce);
+      onBatchAllotFamily(safeTour, safeFam, bldg, rNum, isForce, familyMembers.map((m) => m.id));
     } else {
       onAllotRoom(targetReservation.id, bldg, rNum, isForce);
     }
@@ -321,7 +328,8 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
               </div>
               <div>
                 <span className="text-stone-400">Family: </span>
-                <strong className="text-white">{targetReservation.family}</strong> ({familyMembers.length} member{familyMembers.length > 1 ? 's' : ''})
+                <strong className="text-white">{familyName}</strong> ({familyMembers.length} member{familyMembers.length > 1 ? 's' : ''})
+                {targetGroup?.note && <span className="text-stone-300"> · {targetGroup.note}</span>}
               </div>
               <div>
                 <span className="text-stone-400">Tour: </span>
@@ -405,7 +413,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                   }`}
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>Allot Entire Family {targetReservation.family} ({familyMembers.length} Pax)</span>
+                  <span>Allot Entire Family {familyName} ({familyMembers.length} Pax)</span>
                 </button>
               </div>
             ) : (
@@ -628,7 +636,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                           <div className="mb-2 p-1.5 rounded-lg bg-emerald-100/80 border border-emerald-300 text-[10px] text-emerald-950 font-bold flex items-center gap-1">
                             <Users className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
                             <span>
-                              Family {targetReservation.family} here: {familyInRoom.map((m) => m.applicantName.split(' ')[0]).join(', ')}
+                              Family {familyName} here: {familyInRoom.map((m) => m.applicantName.split(' ')[0]).join(', ')}
                             </span>
                           </div>
                         )}

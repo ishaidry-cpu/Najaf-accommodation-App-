@@ -7,8 +7,9 @@ import { describe, it } from 'node:test';
 import type { Reservation, Room } from '../../types';
 import {
   type AllocationPlan, type PlannerOptions, collectUnits, DEFAULT_PLANNER_OPTIONS, memberIds, planAllocation, refreshPlan, revalidatePlan,
-  learnPatterns, roomOptionsFor, stayTime,
+  learnPatterns, planEmptyBeds, roomOptionsFor, stayTime,
 } from '../allocationPlanner';
+import { familyGroups } from '../../utils/familyGroups';
 
 const TODAY = '2026-11-21';
 const T1 = 'NKERP/TOUR/2026/1001';
@@ -196,5 +197,85 @@ describe('AI allocation planner', () => {
     const ids = (o: PlannerOptions) => collectUnits([inRange, tooLate, arrived, roomed], o, TODAY).flatMap(memberIds).sort();
     assert.deepEqual(ids(opts()), [inRange.id]);
     assert.deepEqual(ids(opts({ includeArrived: true })), [inRange.id, arrived.id].sort());
+  });
+
+  describe('family groups and empty beds', () => {
+    it('groups zaereen who each have their own family number by their HOF ID', () => {
+      // Some tours number every zair as their own family; the HOF ID shows the household.
+      const father = guest({ family: 'F-519', hofId: '20300001' });
+      const mother = guest({ family: 'F-520', hofId: '20300001', gender: 'Female' });
+      const son = guest({ family: 'F-521', hofId: '20300001', age: 9 });
+      const stranger = guest({ family: 'F-522', hofId: '20300002' });
+      const units = collectUnits([father, mother, son, stranger], opts(), TODAY);
+      assert.equal(units.length, 2);
+      const household = units.find((u) => u.members.length === 3)!;
+      assert.equal(household.family, 'F-519, F-520, F-521');
+      assert.match(household.familyNote!, /HOF ID 20300001/);
+
+      const rooms = [room('Saifee', '101', 2), room('Saifee', '102', 2), room('Saifee', '103', 3)];
+      const plan = planAllocation({ reservations: [father, mother, son, stranger], rooms, options: opts(), today: TODAY });
+      assert.equal(new Set([father, mother, son].map((r) => roomOf(plan, r.id))).size, 1);
+      assert.equal(roomOf(plan, father.id), 'Saifee 103');
+      assert.notEqual(roomOf(plan, stranger.id), 'Saifee 103');
+      assert.ok(roomOf(plan, stranger.id));
+    });
+
+    it('never merges separate multi-member families through a shared HOF ID', () => {
+      // Parents in F-1 and their son's family in F-2: the tour kept them apart on purpose.
+      const parents = [guest({ family: 'F-1', hofId: '20300001' }), guest({ family: 'F-1', hofId: '20300001', gender: 'Female' })];
+      const son = [guest({ family: 'F-2', hofId: '20300001' }), guest({ family: 'F-2', hofId: '20300001', gender: 'Female' })];
+      const groups = familyGroups([...parents, ...son]);
+      assert.equal(groups.get(parents[0].id)!.key, 'f:f-1');
+      assert.equal(groups.get(son[0].id)!.key, 'f:f-2');
+      const plan = planAllocation({ reservations: [...parents, ...son], rooms: [room('Burhani', '201', 4), room('Saifee', '101', 2), room('Saifee', '102', 2)], options: opts(), today: TODAY });
+      assert.notEqual(roomOf(plan, parents[0].id), roomOf(plan, son[0].id));
+    });
+
+    it('uses the group ID first when there is one', () => {
+      const a = guest({ family: 'F-1', groupId: '1766839506' });
+      const b = guest({ family: 'F-2', groupId: '1766839506', gender: 'Female' });
+      const c = guest({ family: 'F-2', groupId: '1766839507' });
+      const groups = familyGroups([a, b, c]);
+      assert.equal(groups.get(a.id)!.key, groups.get(b.id)!.key);
+      assert.notEqual(groups.get(b.id)!.key, groups.get(c.id)!.key);
+    });
+
+    it('keeps people of different households out of each other\'s rooms', () => {
+      const ones = [1, 2, 3, 4].map((i) => guest({ family: `F-${i}`, hofId: `2030000${i}` }));
+      const plan = planAllocation({ reservations: ones, rooms: [room('Saifee', '101', 2), room('Saifee', '102', 2)], options: opts(), today: TODAY });
+      const used = ones.map((r) => roomOf(plan, r.id)).filter(Boolean);
+      assert.equal(used.length, 2);
+      assert.equal(new Set(used).size, 2);
+    });
+
+    it('takes the room that leaves the fewest empty beds over office and building habits', () => {
+      // The office always went to Burhani 4-bed rooms before, but a couple fits a Saifee 2-bed exactly.
+      const history = [1, 2, 3, 4, 5, 6].map((i) => guest({ family: `F-${i}`, officeName: 'Habit Office', building: 'Burhani', roomNumber: '201',
+        arrivalDate: '2026-10-01', departureDate: '2026-10-03', tourRefNo: `NKERP/TOUR/2026/9${i}` }));
+      const couple = [guest({ officeName: 'Habit Office' }), guest({ officeName: 'Habit Office', gender: 'Female' })];
+      const rooms = [room('Burhani', '201', 4), room('Burhani', '202', 4), room('Saifee', '101', 2)];
+      const plan = planAllocation({ reservations: [...history, ...couple], rooms, options: opts({ followOfficeHabits: true }), today: TODAY });
+      assert.equal(roomOf(plan, couple[0].id), 'Saifee 101');
+      assert.equal(planEmptyBeds(plan, rooms), 0);
+    });
+
+    it('splits a family only when no room holds it, into parts that fill the rooms', () => {
+      // Six people, rooms of 4, 2 and 2: an even 3 + 3 split leaves beds empty; 4 + 2 fills two rooms exactly.
+      const fam = [
+        guest({ age: 50 }), guest({ gender: 'Female', age: 45 }), guest({ age: 20 }), guest({ gender: 'Female', age: 18 }),
+        guest({ age: 16 }), guest({ gender: 'Female', age: 14 }),
+      ];
+      const rooms = [room('Burhani', '201', 4), room('Saifee', '101', 2), room('Saifee', '102', 2)];
+      const plan = planAllocation({ reservations: fam, rooms, options: opts(), today: TODAY });
+      assert.equal(plan.units.length, 2);
+      assert.ok(fam.every((r) => roomOf(plan, r.id)));
+      assert.equal(planEmptyBeds(plan, rooms), 0);
+
+      // A family of four that fits one room is never split.
+      const four = [guest({ family: 'F-7' }), guest({ family: 'F-7', gender: 'Female' }), guest({ family: 'F-7', age: 10 }), guest({ family: 'F-7', age: 8 })];
+      const whole = planAllocation({ reservations: four, rooms: [room('Saifee', '101', 2), room('Saifee', '102', 2), room('Burhani', '201', 4)], options: opts(), today: TODAY });
+      assert.equal(whole.units.length, 1);
+      assert.equal(roomOf(whole, four[0].id), 'Burhani 201');
+    });
   });
 });

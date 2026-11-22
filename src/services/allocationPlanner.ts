@@ -4,10 +4,14 @@
  * Plans rooms for zaereen who do not have one yet. It works from rules learned from the
  * allocations already saved in the app (current and recent stays), and from the room inventory:
  *
- *  - only members of the same family (F-1, F-2 … within a tour) share a room; any other sharing is the
- *    user's own choice in the planner;
- *  - a family stays together in one room when a room is big enough, and is split by gender otherwise;
- *  - the room is sized to the family (4–5 pax → 4-bed rooms, 1–3 pax → 2/3-bed rooms), using buffer beds when allowed;
+ *  - only members of the same family group share a room; any other sharing is the user's own choice in the
+ *    planner. A family group is the GROUP_ID when there is one, else the NKERP family number (F-1, F-2 …
+ *    within a tour), else the HOF ID for tours that give every zair their own family number
+ *    (see utils/familyGroups);
+ *  - a family stays together in one room when a room is big enough. Only a family no room can hold is
+ *    split, into the parts that leave the fewest empty beds;
+ *  - the room is sized to the family so as few beds as possible stay empty: an exact fit first, then a
+ *    buffer bed, and an empty bed last; habits only decide between rooms that fit equally well;
  *  - starred zaereen (personal requests) always stay in Burhani and are placed first; their remarks decide the room;
  *  - a tour is kept in one building and close together on the same floors;
  *  - each office's usual buildings and room types (as allocated before) are preferred;
@@ -21,6 +25,7 @@
  */
 import type { Reservation, Room } from '../types';
 import { checkTurnoverTimingConflict, getReservationEffectivePax, isInfant } from '../utils/turnoverTiming';
+import { type FamilyGroup, familyGroups, groupOf } from '../utils/familyGroups';
 
 export interface PlannerOptions {
   /** First arrival date to plan (YYYY-MM-DD). */
@@ -58,7 +63,12 @@ export interface PlanUnit {
   tourRefNo: string;
   officeName: string;
   groupLeadName: string;
+  /** Family as shown: `F-3`, or every family number of a household grouped by HOF ID or group ID. */
   family: string;
+  /** Who may share the room: the family group's identity within the tour (see utils/familyGroups). */
+  familyKey: string;
+  /** Why several family numbers are one group, e.g. the shared HOF ID. */
+  familyNote?: string;
   arrivalDate: string;
   departureDate: string;
   arrivalTime?: string;
@@ -199,6 +209,8 @@ function sortRooms(rooms: Room[]) {
 // ---------------------------------------------------------------------------------------------
 
 export function learnPatterns(reservations: Reservation[], rooms: Room[]): LearnedPatterns {
+  const groups = familyGroups(reservations);
+  const famOf = (r: Reservation) => `${lower(r.tourRefNo)}|${groupOf(groups, r).key}`;
   const byKey = new Map(rooms.map((r) => [roomKey(r.building, r.roomNumber), r]));
   const allocated = reservations.filter((r) => r.roomNumber && byKey.has(roomKey(r.building, r.roomNumber)));
   const roomOf = (r: Reservation) => byKey.get(roomKey(r.building, r.roomNumber))!;
@@ -210,7 +222,7 @@ export function learnPatterns(reservations: Reservation[], rooms: Room[]): Learn
   const global: Record<string, number> = {};
   for (const r of allocated) {
     const room = roomOf(r);
-    const fam = `${lower(r.tourRefNo)}|${lower(r.family)}`;
+    const fam = famOf(r);
     families.set(fam, (families.get(fam) || new Set()).add(roomKey(room.building, room.roomNumber)));
     tours.set(lower(r.tourRefNo), (tours.get(lower(r.tourRefNo)) || new Set()).add(room.building));
     const stayId = `${roomKey(room.building, room.roomNumber)}|${day(r.arrivalDate)}`;
@@ -229,14 +241,14 @@ export function learnPatterns(reservations: Reservation[], rooms: Room[]): Learn
     const room = byKey.get(id.split('|').slice(0, 2).join('|'))!;
     const pax = list.reduce((s, r) => s + getReservationEffectivePax(r), 0);
     if (pax > baseBeds(room)) buffer++;
-    const fams = new Set(list.map((r) => `${lower(r.tourRefNo)}|${lower(r.family)}`));
+    const fams = new Set(list.map(famOf));
     if (fams.size > 1) shared++;
   }
 
   // Family size → room size actually used, when the whole family had one room.
   const famMembers = new Map<string, Reservation[]>();
   for (const r of allocated) {
-    const fam = `${lower(r.tourRefNo)}|${lower(r.family)}`;
+    const fam = famOf(r);
     famMembers.set(fam, [...(famMembers.get(fam) || []), r]);
   }
   const sizeCounts: Record<string, Record<string, number>> = {};
@@ -320,6 +332,8 @@ const sameStay = (a: Reservation, b: Reservation) =>
   stayStart(a) === stayStart(b) || overlaps(stayStart(a), stayEnd(a), stayStart(b), stayEnd(b));
 
 export function collectUnits(reservations: Reservation[], options: PlannerOptions, today = baghdadToday()): PlanUnit[] {
+  const families = familyGroups(reservations);
+  const fam = (r: Reservation) => groupOf(families, r);
   // NKERP sometimes lists the same zair twice on a tour (for example after an arrival date changed).
   // Such a record follows the room the other record already has, or both records are planned once.
   const byPerson = new Map<string, Reservation[]>();
@@ -337,7 +351,7 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
     const twins = (byPerson.get(personKey(r)) || []).filter((s) => s.id !== r.id && sameStay(r, s));
     const roomed = twins.find((s) => String(s.roomNumber || '').trim());
     if (roomed) {
-      const k = [lower(r.tourRefNo), lower(r.family), lower(roomed.building), lower(roomed.roomNumber)].join('|');
+      const k = [lower(r.tourRefNo), fam(r).key, lower(roomed.building), lower(roomed.roomNumber)].join('|');
       const entry = followers.get(k) || { list: [], room: roomed };
       entry.list.push(r);
       followers.set(k, entry);
@@ -358,7 +372,7 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
     }
     const start = span.get(primary.id)?.start || stayStart(primary);
     const end = span.get(primary.id)?.end || stayEnd(primary);
-    const key = [lower(primary.tourRefNo), lower(primary.family) || lower(primary.itsId), start, end].join('|');
+    const key = [lower(primary.tourRefNo), fam(primary).key, start, end].join('|');
     groups.set(key, [...(groups.get(key) || []).filter((x) => x.id !== primary.id), primary]);
   }
   const units: PlanUnit[] = [];
@@ -367,7 +381,7 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
     units.push({
       key: `follow|${key}`,
       tourRefNo: first.tourRefNo, officeName: first.officeName || '', groupLeadName: first.groupLeadName || '',
-      family: first.family || `ITS ${first.itsId}`,
+      ...familyFields(fam(first)),
       arrivalDate: stayStart(first), departureDate: stayEnd(first), arrivalTime: stayTime(first, 'arrival'), departureTime: stayTime(first, 'departure'),
       members: list.map(member), pax: 0, starred: list.some((r) => r.isSpecialGuest),
       followRoom: { building: room.building, roomNumber: room.roomNumber },
@@ -381,7 +395,7 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
       tourRefNo: first.tourRefNo,
       officeName: first.officeName || '',
       groupLeadName: first.groupLeadName || '',
-      family: first.family || `ITS ${first.itsId}`,
+      ...familyFields(fam(first)),
       arrivalDate: span.get(first.id)?.start || stayStart(first),
       departureDate: span.get(first.id)?.end || stayEnd(first),
       arrivalTime: stayTime(first, 'arrival'),
@@ -399,8 +413,13 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
   return units;
 }
 
-/** Splits a unit in two, keeping each gender together and children with the women. */
-export function splitUnit(unit: PlanUnit, parts = 2): PlanUnit[] {
+const familyFields = (g: FamilyGroup) => ({ family: g.label, familyKey: g.key, ...(g.note ? { familyNote: g.note } : {}) });
+
+/**
+ * Splits a unit, keeping each gender together and children with the women. By default it splits into
+ * `parts` equal halves; `firstBeds` instead gives the first part that many beds and the second the rest.
+ */
+export function splitUnit(unit: PlanUnit, parts = 2, firstBeds?: number): PlanUnit[] {
   if (unit.members.length < 2) return [unit];
   const ordered = [...unit.members].sort((a, b) => {
     const ga = genderOf(a.gender) === 'M' && isAdult(a) ? 1 : 0;
@@ -408,7 +427,7 @@ export function splitUnit(unit: PlanUnit, parts = 2): PlanUnit[] {
     return ga - gb || (ageNum(b.age) || 0) - (ageNum(a.age) || 0);
   });
   const beds = ordered.filter((m) => !m.infant).length;
-  const size = Math.max(1, Math.ceil(beds / parts));
+  const size = Math.max(1, firstBeds ?? Math.ceil(beds / parts));
   const chunks: PlanMember[][] = [];
   let current: PlanMember[] = [];
   let used = 0;
@@ -465,7 +484,8 @@ interface Stay {
 class Occupancy {
   private readonly byRoom = new Map<string, Stay[]>();
 
-  static fromReservations(reservations: Reservation[], rooms: Room[]) {
+  /** `groups` must be worked out from every reservation, so saved relatives match the planned family. */
+  static fromReservations(reservations: Reservation[], rooms: Room[], groups: Map<string, FamilyGroup>) {
     const occ = new Occupancy();
     const known = new Set(rooms.map((r) => roomKey(r.building, r.roomNumber)));
     for (const r of reservations) {
@@ -475,8 +495,8 @@ class Occupancy {
       occ.add(key, {
         arrival: day(r.arrivalDate), departure: day(r.departureDate) || day(r.arrivalDate),
         arrivalTime: stayTime(r, 'arrival'), departureTime: stayTime(r, 'departure'),
-        pax: getReservationEffectivePax(r), tour: lower(r.tourRefNo), family: lower(r.family || `ITS ${r.itsId}`),
-        label: r.family || r.applicantName,
+        pax: getReservationEffectivePax(r), tour: lower(r.tourRefNo), family: groupOf(groups, r).key,
+        label: groupOf(groups, r).label || r.applicantName,
       });
     }
     return occ;
@@ -502,7 +522,7 @@ class Occupancy {
 function unitStay(unit: PlanUnit): Stay {
   return {
     arrival: unit.arrivalDate, departure: unit.departureDate, arrivalTime: unit.arrivalTime, departureTime: unit.departureTime,
-    pax: unit.pax, tour: lower(unit.tourRefNo), family: lower(unit.family), label: unit.family, unitKey: unit.key,
+    pax: unit.pax, tour: lower(unit.tourRefNo), family: unit.familyKey, label: unit.family, unitKey: unit.key,
   };
 }
 
@@ -510,10 +530,14 @@ function unitStay(unit: PlanUnit): Stay {
 // Scoring one room for one unit
 // ---------------------------------------------------------------------------------------------
 
-/** How strongly each preference counts; lower total score wins. */
+/**
+ * How strongly each preference counts; lower total score wins. An empty bed outweighs every habit put
+ * together, so the planner always takes the room that leaves the fewest beds empty, and a buffer bed
+ * comes before an empty one. Building, floor and office habits only decide between rooms that fit as well.
+ */
 const WEIGHT = {
-  emptyBed: 6,
-  bufferBed: 3,
+  emptyBed: 25,
+  bufferBed: 10,
   newBuilding: 5,
   sizeHabit: 5,
 };
@@ -534,6 +558,8 @@ interface Evaluation {
   ok: boolean;
   score: number;
   freeBeds: number;
+  /** Regular beds this room would leave empty with the unit in it. */
+  emptyBeds: number;
   reasons: string[];
   warnings: string[];
   reject?: string;
@@ -549,7 +575,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   const key = roomKey(room.building, room.roomNumber);
   const reasons: string[] = [];
   const warnings: string[] = [];
-  const reject = (why: string): Evaluation => ({ ok: false, score: Infinity, freeBeds: 0, reasons, warnings, reject: why });
+  const reject = (why: string): Evaluation => ({ ok: false, score: Infinity, freeBeds: 0, emptyBeds: 0, reasons, warnings, reject: why });
   const force = mode === 'force';
 
   if (room.status === 'blocked' && !force) return reject(`Room is blocked${room.blockedReason ? `: ${room.blockedReason}` : ''}`);
@@ -577,7 +603,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   }
 
   // Only one family shares a room. Sharing with another family is the user's call.
-  const otherFamilies = sharing.filter((s) => !(s.tour === lower(unit.tourRefNo) && s.family === lower(unit.family)));
+  const otherFamilies = sharing.filter((s) => !(s.tour === lower(unit.tourRefNo) && s.family === unit.familyKey));
   const sharesWith = [...new Set(otherFamilies.map((s) => s.label))].join(', ');
   if (otherFamilies.length) {
     if (otherFamilies.some((s) => s.tour !== lower(unit.tourRefNo))) {
@@ -595,6 +621,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
 
   // Fit: avoid empty beds, use buffer beds only when needed.
   const base = baseBeds(room);
+  const emptyBeds = Math.max(0, base - after);
   if (after <= base) {
     const empty = base - after;
     score += WEIGHT.emptyBed * empty;
@@ -672,7 +699,8 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
     else score += 1.5;
   }
 
-  return { ok: true, score, freeBeds, reasons, warnings };
+  if (unit.familyNote && !otherFamilies.length) reasons.push(unit.familyNote);
+  return { ok: true, score, freeBeds, emptyBeds, reasons, warnings };
 }
 
 function footprintFrom(reservations: Reservation[], rooms: Room[]) {
@@ -718,7 +746,7 @@ export function planAllocation(input: PlanInput): AllocationPlan {
   const existing = reservations.filter((r) => !inPlan.has(r.id));
   const ctx: Context = {
     options, patterns,
-    occupancy: Occupancy.fromReservations(existing, rooms),
+    occupancy: Occupancy.fromReservations(existing, rooms, familyGroups(reservations)),
     footprint: footprintFrom(existing, rooms),
   };
   const byKey = new Map(rooms.map((r) => [roomKey(r.building, r.roomNumber), r]));
@@ -845,15 +873,46 @@ export function planAllocation(input: PlanInput): AllocationPlan {
     return false;
   };
 
+  /**
+   * Tries an even split and a split sized to each room size, places both parts as a test, and keeps the
+   * split whose rooms leave the fewest empty beds (a part that finds no room counts heavily against it).
+   */
+  const bestSplit = (unit: PlanUnit): PlanUnit[] => {
+    const beds = unit.members.filter((m) => !m.infant).length;
+    const sizes = new Set<number>([Math.ceil(beds / 2)]);
+    for (const r of sorted) {
+      if (r.status === 'blocked') continue;
+      for (const s of [baseBeds(r), options.allowBuffer ? maxBeds(r) : 0]) if (s >= 1 && s < beds) sizes.add(s);
+    }
+    let best: { parts: PlanUnit[]; cost: number } | null = null;
+    for (const size of sizes) {
+      const parts = splitUnit(unit, 2, size);
+      if (parts.length < 2) continue;
+      const trial: { room: string; key: string }[] = [];
+      let cost = 0;
+      for (const part of parts) {
+        const found = bestRoom(part).best;
+        if (!found) { cost += 1000 * Math.max(1, part.pax); continue; }
+        cost += found.ev.score;
+        const room = roomKey(found.room.building, found.room.roomNumber);
+        ctx.occupancy.addUnit(room, part);
+        trial.push({ room, key: part.key });
+      }
+      trial.forEach((t) => ctx.occupancy.removeUnit(t.room, t.key));
+      if (!best || cost < best.cost) best = { parts, cost };
+    }
+    return best?.parts || splitUnit(unit);
+  };
+
   const planUnit = (unit: PlanUnit, depth = 0): void => {
     const { best, lastReject } = bestRoom(unit);
     const largestRoom = Math.max(0, ...sorted.filter((r) => r.status !== 'blocked').map((r) => (options.allowBuffer ? maxBeds(r) : baseBeds(r))));
     if (!best && unit.pax <= largestRoom && relocate(unit)) { units.push(unit); return; }
-    // A family that only fits with many empty beds (or not at all) is split in two.
+    // Only a family that no free room can hold is split, into the two parts that leave the fewest empty beds.
     const tooBig = unit.pax > largestRoom;
     if ((!best || tooBig) && unit.members.filter((m) => !m.infant).length > 1 && depth < 4) {
       const from = units.length;
-      for (const part of splitUnit(unit)) planUnit(part, depth + 1);
+      for (const part of bestSplit(unit)) planUnit(part, depth + 1);
       const parts = units.slice(from);
       if (parts.some((p) => assignments[p.key])) return;
       // No part found a room: keep the family as one row, so it can be shifted A→B in one go.
@@ -936,7 +995,7 @@ export const memberIds = (unit: PlanUnit) => unit.members.flatMap((m) => [m.id, 
 function contextWithout(plan: AllocationPlan, reservations: Reservation[], rooms: Room[], patterns: LearnedPatterns, exclude?: string): Context {
   const inPlan = new Set(plan.units.flatMap(memberIds));
   const existing = reservations.filter((r) => !inPlan.has(r.id));
-  const occupancy = Occupancy.fromReservations(existing, rooms);
+  const occupancy = Occupancy.fromReservations(existing, rooms, familyGroups(reservations));
   const footprint = footprintFrom(existing, rooms);
   const byKey = new Map(rooms.map((r) => [roomKey(r.building, r.roomNumber), r]));
   for (const u of plan.units) {
@@ -988,6 +1047,36 @@ export function revalidatePlan(plan: AllocationPlan, reservations: Reservation[]
     assignments[u.key] = { ...a, warnings: [...new Set(warnings)] };
   }
   return { ...plan, assignments };
+}
+
+/**
+ * Regular beds the plan leaves empty: for each room it uses, the beds its planned family does not fill.
+ * Zaereen already saved in that room on those dates count as filling their beds.
+ */
+export function planEmptyBeds(plan: AllocationPlan, rooms: Room[], reservations: Reservation[] = []) {
+  const byKey = new Map(rooms.map((r) => [roomKey(r.building, r.roomNumber), r]));
+  const inPlan = new Set(plan.units.flatMap(memberIds));
+  const stays = new Map<string, { start: string; end: string; pax: number }[]>();
+  for (const u of plan.units) {
+    const a = plan.assignments[u.key];
+    if (!a || u.followRoom) continue;
+    const k = roomKey(a.building, a.roomNumber);
+    stays.set(k, [...(stays.get(k) || []), { start: u.arrivalDate, end: u.departureDate, pax: u.pax }]);
+  }
+  let empty = 0;
+  for (const [k, list] of stays) {
+    const room = byKey.get(k);
+    if (!room) continue;
+    const saved = reservations.filter((r) => !inPlan.has(r.id) && r.roomNumber && roomKey(r.building, r.roomNumber) === k);
+    // Count each arrival night once: the planned family's first night in the room.
+    for (const night of new Set(list.map((x) => x.start))) {
+      const planned = list.filter((x) => covers(x.start, x.end, night)).reduce((sum, x) => sum + x.pax, 0);
+      const already = saved.filter((r) => covers(day(r.arrivalDate), day(r.departureDate) || day(r.arrivalDate), night))
+        .reduce((sum, r) => sum + getReservationEffectivePax(r), 0);
+      empty += Math.max(0, baseBeds(room) - planned - already);
+    }
+  }
+  return empty;
 }
 
 /** Totals for the summary row. */
