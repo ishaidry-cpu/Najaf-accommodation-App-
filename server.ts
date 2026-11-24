@@ -22,8 +22,8 @@ if (workbook) {
 }
 
 const app = express();
-const port = Number(arg('--port') || process.env.APP_PORT || 3000);
-const host = arg('--host') || '127.0.0.1';
+const port = Number(arg('--port') || process.env.PORT || process.env.APP_PORT || 3000);
+const host = arg('--host') || process.env.HOST || '0.0.0.0';
 const clients = new Set<express.Response>();
 function notify() {
   for (const client of clients) client.write('data: {"type":"DATA_UPDATED"}\n\n');
@@ -31,11 +31,15 @@ function notify() {
 const api = accommodationApi(notify);
 app.use('/api', (req,res,next) => {
   const origin = req.get('origin');
-  const requestHost = req.get('host');
-  const directLocal = ['localhost','127.0.0.1','[::1]'].includes(req.hostname);
-  const localPeer = ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress || '');
-  if (!localPeer || !directLocal || (origin && origin !== `http://${requestHost}` && origin !== `https://${requestHost}`) ||
-      req.get('sec-fetch-site') === 'cross-site') return res.status(403).json({error:'Open the app locally.'});
+  const requestHost = req.get('x-forwarded-host') || req.get('host');
+  if (
+    origin &&
+    requestHost &&
+    origin !== `http://${requestHost}` &&
+    origin !== `https://${requestHost}`
+  ) {
+    return res.status(403).json({ error: 'Cross-origin API request blocked.' });
+  }
   res.setHeader('Cache-Control','no-store');
   next();
 });
@@ -62,7 +66,14 @@ app.use('/api', async (req,res) => {
 const server = http.createServer(app);
 if (process.env.NODE_ENV !== 'production') {
   const { createServer } = await import('vite');
-  const vite = await createServer({server:{middlewareMode:true,hmr:{server}},appType:'spa'});
+  const vite = await createServer({
+    server: {
+      middlewareMode: true,
+      allowedHosts: true,
+      hmr: process.env.DISABLE_HMR === 'true' ? false : { server },
+    },
+    appType: 'spa',
+  });
   app.use(vite.middlewares);
 } else {
   app.use(express.static(path.join(root,'dist')));
@@ -77,5 +88,6 @@ const timer = setInterval(tick,60_000);
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal, () => {
   clearInterval(timer);
   for (const client of clients) client.end();
-  server.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1500).unref();
 });

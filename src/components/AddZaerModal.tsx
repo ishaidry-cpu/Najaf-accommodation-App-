@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   X, 
   UserPlus, 
@@ -85,15 +85,17 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   const [moneyNotes, setMoneyNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Reset form when opened
+  const wasOpenRef = useRef(false);
+
+  // Reset form ONLY when modal transitions from closed -> open
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setItsId('');
       setApplicantName('');
       setAge('35');
       setGender('Male');
       setFamily(existingFamilies[0] || 'F-1');
-      setTourRefNo(existingTourIds[0] || 'NKERP/TOUR/2026/101');
+      setTourRefNo('');
       setOfficeName(existingOffices[0] || 'Fayz E Husayni Trust Mumbai');
       setJamaat('');
       setGroupLeadName('');
@@ -110,7 +112,8 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
       setMoneyNotes('');
       setErrorMsg('');
     }
-  }, [isOpen, existingFamilies, existingTourIds, existingOffices, categories, todayStr, defaultDepartureStr]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, existingFamilies, existingOffices, categories, todayStr, defaultDepartureStr]);
 
   // Autofill Tour metadata when user selects/types a tour
   const handleSelectTour = (tid: string) => {

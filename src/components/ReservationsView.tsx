@@ -66,6 +66,7 @@ interface ReservationsViewProps {
   onDownloadTemplate: () => void;
   onOpenAccountsSlip: (reservation: Reservation) => void;
   onOpenAToBSlip?: (reservation?: Reservation | null, selectedIds?: string[]) => void;
+  onOpenBToASlip?: (reservation?: Reservation | null, selectedIds?: string[]) => void;
   onOpenReceptionSlip?: (tab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload') => void;
   onOpenAddZaer?: () => void;
   onOpenAddTourGroup?: () => void;
@@ -130,6 +131,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onDownloadTemplate,
   onOpenAccountsSlip,
   onOpenAToBSlip,
+  onOpenBToASlip,
   onOpenReceptionSlip,
   onOpenAddZaer,
   onOpenAddTourGroup,
@@ -665,6 +667,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       if (dPart) {
         updated.departureDateTime = `${dPart}T${cleanTime.replace(/\s+/g, '')}`;
         updated.rawDepartureStr = `${dPart} ${cleanTime}`;
+      }
+    } else if (field === 'category') {
+      const catStr = String(value || '').trim().toLowerCase();
+      if (catStr.includes('b to a')) {
+        const slipDate = new Date().toISOString().slice(0, 10);
+        updated.shiftToCategoryA = true;
+        updated.accommodationCategory = 'Category A (Nizaam)';
+        updated.moneyGiven = target.moneyGiven || 'No';
+        updated.requestSlipNo =
+          target.requestSlipNo ||
+          `SLIP-${target.tourRefNo?.slice(-4) || 'TOUR'}-${target.family || 'FAM'}-${Date.now().toString().slice(-4)}`;
+        updated.requestSlipDate = target.requestSlipDate || slipDate;
       }
     }
 
@@ -1321,6 +1335,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {onOpenBToASlip && (
+              <button
+                type="button"
+                onClick={() => onOpenBToASlip(null, Array.from(selectedIds))}
+                className="px-2.5 py-1 bg-[#c9a85a] hover:bg-[#b89545] text-[#0b3a2b] rounded-lg text-xs font-extrabold flex items-center gap-1 transition cursor-pointer shadow-xs"
+                title="Shift selected zaereen to Category A (B to A) & generate Accounts Slip"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>B→A Shift</span>
+              </button>
+            )}
+
             {onOpenAToBSlip && (
               <button
                 type="button"

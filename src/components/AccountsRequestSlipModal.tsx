@@ -85,9 +85,19 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       .sort((a, b) => a.tourId.localeCompare(b.tourId));
   }, [allReservations]);
 
-  // Saved A to B pax across all tours
+  // Saved A to B & B to A pax across all tours
   const savedAToBPax = useMemo(
     () => allReservations.filter((r) => r.shiftDirection === 'A_TO_B' || Boolean(r.refundSlipNo)),
+    [allReservations]
+  );
+  const savedBToAPax = useMemo(
+    () =>
+      allReservations.filter(
+        (r) =>
+          Boolean(r.shiftToCategoryA) ||
+          r.category === 'B to A' ||
+          Boolean(r.category && r.category.toLowerCase().includes('b to a'))
+      ),
     [allReservations]
   );
 
@@ -133,8 +143,17 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
         setSelectedMemberIds(sameFam.length > 0 ? sameFam.map((m) => m.id) : [reservation.id]);
         setSlipMode('tour');
       } else {
-        setSelectedMemberIds(list.map((m) => m.id));
-        setSlipMode(list.length > 1 ? 'tour' : 'single');
+        // Default to B to A members in this tour (never drag unrelated Category A tour members into a B to A slip)
+        const bToAInTour = list.filter(
+          (m) =>
+            m.id === reservation.id ||
+            Boolean(m.shiftToCategoryA) ||
+            m.category === 'B to A' ||
+            Boolean(m.category && m.category.toLowerCase().includes('b to a'))
+        );
+        const initialList = bToAInTour.length > 0 ? bToAInTour : [reservation];
+        setSelectedMemberIds(initialList.map((m) => m.id));
+        setSlipMode(initialList.length > 1 ? 'tour' : 'single');
       }
     } else if (initialDirection === 'A_TO_B') {
       const savedA2B = allReservations.filter((r) => r.shiftDirection === 'A_TO_B' || Boolean(r.refundSlipNo));
@@ -275,6 +294,14 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     setSlipMode('tour');
   };
 
+  const handleSelectSavedBToAPax = () => {
+    if (savedBToAPax.length === 0) return;
+    setSelectedTourFilter('ALL');
+    setSelectedMemberIds(savedBToAPax.map((m) => m.id));
+    setActiveSingleZaerId(savedBToAPax[0].id);
+    setSlipMode('tour');
+  };
+
   const handleClearSelection = () => {
     setSelectedMemberIds([]);
   };
@@ -377,10 +404,11 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
   const paxVal =
     slipMode === 'single'
-      ? activeSingleZaer?.paxCount || activeSingleZaer?.pax || 1
-      : effectiveSlipPaxList.length > 0
-      ? effectiveSlipPaxList.length
-      : 0;
+      ? Math.max(1, activeSingleZaer?.paxCount || activeSingleZaer?.pax || 1)
+      : effectiveSlipPaxList.reduce(
+          (sum, r) => sum + Math.max(1, Number(r.paxCount || r.pax || 1) || 1),
+          0
+        );
 
   const arrVal = formatDateTimeDisplay(refForMeta?.arrivalDate, refForMeta?.arrivalTime);
   const depVal = formatDateTimeDisplay(refForMeta?.departureDate, refForMeta?.departureTime);
@@ -1141,6 +1169,16 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   title="Select all pax already marked as shifted A to B"
                 >
                   Saved A➔B ({savedAToBPax.length})
+                </button>
+              )}
+              {!isAToB && savedBToAPax.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSelectSavedBToAPax}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white transition cursor-pointer whitespace-nowrap"
+                  title="Select all pax already marked as B to A"
+                >
+                  Saved B➔A ({savedBToAPax.length})
                 </button>
               )}
               <button

@@ -318,7 +318,7 @@ export default function App() {
   const handleAddTourBatch = (newBatch: Reservation[]) => {
     if (!newBatch || newBatch.length === 0) return false;
     const { finalReservations, uniqueToAppend, totalDuplicatesSkipped } = deduplicateForAppend(
-      reservations,
+      reservationsRef.current,
       newBatch
     );
 
@@ -827,11 +827,14 @@ export default function App() {
   const handleBatchShiftToCategoryA = (
     reservationIds: string[],
     moneyGiven: MoneyGivenStatus = 'Yes',
-    notes?: string
+    notes?: string,
+    roomOverride?: { building: string; roomNumber: string }
   ) => {
     const slipDate = new Date().toISOString().slice(0, 10);
     const idSet = new Set(reservationIds);
-    const updated = reservations.map((r) => {
+    const cleanRoom = roomOverride?.roomNumber?.trim() || '';
+    const cleanBuilding = roomOverride?.building?.trim() || '';
+    const updated = reservationsRef.current.map((r) => {
       if (idSet.has(r.id)) {
         const slipNo = r.requestSlipNo || `SLIP-${r.tourRefNo?.slice(-4) || 'TOUR'}-${r.family || 'FAM'}-${Date.now().toString().slice(-4)}`;
         return {
@@ -844,6 +847,12 @@ export default function App() {
           moneyNotes: notes !== undefined ? notes : r.moneyNotes,
           requestSlipNo: slipNo,
           requestSlipDate: slipDate,
+          ...(cleanRoom
+            ? {
+                building: cleanBuilding || r.building || 'Burhani',
+                roomNumber: cleanRoom,
+              }
+            : {}),
           updatedAt: new Date().toISOString(),
         };
       }
@@ -852,9 +861,8 @@ export default function App() {
 
     persist('reservations', updated);
 
-
     showToast(
-      `Shifted ${reservationIds.length} pilgrim(s) to Category A (Payment / Money Given: ${moneyGiven})`
+      `Shifted ${reservationIds.length} pilgrim(s) to Category A (Payment / Money Given: ${moneyGiven}${cleanRoom ? ` · ${cleanBuilding || ''} Rm ${cleanRoom}` : ''})`
     );
   };
 
@@ -1145,6 +1153,7 @@ export default function App() {
             onDownloadTemplate={downloadSampleExcelTemplate}
             onOpenAccountsSlip={(res) => handleOpenAccountsSlipModal(res, 'B_TO_A')}
             onOpenAToBSlip={(res, selectedIds) => handleOpenAccountsSlipModal(res || null, 'A_TO_B', selectedIds)}
+            onOpenBToASlip={(res, selectedIds) => handleOpenAccountsSlipModal(res || null, 'B_TO_A', selectedIds)}
             onOpenReceptionSlip={handleOpenReceptionSlip}
             onOpenAddZaer={() => setIsAddZaerOpen(true)}
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
@@ -1177,8 +1186,11 @@ export default function App() {
             onToggleMoneyGiven={handleToggleMoneyGiven}
             onOpenAccountsSlip={(res) => handleOpenAccountsSlipModal(res, 'B_TO_A')}
             onOpenAToBSlip={() => handleOpenAccountsSlipModal(null, 'A_TO_B')}
+            onOpenBToASlipForIds={(ids) => handleOpenAccountsSlipModal(null, 'B_TO_A', ids)}
             onToggleShiftToCategoryA={handleToggleShiftToCategoryA}
+            onBatchShiftToCategoryA={handleBatchShiftToCategoryA}
             onAddZaer={handleAddReservation}
+            onAddTourBatch={handleAddTourBatch}
             onDeleteReservation={handleDeleteReservation}
             userRole={userRole}
           />
