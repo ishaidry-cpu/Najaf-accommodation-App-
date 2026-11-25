@@ -1,3 +1,9 @@
+/*! Faiz-e-Husaini Najaf Accommodation */
+/*
+ * Keep the line above. Cloudflare remembers each uploaded file's content type by its content, and the
+ * 2026-11-25 build's files were once stored with the wrong type, so browsers downloaded the app. This
+ * comment makes the stylesheet, the scripts that name it and index.html differ from those copies.
+ */
 @import "tailwindcss";
 
 /*
