@@ -34,6 +34,7 @@ import {
   getRoomStatusOnDate,
   checkRoomAllotmentAvailability,
   normalizeBuildingName,
+  getDistinctBuildings,
   countEffectivePax
 } from '../services/storage';
 import { checkTurnoverTimingConflict } from '../utils/turnoverTiming';
@@ -85,10 +86,10 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   // Number of days to display in the top row: 7, 14, 21, or 30 days
   const [dayRange, setDayRange] = useState<number>(14);
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
+  // All buildings in inventory (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => {
-    return ['Burhani', 'Saifee', 'Badri'];
-  }, []);
+    return getDistinctBuildings(rooms);
+  }, [rooms]);
 
   // Existing Tour IDs for auto-suggestion datalist
   const existingTourIds = useMemo(() => {
@@ -700,10 +701,10 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                 type="button"
                 onClick={onOpenAddBuildingRooms}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white border border-[#c9a85a]/40 shadow-2xs transition cursor-pointer"
-                title="Add hotel rooms"
+                title="Add new building or rooms"
               >
                 <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
-                <span>Add Rooms</span>
+                <span>Add Building / Rooms</span>
               </button>
             )}
 

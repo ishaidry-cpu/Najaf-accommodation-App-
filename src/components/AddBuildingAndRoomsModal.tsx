@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Building2, CheckCircle2, DoorClosed, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Building2, CheckCircle2, DoorClosed, Plus, Sparkles, X } from 'lucide-react';
 import { Room } from '../types';
 import {
   deduplicateRooms,
@@ -7,7 +7,7 @@ import {
   normalizeRoomNumber,
   getCanonicalRoomKey,
   isPlausibleRoom,
-  OFFICIAL_THREE_BUILDINGS,
+  getDistinctBuildings,
 } from '../services/storage';
 import {
   DEFAULT_ROOM_SPEC,
@@ -23,6 +23,7 @@ interface AddBuildingAndRoomsModalProps {
   onClose: () => void;
   existingRooms: Room[];
   onAddRooms: (newRooms: Room[]) => void;
+  initialBuildingMode?: 'existing' | 'new_building';
 }
 
 const MAX_BATCH = 100;
@@ -38,22 +39,54 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   onClose,
   existingRooms,
   onAddRooms,
+  initialBuildingMode = 'existing',
 }) => {
-  const [mode, setMode] = useState<'single' | 'batch'>('single');
+  const [isNewBuilding, setIsNewBuilding] = useState(initialBuildingMode === 'new_building');
+  const [newBuildingName, setNewBuildingName] = useState('');
   const [building, setBuilding] = useState<string>('Burhani');
+
+  const [mode, setMode] = useState<'single' | 'batch'>(initialBuildingMode === 'new_building' ? 'batch' : 'single');
 
   // Single room
   const [singleRoomNumber, setSingleRoomNumber] = useState('');
 
   // Several rooms
   const [batchMethod, setBatchMethod] = useState<'range' | 'list'>('range');
-  const [rangeFrom, setRangeFrom] = useState('501');
-  const [rangeTo, setRangeTo] = useState('510');
+  const [rangeFrom, setRangeFrom] = useState('101');
+  const [rangeTo, setRangeTo] = useState('110');
   const [roomListInput, setRoomListInput] = useState('');
   const [batchFloorMode, setBatchFloorMode] = useState<'auto' | 'fixed'>('auto');
 
   const [spec, setSpec] = useState<RoomSpecDraft>(DEFAULT_ROOM_SPEC);
   const [error, setError] = useState<string | null>(null);
+
+  const distinctBuildings = useMemo(() => getDistinctBuildings(existingRooms), [existingRooms]);
+
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      const startNew = initialBuildingMode === 'new_building';
+      setIsNewBuilding(startNew);
+      setNewBuildingName('');
+      setBuilding((prev) => (distinctBuildings.includes(prev) ? prev : distinctBuildings[0] || 'Burhani'));
+      setMode(startNew ? 'batch' : 'single');
+      setSingleRoomNumber('');
+      setBatchMethod('range');
+      setRangeFrom(startNew ? '101' : '501');
+      setRangeTo(startNew ? '110' : '510');
+      setRoomListInput('');
+      setError(null);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialBuildingMode, distinctBuildings]);
+
+  const activeBuildingRaw = isNewBuilding ? newBuildingName : building;
+  const activeBuilding = useMemo(() => normalizeBuildingName(activeBuildingRaw), [activeBuildingRaw]);
+
+  const existingBuildingMatch = useMemo(() => {
+    if (!activeBuilding) return null;
+    return distinctBuildings.find((b) => b.toLowerCase() === activeBuilding.toLowerCase()) || null;
+  }, [distinctBuildings, activeBuilding]);
 
   const existingByKey = useMemo(() => {
     const map = new Map<string, Room>();
@@ -79,16 +112,22 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
     ).slice(0, MAX_BATCH);
   }, [mode, singleRoomNumber, batchMethod, rangeFrom, rangeTo, roomListInput]);
 
-  const invalidNumbers = roomNumbers.filter((n) => !isPlausibleRoom(building, n));
+  const hasValidBuildingName = activeBuilding.length > 0 && /[a-z]/i.test(activeBuilding);
+
+  const invalidNumbers = useMemo(() => {
+    if (!hasValidBuildingName) return [];
+    return roomNumbers.filter((n) => !isPlausibleRoom(activeBuilding, n));
+  }, [roomNumbers, activeBuilding, hasValidBuildingName]);
 
   const preview = useMemo(() => {
-    const bldg = normalizeBuildingName(building);
-    const rooms = roomNumbers
+    if (!hasValidBuildingName) return [];
+    const bldg = activeBuilding;
+    return roomNumbers
       .filter((n) => isPlausibleRoom(bldg, n))
       .map((num) => {
         const key = getCanonicalRoomKey(bldg, num);
         const existing = existingByKey.get(key);
-        // Several rooms: take the floor from the first digit (501 → Floor 5) unless a fixed floor is set.
+        // Several rooms: take the floor from the first digit (501 -> Floor 5) unless a fixed floor is set.
         let roomSpec = spec;
         if (mode === 'batch' && batchFloorMode === 'auto') {
           const digits = num.replace(/\D/g, '');
@@ -101,21 +140,25 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
         );
         return { room, isUpdate: !!existing };
       });
-    return rooms;
-  }, [roomNumbers, building, existingByKey, spec, mode, batchFloorMode]);
+  }, [roomNumbers, activeBuilding, hasValidBuildingName, existingByKey, spec, mode, batchFloorMode]);
 
   const updates = preview.filter((p) => p.isUpdate).length;
   const additions = preview.length - updates;
 
   const handleSave = () => {
+    if (!hasValidBuildingName) {
+      return setError('Enter a valid building name using letters (e.g. Qasr Nobola, Najaf Lodge).');
+    }
     const problem = validateRoomSpec(spec);
     if (problem) return setError(problem);
-    if (invalidNumbers.length) return setError(`Check these room numbers: ${invalidNumbers.join(', ')}. Use up to 6 characters, e.g. 105 or G1.`);
-    if (preview.length === 0) return setError('Enter at least one room number.');
+    if (invalidNumbers.length) {
+      return setError(`Check these room numbers: ${invalidNumbers.join(', ')}. Use up to 6 characters, e.g. 105 or G1.`);
+    }
+    if (preview.length === 0) return setError('Enter at least one room number for this building.');
     if (
       updates > 0 &&
       !window.confirm(
-        `${updates} of these room${updates === 1 ? '' : 's'} already exist${updates === 1 ? 's' : ''} in ${building}. Replace ${updates === 1 ? 'its' : 'their'} details with the ones entered here?`
+        `${updates} of these room${updates === 1 ? '' : 's'} already exist${updates === 1 ? 's' : ''} in ${activeBuilding}. Replace ${updates === 1 ? 'its' : 'their'} details with the ones entered here?`
       )
     ) {
       return;
@@ -129,9 +172,15 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   const buildingCount = (b: string) =>
     existingRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === b.toLowerCase()).length;
 
+  const creatingBrandNewBuilding = isNewBuilding && hasValidBuildingName && !existingBuildingMatch;
+
   const saveLabel =
     preview.length === 0
-      ? 'Save rooms'
+      ? creatingBrandNewBuilding
+        ? 'Create building & rooms'
+        : 'Save rooms'
+      : creatingBrandNewBuilding
+      ? `Create ${activeBuilding} (${additions} room${additions === 1 ? '' : 's'})`
       : additions && updates
       ? `Add ${additions}, update ${updates}`
       : updates
@@ -151,11 +200,11 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
             <div className="flex items-center gap-2">
               <Building2 className="w-5 h-5 text-[#ecdcae]" />
               <h2 id="add-rooms-title" className="text-base sm:text-lg font-bold font-serif tracking-wide">
-                Add rooms
+                {isNewBuilding ? 'Add new building & rooms' : 'Add building or rooms'}
               </h2>
             </div>
             <p className="text-xs text-stone-200 mt-1 max-w-xl">
-              New rooms show as available across the app straight away: allotment, switching, the timeline and the AI Planner.
+              New buildings and rooms appear across the app straight away: allotment, switching, timeline, and planner.
             </p>
           </div>
           <button
@@ -174,22 +223,82 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
             <div>
               <span className="block font-bold text-stone-800 mb-2">Building</span>
               <div className="flex items-center gap-2 flex-wrap">
-                {OFFICIAL_THREE_BUILDINGS.map((b) => (
-                  <button
-                    key={b}
-                    type="button"
-                    aria-pressed={building === b}
-                    onClick={() => setBuilding(b)}
-                    className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer ${
-                      building === b
-                        ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
-                        : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
-                    }`}
-                  >
-                    {b} <span className="font-normal opacity-75 tabular-nums">({buildingCount(b)})</span>
-                  </button>
-                ))}
+                {distinctBuildings.map((b) => {
+                  const selected = !isNewBuilding && building === b;
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setIsNewBuilding(false);
+                        setBuilding(b);
+                        setError(null);
+                      }}
+                      className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer ${
+                        selected
+                          ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                          : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      }`}
+                    >
+                      {b} <span className="font-normal opacity-75 tabular-nums">({buildingCount(b)})</span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  aria-pressed={isNewBuilding}
+                  onClick={() => {
+                    setIsNewBuilding(true);
+                    setMode('batch');
+                    if (rangeFrom === '501' && rangeTo === '510') {
+                      setRangeFrom('101');
+                      setRangeTo('110');
+                    }
+                    setError(null);
+                  }}
+                  className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer inline-flex items-center gap-1.5 ${
+                    isNewBuilding
+                      ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                      : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New building
+                </button>
               </div>
+
+              {isNewBuilding && (
+                <div className="mt-3 p-3 rounded-xl bg-[#f6f8f7] border border-[#c9a85a]/50 space-y-1.5">
+                  <label className="block max-w-md">
+                    <span className="block text-stone-700 font-bold mb-1">New building name *</span>
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="e.g. Qasr Nobola, Al-Najaf Residency, Mohammedi"
+                      value={newBuildingName}
+                      onChange={(e) => {
+                        setNewBuildingName(e.target.value);
+                        setError(null);
+                      }}
+                      className={inputClass}
+                    />
+                  </label>
+                  {existingBuildingMatch ? (
+                    <p className="text-[11px] font-semibold text-amber-800">
+                      "{existingBuildingMatch}" already exists ({buildingCount(existingBuildingMatch)} rooms). New rooms will be added to {existingBuildingMatch}.
+                    </p>
+                  ) : hasValidBuildingName ? (
+                    <p className="text-[11px] font-semibold text-[#0f4a37]">
+                      Ready to create building "{activeBuilding}" with the rooms configured below.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-stone-500">
+                      Enter a building name above, then choose its starting room numbers below.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -216,7 +325,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                 <span className="block text-stone-600 font-semibold mb-1">Room number *</span>
                 <input
                   type="text"
-                  autoFocus
+                  autoFocus={!isNewBuilding}
                   placeholder="e.g. 501, G4, M102"
                   value={singleRoomNumber}
                   onChange={(e) => { setSingleRoomNumber(e.target.value); setError(null); }}
@@ -253,7 +362,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       rows={2}
                       value={roomListInput}
                       onChange={(e) => setRoomListInput(e.target.value)}
-                      placeholder="501, 502, 503, G4"
+                      placeholder="101, 102, 103, G1"
                       className={inputClass}
                     />
                   </label>
@@ -290,7 +399,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
             <div className="flex items-center justify-between gap-2 font-bold text-stone-800">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                Preview
+                Preview {hasValidBuildingName ? `— ${activeBuilding}` : ''}
               </span>
               <span className="text-[#0f4a37] bg-emerald-100 px-2.5 py-0.5 rounded-full tabular-nums">
                 {additions} new{updates ? ` · ${updates} existing` : ''}
@@ -307,14 +416,16 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     }`}
                   >
                     <DoorClosed className="w-3 h-3" />
-                    {room.roomNumber} · {room.floorLabel} · {room.beds} beds · sleeps {room.capacity}
+                    {room.building} {room.roomNumber} · {room.floorLabel} · {room.beds} beds · sleeps {room.capacity}
                     {room.buffer ? `+${room.buffer}` : ''}
                     {isUpdate && <span className="font-bold"> · exists</span>}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-stone-400 italic text-center py-2">Enter a room number to see it here.</p>
+              <p className="text-stone-400 italic text-center py-2">
+                {hasValidBuildingName ? 'Enter a room number to see it here.' : 'Enter a building name to preview rooms.'}
+              </p>
             )}
             {invalidNumbers.length > 0 && (
               <p className="text-red-700 font-semibold">Not valid room numbers: {invalidNumbers.join(', ')}</p>
@@ -338,7 +449,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
           <button
             type="button"
             onClick={handleSave}
-            disabled={preview.length === 0}
+            disabled={preview.length === 0 || !hasValidBuildingName}
             className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white transition flex items-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />

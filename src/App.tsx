@@ -44,7 +44,6 @@ import {
   deduplicateRooms,
   getCanonicalRoomKey,
   mergeRoomsIntoInventory,
-  isOfficialThreeBuilding,
   normalizeBuildingName,
   normalizeRoomNumber
 } from './services/storage';
@@ -1027,13 +1026,11 @@ export default function App() {
     showToast('Restored the official 120 rooms.');
   };
 
-  // Add or update rooms in Burhani, Saifee or Badri. Custom rooms and edited specs are kept as entered.
+  // Add or update rooms in any official or newly added building. Custom rooms and edited specs are kept as entered.
   const handleAddRooms = (newRoomsToAdd: Room[]) => {
-    const cleanIncoming = deduplicateRooms(newRoomsToAdd).filter((r) =>
-      isOfficialThreeBuilding(r.building)
-    );
+    const cleanIncoming = deduplicateRooms(newRoomsToAdd);
     if (cleanIncoming.length === 0) {
-      showToast('Rooms can only be added to Burhani, Saifee or Badri.', 'error');
+      showToast('Enter valid building and room details.', 'error');
       return;
     }
 

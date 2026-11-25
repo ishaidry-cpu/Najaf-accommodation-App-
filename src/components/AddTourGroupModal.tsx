@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus } from '../types';
 import { normalizeItsId } from '../utils/deduplication';
-import { getVacantRoomsForDuration, normalizeBuildingName, normalizeRoomNumber } from '../services/storage';
+import { getVacantRoomsForDuration, normalizeBuildingName, normalizeRoomNumber, getDistinctBuildings } from '../services/storage';
 import { parseBulkTourPaste, cleanClipboardText, normalizeGender } from '../utils/itsPasteParser';
 
 export interface TourIndividualRow {
@@ -101,8 +101,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const [groupLeadName, setGroupLeadName] = useState('');
   const [defaultCategory, setDefaultCategory] = useState(categories[0] || 'Mumineen');
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
-  const distinctBuildings = useMemo(() => ['Burhani', 'Saifee', 'Badri'] as const, []);
+  // All buildings in inventory (core 3 + any custom buildings added by user)
+  const distinctBuildings = useMemo(() => getDistinctBuildings(rooms), [rooms]);
   const [defaultBuilding, setDefaultBuilding] = useState<string>('Saifee');
   const [batchRoomNumber, setBatchRoomNumber] = useState<string>('');
 

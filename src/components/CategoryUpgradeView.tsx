@@ -22,6 +22,7 @@ import {
   normalizeRoomNumber,
   getRoomBedCount,
   getVacantRoomsForDuration,
+  getDistinctBuildings,
 } from '../services/storage';
 import { normalizeItsId } from '../utils/deduplication';
 import { parseBulkTourPaste } from '../utils/itsPasteParser';
@@ -65,8 +66,8 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
   const [moneyFilter, setMoneyFilter] = useState<'ALL' | 'Yes' | 'No'>('ALL');
   const [hotelFilter, setHotelFilter] = useState<string>('ALL');
 
-  // Strictly the 3 official buildings
-  const distinctBuildings = useMemo(() => ['Burhani', 'Saifee', 'Badri'], []);
+  // All buildings in inventory (core 3 + any custom buildings added by user)
+  const distinctBuildings = useMemo(() => getDistinctBuildings(rooms), [rooms]);
 
   // Deletion protection modals for B to A
   const [bToARecordToDelete, setBToARecordToDelete] = useState<Reservation | null>(null);

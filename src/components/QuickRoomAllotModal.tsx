@@ -27,7 +27,8 @@ import {
   getRoomBookingsForDuration,
   isInfant,
   countEffectivePax,
-  normalizeBuildingName
+  normalizeBuildingName,
+  getDistinctBuildings
 } from '../services/storage';
 
 interface QuickRoomAllotModalProps {
@@ -57,10 +58,10 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   const [amenityFilter, setAmenityFilter] = useState<'ALL' | 'western' | 'indian' | 'double' | 'single'>('ALL');
   const [allotMode, setAllotMode] = useState<'single' | 'family'>('single');
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
+  // All buildings in inventory (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => {
-    return ['Burhani', 'Saifee', 'Badri'];
-  }, []);
+    return getDistinctBuildings(rooms);
+  }, [rooms]);
 
   const arrivalDate = targetReservation ? (targetReservation.arrivalDate || targetReservation.arrivalDateTime || targetReservation.rawArrivalStr || '') : '';
   const departureDate = targetReservation ? (targetReservation.departureDate || targetReservation.departureDateTime || targetReservation.rawDepartureStr || '') : '';

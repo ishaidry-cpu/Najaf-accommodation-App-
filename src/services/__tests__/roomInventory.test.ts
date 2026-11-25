@@ -4,9 +4,11 @@ import type { Room } from '../../types';
 import {
   INITIAL_ROOMS,
   buildRoomAmenities,
+  getDistinctBuildings,
   getRoomBedCount,
   getRoomCustomFeatures,
   mergeRoomsIntoInventory,
+  reconcileOfficialSaifeeBurhaniRooms,
 } from '../storage';
 
 const custom = (over: Partial<Room>): Room => ({
@@ -21,6 +23,20 @@ test('a custom Badri room is kept (not pruned to the six official rooms)', () =>
   const room = merged.find((r) => r.building === 'Badri' && r.roomNumber === '301');
   assert.equal(room?.beds, 4);
   assert.equal(room?.capacity, 5);
+});
+
+test('custom buildings are kept during reconciliation and included by getDistinctBuildings', () => {
+  const customBuildingRoom = custom({
+    id: 'rm-qasr-nobola-101',
+    building: 'Qasr Nobola',
+    roomNumber: '101',
+    floor: 1,
+    floorLabel: 'Floor 1',
+  });
+  const merged = mergeRoomsIntoInventory(INITIAL_ROOMS, [customBuildingRoom]);
+  const reconciled = reconcileOfficialSaifeeBurhaniRooms(merged);
+  assert.ok(reconciled.some((r) => r.building === 'Qasr Nobola' && r.roomNumber === '101'));
+  assert.ok(getDistinctBuildings(reconciled).includes('Qasr Nobola'));
 });
 
 test('editing an official room keeps the new specs and its id', () => {

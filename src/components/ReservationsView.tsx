@@ -47,6 +47,7 @@ import {
   isInfant,
   countEffectivePax,
   normalizeBuildingName,
+  getDistinctBuildings,
   getRoomBedCount,
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
@@ -266,10 +267,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     return Array.from(new Set(reservations.map((r) => r.tourRefNo).filter(Boolean))).sort();
   }, [reservations]);
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
+  // All buildings in inventory (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => {
-    return ['Burhani', 'Saifee', 'Badri'];
-  }, []);
+    return getDistinctBuildings(rooms);
+  }, [rooms]);
 
   // Distinct families for selected batch Tour ID
   const familiesInBatchTour = useMemo(() => {

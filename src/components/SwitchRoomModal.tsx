@@ -20,6 +20,7 @@ import {
   countEffectivePax,
   isInfant,
   normalizeBuildingName,
+  getDistinctBuildings,
   getRoomBedCount,
 } from '../services/storage';
 
@@ -123,8 +124,8 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
   );
 
   const distinctBuildings = useMemo(() => {
-    return ['Burhani', 'Saifee', 'Badri'];
-  }, []);
+    return getDistinctBuildings(rooms);
+  }, [rooms]);
 
   const floorOptions = useMemo(() => {
     const set: string[] = [];

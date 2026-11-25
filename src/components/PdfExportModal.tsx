@@ -22,6 +22,7 @@ import {
 import { Reservation, Room } from '../types';
 import { generateAdministrativePdf, PdfExportOptions } from '../services/pdfExport';
 import { normalizeDate } from '../services/excelService';
+import { getDistinctBuildings, normalizeBuildingName } from '../services/storage';
 
 export interface PdfExportModalProps {
   isOpen: boolean;
@@ -692,10 +693,15 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 onChange={(e) => setBuildingFilter(e.target.value)}
                 className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none cursor-pointer"
               >
-                <option value="ALL">All Hotels (Burhani, Saifee &amp; Badri)</option>
-                <option value="Burhani">Burhani Hotel (44 Rooms)</option>
-                <option value="Saifee">Saifee Hotel (70 Rooms)</option>
-                <option value="Badri">Badri Hotel (6 Rooms)</option>
+                <option value="ALL">All Hotels ({getDistinctBuildings(rooms).join(', ')})</option>
+                {getDistinctBuildings(rooms).map((bldg) => {
+                  const count = rooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
+                  return (
+                    <option key={bldg} value={bldg}>
+                      {bldg} Hotel ({count} Rooms)
+                    </option>
+                  );
+                })}
               </select>
             </div>
 

@@ -21,7 +21,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { Room, RoomStatus, RoomCategory, Reservation } from '../types';
-import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, OFFICIAL_THREE_BUILDINGS, getRoomBedCount } from '../services/storage';
+import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, getDistinctBuildings, getRoomBedCount } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { RoomEditModal } from './RoomSpecFields';
 import { SwitchRoomTarget } from './SwitchRoomModal';
@@ -59,15 +59,16 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
   const [inspectingRoom, setInspectingRoom] = useState<Room | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addModalInitialMode, setAddModalInitialMode] = useState<'existing' | 'new_building'>('existing');
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
   // Canonical deduplicated rooms list
   const cleanRooms = useMemo(() => deduplicateRooms(rooms), [rooms]);
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
+  // All buildings in inventory (starts with Burhani, Saifee, Badri + any user-added buildings)
   const distinctBuildings = useMemo(() => {
-    return [...OFFICIAL_THREE_BUILDINGS];
-  }, []);
+    return getDistinctBuildings(cleanRooms);
+  }, [cleanRooms]);
 
   // Available floors for current building
   const availableFloorLabels = useMemo(() => {
@@ -120,7 +121,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
         description={`${totalCount} rooms, ${totalBeds} beds, sleeping ${totalSleeps} across ${distinctBuildings.length} buildings. Block a room, edit its details or add new ones.`}
         meta={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
-            {distinctBuildings.slice(0, 8).map((bldg) => {
+            {distinctBuildings.map((bldg) => {
               const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
               return (
                 <span key={bldg}>
@@ -144,6 +145,19 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
             <button
               type="button"
               onClick={() => {
+                setAddModalInitialMode('new_building');
+                setIsAddModalOpen(true);
+              }}
+              className={btn.ghost}
+              title="Add a new building and configure its rooms"
+            >
+              <Building2 className="w-4 h-4 text-[#0f4a37]" />
+              Add building
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddModalInitialMode('existing');
                 setIsAddModalOpen(true);
               }}
               className={btn.primary}
@@ -620,6 +634,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
           onClose={() => setIsAddModalOpen(false)}
           existingRooms={cleanRooms}
           onAddRooms={(newRooms) => onAddRooms?.(newRooms)}
+          initialBuildingMode={addModalInitialMode}
         />
       )}
 

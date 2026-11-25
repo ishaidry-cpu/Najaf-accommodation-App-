@@ -45,6 +45,7 @@ import {
   countEffectivePax,
   getVacantRoomsForDuration,
   normalizeBuildingName,
+  getDistinctBuildings,
   getRoomBedCount,
 } from '../services/storage';
 import { RoomTimelineView } from './RoomTimelineView';
@@ -145,10 +146,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Strictly the 3 official buildings (Burhani, Saifee, Badri)
+  // All buildings in inventory (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => {
-    return ['Burhani', 'Saifee', 'Badri'];
-  }, []);
+    return getDistinctBuildings(rooms);
+  }, [rooms]);
 
   // Hotel selector: 'ALL' | building name
   const [selectedHotel, setSelectedHotel] = useState<string>('ALL');

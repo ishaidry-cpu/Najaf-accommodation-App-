@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus } from '../types';
 import { isDuplicateReservation, normalizeItsId, normalizeText } from '../utils/deduplication';
-import { getVacantRoomsForDuration } from '../services/storage';
+import { getVacantRoomsForDuration, getDistinctBuildings } from '../services/storage';
 
 interface AddZaerModalProps {
   isOpen: boolean;
@@ -71,12 +71,8 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   const [departureDate, setDepartureDate] = useState(defaultDepartureStr);
   const [departureTime, setDepartureTime] = useState('01:00 AM');
   
-  // Dynamic distinct buildings list
-  const distinctBuildings = useMemo(() => {
-    const set = new Set<string>(['Saifee', 'Burhani', 'Badri']);
-    rooms.forEach((r) => { if (r.building) set.add(r.building.trim()); });
-    return Array.from(set).sort();
-  }, [rooms]);
+  // Dynamic distinct buildings list (core 3 + any custom buildings added by user)
+  const distinctBuildings = useMemo(() => getDistinctBuildings(rooms), [rooms]);
 
   const [building, setBuilding] = useState<string>('Saifee');
   const [roomNumber, setRoomNumber] = useState('');

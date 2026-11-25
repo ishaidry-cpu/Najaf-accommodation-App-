@@ -25,6 +25,25 @@ export function isOfficialThreeBuilding(building?: string): boolean {
 }
 
 /**
+ * Returns the canonical list of buildings: the 3 core buildings (Burhani, Saifee, Badri)
+ * followed by any additional custom buildings present in the rooms inventory.
+ */
+export function getDistinctBuildings(rooms: Room[] = []): string[] {
+  const result: string[] = [...OFFICIAL_THREE_BUILDINGS];
+  const seen = new Set(result.map((b) => b.toLowerCase()));
+  for (const r of rooms) {
+    const norm = normalizeBuildingName(r?.building);
+    if (!norm) continue;
+    const key = norm.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(norm);
+    }
+  }
+  return result;
+}
+
+/**
  * Normalizes hotel/building names to prevent duplicate building sections or duplicate room keys
  * (e.g. "Saifee Hotel", "SAIFEE", "saifee " -> "Saifee").
  */
@@ -517,7 +536,6 @@ export function reconcileOfficialSaifeeBurhaniRooms(rooms: Room[]): Room[] {
   });
 
   const nonOfficialRooms = deduped.filter((r) => {
-    if (!isOfficialThreeBuilding(r.building)) return false;
     const key = getCanonicalRoomKey(r.building, r.roomNumber);
     return key && !officialKeys.has(key);
   });
