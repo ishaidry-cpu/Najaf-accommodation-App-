@@ -3089,25 +3089,5 @@
       "Prayer Mats",
       "Buffer: 1"
     ]
-  },
-  {
-    "id": "rm-qasr-1",
-    "roomNumber": "1",
-    "building": "Qasr Nobola",
-    "floor": 1,
-    "floorLabel": "Floor 1",
-    "capacity": 4,
-    "pax": 4,
-    "buffer": 0,
-    "toiletType": "WESTERN",
-    "bedType": "Single Beds",
-    "category": "Category A (Nizaam)",
-    "status": "available",
-    "amenities": [
-      "WESTERN Toilet",
-      "Single Beds",
-      "Air Conditioning",
-      "Wi-Fi"
-    ]
   }
 ]
