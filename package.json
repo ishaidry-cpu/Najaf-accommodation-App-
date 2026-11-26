@@ -12,8 +12,8 @@
     "test:sync": "node --import tsx --test 'server/nkerp-sync/__tests__/*.test.ts'",
     "test:planner": "node --import tsx --test 'src/services/__tests__/*.test.ts'",
     "import:workbook": "tsx server.ts --import-workbook",
-    "deploy": "cf deploy",
-    "deploy:check": "cf deploy --dry-run"
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:check": "node scripts/deploy.mjs --dry-run"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
