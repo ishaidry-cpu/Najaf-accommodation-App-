@@ -54,6 +54,25 @@ import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
 import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
 import { ZairPhoto, type PhotoIndex } from './ZairPhoto';
+import { oneRowPerIts } from '../utils/deduplication';
+
+/** Baghdad calendar date. */
+const baghdadDay = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+const stayDay = (v?: string) => {
+  const d = String(v || '').slice(0, 10);
+  const date = new Date(d + 'T00:00:00Z');
+  return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+};
+/** "3 Dec – 6 Dec · Burhani 203" for each other record of the same ITS. */
+const describeOtherStays = (others: Reservation[]) => others.map((o) =>
+  `${stayDay(o.arrivalDate)} – ${stayDay(o.departureDate)}${o.roomNumber ? ` · ${o.building} ${o.roomNumber}` : o.building ? ` · ${o.building}` : ' · no room'}${o.tourRefNo ? ` · ${String(o.tourRefNo).replace(/^NKERP\/TOUR\//i, '')}` : ''}`).join('\n');
+
+const OtherStays: React.FC<{ others?: Reservation[] }> = ({ others }) => others?.length ? (
+  <span className="shrink-0 px-1 rounded text-[9px] font-bold bg-stone-100 text-stone-600 ring-1 ring-inset ring-stone-200 cursor-help"
+    title={`Same ITS, ${others.length === 1 ? 'one more record' : `${others.length} more records`} (shown as one row):\n${describeOtherStays(others)}`}>
+    +{others.length} stay{others.length > 1 ? 's' : ''}
+  </span>
+) : null;
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -323,7 +342,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   };
 
   // Filter and sort reservations
-  const filteredAndSortedReservations = useMemo(() => {
+  const { rows: filteredAndSortedReservations, others: otherStays } = useMemo(() => {
     // 1. Filter
     const filtered = reservations.filter((res) => {
       // Search
@@ -443,7 +462,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       return 0;
     });
 
-    return filtered;
+    // 3. One row per ITS: the stay that matters now; the row notes the other records.
+    return oneRowPerIts(filtered, baghdadDay());
   }, [
     reservations,
     searchTerm,
@@ -454,6 +474,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     sortColumn,
     sortDirection,
   ]);
+
+  // Everyone counts once, however many records NKERP has for their ITS.
+  const totalZaereen = useMemo(() => oneRowPerIts(reservations, baghdadDay()).rows.length, [reservations]);
 
   // Fast memoized available rooms lookup by date duration and building:
   // Evaluates rooms where capacity is NOT reached, executing in <2ms for entire view!
@@ -914,7 +937,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       {/* Page header */}
       <PageHeader
         title="Zaereen"
-        description={`${reservations.length} zaereen on the list. Search, allot rooms and track portal uploads.`}
+        description={`${totalZaereen} zaereen on the list. Search, allot rooms and track portal uploads.`}
         actions={
           <>
             <Dropdown
@@ -1474,6 +1497,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           <h3 className={`text-sm font-extrabold truncate ${res.isSpecialGuest ? 'text-amber-950' : 'text-stone-900'}`}>
                             {res.applicantName}
                           </h3>
+                          <OtherStays others={otherStays.get(res.id)} />
                         </div>
                         <div className="text-xs text-stone-600 font-mono tabular-nums mt-0.5">
                           ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
@@ -1950,6 +1974,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                               res.isSpecialGuest ? 'text-amber-950 font-black' : 'text-stone-950'
                             }`}
                           />
+                          <OtherStays others={otherStays.get(res.id)} />
                           {isShiftedToA && (
                             <span 
                               className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#0f4a37] text-white border border-[#c9a85a]/50 shadow-2xs"
@@ -2342,7 +2367,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <div className="flex items-center gap-4">
             <span>
               Showing <strong className="text-stone-900">{filteredAndSortedReservations.length}</strong> of{' '}
-              <strong className="text-stone-900">{reservations.length}</strong> zaereen
+              <strong className="text-stone-900">{totalZaereen}</strong> zaereen
             </span>
             <span>•</span>
             <span>

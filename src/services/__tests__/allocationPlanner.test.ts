@@ -14,7 +14,9 @@ import { familyGroups } from '../../utils/familyGroups';
 const TODAY = '2026-11-21';
 const T1 = 'NKERP/TOUR/2026/1001';
 const T2 = 'NKERP/TOUR/2026/1002';
-const opts = (o: Partial<PlannerOptions> = {}): PlannerOptions => ({ ...DEFAULT_PLANNER_OPTIONS(TODAY), toDate: '2026-12-31', followOfficeHabits: false, ...o });
+// These tests are about the general planner, so Saifee keeps no single-gender rooms unless a test asks for them.
+const NO_GENDER_ROOMS = { instructions: [], genderRooms: { gents: 0, ladies: 0 } };
+const opts = (o: Partial<PlannerOptions> = {}): PlannerOptions => ({ ...DEFAULT_PLANNER_OPTIONS(TODAY), toDate: '2026-12-31', followOfficeHabits: false, rules: NO_GENDER_ROOMS, ...o });
 
 let n = 0;
 function room(building: string, roomNumber: string, capacity: number, o: Partial<Room> = {}): Room {

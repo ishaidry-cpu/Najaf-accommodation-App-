@@ -6,6 +6,7 @@ import { dispatch, json, type HandlerDeps } from './nkerp-sync/handlers.js';
 import { photoIndex, photoResponse } from './nkerp-photos.js';
 import { createPull, removalKey, type StoredReservation } from './nkerp-pull.js';
 import { expiry, guests, localHistory, prune, read, rooms, transaction, write } from './accommodation-store.js';
+import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
 
@@ -145,10 +146,12 @@ export function accommodationApi(onChange: () => void = () => {}) {
         return json({rooms:fresh});
       }
       if (route === '/api/settings') {
-        const { categories, adminPin } = await req.json() as {categories?:unknown[]; adminPin?:string};
+        const { categories, adminPin, plannerRules } = await req.json() as {categories?:unknown[]; adminPin?:string; plannerRules?:unknown};
         const saved = {...read('settings',{}),
           ...(Array.isArray(categories) ? {categories:categories.filter(c=>typeof c==='string')} : {}),
           ...(typeof adminPin === 'string' && adminPin.length >= 4 ? {adminPin} : {}),
+          // AI Planner rules and chat-box instructions, shared by everyone using the app.
+          ...(plannerRules && typeof plannerRules === 'object' && JSON.stringify(plannerRules).length < 100_000 ? {plannerRules:normalizeRules(plannerRules)} : {}),
         };
         write('settings',saved);
         invalidate();

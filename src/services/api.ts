@@ -8,6 +8,8 @@ export interface PullStatus {
 interface BackendSettings {
   categories: string[];
   adminPin: string;
+  /** AI Planner rules and chat-box instructions (see allocationRules). */
+  plannerRules?: unknown;
 }
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch('/api/'+path, body === undefined ? undefined : {

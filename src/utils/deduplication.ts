@@ -218,3 +218,52 @@ export function deduplicateReservationList(reservations: Reservation[]): Reserva
   }
   return result;
 }
+
+/**
+ * One row per ITS for the Zaereen page. NKERP lists some zaereen more than once: a stay split around a room
+ * change, an arrival date that moved, or a later trip. The row shown is the stay that matters now: the one
+ * covering today, else the next one to arrive, else the latest. `others` maps each shown row to the records it
+ * hides, so the row can say so. Records without an ITS ID are always shown.
+ */
+export function oneRowPerIts(list: Reservation[], today: string): { rows: Reservation[]; others: Map<string, Reservation[]> } {
+  const day = (v?: string) => String(v || '').slice(0, 10);
+  const rank = (r: Reservation) => {
+    const a = day(r.arrivalDate);
+    const d = day(r.departureDate) || a;
+    if (a && a <= today && today <= d) return 0;
+    if (a > today) return 1;
+    return 2;
+  };
+  const better = (a: Reservation, b: Reservation) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra < rb;
+    const aa = day(a.arrivalDate);
+    const ba = day(b.arrivalDate);
+    if (aa !== ba) return ra === 1 ? aa < ba : aa > ba;
+    const room = (r: Reservation) => (String(r.roomNumber || '').trim() ? 1 : 0);
+    if (room(a) !== room(b)) return room(a) > room(b);
+    const nk = (r: Reservation) => (r.id.startsWith('nkerp-') ? 1 : 0);
+    if (nk(a) !== nk(b)) return nk(a) > nk(b);
+    return String(a.updatedAt || '') > String(b.updatedAt || '');
+  };
+  const best = new Map<string, Reservation>();
+  const all = new Map<string, Reservation[]>();
+  for (const r of list) {
+    const its = normalizeItsId(r.itsId);
+    if (!its) continue;
+    all.set(its, [...(all.get(its) || []), r]);
+    const current = best.get(its);
+    if (!current || better(r, current)) best.set(its, r);
+  }
+  const others = new Map<string, Reservation[]>();
+  const rows = list.filter((r) => {
+    const its = normalizeItsId(r.itsId);
+    if (!its) return true;
+    if (best.get(its) !== r) return false;
+    const rest = all.get(its)!.filter((x) => x !== r);
+    if (rest.length) others.set(r.id, rest.sort((x, y) => day(x.arrivalDate).localeCompare(day(y.arrivalDate))));
+    return true;
+  });
+  return { rows, others };
+}

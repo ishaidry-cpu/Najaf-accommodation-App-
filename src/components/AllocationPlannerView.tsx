@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, BedDouble, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, Lock,
-  LogOut, RefreshCw, Search, Sparkles, Split, Star, Trash2, Users, X,
+  LogOut, MessageSquare, Minus, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, Split, Star, Trash2, Users, X,
 } from 'lucide-react';
 import type { Reservation, Room, UserRole } from '../types';
 import {
@@ -11,6 +11,10 @@ import {
 } from '../services/allocationPlanner';
 import { btn, PageHeader } from './ui';
 import { describeRoomCapacity } from '../services/storage';
+import {
+  APPROVAL_BUILDING, APPROVAL_ROOMS, AMATULLAH_VENUES, INSTRUCTION_EXAMPLES, KUN_HR_BUILDING, KUN_HR_GROUP_ROOMS, KUN_HR_SMALL_ROOMS,
+  type PlannerInstruction, type PlannerRules, genderRooms, parseInstruction,
+} from '../services/allocationRules';
 
 export interface PlanAllocationItem {
   reservationId: string;
@@ -28,6 +32,9 @@ interface Props {
   /** Shift these records A→B: they move to an external hotel. */
   onShiftToB: (reservationIds: string[]) => void;
   onOpenSync: () => void;
+  /** Standing rules and chat-box instructions, shared through the app settings. */
+  rules: PlannerRules;
+  onSaveRules: (next: PlannerRules) => Promise<boolean>;
 }
 
 interface Draft {
@@ -79,7 +86,7 @@ function freshen(plan: AllocationPlan, reservations: Reservation[]): AllocationP
   return { ...plan, units, assignments: pick(plan.assignments), unplaced: pick(plan.unplaced) };
 }
 
-export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, userRole, onApplyPlan, onShiftToB, onOpenSync }) => {
+export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, userRole, onApplyPlan, onShiftToB, onOpenSync, rules, onSaveRules }) => {
   const today = baghdadToday();
   const [options, setOptions] = useState<PlannerOptions>(() => {
     const saved = load<PlannerOptions>(OPTIONS_KEY);
@@ -170,18 +177,27 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     };
   }, [plan, excluded]);
 
-  /** refresh: keep every manual change and re-fit everyone else around them. */
-  const generate = (refresh: boolean) => {
+  /**
+   * refresh: keep every manual change and re-fit everyone else around them.
+   * `with` applies rules saved a moment ago, or a reserved room just approved.
+   */
+  const generate = (refresh: boolean, withRules?: { rules?: PlannerRules; approve?: string }) => {
     setBusy(true);
     setResult(null);
     setConfirming(false);
     setPicking(null);
+    const approved = refresh && plan ? plan.options.approvedRooms || [] : [];
+    const effective: PlannerOptions = {
+      ...options,
+      rules: withRules?.rules || rules,
+      approvedRooms: withRules?.approve ? [...new Set([...approved, withRules.approve])] : approved,
+    };
     // Let the button show its spinner before the planner takes the main thread.
     window.setTimeout(() => {
       try {
         const next = refresh && plan
-          ? refreshPlan(plan, { reservations, rooms, options, patterns, today })
-          : planAllocation({ reservations, rooms, options, patterns, today });
+          ? refreshPlan({ ...plan, options: effective }, { reservations, rooms, options: effective, patterns, today })
+          : planAllocation({ reservations, rooms, options: effective, patterns, today });
         setDraft({ plan: next, excluded: refresh ? draft?.excluded || [] : [], changes: 0 });
         const attention = new Set(next.units.filter((u) => !next.assignments[u.key] || next.assignments[u.key]!.warnings.length).map((u) => u.tourRefNo));
         setExpanded(attention);
@@ -196,13 +212,20 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     setDraft({ ...draft, plan: fn(plan), changes: (draft.changes || 0) + 1 });
   };
 
-  const chooseRoom = (unit: PlanUnit, room: Room | null) => {
+  const chooseRoom = (unit: PlanUnit, room: Room | null, approval = false) => {
+    if (room && approval && !window.confirm(
+      `${room.building} ${room.roomNumber} is kept unallocated by default and is used only when required.\n\nApprove allocating it to ${unit.family} (${plural(unit.members.length, 'zair', 'zaereen')})?`,
+    )) return;
     updatePlan((p) => {
       const unplaced = { ...p.unplaced };
       const assignments = { ...p.assignments };
       if (room) {
         delete unplaced[unit.key];
-        assignments[unit.key] = { building: room.building, roomNumber: room.roomNumber, reasons: ['Chosen by you'], warnings: [], locked: true };
+        assignments[unit.key] = { building: room.building, roomNumber: room.roomNumber, reasons: [approval ? 'Approved by you (reserved room)' : 'Chosen by you'], warnings: [], locked: true };
+        if (approval) {
+          const k = roomKey(room.building, room.roomNumber);
+          return { ...p, assignments, unplaced, options: { ...p.options, approvedRooms: [...new Set([...(p.options.approvedRooms || []), k])] } };
+        }
       } else {
         assignments[unit.key] = null;
         unplaced[unit.key] = LEFT_EMPTY;
@@ -246,6 +269,11 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
     const outcome = onApplyPlan(items);
     setConfirming(false);
     setResult(outcome);
+  };
+
+  const approveRoom = (building: string, roomNumber: string, people: number) => {
+    if (!window.confirm(`${building} ${roomNumber} is kept unallocated by default and is used only when required.\n\nApprove using it for zaereen who have no room (up to ${plural(people, 'zair', 'zaereen')} fit)?`)) return;
+    generate(true, { approve: roomKey(building, roomNumber) });
   };
 
   const shiftToB = (unit: PlanUnit) => {
@@ -336,6 +364,14 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
         </p>
       </section>
 
+      <RulesPanel rooms={rooms} reservations={reservations} rules={rules} isAdmin={userRole === 'admin'}
+        onSave={async (next) => {
+          const ok = await onSaveRules(next);
+          // Apply the new rules to the plan on screen straight away.
+          if (plan) generate(true, { rules: next });
+          return ok;
+        }} />
+
       {/* What it learned */}
       <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs overflow-hidden">
         <button type="button" onClick={() => setShowLearned((v) => !v)} aria-expanded={showLearned}
@@ -421,6 +457,26 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
             <Stat label="Need a look" value={summary.warnings} tone={summary.warnings ? 'amber' : undefined} />
             <Stat label="Starred to review" value={summary.starred} tone={summary.starred ? 'gold' : undefined} />
           </section>
+
+          {plan.approvalNeeded && plan.approvalNeeded.length > 0 && (
+            <section className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-2">
+              <p className="text-sm text-amber-950 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />
+                <span>
+                  Some zaereen still have no room. {APPROVAL_BUILDING} {APPROVAL_ROOMS.join(', ')} are kept unallocated by default and are used only after approval.
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2 pl-6">
+                {plan.approvalNeeded.map((a) => (
+                  <button key={`${a.building}-${a.roomNumber}`} type="button" className={`${btn.secondary} h-8 px-2.5 text-xs`} disabled={busy || !isAdmin}
+                    onClick={() => approveRoom(a.building, a.roomNumber, a.people)}
+                    title={isAdmin ? 'Asks for your approval, then re-plans with this room' : 'Only an administrator can approve reserved rooms'}>
+                    <ShieldCheck className="w-3.5 h-3.5" />Approve {a.building} {a.roomNumber}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Nightly load */}
           {nightly.length > 0 && (
@@ -533,7 +589,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                           picking={picking === u.key}
                           onPick={() => setPicking(picking === u.key ? null : u.key)}
                           options={picking === u.key ? roomOptionsFor(u, plan, reservations, rooms, patterns) : []}
-                          onChoose={(room) => chooseRoom(u, room)}
+                          onChoose={(room, approval) => chooseRoom(u, room, approval)}
                           onSplit={() => splitFamily(u)}
                           canShift={isAdmin}
                           onShiftToB={() => shiftToB(u)} />
@@ -616,7 +672,7 @@ const UnitRow: React.FC<{
   picking: boolean;
   options: RoomOption[];
   onPick: () => void;
-  onChoose: (room: Room | null) => void;
+  onChoose: (room: Room | null, approval?: boolean) => void;
   onSplit: () => void;
   canShift: boolean;
   onShiftToB: () => void;
@@ -703,12 +759,13 @@ const UnitRow: React.FC<{
                   {o.kind === 'share' ? 'Share with another family of this tour · your call' : 'Full or unsuitable · choosing one adds a warning'}
                 </div>
               )}
-              <button type="button" onClick={() => onChoose(o.room)}
-                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-400' : 'text-stone-800'}`}>
+              <button type="button" onClick={() => onChoose(o.room, o.needsApproval)} disabled={o.blocked}
+                title={o.blocked ? `Not allowed: ${o.note}` : o.needsApproval ? 'Kept unallocated by default: choosing it asks for your approval' : undefined}
+                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs ${o.blocked ? 'cursor-not-allowed text-stone-300 line-through decoration-stone-300' : `hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-400' : 'text-stone-800'}`}`}>
                 <span className="font-medium">{o.room.building} {o.room.roomNumber}
                   <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {describeRoomCapacity(o.room)} · {roomTier(o.room)}</span>
                 </span>
-                <span className={o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-brand-700' : 'text-amber-700'}>{o.note}</span>
+                <span className={`text-right ${o.blocked ? 'text-stone-400 no-underline' : o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-brand-700' : 'text-amber-700'}`}>{o.note}</span>
               </button>
               </React.Fragment>
             ))}
@@ -730,5 +787,159 @@ const UnitRow: React.FC<{
         {unit.starred && <p className="mt-1 text-amber-800">Starred: always {STARRED_BUILDING}. The remarks decide the exact room.</p>}
       </div>
     </div>
+  );
+};
+
+const CHAT_KEY = 'najaf-ai-planner-chat-v1';
+type ChatLine = { from: 'you' | 'planner'; text: string; ok?: boolean };
+
+/** Standing allocation rules, the Saifee single-gender room counts, and the instructions chat box. */
+const RulesPanel: React.FC<{
+  rooms: Room[];
+  reservations: Reservation[];
+  rules: PlannerRules;
+  isAdmin: boolean;
+  onSave: (next: PlannerRules) => Promise<boolean>;
+}> = ({ rooms, reservations, rules, isAdmin, onSave }) => {
+  const [open, setOpen] = useState(true);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [chat, setChat] = useState<ChatLine[]>(() => load<ChatLine[]>(CHAT_KEY) || []);
+  useEffect(() => store(CHAT_KEY, chat.slice(-30)), [chat]);
+  const reserved = useMemo(() => genderRooms(rooms, rules), [rooms, rules]);
+  const offices = useMemo(() => [...new Set(reservations.map((r) => r.officeName).filter(Boolean))], [reservations]);
+  const hasBuilding = (b: string) => rooms.some((r) => r.building.toLowerCase() === b.toLowerCase());
+  const list = (rs: Room[]) => (rs.length ? rs.map((r) => r.roomNumber).join(', ') : 'none');
+
+  const save = async (next: PlannerRules, reply: string) => {
+    setSaving(true);
+    const ok = await onSave(next);
+    setSaving(false);
+    setChat((c) => [...c, { from: 'planner', text: ok ? reply : `${reply} (Not saved to the app: it applies on this screen only.)`, ok }]);
+  };
+
+  const send = async () => {
+    const said = text.trim();
+    if (!said || saving) return;
+    setText('');
+    setChat((c) => [...c, { from: 'you', text: said }]);
+    const parsed = parseInstruction(said, { rooms, offices });
+    if (!parsed.ok) { setChat((c) => [...c, { from: 'planner', text: parsed.reply, ok: false }]); return; }
+    if ('clear' in parsed) { await save({ ...rules, instructions: [] }, 'Done: every instruction is cleared.'); return; }
+    if ('genderRooms' in parsed) {
+      const next = { ...rules, genderRooms: { gents: parsed.genderRooms.gents ?? rules.genderRooms.gents, ladies: parsed.genderRooms.ladies ?? rules.genderRooms.ladies } };
+      await save(next, `Understood. ${parsed.summary}`);
+      return;
+    }
+    const instruction: PlannerInstruction = {
+      ...parsed.instruction, id: `ins-${Date.now().toString(36)}`, text: said, createdAt: new Date().toISOString(),
+    };
+    await save({ ...rules, instructions: [...rules.instructions, instruction] }, `Understood. ${instruction.summary} The planner follows this until you remove it.`);
+  };
+
+  const remove = (id: string) => {
+    const gone = rules.instructions.find((i) => i.id === id);
+    void save({ ...rules, instructions: rules.instructions.filter((i) => i.id !== id) }, `Removed: "${gone?.text}".`);
+  };
+
+  const setCount = (key: 'gents' | 'ladies', delta: number) => {
+    const n = Math.max(0, Math.min(20, rules.genderRooms[key] + delta));
+    if (n === rules.genderRooms[key]) return;
+    void save({ ...rules, genderRooms: { ...rules.genderRooms, [key]: n } }, `Saifee rooms kept for ${key}: ${n}.`);
+  };
+
+  return (
+    <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs overflow-hidden">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        className="w-full flex items-center gap-2.5 px-4 py-3 text-left cursor-pointer hover:bg-stone-50">
+        <ShieldCheck className="w-4 h-4 text-brand-700" />
+        <span className="text-sm font-semibold text-stone-900">Allocation rules & instructions</span>
+        <span className="text-xs text-stone-500">{plural(rules.instructions.length, 'instruction')} from you · applied automatically</span>
+        {open ? <ChevronDown className="w-4 h-4 ml-auto text-stone-400" /> : <ChevronRight className="w-4 h-4 ml-auto text-stone-400" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 grid gap-4 lg:grid-cols-2">
+          <ul className="space-y-2 text-[13px] text-stone-700">
+            <Learned>
+              <b>KUN HR</b>: the big group (20–22 pax) gets {KUN_HR_BUILDING} {KUN_HR_GROUP_ROOMS.join(', ')}; the small group (5 pax) gets {KUN_HR_BUILDING} {KUN_HR_SMALL_ROOMS.join(', ')}.
+              No other office is ever given these rooms.
+            </Learned>
+            <Learned>
+              <b>{APPROVAL_BUILDING} {APPROVAL_ROOMS.join(', ')}</b> stay unallocated. They are used only after you approve it in a prompt.
+            </Learned>
+            <li className="flex gap-2">
+              <Check className="w-3.5 h-3.5 mt-0.5 shrink-0 text-brand-600" />
+              <div className="space-y-1.5 min-w-0">
+                <span><b>Saifee single-gender rooms</b> for single zaereen or one-gender family members. Different tours and families of the same gender may share; gents and ladies never mix.
+                  When they are full, gents go to Mohammedi{hasBuilding('Mohammedi') ? '' : ' (no Mohammedi rooms in the inventory yet)'} and ladies to Badri.</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {(['gents', 'ladies'] as const).map((key) => (
+                    <span key={key} className="inline-flex items-center gap-1.5 text-xs">
+                      <span className="font-medium capitalize w-12">{key}</span>
+                      <button type="button" className="w-6 h-6 rounded-md ring-1 ring-stone-200 flex items-center justify-center hover:bg-stone-50 disabled:opacity-40 cursor-pointer"
+                        aria-label={`Fewer rooms for ${key}`} disabled={!isAdmin || saving || rules.genderRooms[key] === 0} onClick={() => setCount(key, -1)}><Minus className="w-3 h-3" /></button>
+                      <span className="w-4 text-center tabular-nums font-semibold">{rules.genderRooms[key]}</span>
+                      <button type="button" className="w-6 h-6 rounded-md ring-1 ring-stone-200 flex items-center justify-center hover:bg-stone-50 disabled:opacity-40 cursor-pointer"
+                        aria-label={`More rooms for ${key}`} disabled={!isAdmin || saving} onClick={() => setCount(key, 1)}><Plus className="w-3 h-3" /></button>
+                      <span className="text-stone-500">Saifee {list(key === 'gents' ? reserved.M : reserved.F)}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </li>
+            <Learned>
+              <b>Amatullah Aai Saheba Trust</b>: {AMATULLAH_VENUES.join(' → ')}, each filled to the last bed (buffer included) before the next.
+              Grouped by surname, not family number; different surnames share only to fill a room, gents with gents and ladies with ladies.
+            </Learned>
+            <Learned>Families stay together in one room; a family is split only as a last resort, keeping gents and ladies apart and within room capacity.</Learned>
+          </ul>
+
+          <div className="rounded-xl ring-1 ring-stone-200 bg-stone-50/60 flex flex-col min-w-0">
+            <div className="px-3 py-2 border-b border-stone-200 flex items-center gap-2 text-xs font-medium text-stone-600">
+              <MessageSquare className="w-3.5 h-3.5" />Tell the planner
+              {chat.length > 0 && (
+                <button type="button" className="ml-auto text-stone-400 hover:text-stone-700 cursor-pointer" onClick={() => setChat([])}>Clear chat</button>
+              )}
+            </div>
+            {rules.instructions.length > 0 && (
+              <ul className="px-3 pt-2 flex flex-wrap gap-1.5" aria-label="Active instructions">
+                {rules.instructions.map((i) => (
+                  <li key={i.id} className="inline-flex items-center gap-1 max-w-full rounded-md bg-white ring-1 ring-inset ring-brand-100 px-2 py-1 text-xs text-brand-900" title={`You said: "${i.text}"`}>
+                    <span className="truncate">{i.summary}</span>
+                    {isAdmin && (
+                      <button type="button" className="shrink-0 text-stone-400 hover:text-rose-700 cursor-pointer" aria-label={`Remove instruction: ${i.summary}`} onClick={() => remove(i.id)} disabled={saving}>
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="px-3 py-2 space-y-1.5 max-h-44 overflow-y-auto text-xs" aria-live="polite">
+              {chat.length === 0 ? (
+                <p className="text-stone-500">
+                  Type an instruction, for example: {INSTRUCTION_EXAMPLES.slice(0, 4).map((e) => `"${e}"`).join(', ')}. Instructions are saved for everyone and the plan is refreshed with them.
+                </p>
+              ) : chat.map((line, idx) => (
+                <div key={idx} className={`flex ${line.from === 'you' ? 'justify-end' : 'justify-start'}`}>
+                  <span className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${line.from === 'you' ? 'bg-brand-700 text-white' : line.ok === false ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-200' : 'bg-white text-stone-800 ring-1 ring-stone-200'}`}>
+                    {line.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <form className="mt-auto flex gap-2 p-2 border-t border-stone-200" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+              <input value={text} onChange={(e) => setText(e.target.value)} disabled={!isAdmin}
+                placeholder={isAdmin ? 'e.g. Don\'t allocate Saifee 101 and 102' : 'Only an administrator can give instructions'}
+                aria-label="Instruction for the planner"
+                className="h-9 flex-1 min-w-0 rounded-lg border border-stone-200 bg-white px-3 text-sm" />
+              <button type="submit" className={`${btn.primary} h-9 px-3`} disabled={!isAdmin || !text.trim() || saving}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Send
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
   );
 };

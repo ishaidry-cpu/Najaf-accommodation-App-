@@ -26,6 +26,11 @@
 import type { Reservation, Room } from '../types';
 import { checkTurnoverTimingConflict, getReservationEffectivePax, isInfant } from '../utils/turnoverTiming';
 import { type FamilyGroup, familyGroups, groupOf } from '../utils/familyGroups';
+import {
+  AMATULLAH_VENUES, APPROVAL_ROOMS, DEFAULT_PLANNER_RULES, GENDER_OVERFLOW, type PlannerRules, genderLetter, genderRoomOf, genderRooms,
+  instructionApprovesRoom, instructionBlocksRoom, isAmatullah, isApprovalRoom, isKunHr, isKunHrRoom, kunHrPreferredRooms, KUN_HR_BUILDING,
+  officeMatches, ruleRoomKey, surnameOf,
+} from './allocationRules';
 
 export interface PlannerOptions {
   /** First arrival date to plan (YYYY-MM-DD). */
@@ -42,6 +47,10 @@ export interface PlannerOptions {
   includeArrived: boolean;
   /** Buildings the planner may use. Empty means every building. */
   buildings: string[];
+  /** Standing rules and chat-box instructions (see allocationRules). */
+  rules?: PlannerRules;
+  /** Reserved rooms (Burhani 409, 410, G2) someone approved for this plan, as room keys. */
+  approvedRooms?: string[];
 }
 
 export interface PlanMember {
@@ -53,6 +62,7 @@ export interface PlanMember {
   infant: boolean;
   starred: boolean;
   remarks?: string;
+  hofId?: string;
   /** Other records of the same zair on this tour with overlapping dates; they get the same room. */
   alsoIds?: string[];
 }
@@ -85,6 +95,10 @@ export interface PlanUnit {
   userSplit?: boolean;
   /** These zaereen already have this room on another record for the same tour. */
   followRoom?: { building: string; roomNumber: string };
+  /** Everyone on the tour (KUN HR: the small group uses 107, the big group 103/104/203/204/205). */
+  tourPax?: number;
+  /** Packed by surname for Amatullah Aai Saheba Trust. */
+  packed?: boolean;
 }
 
 export interface PlanAssignment {
@@ -104,6 +118,8 @@ export interface AllocationPlan {
   assignments: Record<string, PlanAssignment | null>;
   /** unit key → why no room was found. */
   unplaced: Record<string, string>;
+  /** Reserved rooms that would give a room to zaereen still without one, once approved. */
+  approvalNeeded?: { building: string; roomNumber: string; unitKeys: string[]; people: number }[];
 }
 
 export interface RoomOption {
@@ -113,6 +129,10 @@ export interface RoomOption {
   score: number;
   freeBeds: number;
   note: string;
+  /** A standing rule forbids this room for these zaereen; it can't be chosen. */
+  blocked?: boolean;
+  /** Reserved room that needs an approval prompt before it is used. */
+  needsApproval?: boolean;
 }
 
 export interface LearnedPatterns {
@@ -322,6 +342,7 @@ function member(r: Reservation): PlanMember {
   return {
     id: r.id, name: r.applicantName, itsId: String(r.itsId ?? ''), gender: r.gender, age: String(r.age ?? ''),
     infant: isInfant(r), starred: Boolean(r.isSpecialGuest), remarks: r.specialRemarks || undefined,
+    ...(r.hofId ? { hofId: String(r.hofId) } : {}),
   };
 }
 
@@ -331,9 +352,21 @@ const stayEnd = (r: Reservation) => day(r.departureDate) || day(r.arrivalDate);
 const sameStay = (a: Reservation, b: Reservation) =>
   stayStart(a) === stayStart(b) || overlaps(stayStart(a), stayEnd(a), stayStart(b), stayEnd(b));
 
+/** Zaereen per tour (each person once), shifted A→B left out. */
+function tourSizes(reservations: Reservation[]) {
+  const people = new Map<string, Set<string>>();
+  for (const r of reservations) {
+    if (!r.tourRefNo || shiftedOut(r)) continue;
+    const t = lower(r.tourRefNo);
+    people.set(t, (people.get(t) || new Set()).add(String(r.itsId ?? '').replace(/^['’]/, '').trim() || r.id));
+  }
+  return new Map([...people].map(([t, set]) => [t, set.size]));
+}
+
 export function collectUnits(reservations: Reservation[], options: PlannerOptions, today = baghdadToday()): PlanUnit[] {
   const families = familyGroups(reservations);
   const fam = (r: Reservation) => groupOf(families, r);
+  const sizes = tourSizes(reservations);
   // NKERP sometimes lists the same zair twice on a tour (for example after an arrival date changed).
   // Such a record follows the room the other record already has, or both records are planned once.
   const byPerson = new Map<string, Reservation[]>();
@@ -385,6 +418,7 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
       arrivalDate: stayStart(first), departureDate: stayEnd(first), arrivalTime: stayTime(first, 'arrival'), departureTime: stayTime(first, 'departure'),
       members: list.map(member), pax: 0, starred: list.some((r) => r.isSpecialGuest),
       followRoom: { building: room.building, roomNumber: room.roomNumber },
+      tourPax: sizes.get(lower(first.tourRefNo)),
     });
   }
   for (const [key, list] of groups) {
@@ -408,9 +442,24 @@ export function collectUnits(reservations: Reservation[], options: PlannerOption
       pax: list.reduce((s, r) => s + getReservationEffectivePax(r), 0),
       presetBuilding: preset,
       starred: list.some((r) => r.isSpecialGuest),
+      tourPax: sizes.get(lower(first.tourRefNo)),
     });
   }
   return units;
+}
+
+/** 'M' or 'F' when everyone who takes a bed is one gender; 'X' when mixed; '' when unknown. */
+export function unitGender(unit: Pick<PlanUnit, 'members'>): 'M' | 'F' | 'X' | '' {
+  const set = new Set(unit.members.filter((m) => !m.infant).map((m) => genderLetter(m.gender)));
+  if (set.has('') && set.size === 1) return '';
+  set.delete('');
+  return set.size === 1 ? ([...set][0] as 'M' | 'F') : set.size ? 'X' : '';
+}
+
+/** Single zaereen, or one-gender family members, who may share Saifee's single-gender rooms with others of their gender. */
+export function genderEligible(unit: PlanUnit) {
+  const g = unitGender(unit);
+  return (g === 'M' || g === 'F') && unit.pax >= 1 && unit.pax <= 2 && !unit.starred && !isKunHr(unit.officeName) && !isAmatullah(unit.officeName);
 }
 
 const familyFields = (g: FamilyGroup) => ({ family: g.label, familyKey: g.key, ...(g.note ? { familyNote: g.note } : {}) });
@@ -479,6 +528,11 @@ interface Stay {
   /** Family label as shown (F-3). */
   label: string;
   unitKey?: string;
+  /** M or F for one-gender stays, X for a mixed family, '' for infants and unknown. */
+  gender: string;
+  office: string;
+  /** Who is in it, for surname grouping (Amatullah Aai Saheba Trust). */
+  people?: { gender: string; surname: string; hof: string }[];
 }
 
 class Occupancy {
@@ -497,6 +551,8 @@ class Occupancy {
         arrivalTime: stayTime(r, 'arrival'), departureTime: stayTime(r, 'departure'),
         pax: getReservationEffectivePax(r), tour: lower(r.tourRefNo), family: groupOf(groups, r).key,
         label: groupOf(groups, r).label || r.applicantName,
+        gender: isInfant(r) ? '' : genderLetter(r.gender), office: r.officeName || '',
+        people: isInfant(r) ? [] : [{ gender: genderLetter(r.gender), surname: lower(surnameOf(r.applicantName)), hof: lower(r.hofId) }],
       });
     }
     return occ;
@@ -523,6 +579,8 @@ function unitStay(unit: PlanUnit): Stay {
   return {
     arrival: unit.arrivalDate, departure: unit.departureDate, arrivalTime: unit.arrivalTime, departureTime: unit.departureTime,
     pax: unit.pax, tour: lower(unit.tourRefNo), family: unit.familyKey, label: unit.family, unitKey: unit.key,
+    gender: unitGender(unit), office: unit.officeName,
+    people: unit.members.filter((m) => !m.infant).map((m) => ({ gender: genderLetter(m.gender), surname: lower(surnameOf(m.name)), hof: lower(m.hofId) })),
   };
 }
 
@@ -552,6 +610,16 @@ interface Context {
   patterns: LearnedPatterns;
   occupancy: Occupancy;
   footprint: Map<string, TourFootprint>;
+  rules: PlannerRules;
+  /** Saifee rooms kept for gents (M) and ladies (F). */
+  reserved: { M: Room[]; F: Room[] };
+  /** Reserved rooms approved for this plan (room keys). */
+  approved: Set<string>;
+}
+
+function makeContext(options: PlannerOptions, patterns: LearnedPatterns, occupancy: Occupancy, footprint: Map<string, TourFootprint>, rooms: Room[]): Context {
+  const rules = options.rules || DEFAULT_PLANNER_RULES;
+  return { options, patterns, occupancy, footprint, rules, reserved: genderRooms(rooms, rules), approved: new Set(options.approvedRooms || []) };
 }
 
 interface Evaluation {
@@ -563,6 +631,107 @@ interface Evaluation {
   reasons: string[];
   warnings: string[];
   reject?: string;
+  /** A standing rule forbids it outright (the user can't pick it either). */
+  hard?: boolean;
+  /** A reserved room that needs an approval first. */
+  needsApproval?: boolean;
+}
+
+interface RuleOutcome {
+  score: number;
+  reasons: string[];
+  warnings: string[];
+  reject?: string;
+  hard?: boolean;
+  needsApproval?: boolean;
+  /** Other families of this gender may share the room (gender rooms, KUN HR rooms). */
+  clubWith?: 'M' | 'F';
+  /** Only KUN HR zaereen may share it. */
+  clubKunOnly?: boolean;
+}
+
+const genderWord = (g: string) => (g === 'M' ? 'gents' : 'ladies');
+
+/** The standing rules and chat-box instructions for one room and one unit. */
+function applyRules(unit: PlanUnit, room: Room, ctx: Context, mode: Mode, sharing: Stay[]): RuleOutcome {
+  const out: RuleOutcome = { score: 0, reasons: [], warnings: [] };
+  const office = unit.officeName;
+  const label = `${room.building} ${room.roomNumber}`;
+  /** soft: auto skips it, a user may still pick it with a warning. hard: nobody may pick it. */
+  const fail = (why: string, hard = false): RuleOutcome => {
+    if (mode === 'force' || (mode === 'manual' && !hard)) { out.warnings.push(why); out.score += 40; return out; }
+    return { ...out, reject: why, hard };
+  };
+  const key = ruleRoomKey(room.building, room.roomNumber);
+  const instructions = ctx.rules.instructions;
+  const approvedByInstruction = instructions.some((i) => instructionApprovesRoom(i, room));
+
+  // Chat-box instructions.
+  const blocking = instructions.find((i) => instructionBlocksRoom(i, room));
+  if (blocking && !approvedByInstruction) { const r = fail(`Your instruction: "${blocking.text}"`); if (r.reject) return r; }
+  for (const i of instructions) {
+    const inList = (i.rooms || []).some((r) => ruleRoomKey(r.building, r.roomNumber) === key);
+    const inBuildings = (i.buildings || []).some((b) => lower(b) === lower(room.building));
+    const mine = officeMatches(i.office, office);
+    if (i.kind === 'reserve-rooms' && inList) {
+      if (!mine) { const r = fail(`Reserved for ${i.office}`, true); if (r.reject) return r; }
+      else { out.score -= 40; out.reasons.push(`Reserved for ${office}`); }
+    }
+    if (i.kind === 'office-only' && mine && !inBuildings) { const r = fail(`Your instruction: "${i.text}"`); if (r.reject) return r; }
+    if (i.kind === 'office-avoid' && mine && inBuildings) { const r = fail(`Your instruction: "${i.text}"`); if (r.reject) return r; }
+    if (i.kind === 'office-prefer' && mine) {
+      if (inBuildings) { out.score -= 15; out.reasons.push(`Your instruction: ${office} in ${room.building}`); } else out.score += 10;
+    }
+  }
+
+  // KUN HR: Badri 103, 104, 203, 204, 205 and 107 are theirs alone.
+  const kun = isKunHr(office);
+  if (isKunHrRoom(room)) {
+    if (!kun) { const r = fail(`${label} is reserved for KUN HR`, true); if (r.reject) return r; }
+    else {
+      const pref = kunHrPreferredRooms(unit.tourPax || unit.pax);
+      const small = pref.first.length === 1;
+      if (pref.first.includes(room.roomNumber.toUpperCase())) { out.score -= 300; out.reasons.push(`KUN HR ${small ? 'small group' : 'group'} room`); }
+      else { out.score -= 150; out.reasons.push('KUN HR reserved room'); }
+      out.clubKunOnly = true;
+      const g = unitGender(unit);
+      if (g === 'M' || g === 'F') out.clubWith = g;
+    }
+  } else if (kun) {
+    if (lower(room.building) === lower(KUN_HR_BUILDING)) out.score -= 40;
+    out.warnings.push('KUN HR outside its reserved Badri rooms');
+  }
+
+  // Burhani 409, 410 and G2 stay empty unless someone approves them.
+  if (isApprovalRoom(room)) {
+    if (ctx.approved.has(key) || approvedByInstruction) out.reasons.push(`${label} approved for use`);
+    else if (mode === 'auto') return { ...out, reject: `${label} is kept free: approval needed`, needsApproval: true };
+    else { out.warnings.push(`${label} is kept free: approval needed`); out.needsApproval = true; }
+  }
+
+  // Saifee single-gender rooms, then Mohammedi (gents) and Badri (ladies).
+  const g = genderRoomOf(room, ctx.reserved);
+  const ug = unitGender(unit);
+  const eligible = genderEligible(unit);
+  if (g) {
+    if (ug !== g && ug !== '') { const r = fail(`${label} is kept for ${genderWord(g)} only: gents and ladies never share it`, true); if (r.reject) return r; }
+    if (sharing.some((s) => s.pax > 0 && s.gender !== g)) { const r = fail(`Gents and ladies never share ${label}`, true); if (r.reject) return r; }
+    if (eligible) { out.score -= 200; out.reasons.push(`Saifee room kept for ${genderWord(g)}`); out.clubWith = g; }
+    else { const r = fail(`${label} is kept for single ${genderWord(g)}`); if (r.reject) return r; }
+  } else if (eligible && lower(room.building) === lower(GENDER_OVERFLOW[ug as 'M' | 'F'])) {
+    // Outweighs any number of empty beds, so they come here (and are joined by others of their gender) before any ordinary room.
+    out.score -= 120;
+    out.reasons.push(`${room.building} takes ${genderWord(ug)} when Saifee's ${genderWord(ug)} rooms are full`);
+    out.clubWith = ug as 'M' | 'F';
+  }
+
+  // Amatullah Aai Saheba Trust: Saifee, Badri, Mohammedi, Burhani, in that order.
+  if (isAmatullah(office)) {
+    const rank = AMATULLAH_VENUES.findIndex((v) => lower(v) === lower(room.building));
+    out.score += 60 * (rank < 0 ? AMATULLAH_VENUES.length : rank);
+    if (rank === 0) out.reasons.push('Amatullah Aai Saheba Trust: Saifee first');
+  }
+  return out;
 }
 
 /**
@@ -575,7 +744,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   const key = roomKey(room.building, room.roomNumber);
   const reasons: string[] = [];
   const warnings: string[] = [];
-  const reject = (why: string): Evaluation => ({ ok: false, score: Infinity, freeBeds: 0, emptyBeds: 0, reasons, warnings, reject: why });
+  const reject = (why: string, extra: Partial<Evaluation> = {}): Evaluation => ({ ok: false, score: Infinity, freeBeds: 0, emptyBeds: 0, reasons, warnings, reject: why, ...extra });
   const force = mode === 'force';
 
   if (room.status === 'blocked' && !force) return reject(`Room is blocked${room.blockedReason ? `: ${room.blockedReason}` : ''}`);
@@ -587,14 +756,18 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
 
   const stays = ctx.occupancy.stays(key).filter((s) => s.unitKey !== unit.key);
   const sharing = stays.filter((s) => overlaps(unit.arrivalDate, unit.departureDate, s.arrival, s.departure));
+  const rule = applyRules(unit, room, ctx, mode, sharing);
+  if (rule.reject) return reject(rule.reject, { hard: rule.hard, needsApproval: rule.needsApproval });
+  warnings.push(...rule.warnings);
   let peak = 0;
   for (const n of nights(unit.arrivalDate, unit.departureDate)) {
     peak = Math.max(peak, sharing.filter((s) => covers(s.arrival, s.departure, n)).reduce((sum, s) => sum + s.pax, 0));
   }
-  const limit = ctx.options.allowBuffer ? maxBeds(room) : baseBeds(room);
+  // Amatullah Aai Saheba Trust always uses the buffer beds.
+  const limit = ctx.options.allowBuffer || isAmatullah(unit.officeName) ? maxBeds(room) : baseBeds(room);
   const freeBeds = Math.max(0, limit - peak);
   const after = peak + unit.pax;
-  let score = 0;
+  let score = rule.score;
 
   if (after > limit) {
     if (!force) return reject(peak ? `Only ${freeBeds} of ${limit} beds free` : `Room has ${limit} beds for ${unit.pax} pax`);
@@ -605,7 +778,12 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   // Only one family shares a room. Sharing with another family is the user's call.
   const otherFamilies = sharing.filter((s) => !(s.tour === lower(unit.tourRefNo) && s.family === unit.familyKey));
   const sharesWith = [...new Set(otherFamilies.map((s) => s.label))].join(', ');
-  if (otherFamilies.length) {
+  // Same-gender zaereen may share a gender room, and KUN HR zaereen their reserved rooms, across families and tours.
+  const clubbed = otherFamilies.length > 0 && !!rule.clubWith &&
+    otherFamilies.every((s) => s.pax === 0 || (s.gender === rule.clubWith && (!rule.clubKunOnly || isKunHr(s.office))));
+  if (clubbed) {
+    reasons.push(rule.clubKunOnly ? `Shares with other KUN HR ${genderWord(rule.clubWith!)}` : `Shares with other ${genderWord(rule.clubWith!)} (same gender)`);
+  } else if (otherFamilies.length) {
     if (otherFamilies.some((s) => s.tour !== lower(unit.tourRefNo))) {
       if (!force) return reject('Occupied by another tour');
       warnings.push('Shares with another tour');
@@ -625,7 +803,7 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   if (after <= base) {
     const empty = base - after;
     score += WEIGHT.emptyBed * empty;
-    if (!otherFamilies.length) reasons.push(empty === 0 ? `Exact fit: ${base} beds for ${after} pax` : `${after} pax in a ${base}-bed room`);
+    if (!otherFamilies.length || clubbed) reasons.push(empty === 0 ? `Exact fit: ${base} beds for ${after} pax` : `${after} pax in a ${base}-bed room`);
   } else {
     const buf = after - base;
     score += WEIGHT.bufferBed * buf;
@@ -700,7 +878,8 @@ function evaluate(unit: PlanUnit, room: Room, ctx: Context, mode: Mode = 'auto')
   }
 
   if (unit.familyNote && !otherFamilies.length) reasons.push(unit.familyNote);
-  return { ok: true, score, freeBeds, emptyBeds, reasons, warnings };
+  reasons.unshift(...rule.reasons);
+  return { ok: true, score, freeBeds, emptyBeds, reasons, warnings, needsApproval: rule.needsApproval };
 }
 
 function footprintFrom(reservations: Reservation[], rooms: Room[]) {
@@ -744,11 +923,7 @@ export function planAllocation(input: PlanInput): AllocationPlan {
   const startUnits = input.units || collectUnits(reservations, options, input.today);
   startUnits.forEach((u) => u.members.forEach((m) => [m.id, ...(m.alsoIds || [])].forEach((id) => inPlan.add(id))));
   const existing = reservations.filter((r) => !inPlan.has(r.id));
-  const ctx: Context = {
-    options, patterns,
-    occupancy: Occupancy.fromReservations(existing, rooms, familyGroups(reservations)),
-    footprint: footprintFrom(existing, rooms),
-  };
+  const ctx = makeContext(options, patterns, Occupancy.fromReservations(existing, rooms, familyGroups(reservations)), footprintFrom(existing, rooms), rooms);
   const byKey = new Map(rooms.map((r) => [roomKey(r.building, r.roomNumber), r]));
   const assignments: Record<string, PlanAssignment | null> = {};
   const unplaced: Record<string, string> = {};
@@ -937,16 +1112,189 @@ export function planAllocation(input: PlanInput): AllocationPlan {
     placeBest(unit, best.room, best.ev);
   };
 
-  for (const unit of queue) planUnit(unit);
+  /**
+   * Amatullah Aai Saheba Trust: no family numbers, so zaereen are grouped by surname and packed into rooms up to
+   * the last bed including buffer, venue by venue (Saifee, Badri, Mohammedi, Burhani). A venue is only left
+   * when none of its rooms can take anyone else. Different surnames share a room only to fill it, and then
+   * only gents with gents and ladies with ladies.
+   */
+  const resById = new Map(reservations.map((r) => [r.id, r]));
+  const packAmatullah = (bundle: PlanUnit[]) => {
+    const first = bundle[0];
+    const tour = lower(first.tourRefNo);
+    const start = bundle.map((u) => u.arrivalDate).sort()[0];
+    const end = bundle.map((u) => u.departureDate).sort().reverse()[0];
+    type Person = { m: PlanMember; surname: string; hof: string; gender: string; bed: number };
+    const people: Person[] = bundle.flatMap((u) => u.members).map((m) => ({
+      m, surname: lower(surnameOf(m.name)), hof: lower(m.hofId || resById.get(m.id)?.hofId), gender: m.infant ? '' : genderLetter(m.gender), bed: m.infant ? 0 : 1,
+    }));
+    // Surname groups. A surname shared by several households with both genders is split by household (HOF).
+    const bySurname = new Map<string, Person[]>();
+    for (const p of people) bySurname.set(p.surname, [...(bySurname.get(p.surname) || []), p]);
+    let groups: Person[][] = [];
+    for (const list of bySurname.values()) {
+      const genders = new Set(list.map((p) => p.gender).filter(Boolean));
+      const hofs = new Set(list.map((p) => p.hof).filter(Boolean));
+      if (genders.size > 1 && hofs.size > 1) {
+        const byHof = new Map<string, Person[]>();
+        for (const p of list) byHof.set(p.hof || p.m.id, [...(byHof.get(p.hof || p.m.id) || []), p]);
+        groups.push(...byHof.values());
+      } else groups.push(list);
+    }
+    const beds = (g: Person[]) => g.reduce((n, p) => n + p.bed, 0);
+    type Who = { gender: string; surname: string; hof: string };
+    const together = (a: Who, b: Who) => !a.gender || !b.gender || a.gender === b.gender || (a.surname === b.surname && (a.hof === b.hof || !a.hof || !b.hof));
+
+    const stub: PlanUnit = { ...first, key: `ama-probe|${tour}`, members: [], pax: 1, arrivalDate: start, departureDate: end, familyKey: `ama-probe|${tour}`, starred: false };
+    const unitsBefore = units.length;
+    for (const venue of AMATULLAH_VENUES) {
+      if (!groups.length) break;
+      // Rooms of this venue that the rules allow, empty on these dates or shared only with this tour.
+      const slots = sorted.filter((room) => lower(room.building) === lower(venue)).flatMap((room) => {
+        if (room.status === 'blocked' || (options.buildings.length && !options.buildings.includes(room.building))) return [];
+        const k = roomKey(room.building, room.roomNumber);
+        const sharing = ctx.occupancy.stays(k).filter((s) => overlaps(start, end, s.arrival, s.departure));
+        if (sharing.some((s) => s.tour !== tour)) return [];
+        if (applyRules(stub, room, ctx, 'auto', sharing).reject) return [];
+        let peak = 0;
+        for (const n of nights(start, end)) peak = Math.max(peak, sharing.filter((s) => covers(s.arrival, s.departure, n)).reduce((sum, s) => sum + s.pax, 0));
+        const free = maxBeds(room) - peak;
+        if (free <= 0) return [];
+        return [{ room, free, present: sharing.flatMap((s) => s.people || []) as Who[], placed: [] as Person[] }];
+      });
+      type Slot = (typeof slots)[number];
+      const fill = (mixFirst: boolean) => {
+        const trial: Slot[] = slots.map((sl) => ({ ...sl, placed: [] as Person[] }));
+        const fits = (slot: Slot, g: Person[], mixing: boolean) => {
+          if (beds(g) > slot.free) return false;
+          const inRoom: Who[] = [...slot.present, ...slot.placed];
+          if (!mixing && inRoom.some((p) => !g.some((q) => q.surname === p.surname))) return false;
+          return inRoom.every((p) => g.every((q) => together(p, q)));
+        };
+        const put = (slot: Slot, g: Person[]) => { slot.placed.push(...g); slot.free -= beds(g); };
+        const bestSlot = (g: Person[], mixing: boolean) => trial
+          .filter((sl) => fits(sl, g, mixing))
+          .sort((a, b) => (a.free - beds(g)) - (b.free - beds(g)) ||
+            Number(b.placed.some((p) => g.some((q) => q.surname === p.surname))) - Number(a.placed.some((p) => g.some((q) => q.surname === p.surname))))[0];
+        const left: Person[][] = [];
+        // 1. Whole surname groups, biggest first, in the room they fill best: in rooms of their own, or (when that
+        //    leaves people without a bed) sharing with the same gender from the start.
+        for (const g of [...groups].sort((a, b) => beds(b) - beds(a))) {
+          const slot = bestSlot(g, mixFirst);
+          if (slot) put(slot, g); else left.push(g);
+        }
+        // 2. Fill the beds that are left: whole groups, then by gender, then one by one.
+        const rest: Person[][] = [];
+        for (const g of left) {
+          const slot = bestSlot(g, true);
+          if (slot) { put(slot, g); continue; }
+          const parts = [g.filter((p) => p.gender === 'M'), g.filter((p) => p.gender !== 'M')].filter((x) => x.length);
+          for (const part of parts) {
+            const sl = parts.length > 1 ? bestSlot(part, true) : undefined;
+            if (sl) { put(sl, part); continue; }
+            // Infants go with a woman of their family.
+            const adults = part.filter((p) => p.bed);
+            const infants = part.filter((p) => !p.bed);
+            const unplacedPart: Person[] = [];
+            for (const p of adults) {
+              const one = bestSlot([p], true);
+              if (one) put(one, [p]); else unplacedPart.push(p);
+            }
+            for (const inf of infants) {
+              const host = trial.find((sl2) => sl2.placed.some((p) => p.surname === inf.surname && p.gender === 'F')) ||
+                trial.find((sl2) => sl2.placed.some((p) => p.surname === inf.surname));
+              if (host) host.placed.push(inf); else unplacedPart.push(inf);
+            }
+            if (unplacedPart.length) rest.push(unplacedPart);
+          }
+        }
+        const mixedRooms = trial.filter((sl) => new Set(sl.placed.map((p) => p.surname)).size > 1).length;
+        return { trial, rest, waiting: rest.reduce((n2, g) => n2 + g.length, 0), mixedRooms };
+      };
+      // Surnames stay apart unless mixing them gives more zaereen a bed in this venue.
+      const apart = fill(false);
+      const mixed = apart.waiting ? fill(true) : apart;
+      const chosen = mixed.waiting < apart.waiting ? mixed : apart;
+      groups = chosen.rest;
+      for (const slot of chosen.trial) {
+        if (!slot.placed.length) continue;
+        const room = slot.room;
+        const k = roomKey(room.building, room.roomNumber);
+        const counts = new Map<string, number>();
+        for (const p of slot.placed) counts.set(surnameOf(p.m.name), (counts.get(surnameOf(p.m.name)) || 0) + 1);
+        const surnames = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n}${c > 1 ? ` (${c})` : ''}`);
+        const pax = beds(slot.placed);
+        const used = maxBeds(room) - slot.free;
+        const unit: PlanUnit = {
+          ...first,
+          key: `ama|${tour}|${start}|${end}|${k}`,
+          family: surnames.length <= 3 ? surnames.join(', ') : `${surnames.slice(0, 2).join(', ')} +${surnames.length - 2}`,
+          familyKey: `ama|${k}`,
+          familyNote: 'Amatullah Aai Saheba Trust: grouped by surname',
+          arrivalDate: start, departureDate: end,
+          members: slot.placed.map((p) => p.m),
+          pax, starred: false, packed: true, splitFrom: undefined, presetBuilding: undefined,
+        };
+        units.push(unit);
+        const venueRank = AMATULLAH_VENUES.findIndex((v) => lower(v) === lower(room.building)) + 1;
+        const reasons = [
+          `Amatullah Aai Saheba Trust: ${room.building} (venue ${venueRank} of ${AMATULLAH_VENUES.length})`,
+          counts.size > 1 ? `Surnames ${surnames.join(', ')} share to fill the room` : `Surname ${surnames[0]} together`,
+          `${used} of ${maxBeds(room)} beds used, buffer included`,
+        ];
+        place(unit, room, { building: room.building, roomNumber: room.roomNumber, reasons, warnings: [] });
+      }
+    }
+    // Nobody could take them in any venue.
+    for (const g of groups) {
+      const unit: PlanUnit = {
+        ...first, key: `ama|${tour}|${start}|${end}|left|${g[0].m.id}`,
+        family: surnameOf(g[0].m.name), familyKey: `ama|left|${g[0].m.id}`, familyNote: 'Amatullah Aai Saheba Trust: grouped by surname',
+        arrivalDate: start, departureDate: end, members: g.map((p) => p.m), pax: beds(g), starred: false, packed: true,
+      };
+      units.push(unit);
+      assignments[unit.key] = null;
+      unplaced[unit.key] = `No free bed in ${AMATULLAH_VENUES.join(', ')} from ${start} to ${end}`;
+    }
+    return units.length - unitsBefore;
+  };
+
+  const bundleKey = (u: PlanUnit) => [lower(u.tourRefNo), u.arrivalDate, u.departureDate].join('|');
+  const packable = (u: PlanUnit) => isAmatullah(u.officeName) && !u.starred && !u.userSplit && !u.followRoom;
+  const packed = new Set<string>();
+  for (const unit of queue) {
+    if (packable(unit)) {
+      const k = bundleKey(unit);
+      if (!packed.has(k)) {
+        packed.add(k);
+        packAmatullah(queue.filter((u) => packable(u) && bundleKey(u) === k));
+      }
+      continue;
+    }
+    planUnit(unit);
+  }
   // A unit can lose its room to a relocation and get a new one; assignments always holds the latest.
   for (const u of units) if (assignments[u.key] === undefined) { assignments[u.key] = null; unplaced[u.key] ||= 'No free room'; }
   for (const u of units) if (assignments[u.key]) delete unplaced[u.key];
+
+  // Reserved rooms (Burhani 409, 410, G2) that would give a room to someone still waiting, once approved.
+  const approvalNeeded: NonNullable<AllocationPlan['approvalNeeded']> = [];
+  const waiting = units.filter((u) => !assignments[u.key] && unplaced[u.key] !== LEFT_EMPTY && !u.followRoom);
+  if (waiting.length) {
+    for (const room of sorted.filter((r) => isApprovalRoom(r) && !ctx.approved.has(roomKey(r.building, r.roomNumber)))) {
+      const k = roomKey(room.building, room.roomNumber);
+      ctx.approved.add(k);
+      const fit = waiting.filter((u) => evaluate(u, room, ctx).ok);
+      ctx.approved.delete(k);
+      if (fit.length) approvalNeeded.push({ building: room.building, roomNumber: room.roomNumber, unitKeys: fit.map((u) => u.key), people: fit.reduce((n, u) => n + u.members.length, 0) });
+    }
+  }
 
   // Keep the screen order stable: by tour, then family.
   units.sort((a, b) => tourStart.get(lower(a.tourRefNo))?.localeCompare(tourStart.get(lower(b.tourRefNo)) || '') ||
     lower(a.tourRefNo).localeCompare(lower(b.tourRefNo)) ||
     a.family.localeCompare(b.family, undefined, { numeric: true }) || a.key.localeCompare(b.key));
-  return { generatedAt: new Date().toISOString(), options, units, assignments, unplaced };
+  return { generatedAt: new Date().toISOString(), options, units, assignments, unplaced, ...(approvalNeeded.length ? { approvalNeeded } : {}) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1006,7 +1354,7 @@ function contextWithout(plan: AllocationPlan, reservations: Reservation[], rooms
     occupancy.addUnit(roomKey(room.building, room.roomNumber), u);
     addFootprint(footprint, lower(u.tourRefNo), room);
   }
-  return { options: plan.options, patterns, occupancy, footprint };
+  return makeContext(plan.options, patterns, occupancy, footprint, rooms);
 }
 
 /** Every room for one unit, best first, given the rest of the plan. */
@@ -1018,13 +1366,15 @@ export function roomOptionsFor(unit: PlanUnit, plan: AllocationPlan, reservation
       const auto = evaluate(unit, room, ctx);
       if (auto.ok) return { room, kind: 'free', score: auto.score, freeBeds: auto.freeBeds, note: `${auto.freeBeds} free` };
       const manual = evaluate(unit, room, ctx, 'manual');
+      if (!manual.ok && manual.hard) return { room, kind: 'unsuitable', score: Infinity, freeBeds: 0, note: manual.reject || 'Not allowed', blocked: true };
+      if (manual.needsApproval) return { room, kind: 'unsuitable', score: manual.ok ? manual.score : Infinity, freeBeds: manual.freeBeds, note: manual.ok ? `Needs approval · ${manual.freeBeds} free` : manual.reject || 'Needs approval', needsApproval: true };
       if (manual.ok && !manual.warnings.length) {
         const shared = manual.reasons.find((r) => r.startsWith('Shares with'))?.replace(' (your choice)', '').replace('Shares with', 'Share with');
         return { room, kind: 'share', score: manual.score, freeBeds: manual.freeBeds, note: shared ? `${shared} · ${manual.freeBeds} free` : `${manual.freeBeds} free` };
       }
       return { room, kind: 'unsuitable', score: auto.score, freeBeds: 0, note: manual.ok ? manual.warnings[0] : manual.reject || auto.reject || 'Not available' };
     })
-    .sort((a, b) => rank[a.kind] - rank[b.kind] || a.score - b.score);
+    .sort((a, b) => rank[a.kind] - rank[b.kind] || Number(!!a.blocked) - Number(!!b.blocked) || a.score - b.score);
 }
 
 /** Recomputes every assigned unit's warnings against the whole plan, after the user changed it. */

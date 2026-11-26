@@ -78,6 +78,7 @@ import { SwitchRoomModal, SwitchRoomTarget } from './components/SwitchRoomModal'
 import { AddZaerModal } from './components/AddZaerModal';
 import { AddTourGroupModal } from './components/AddTourGroupModal';
 import { AddBuildingAndRoomsModal } from './components/AddBuildingAndRoomsModal';
+import { checkManualRoomRules, normalizeRules, type PlannerRules } from './services/allocationRules';
 import { loadAccommodation, saveChanges, fetchBackendStatus, pullNkerp, resetBackendRooms, saveBackendSettings, type PullStatus } from './services/api';
 import { exportRoomAllocation } from './services/excelService';
 
@@ -165,7 +166,52 @@ export default function App() {
     building: string;
     guestName: string;
     onConfirm: () => void;
+    /** Reserved-room approval prompt (Burhani 409, 410, G2) or a planner instruction. */
+    isApproval?: boolean;
+    confirmLabel?: string;
   } | null>(null);
+
+  // AI Planner rules and chat-box instructions, saved with the app settings so everyone shares them.
+  const [plannerRules, setPlannerRules] = useState<PlannerRules>(() => normalizeRules(null));
+  const plannerRulesRef = useRef(plannerRules);
+  plannerRulesRef.current = plannerRules;
+  const handleSavePlannerRules = async (next: PlannerRules) => {
+    setPlannerRules(next);
+    const ok = await saveBackendSettings({ plannerRules: next });
+    if (!ok) showToast('The planner rules could not be saved to the app. They apply on this screen until you reload.', 'error');
+    return ok;
+  };
+
+  /**
+   * Standing room rules for a manual allotment: KUN HR rooms, Saifee single-gender rooms, Burhani rooms that need
+   * approval, and the planner instructions. Returns false when the allotment must not go ahead now.
+   */
+  const passesRoomRules = (members: Reservation[], building: string, roomNumber: string, onApproved: () => void) => {
+    if (!roomNumber) return true;
+    const room = rooms.find((r) => r.building.toLowerCase() === building.toLowerCase() && r.roomNumber.toLowerCase() === roomNumber.toLowerCase());
+    const check = checkManualRoomRules(room, members, reservations, rooms, plannerRulesRef.current);
+    if (check.block) {
+      showToast(check.block, 'error');
+      return false;
+    }
+    if (check.approval) {
+      setAllocationNotice({
+        title: check.approval.title,
+        message: check.approval.message,
+        isApproval: true,
+        confirmLabel: 'Approve & allot',
+        roomNumber,
+        building,
+        guestName: members.length === 1 ? members[0].applicantName : `${members.length} zaereen`,
+        onConfirm: () => {
+          setAllocationNotice(null);
+          onApproved();
+        },
+      });
+      return false;
+    }
+    return true;
+  };
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -206,6 +252,7 @@ export default function App() {
       setPhotos(data.photos);
       setCategories(data.settings.categories);
       setAdminPin(data.settings.adminPin);
+      setPlannerRules(normalizeRules(data.settings.plannerRules));
       setIsLiveBackendConnected(true);
       if (showFeedback) showToast('Loaded the latest saved accommodation data.');
     } catch {
@@ -510,7 +557,8 @@ export default function App() {
     reservationId: string,
     building: string,
     roomNumber: string,
-    forceConfirmed: boolean = false
+    forceConfirmed: boolean = false,
+    rulesApproved: boolean = false
   ) => {
     const target = reservations.find((r) => r.id === reservationId);
     if (!target) return;
@@ -519,6 +567,8 @@ export default function App() {
       executeDirectAllot(reservationId, building, '', 'Room allotment cleared');
       return;
     }
+
+    if (!rulesApproved && !passesRoomRules([target], building, roomNumber, () => handleAllotRoom(reservationId, building, roomNumber, forceConfirmed, true))) return;
 
     if (!forceConfirmed) {
       const requestedPax = isInfant(target) ? 0 : 1;
@@ -621,7 +671,8 @@ export default function App() {
     building: string,
     roomNumber: string,
     forceConfirmed: boolean = false,
-    memberIds?: string[]
+    memberIds?: string[],
+    rulesApproved: boolean = false
   ) => {
     const safeTour = String(tourRefNo || '').trim().toLowerCase();
     const safeFam = String(family || '').trim().toLowerCase();
@@ -642,6 +693,9 @@ export default function App() {
     }
 
     const matchIds = new Set(matches.map((m) => m.id));
+
+    if (!rulesApproved && !passesRoomRules(matches, building, roomNumber,
+      () => handleBatchAllotFamily(tourRefNo, family, building, roomNumber, forceConfirmed, matches.map((m) => m.id), true))) return;
 
     if (roomNumber && !forceConfirmed) {
       const first = matches[0];
@@ -740,6 +794,15 @@ export default function App() {
     const originRoom = primary.roomNumber || '';
     const now = new Date().toISOString();
 
+    // Standing room rules for the move (KUN HR rooms, single-gender rooms, rooms that need approval).
+    const ruleCheck = (members: Reservation[], building: string, roomNumber: string) => {
+      const room = rooms.find((r) => r.building.toLowerCase() === building.toLowerCase() && r.roomNumber.toLowerCase() === String(roomNumber).toLowerCase());
+      return checkManualRoomRules(room, members, reservations.filter((r) => !sourceIdSet.has(r.id)), rooms, plannerRulesRef.current);
+    };
+    const toTarget = ruleCheck(sourceList, targetBuilding, targetRoomNumber);
+    if (toTarget.block) { showToast(toTarget.block, 'error'); return; }
+    if (toTarget.approval && !window.confirm(`${toTarget.approval.title}\n\n${toTarget.approval.message}`)) return;
+
     let targetOccupantIdSet = new Set<string>();
     if (options.swapWithExistingOccupants && originRoom) {
       const arrivalDate = primary.arrivalDate || primary.arrivalDateTime || primary.rawArrivalStr || '';
@@ -753,6 +816,9 @@ export default function App() {
         poolWithoutSource
       );
       targetOccupantIdSet = new Set(overlappingOccupants.map((o) => o.id));
+      const back = ruleCheck(overlappingOccupants, originBuilding, originRoom);
+      if (back.block) { showToast(back.block, 'error'); return; }
+      if (back.approval && !window.confirm(`${back.approval.title}\n\n${back.approval.message}`)) return;
     }
 
     const updated = reservations.map((r) => {
@@ -1176,6 +1242,8 @@ export default function App() {
             onApplyPlan={handleApplyPlan}
             onShiftToB={(ids) => handleBatchShiftToCategoryB(ids, 'No')}
             onOpenSync={() => setActiveTab('sync')}
+            rules={plannerRules}
+            onSaveRules={handleSavePlannerRules}
           />
         )}
 
@@ -1346,7 +1414,7 @@ export default function App() {
           <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
               <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${allocationNotice.isSameDayTurnover ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                <div className={`p-2 rounded-xl ${allocationNotice.isSameDayTurnover || allocationNotice.isApproval ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
                   {allocationNotice.isSameDayTurnover ? (
                     <Clock className="w-5 h-5" />
                   ) : (
@@ -1372,7 +1440,7 @@ export default function App() {
             </div>
 
             <div className={`p-3.5 rounded-xl text-xs space-y-2 border ${
-              allocationNotice.isSameDayTurnover
+              allocationNotice.isSameDayTurnover || allocationNotice.isApproval
                 ? 'bg-amber-50/80 border-amber-200 text-amber-950'
                 : 'bg-rose-50/80 border-rose-200 text-rose-950'
             }`}>
@@ -1406,7 +1474,7 @@ export default function App() {
                 className="px-5 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
-                <span>Allot anyway</span>
+                <span>{allocationNotice.confirmLabel || 'Allot anyway'}</span>
               </button>
             </div>
           </div>
