@@ -1449,7 +1449,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           className="w-4 h-4 rounded border-stone-300 accent-[#0f4a37]"
                         />
                       </label>
-                      <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} size={44} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[11px] font-mono text-stone-400 tabular-nums">#{idx + 1}</span>
@@ -1495,8 +1494,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Tour ID + Office Name */}
-                  <div className="bg-[#f6f8f7] rounded-xl px-3 py-2 border border-[#e2e8e5] text-xs space-y-1">
+                  {/* NKERP photo + Tour ID + Office Name */}
+                  <div className="flex items-start gap-2.5">
+                  <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
+                  <div className="flex-1 min-w-0 bg-[#f6f8f7] rounded-xl px-3 py-2 border border-[#e2e8e5] text-xs space-y-1">
                     <div className="font-mono font-bold text-[#0f4a37] break-all">
                       Tour: {res.tourRefNo || res.tourId || '—'}
                     </div>
@@ -1513,6 +1514,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
                       </div>
                     ) : null}
+                  </div>
                   </div>
 
                   {/* Category + Portal + Actions */}
@@ -1632,7 +1634,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       {/* ========================================================================= */}
       <div className="hidden md:flex bg-white border border-[#e2e8e5] rounded-2xl shadow-sm overflow-hidden flex-col w-full">
         <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
-          <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2000px]'}`}>
+          <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2110px]'}`}>
             {/* Table Header with interactive sorting on all columns */}
             <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[11px] tracking-wider font-medium select-none sticky top-0 z-10">
               <tr>
@@ -1652,6 +1654,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                 </th>
 
+                {/* NKERP photo */}
+                <th className="py-3 px-1.5 w-[110px]">PHOTO</th>
+
                 {/* 1. ITS ID */}
                 <th
                   onClick={() => handleSort('itsId')}
@@ -1670,7 +1675,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <th
                   onClick={() => handleSort('applicantName')}
                   className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[156px]' : 'min-w-[234px]'
+                    fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'
                   }`}
                   title="Click to sort by Applicant Name"
                 >
@@ -1898,6 +1903,11 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         </div>
                       </td>
 
+                      {/* NKERP photo */}
+                      <td className="py-2 px-1.5 w-[110px]">
+                        <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
+                      </td>
+
                       {/* 1. ITS ID */}
                       <td className={`py-2 px-1.5 font-mono font-bold text-stone-950 ${fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'}`}>
                         <input
@@ -1909,9 +1919,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       </td>
 
                       {/* 2. Applicant Name */}
-                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[156px]' : 'min-w-[234px]'}`}>
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'}`}>
                         <div className="flex items-center gap-1 group/name relative">
-                          <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} size={fitColumnsToScreen ? 24 : 30} />
                           {/* Star button on hover & persistent gold star badge when starred */}
                           {res.isSpecialGuest ? (
                             <button
@@ -2314,7 +2323,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={16} className="py-12 text-center text-stone-400 text-sm">
+                  <td colSpan={17} className="py-12 text-center text-stone-400 text-sm">
                     No zaereen found matching your filter criteria. Click "Upload Excel" to import your sheet.
                   </td>
                 </tr>
