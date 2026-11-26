@@ -8,6 +8,7 @@ import { peopleOnTour } from './nkerp-sync/planner.js';
 import { addDays, day, norm, todayIn } from './nkerp-sync/util.js';
 import type { NkRecord } from './nkerp-sync/types.js';
 import { expiry, guests, identityHash, read, rooms, stayKey, write, transaction, prune } from './accommodation-store.js';
+import { photoStore, prunePhotos } from './nkerp-photos.js';
 import { prioritizeTravel, readTravel, reconcileTravel, travelEndpoints, travelRequests } from './nkerp-travel.js';
 
 export interface StoredReservation extends Reservation {
@@ -194,8 +195,9 @@ export function createPull(onChange: () => void) {
     running = (async () => {
       nkerpLogin();
       const signal = AbortSignal.timeout(55_000);
-      const client = new NkerpClient({signal});
-      const tours = new NkerpEmailClient({signal});
+      const photos = photoStore();
+      const client = new NkerpClient({signal, onPhoto: photos.sink});
+      const tours = new NkerpEmailClient({signal, onPhoto: photos.sink});
       const travelSignal = AbortSignal.timeout(48_000);
       const travelClient = new NkerpClient({ signal: travelSignal, endpoints: travelEndpoints });
       const checked = read<Record<string, number>>('travel-checked', {});
@@ -206,13 +208,18 @@ export function createPull(onChange: () => void) {
         readTravel(travelClient, requests, travelSignal),
       ]);
       const outcome = accommodation.status === 'fulfilled' ? reconcileNkerp(accommodation.value) : undefined;
+      const photoChanges = transaction(() => {
+        const saved = photos.flush();
+        // Only a complete pull decides which photos are no longer needed.
+        return saved + (outcome ? prunePhotos(guests().map(r => r.itsId)) : 0);
+      });
       if (travel.status === 'rejected') throw travel.reason;
       const requested = new Set(requests.map(request => request.key));
       const extra = travelRequests(guests()).filter(request => !requested.has(request.key));
       const additional = await readTravel(travelClient, prioritizeTravel(extra, today, checked), travelSignal);
       for (const [key, rows] of additional.results) travel.value.results.set(key, rows);
       const transport = reconcileTravel(travel.value.results, travel.value.failed + additional.failed);
-      if (outcome?.changed || outcome?.expired || transport.changed) onChange();
+      if (outcome?.changed || outcome?.expired || transport.changed || photoChanges) onChange();
       if (accommodation.status === 'rejected') throw accommodation.reason;
       if (!outcome) throw new Error('NKERP accommodation did not refresh.');
       status.lastSyncedAt = new Date().toISOString();

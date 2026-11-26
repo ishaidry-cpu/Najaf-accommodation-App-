@@ -3,6 +3,7 @@ import { NkerpClient } from './nkerp-sync/nkerpClient.js';
 import { credentialStatus, MissingCredentials } from './nkerp-sync/credentials.js';
 import { norm, familyNo } from './nkerp-sync/util.js';
 import { dispatch, json, type HandlerDeps } from './nkerp-sync/handlers.js';
+import { photoIndex, photoResponse } from './nkerp-photos.js';
 import { createPull, removalKey, type StoredReservation } from './nkerp-pull.js';
 import { expiry, guests, localHistory, prune, read, rooms, transaction, write } from './accommodation-store.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
@@ -113,6 +114,9 @@ export function accommodationApi(onChange: () => void = () => {}) {
       });
       if (route === '/api/reservations') return json(guests());
       if (route === '/api/rooms') return json(rooms());
+      if (route === '/api/photos') return json(photoIndex());
+      const photo = /^\/api\/photos\/([0-9A-Za-z_-]+)$/.exec(route);
+      if (photo) return photoResponse(photo[1]);
       if (route === '/api/settings') return json(read('settings',{}));
     }
     if (req.method === 'POST') {

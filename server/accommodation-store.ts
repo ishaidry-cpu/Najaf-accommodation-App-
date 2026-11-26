@@ -7,6 +7,7 @@ import type { HistoryRow } from './nkerp-sync/types.js';
 export interface StorageDriver {
   read<T>(key: string, fallback: T): T;
   write(key: string, value: unknown): void;
+  remove(key: string): void;
   transaction<T>(fn: () => T): T;
 }
 
@@ -19,6 +20,7 @@ function store() {
 }
 export const read = <T>(key: string, fallback: T): T => store().read(key, fallback);
 export const write = (key: string, value: unknown) => store().write(key, value);
+export const remove = (key: string) => store().remove(key);
 export const transaction = <T>(fn: () => T): T => store().transaction(fn);
 
 export const guests = () => read<Reservation[]>('reservations', []);

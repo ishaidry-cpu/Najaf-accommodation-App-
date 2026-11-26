@@ -23,7 +23,7 @@
  *   - One send at a time, never retried. A send with no clear answer stops the run (it may have gone out).
  *   - A fresh read afterwards confirms each email by NKERP's own "sent" flag.
  */
-import { NkerpClient, NAJAF, Rejected } from './nkerpClient.js';
+import { NkerpClient, NAJAF, Rejected, type NkerpClientOptions } from './nkerpClient.js';
 import type { LogLevel, NkRecord } from './types.js';
 import { addDays, day, errorMessage, norm } from './util.js';
 
@@ -55,7 +55,7 @@ export interface EmailPayload {
 export class NkerpEmailClient implements EmailApi {
   readonly client: NkerpClient;
 
-  constructor(opts: { allowWrite?: boolean; signal?: AbortSignal } = {}) {
+  constructor(opts: { allowWrite?: boolean; signal?: AbortSignal; onPhoto?: NkerpClientOptions['onPhoto'] } = {}) {
     this.client = new NkerpClient({ ...opts, endpoints: EMAIL_ENDPOINTS });
   }
 

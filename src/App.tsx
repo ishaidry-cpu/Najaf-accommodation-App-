@@ -88,6 +88,7 @@ export default function App() {
   // Core Data
   const [rooms, setRooms] = useState<Room[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<string[]>(DEFAULT_ZAEREEN_CATEGORIES);
 
   // Live Backend Connection Status
@@ -202,6 +203,7 @@ export default function App() {
       roomsRef.current = data.rooms;
       setReservations(data.reservations);
       setRooms(data.rooms);
+      setPhotos(data.photos);
       setCategories(data.settings.categories);
       setAdminPin(data.settings.adminPin);
       setIsLiveBackendConnected(true);
@@ -1139,6 +1141,7 @@ export default function App() {
         {activeTab === 'reservations' && (
           <ReservationsView
             reservations={reservations}
+            photos={photos}
             rooms={rooms}
             categories={categories}
             onAddReservation={handleAddReservation}

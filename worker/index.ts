@@ -43,6 +43,9 @@ export class Accommodation extends DurableObject<Env> {
           }
         });
       },
+      remove(key) {
+        sql.exec('DELETE FROM state WHERE key=?',key);
+      },
       transaction: fn => ctx.storage.transactionSync(fn),
     };
     withStore(this.store, () => transaction(() => {

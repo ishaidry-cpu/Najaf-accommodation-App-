@@ -53,6 +53,7 @@ import {
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
 import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
+import { ZairPhoto, type PhotoIndex } from './ZairPhoto';
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -79,6 +80,8 @@ interface ReservationsViewProps {
   userRole?: UserRole;
   onOpenQuickAllotModal?: (res: Reservation) => void;
   onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
+  /** ITS → NKERP photo version, refreshed with every pull. */
+  photos?: PhotoIndex;
 }
 
 const STANDARD_TIMES = [
@@ -144,6 +147,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   userRole = 'admin',
   onOpenQuickAllotModal,
   onOpenSwitchRoomModal,
+  photos,
 }) => {
   const isReadOnly = userRole === 'receptionist';
   // Deletion modal state & multi-selection state
@@ -1445,6 +1449,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           className="w-4 h-4 rounded border-stone-300 accent-[#0f4a37]"
                         />
                       </label>
+                      <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} size={44} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[11px] font-mono text-stone-400 tabular-nums">#{idx + 1}</span>
@@ -1665,7 +1670,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <th
                   onClick={() => handleSort('applicantName')}
                   className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'
+                    fitColumnsToScreen ? 'w-[156px]' : 'min-w-[234px]'
                   }`}
                   title="Click to sort by Applicant Name"
                 >
@@ -1904,8 +1909,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       </td>
 
                       {/* 2. Applicant Name */}
-                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'}`}>
+                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[156px]' : 'min-w-[234px]'}`}>
                         <div className="flex items-center gap-1 group/name relative">
+                          <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} size={fitColumnsToScreen ? 24 : 30} />
                           {/* Star button on hover & persistent gold star badge when starred */}
                           {res.isSpecialGuest ? (
                             <button

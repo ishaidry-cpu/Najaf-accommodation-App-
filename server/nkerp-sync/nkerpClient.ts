@@ -13,6 +13,7 @@ import { BadResponse, fetchJson, Rejected, TransportError, withTransportRetry } 
 import { nkerpLogin } from './credentials.js';
 import type { NkRecord } from './types.js';
 import { norm } from './util.js';
+import { harvestPhotos, type PhotoSink } from '../nkerp-photos.js';
 
 export const BASE = 'https://to.najafkarbala.com/NKERPApi/';
 const ORIGIN = 'https://to.najafkarbala.com';
@@ -105,6 +106,8 @@ export interface NkerpClientOptions {
   endpoints?: { reads: readonly string[]; writes: readonly string[] };
   /** Cancels in-flight *reads* (never writes). */
   signal?: AbortSignal;
+  /** Read-only pulls: receives each zair photo (`ImageUrl`) found in listed rows. Without it photos are dropped. */
+  onPhoto?: PhotoSink;
   /** Injection points for tests. */
   credentials?: () => { loginId: string; password: string };
   retryDelayMs?: number;
@@ -119,6 +122,7 @@ export class NkerpClient implements NkerpApi {
   private ready = false;
   private loggingIn: Promise<void> | null = null;
   private readonly signal?: AbortSignal;
+  private readonly onPhoto?: PhotoSink;
   private readonly creds: () => { loginId: string; password: string };
   private readonly retryDelayMs: number;
   private readonly timeoutMs: number;
@@ -130,6 +134,7 @@ export class NkerpClient implements NkerpApi {
     this.reads = opts.endpoints?.reads ?? READS;
     this.writes = opts.endpoints?.writes ?? WRITES;
     this.signal = opts.signal;
+    this.onPhoto = opts.allowWrite ? undefined : opts.onPhoto;
     this.creds = opts.credentials ?? (() => nkerpLogin());
     this.retryDelayMs = opts.retryDelayMs ?? 3000;
     this.timeoutMs = opts.timeoutMs ?? 90_000;
@@ -249,6 +254,7 @@ export class NkerpClient implements NkerpApi {
       received += chunk.length;
       let fresh = 0;
       for (const a of chunk) {
+        if (this.onPhoto) harvestPhotos(a, this.onPhoto);
         delete a.ImageUrl;
         const k = key(a);
         if (!seen.has(k)) {

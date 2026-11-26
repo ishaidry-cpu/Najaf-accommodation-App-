@@ -23,12 +23,14 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
   return response.json();
 }
 export async function loadAccommodation() {
-  const [reservations,rooms,settings] = await Promise.all([
+  const [reservations,rooms,settings,photos] = await Promise.all([
     request<Reservation[]>('reservations'),
     request<Room[]>('rooms'),
     request<BackendSettings>('settings'),
+    // Photos are extra: the app still loads if the photo index cannot be read.
+    request<Record<string,string>>('photos').catch(() => ({} as Record<string,string>)),
   ]);
-  return {reservations,rooms,settings};
+  return {reservations,rooms,settings,photos};
 }
 export const fetchBackendStatus = () => request<{ pull: PullStatus; revision: number; events: boolean }>('status');
 export const pullNkerp = () => request<{

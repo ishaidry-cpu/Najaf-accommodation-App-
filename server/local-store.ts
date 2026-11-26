@@ -23,6 +23,9 @@ export function read<T>(key: string, fallback: T): T {
 export function write(key: string, value: unknown) {
   db().prepare('INSERT INTO state VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value));
 }
+export function remove(key: string) {
+  db().prepare('DELETE FROM state WHERE key=?').run(key);
+}
 export function transaction<T>(fn: () => T): T {
   db().exec('BEGIN IMMEDIATE');
   try { const value = fn(); db().exec('COMMIT'); return value; }
@@ -41,5 +44,5 @@ export function setup() {
   });
 }
 
-export const localStore: StorageDriver = { read, write, transaction };
+export const localStore: StorageDriver = { read, write, remove, transaction };
 export { guests, rooms, expiry, stayKey, identityHash, prune, localHistory } from './accommodation-store.js';
