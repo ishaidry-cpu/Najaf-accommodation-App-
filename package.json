@@ -13,7 +13,8 @@
     "test:planner": "node --import tsx --test 'src/services/__tests__/*.test.ts'",
     "import:workbook": "tsx server.ts --import-workbook",
     "deploy": "node scripts/deploy.mjs",
-    "deploy:check": "node scripts/deploy.mjs --dry-run"
+    "deploy:check": "node scripts/deploy.mjs --dry-run",
+    "test:deploy": "node --test 'scripts/__tests__/*.test.mjs'"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
