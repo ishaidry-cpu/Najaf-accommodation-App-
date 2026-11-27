@@ -239,6 +239,8 @@ describe('WhatsApp follow-ups', () => {
     const hotel = followUpMessage(plan.plans.find(p => p.tour.id === b.id)!);
     assert.match(hotel, /• Karbala and Najaf dates are not in the NKERP chat box\n\n\*Example:\*\n• First Subvenue: \*10 October to 15 October \(Najaf\)\*\n• Second Subvenue: \*15 October to 21 October \(Karbala\)\*/);
     assert.doesNotMatch(hotel, /DD Mon/);
+    assert.ok(hotel.startsWith('Taslimaat Janab, Salaam Jameel\n'));
+    assert.ok(groups[0].message.startsWith('Taslimaat Janab, Salaam Jameel\n'));
   });
   it('reads replies written like the example', () => {
     const r = readChat([msg('First Subvenue: 29 November to 1 December (Najaf)'), msg('Second Subvenue: 1 December to 2 December (Karbala)')],
