@@ -141,8 +141,8 @@ const ImpactTable: React.FC<{ plan: TourPlan }> = ({ plan }) => {
       <table className="text-xs min-w-full">
         <thead><tr className="text-stone-500">
           <th className="text-left font-medium py-1 pr-3">Date</th>
-          <th className="text-right font-medium py-1 px-2">Karbala before → after</th>
-          <th className="text-right font-medium py-1 px-2">Najaf before → after</th>
+          <th className="text-right font-medium py-1 px-2">Karbala now · expected before → after</th>
+          <th className="text-right font-medium py-1 px-2">Najaf now · expected before → after</th>
         </tr></thead>
         <tbody>
           {days.map(d => (
@@ -151,7 +151,7 @@ const ImpactTable: React.FC<{ plan: TourPlan }> = ({ plan }) => {
               {(['KARBALA', 'NAJAF'] as City[]).map(c => {
                 const i = cell(c, d);
                 return <td key={c} className={`py-1 px-2 text-right tabular-nums ${i && i.after > i.limit ? 'text-rose-700 font-semibold' : 'text-stone-700'}`}>
-                  {i ? <>{i.before} → {i.after} <span className="text-stone-400">/ {i.limit}</span></> : <span className="text-stone-300">—</span>}
+                  {i ? <><span className="text-stone-500" title="Approved in NKERP now">{i.present}</span> · {i.before} → {i.after} <span className="text-stone-400">/ {i.limit}</span></> : <span className="text-stone-300">—</span>}
                 </td>;
               })}
             </tr>
@@ -252,6 +252,7 @@ const TourDetail: React.FC<{
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-1.5">Capacity before → after (Faiz pax)</h3>
             <ImpactTable plan={p} />
+            <p className="mt-1 text-[11px] text-stone-500"><b>Now</b>: approved in NKERP today. <b>Expected</b>: now + tours waiting for approval + tours that haven't finished submitting. Before → after is the expected count without and with this tour.</p>
             {p.alternative && (
               <p className="mt-2 text-xs text-stone-600">Other order ({fmtSegments(p.alternative.segments)}): {p.alternative.fits ? 'fits' : 'does not fit'}{p.alternative.over.length ? ` · over on ${p.alternative.over.map(o => `${fmtDay(o.date)} ${CITY_NAME[o.city]}`).join(', ')}` : ''}.</p>
             )}
@@ -404,10 +405,11 @@ const CapacitySection: React.FC<{ plan: ApprovalPlan }> = ({ plan }) => {
   const n = row('NAJAF'), k = row('KARBALA');
   const lines: [string, (r: typeof n) => React.ReactNode][] = [
     ['Maximum Capacity', r => r?.limit],
-    ['Approved Pax', r => r?.approved],
+    ['Present: Approved Pax (as in NKERP now)', r => r?.present],
     ['Pending Approval Pax', r => r?.pendingApproval],
     ['Estimated Pending Submission Pax (buffer)', r => r?.buffer],
-    ['Available Capacity', r => r && <span className={r.available < 0 ? 'text-rose-700 font-semibold' : 'text-emerald-800 font-semibold'}>{r.available}</span>],
+    ['Expected Total (approved + pending + buffer)', r => r && <span className="font-semibold">{r.expected}</span>],
+    ['Available Capacity (limit − expected)', r => r && <span className={r.available < 0 ? 'text-rose-700 font-semibold' : 'text-emerald-800 font-semibold'}>{r.available}</span>],
     ['Recommended Additional Allocation', r => r?.recommended],
     ['Hotel pax approved (not Faiz)', r => r?.hotelApproved],
     ['Hotel pax pending approval', r => r?.hotelPending],
@@ -427,7 +429,7 @@ const CapacitySection: React.FC<{ plan: ApprovalPlan }> = ({ plan }) => {
               <td className="px-4 py-2 text-right tabular-nums">{f(n) ?? '—'}</td><td className="px-4 py-2 text-right tabular-nums">{f(k) ?? '—'}</td></tr>
           ))}</tbody>
         </table>
-        <p className="px-4 py-2 text-[11px] text-stone-500 border-t border-stone-100">Approved pax come from NKERP's accommodation dashboard (tours being re-approved are taken out and planned again). Pending approval is this plan's Faiz pax. The buffer keeps {plan.settings.bufferPercent}% of unsubmitted tours' Faiz pax free. Transfer days count in both cities.</p>
+        <p className="px-4 py-2 text-[11px] text-stone-500 border-t border-stone-100">Present is NKERP's own approved count. In the expected total, tours being re-approved are counted once, with their new plan. Pending approval is this plan's Faiz pax. The buffer keeps {plan.settings.bufferPercent}% of unsubmitted tours' Faiz pax free. Transfer days count in both cities.</p>
       </Card>
 
       <Card title="Shift opportunities (whole Tour IDs only)">
@@ -437,7 +439,7 @@ const CapacitySection: React.FC<{ plan: ApprovalPlan }> = ({ plan }) => {
               <li key={i} className="px-4 py-3 text-sm">
                 <p className="text-stone-900">{s.benefit}</p>
                 <p className="text-xs text-stone-600 mt-0.5">{s.move.tour.ref}: {fmtSegments(s.from)} → <b>{fmtSegments(s.to)}</b> · {s.admits.tour.ref}: {fmtSegments(s.admitsWith)}</p>
-                <p className="text-xs text-stone-500 mt-1">{s.impact.map(x => `${fmtDay(x.date)} ${CITY_NAME[x.city]} ${x.before}→${x.after}`).join(' · ')}</p>
+                <p className="text-xs text-stone-500 mt-1">Expected: {s.impact.map(x => `${fmtDay(x.date)} ${CITY_NAME[x.city]} ${x.before}→${x.after}`).join(' · ')}</p>
               </li>
             ))}
           </ul>
@@ -449,10 +451,10 @@ const CapacitySection: React.FC<{ plan: ApprovalPlan }> = ({ plan }) => {
           <table className="min-w-full text-xs">
             <thead className="bg-stone-50 text-stone-500 sticky top-0"><tr>
               <th className="text-left font-medium px-3 py-2">Date</th>
-              {(['NAJAF', 'KARBALA'] as City[]).map(c => <th key={c} colSpan={4} className="text-center font-medium px-3 py-2 border-l border-stone-200">{CITY_NAME[c]} / {plan.settings.limits[c]}</th>)}
+              {(['NAJAF', 'KARBALA'] as City[]).map(c => <th key={c} colSpan={5} className="text-center font-medium px-3 py-2 border-l border-stone-200">{CITY_NAME[c]} / {plan.settings.limits[c]}</th>)}
             </tr><tr>
               <th />
-              {(['NAJAF', 'KARBALA'] as City[]).flatMap(c => ['Approved', 'Pending', 'Buffer', 'Available'].map((h, i) => <th key={c + h} className={`text-right font-medium px-2 py-1 ${i === 0 ? 'border-l border-stone-200' : ''}`}>{h}</th>))}
+              {(['NAJAF', 'KARBALA'] as City[]).flatMap(c => ['Present', 'Pending', 'Buffer', 'Expected', 'Available'].map((h, i) => <th key={c + h} className={`text-right font-medium px-2 py-1 ${i === 0 ? 'border-l border-stone-200' : ''}`}>{h}</th>))}
             </tr></thead>
             <tbody>
               {plan.days.map(d => (
@@ -460,8 +462,8 @@ const CapacitySection: React.FC<{ plan: ApprovalPlan }> = ({ plan }) => {
                   <td className="px-3 py-1 whitespace-nowrap text-stone-700">{fmtDay(d)}</td>
                   {(['NAJAF', 'KARBALA'] as City[]).flatMap(c => {
                     const r = plan.capacity.find(x => x.date === d && x.city === c);
-                    return [r?.approved, r?.pendingApproval, r?.buffer, r?.available].map((v, i) => (
-                      <td key={c + i} className={`px-2 py-1 text-right tabular-nums ${i === 0 ? 'border-l border-stone-200' : ''} ${i === 3 && (v ?? 0) < 0 ? 'text-rose-700 font-semibold bg-rose-50' : i === 3 ? 'text-emerald-800' : 'text-stone-700'}`}>{v ?? '—'}</td>
+                    return [r?.present, r?.pendingApproval, r?.buffer, r?.expected, r?.available].map((v, i) => (
+                      <td key={c + i} className={`px-2 py-1 text-right tabular-nums ${i === 0 ? 'border-l border-stone-200' : ''} ${i === 3 ? 'font-semibold text-stone-900' : ''} ${i === 4 && (v ?? 0) < 0 ? 'text-rose-700 font-semibold bg-rose-50' : i === 4 ? 'text-emerald-800' : i === 3 ? '' : 'text-stone-700'}`}>{v ?? '—'}</td>
                     ));
                   })}
                 </tr>
@@ -769,7 +771,7 @@ export const ApprovalsView: React.FC = () => {
             <table className="min-w-full text-sm">
               <thead className="bg-stone-50 text-xs text-stone-500"><tr>
                 <th className="text-left font-medium px-3 py-2">Date</th><th className="text-right font-medium px-3 py-2">Limit</th>
-                <th className="text-right font-medium px-3 py-2">Projected Faiz</th><th className="text-right font-medium px-3 py-2">Headroom</th>
+                <th className="text-right font-medium px-3 py-2">Present (NKERP)</th><th className="text-right font-medium px-3 py-2">Expected</th><th className="text-right font-medium px-3 py-2">Headroom</th>
                 <th className="text-left font-medium px-3 py-2">Arriving (Tour ID · Faiz pax · office)</th>
               </tr></thead>
               <tbody>
@@ -777,7 +779,8 @@ export const ApprovalsView: React.FC = () => {
                   <tr key={r.date} className="border-t border-stone-100 align-top">
                     <td className="px-3 py-1.5 whitespace-nowrap">{fmtDay(r.date, true)}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{r.limit}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{r.projected}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{r.present}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold">{r.expected}</td>
                     <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${r.headroom < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>{r.headroom}</td>
                     <td className="px-3 py-1.5 text-xs">{r.arrivals.length ? r.arrivals.map(a => <div key={a.id}>{a.ref.replace(/^NKERP\/TOUR\//, '')} · {a.pax} · {a.office}</div>) : <span className="text-stone-400">—</span>}</td>
                   </tr>

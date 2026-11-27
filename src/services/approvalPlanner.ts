@@ -486,7 +486,8 @@ export type Category = 'ready' | 'awaiting' | 'pending-submission' | 'reapproval
 export type Recommendation = 'approve' | 'hold-capacity' | 'wait' | 'follow-up' | 'needs-chat' | 'resolve' | 'review-changes' | 'done';
 export type SegmentSource = 'edited' | 'chat-dates' | 'chat-order' | 'balanced' | 'previous' | 'none';
 
-export interface DayImpact { city: City; date: string; before: number; after: number; limit: number }
+/** One city-day a tour touches. `present`: approved in NKERP now; `before`/`after`: the expected count without/with this tour. */
+export interface DayImpact { city: City; date: string; present: number; before: number; after: number; limit: number }
 export interface Alternative { segments: Segment[]; fits: boolean; over: DayImpact[]; impact: DayImpact[]; benefit: string }
 
 export interface TourPlan {
@@ -525,6 +526,10 @@ export interface CapacityRow {
   approved: number;
   pendingApproval: number;
   buffer: number;
+  /** Approved in NKERP now (the dashboard's count, as NKERP shows it). */
+  present: number;
+  /** What the day could reach: approved + pending approval + buffer for unsubmitted tours. */
+  expected: number;
   available: number;
   recommended: number;
   hotelApproved: number;
@@ -559,13 +564,13 @@ export interface ApprovalPlan {
 const kindOf = (t: ApprovalTour): TourPlan['kind'] =>
   t.option === 1 ? 'preferred' : t.option === 3 ? 'hotel' : t.paxHotel > 0 && t.paxFaiz > 0 ? 'mixed' : t.paxFaiz > 0 ? 'faiz' : 'hotel';
 
-function impactOf(segments: Segment[], pax: number, base: Load, limits: Record<City, number>): { impact: DayImpact[]; over: DayImpact[] } {
+function impactOf(segments: Segment[], pax: number, base: Load, limits: Record<City, number>, present: Load = emptyLoad()): { impact: DayImpact[]; over: DayImpact[] } {
   const add = emptyLoad();
   addLoad(add, segments, pax);
   const impact: DayImpact[] = [];
   for (const city of CITIES) for (const date of Object.keys(add[city]).sort()) {
     const before = Math.round(at(base, city, date));
-    impact.push({ city, date, before, after: before + add[city][date], limit: limits[city] });
+    impact.push({ city, date, present: Math.round(at(present, city, date)), before, after: before + add[city][date], limit: limits[city] });
   }
   impact.sort((a, b) => a.date.localeCompare(b.date) || a.city.localeCompare(b.city));
   return { impact, over: impact.filter(i => i.after > i.limit && i.after > i.before) };
@@ -596,6 +601,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
   const underReview = new Set(tours.map(t => t.id));
   // Approved load, less what tours being (re)approved held before: they are planned again below.
   const approved = emptyLoad();
+  const present = emptyLoad();
   const hotelApproved = emptyLoad();
   const oldFaiz = new Map<number, { city: City; date: string; pax: number }[]>();
   for (const cell of snapshot.dashboard) {
@@ -607,6 +613,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
       oldFaiz.set(o.id, list);
     }
     approved[cell.city][cell.date] = Math.max(0, a);
+    present[cell.city][cell.date] = cell.approved;
     hotelApproved[cell.city][cell.date] = cell.hotel;
   }
 
@@ -704,11 +711,11 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     if (p.segments.length && !p.problems.length) {
       const b = base();
       const pax = t.paxFaiz;
-      let { impact, over } = impactOf(p.segments, pax, b, limits);
+      let { impact, over } = impactOf(p.segments, pax, b, limits, present);
       if (p.flexible && pax) {
         const other = splitInOrder(tripStart(t), tripEnd(t), firstCity(p.segments) === 'KARBALA' ? 'NAJAF' : 'KARBALA');
         if (other.length && other.map(s => s.city).join() !== p.segments.map(s => s.city).join()) {
-          const alt = impactOf(other, pax, b, limits);
+          const alt = impactOf(other, pax, b, limits, present);
           const better = (alt.over.length < over.length) || (alt.over.length === over.length &&
             (peak(alt.impact) < peak(impact) - 1e-9 || (Math.abs(peak(alt.impact) - peak(impact)) < 1e-9 && najafNights(other) > najafNights(p.segments))));
           if (better) {
@@ -721,7 +728,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
         }
       } else if (pax && p.segments.length === 2 && (p.source === 'chat-dates' || p.source === 'chat-order' || p.source === 'previous')) {
         const other = splitInOrder(tripStart(t), tripEnd(t), p.segments[1].city);
-        const alt = impactOf(other, pax, b, limits);
+        const alt = impactOf(other, pax, b, limits, present);
         if (over.length && alt.over.length < over.length) {
           p.alternative = { segments: other, fits: !alt.over.length, over: alt.over, impact: alt.impact, benefit: describeBenefit(alt.impact, impact) };
           p.notes.push(`The requested sequence does not fit capacity; ${CITY_NAME[other[0].city]} first would (${p.alternative.benefit}). Ask the Tour Operator before changing it.`);
@@ -750,7 +757,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     p.recommendation = p.submission.state === 'follow-up' ? 'follow-up' : 'wait';
     // Show where the tour would land, without reserving it.
     if (p.segments.length && !segmentProblems(p.segments, tripStart(p.tour), tripEnd(p.tour)).length) {
-      const r = impactOf(p.segments, p.tour.paxFaiz, base(), limits);
+      const r = impactOf(p.segments, p.tour.paxFaiz, base(), limits, present);
       p.impact = r.impact; p.over = r.over; p.fits = !r.over.length;
     }
   }
@@ -767,11 +774,11 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
       // Take the moving tour out, put it back flipped.
       const minus = emptyLoad(); addLoad(minus, m.segments, m.tour.paxFaiz);
       for (const city of CITIES) for (const d of Object.keys(minus[city])) trial[city][d] -= minus[city][d];
-      const flipCheck = impactOf(flipped, m.tour.paxFaiz, trial, limits);
+      const flipCheck = impactOf(flipped, m.tour.paxFaiz, trial, limits, present);
       if (flipCheck.over.length) continue;
       addLoad(trial, flipped, m.tour.paxFaiz);
       const options = h.flexible ? [h.segments, splitInOrder(tripStart(h.tour), tripEnd(h.tour), firstCity(h.segments) === 'KARBALA' ? 'NAJAF' : 'KARBALA')] : [h.segments];
-      const fit = options.map(segs => ({ segs, r: impactOf(segs, h.tour.paxFaiz, trial, limits) })).find(o => !o.r.over.length);
+      const fit = options.map(segs => ({ segs, r: impactOf(segs, h.tour.paxFaiz, trial, limits, present) })).find(o => !o.r.over.length);
       if (!fit) continue;
       const days = new Set([...m.segments, ...flipped].flatMap(s => dayRange(s.start, s.end)));
       const impact: DayImpact[] = [];
@@ -779,7 +786,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
       for (const city of CITIES) for (const d of [...days].sort()) {
         const before = Math.round(at(now, city, d));
         const after = Math.round(at(trial, city, d));
-        if (before !== after) impact.push({ city, date: d, before, after, limit: limits[city] });
+        if (before !== after) impact.push({ city, date: d, present: Math.round(at(present, city, d)), before, after, limit: limits[city] });
       }
       const freed = impact.filter(i => i.city === 'NAJAF' && i.after < i.before);
       shifts.push({ move: m, from: m.segments, to: flipped, admits: h, admitsWith: fit.segs, impact,
@@ -798,8 +805,10 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const ap = Math.round(at(approved, city, date));
     const pend = Math.round(at(reserved, city, date));
     const buf = Math.round(at(buffer, city, date));
-    const available = limits[city] - ap - pend - buf;
+    const expected = ap + pend + buf;
+    const available = limits[city] - expected;
     capacity.push({ date, city, limit: limits[city], approved: ap, pendingApproval: pend, buffer: buf, available,
+      present: Math.round(at(present, city, date)), expected,
       recommended: Math.max(0, available), hotelApproved: Math.round(at(hotelApproved, city, date)), hotelPending: Math.round(at(hotelPending, city, date)) });
   }
 
@@ -896,19 +905,20 @@ export function latestPlanSet(rows: Record<string, any>[]): Segment[] {
 export const inProposal = (p: TourPlan) => p.recommendation === 'approve' || p.recommendation === 'review-changes';
 
 export interface NajafReportRow {
-  date: string; limit: number; projected: number; headroom: number; arrivingPax: number;
+  date: string; limit: number; present: number; expected: number; headroom: number; arrivingPax: number;
   arrivals: { id: number; ref: string; pax: number; office: string }[];
 }
 /** Najaf-only daily report: projected Faiz occupancy and the proposal's Najaf arrivals (Faiz pax only). */
 export function najafReport(plan: ApprovalPlan, include: (p: TourPlan) => boolean = inProposal): NajafReportRow[] {
   return plan.days.map(date => {
     const row = plan.capacity.find(c => c.date === date && c.city === 'NAJAF');
-    const projected = (row?.approved ?? 0) + (row?.pendingApproval ?? 0);
+    const present = row?.present ?? 0;
+    const expected = row?.expected ?? present;
     const arrivals = plan.plans.filter(p => include(p) && p.tour.paxFaiz > 0)
       .filter(p => p.segments.some(s => s.city === 'NAJAF' && s.start === date))
       .map(p => ({ id: p.tour.id, ref: p.tour.ref, pax: p.tour.paxFaiz, office: p.tour.office }));
     const limit = row?.limit ?? plan.settings.limits.NAJAF;
-    return { date, limit, projected, headroom: limit - projected, arrivingPax: arrivals.reduce((s, a) => s + a.pax, 0), arrivals };
+    return { date, limit, present, expected, headroom: limit - expected, arrivingPax: arrivals.reduce((s, a) => s + a.pax, 0), arrivals };
   });
 }
 

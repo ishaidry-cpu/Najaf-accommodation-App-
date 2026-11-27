@@ -124,6 +124,8 @@ describe('planning', () => {
     const plan = planApprovals(snap([unsubmitted], dashboard), {}, settings(), TODAY);
     const row = plan.capacity.find(c => c.city === 'NAJAF' && c.date === '2026-12-10')!;
     assert.equal(row.buffer, 8);
+    assert.equal(row.present, 280, 'present is what NKERP has approved');
+    assert.equal(row.expected, 288, 'expected adds pending approvals and the buffer');
     assert.equal(row.available, 2);
     assert.equal(plan.plans[0].category, 'pending-submission');
     assert.equal(planApprovals(snap([unsubmitted], dashboard), {}, settings({ bufferPercent: 0 }), TODAY)
@@ -164,8 +166,12 @@ describe('planning', () => {
     assert.ok(p.changes.some(c => c.after === 'Applicant(s) Added in Tour'));
     assert.ok(!p.changes.some(c => /awaiting/.test(c.after)));
     assert.equal(p.recommendation, 'review-changes');
-    // The old 10 pax are taken out before the new 12 are added.
-    assert.equal(plan.capacity.find(c => c.city === 'KARBALA' && c.date === '2026-12-10')!.approved, 100);
+    // The old 10 pax are taken out before the new 12 are added; present still shows NKERP's 110.
+    const k10 = plan.capacity.find(c => c.city === 'KARBALA' && c.date === '2026-12-10')!;
+    assert.equal(k10.approved, 100);
+    assert.equal(k10.present, 110);
+    assert.ok(p.impact.length);
+    for (const i of p.impact) assert.equal(i.present, plan.capacity.find(c => c.city === i.city && c.date === i.date)?.present ?? 0);
     assert.equal(plan.counts.reapprovalPending, 1);
     const reviewed = planApprovals(snap([re], dashboard), { [re.id]: { id: re.id, ref: re.ref, office: '', status: 'reapproval-reviewed',
       firstSeenAt: '', lastSeenAt: '', history: [], reviewedModifiedOn: re.modifiedOn } }, settings(), TODAY);
