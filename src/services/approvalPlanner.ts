@@ -942,10 +942,14 @@ export function suggestion(p: TourPlan, plan?: ApprovalPlan): { issue: string; n
 export const needsFollowUp = (p: TourPlan) => p.recommendation === 'follow-up' ||
   (p.recommendation === 'needs-chat' && p.submission.daysToArrival <= p.submission.cutoffDays);
 
+const DATES_ITEM = 'Karbala and Najaf dates are not in the NKERP chat box';
+const needsDates = (p: TourPlan) => !p.segments.length || p.recommendation === 'needs-chat';
+/** How to write the city dates, shown once under the pending items. */
+const DATES_EXAMPLE = ['*Example:*', '• First Subvenue: *10 October to 15 October (Najaf)*', '• Second Subvenue: *15 October to 21 October (Karbala)*'];
 function pendingItems(p: TourPlan): string[] {
   const items: string[] = [];
   if (p.tour.dustbin) items.push('Red-click itinerary and zaereen details are not fully submitted in NKERP');
-  if (!p.segments.length || p.recommendation === 'needs-chat') items.push('Karbala and Najaf dates are not in the NKERP chat box (please send them as "DD Mon to DD Mon – City")');
+  if (needsDates(p)) items.push(DATES_ITEM);
   if (p.tour.option === 1) items.push('Please confirm whether Faiz accommodation is Required or Not Required');
   return items;
 }
@@ -969,6 +973,7 @@ export function followUpMessage(p: TourPlan): string {
     '',
     'The following is still pending:',
     ...pendingItems(p).map(x => `• ${x}`),
+    ...(needsDates(p) ? ['', ...DATES_EXAMPLE] : []),
     '',
     `${dueLine(p)} Kindly complete it at the earliest so the accommodation can be approved.`,
     '',
@@ -990,6 +995,7 @@ export function officeFollowUps(plans: TourPlan[]): { office: string; tours: Tou
     const cutoff = tours[0].submission.cutoffDays;
     return { office, tours, message: [
       'Taslimaat Janab,', '', `*${office}*: the following Tour IDs still have pending submissions:`, '', ...lines, '',
+      ...(tours.some(needsDates) ? [...DATES_EXAMPLE, ''] : []),
       `Submissions are due ${cutoff} days before arrival in Iraq. Kindly complete them at the earliest so the accommodation can be approved.`, '', 'Shukran',
     ].join('\n') };
   }).sort((a, b) => a.tours[0].tour.arrivalAt.localeCompare(b.tours[0].tour.arrivalAt));

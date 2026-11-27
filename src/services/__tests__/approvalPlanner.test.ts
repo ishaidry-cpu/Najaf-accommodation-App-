@@ -235,5 +235,14 @@ describe('WhatsApp follow-ups', () => {
     assert.equal(groups.length, 1);
     assert.equal(groups[0].tours.length, 2);
     assert.match(groups[0].message, /Karbala and Najaf dates/);
+    assert.equal(groups[0].message.match(/First Subvenue/g)?.length, 1, 'the example appears once per message');
+    const hotel = followUpMessage(plan.plans.find(p => p.tour.id === b.id)!);
+    assert.match(hotel, /• Karbala and Najaf dates are not in the NKERP chat box\n\n\*Example:\*\n• First Subvenue: \*10 October to 15 October \(Najaf\)\*\n• Second Subvenue: \*15 October to 21 October \(Karbala\)\*/);
+    assert.doesNotMatch(hotel, /DD Mon/);
+  });
+  it('reads replies written like the example', () => {
+    const r = readChat([msg('First Subvenue: 29 November to 1 December (Najaf)'), msg('Second Subvenue: 1 December to 2 December (Karbala)')],
+      { start: '2026-11-29', end: '2026-12-02' });
+    assert.deepEqual(r.segments, [{ city: 'NAJAF', start: '2026-11-29', end: '2026-12-01' }, { city: 'KARBALA', start: '2026-12-01', end: '2026-12-02' }]);
   });
 });
