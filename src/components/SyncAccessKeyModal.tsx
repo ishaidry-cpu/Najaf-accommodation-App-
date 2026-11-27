@@ -30,9 +30,9 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 backdrop-blur-[2px] p-4" role="dialog" aria-modal="true"
       aria-labelledby="sync-key-title">
-      <form onSubmit={submit} className="w-full max-w-sm bg-[#f6f8f7] rounded-2xl border border-[#e2e8e5] shadow-2xl overflow-hidden">
-        <div className="bg-[#0f4a37] px-4 py-3 flex items-center justify-between">
-          <div id="sync-key-title" className="flex items-center gap-2 text-[#ecdcae] font-bold text-sm">
+      <form onSubmit={submit} className="w-full max-w-sm bg-stone-50 rounded-2xl border border-stone-200 shadow-2xl overflow-hidden">
+        <div className="bg-brand-700 px-4 py-3 flex items-center justify-between">
+          <div id="sync-key-title" className="flex items-center gap-2 text-gold-200 font-bold text-sm">
             <KeyRound className="w-4 h-4" /> Sync to NKERP access
           </div>
           <button type="button" onClick={sync.closeKeyPrompt} className="text-emerald-100 hover:text-white cursor-pointer" aria-label="Close">
@@ -50,7 +50,7 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
             autoComplete="current-password"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40"
+            className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-700/40"
             placeholder="Access key"
             aria-label="Access key"
           />
@@ -59,7 +59,7 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
             <button type="button" onClick={sync.closeKeyPrompt}
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-200 cursor-pointer">Cancel</button>
             <button type="submit" disabled={!value.trim() || checking}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] text-white disabled:opacity-50 cursor-pointer">
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">
               {checking ? 'Checking…' : 'Continue'}
             </button>
           </div>

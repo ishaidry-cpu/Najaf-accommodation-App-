@@ -62,7 +62,7 @@ const StatusPill: React.FC<{ status: JobStatus }> = ({ status }) => (
 );
 
 const Card: React.FC<{ title: React.ReactNode; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, right, children, className = '' }) => (
-  <section className={`bg-white rounded-2xl border border-[#e2e8e5] shadow-2xs overflow-hidden ${className}`}>
+  <section className={`bg-white rounded-2xl border border-stone-200 shadow-2xs overflow-hidden ${className}`}>
     <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-stone-100">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-900 [&>svg]:text-stone-400">{icon}{title}</h2>
       {right}
@@ -87,10 +87,10 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-[#eef2f0]">
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-stone-100">
         {(['all', 'problems'] as const).map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${filter === f ? 'bg-[#0f4a37] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${filter === f ? 'bg-brand-700 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
             {f === 'all' ? 'Everything' : 'Warnings & errors'}
           </button>
         ))}
@@ -102,7 +102,7 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="bg-[#101a16] font-mono text-[11px] leading-relaxed h-64 overflow-y-auto px-3 py-2" role="log" aria-live={live ? 'polite' : 'off'}>
+      className="bg-stone-950 font-mono text-[11px] leading-relaxed h-64 overflow-y-auto px-3 py-2" role="log" aria-live={live ? 'polite' : 'off'}>
         {shown.length === 0 && <div className="text-stone-500">No log lines yet.</div>}
         {shown.map((e) => (
           <div key={e.seq} className={`whitespace-pre-wrap break-words ${LEVEL_STYLE[e.level]}`}>
@@ -119,7 +119,7 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
 // ------------------------------------------------------------------------------------------------ results
 
 const EntryRow: React.FC<{ e: ReportEntry }> = ({ e }) => (
-  <li className="px-3.5 py-2 border-t border-[#eef2f0] first:border-t-0">
+  <li className="px-3.5 py-2 border-t border-stone-100 first:border-t-0">
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
       <span className="text-xs font-bold text-stone-900">{e.group}</span>
       {e.from && e.from.length > 0 && <span className="text-[11px] text-stone-500">from {e.from.join(', ')}</span>}
@@ -144,7 +144,7 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
         const entries = list.filter((e) => e.action === a);
         const people = entries.reduce((n, e) => n + e.people.length, 0);
         return (
-          <div key={a} className="border-b border-[#eef2f0] last:border-b-0">
+          <div key={a} className="border-b border-stone-100 last:border-b-0">
             <button type="button" onClick={() => setOpen((o) => ({ ...o, [a]: !o[a] }))}
               className="w-full flex items-center justify-between px-3.5 py-2 text-left cursor-pointer hover:bg-stone-50">
               <span className="flex items-center gap-1.5 text-xs font-bold text-stone-800">
@@ -157,7 +157,7 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
           </div>
         );
       })}
-      <div className="px-3.5 py-2 text-[11px] text-stone-500 space-y-0.5 bg-[#fbfcfb]">
+      <div className="px-3.5 py-2 text-[11px] text-stone-500 space-y-0.5 bg-stone-50">
         {skipped.length > 0 && <div>Skipped: {skipped.map(([k, v]) => `${v} ${k}`).join(' · ')}</div>}
         {report.history?.rows_written !== undefined && <div>Sync History: {report.history.rows_written} rows logged.</div>}
         {report.history?.rows_planned !== undefined && <div>Sync History: {report.history.rows_planned} rows would be logged (preview logs nothing).</div>}
@@ -185,7 +185,7 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
     </div>;
   }
   const render = (it: AttentionItem) => (
-    <li key={it.id} className="px-3.5 py-2.5 border-t border-[#eef2f0] first:border-t-0">
+    <li key={it.id} className="px-3.5 py-2.5 border-t border-stone-100 first:border-t-0">
       <div className="flex gap-2">
         {SEVERITY_ICON[it.severity]}
         <div className="min-w-0 flex-1 space-y-1">
@@ -194,11 +194,11 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
           </div>
           {it.people.length > 0 && <div className="text-[11px] text-stone-700">{it.people.join(', ')}</div>}
           <div className="text-[11px] text-stone-600 break-words">{it.detail}</div>
-          {it.hint && <div className="text-[11px] text-[#0f4a37] bg-emerald-50/70 border border-emerald-100 rounded-lg px-2 py-1">{it.hint}</div>}
+          {it.hint && <div className="text-[11px] text-brand-700 bg-emerald-50/70 border border-emerald-100 rounded-lg px-2 py-1">{it.hint}</div>}
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {it.suggestion && (
               <button type="button" disabled={disabled} onClick={() => onSend(it.suggestion!)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-[#0f4a37] text-white disabled:opacity-50 cursor-pointer">
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">
                 <ArrowRight className="w-3 h-3" />{it.suggestion}
               </button>
             )}
@@ -215,7 +215,7 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
     <div>
       {main.length > 0 ? <ul>{main.map(render)}</ul> : <div className="px-3.5 py-3 text-xs text-stone-600">No problems; only notes.</div>}
       {notes.length > 0 && (
-        <div className="border-t border-[#eef2f0]">
+        <div className="border-t border-stone-100">
           <button type="button" onClick={() => setShowNotes((v) => !v)} className="w-full flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-stone-700 cursor-pointer hover:bg-stone-50">
             {showNotes ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}Notes ({notes.length})
           </button>
@@ -251,7 +251,7 @@ const ProposalCard: React.FC<{ m: ChatMessage; onConfirm: () => void; onDismiss:
           <span className="ml-auto flex gap-1.5">
             <button type="button" onClick={onDismiss} className="px-2 py-0.5 rounded-lg font-bold text-stone-700 hover:bg-stone-200 cursor-pointer">Dismiss</button>
             <button type="button" onClick={onConfirm} disabled={running}
-              className="px-2 py-0.5 rounded-lg font-bold bg-[#0f4a37] text-white disabled:opacity-50 cursor-pointer">Confirm and run</button>
+              className="px-2 py-0.5 rounded-lg font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">Confirm and run</button>
           </span>
         )}
       </div>
@@ -280,7 +280,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
 
   return (
     <div className="flex flex-col">
-      <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-[#fbfcfb]">
+      <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-stone-50">
         {sync.messages.length === 0 && (
           <div className="text-xs text-stone-600 leading-relaxed">
             Type what should be done in plain words: <em>"sync 25 Nov only"</em>, <em>"preview 20-25 Nov"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
@@ -289,9 +289,9 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
         )}
         {sync.messages.map((m) => (
           <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
-            {m.role === 'assistant' && <Bot className="w-5 h-5 text-[#0f4a37] shrink-0 mt-0.5" />}
+            {m.role === 'assistant' && <Bot className="w-5 h-5 text-brand-700 shrink-0 mt-0.5" />}
             <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${m.role === 'user'
-              ? 'bg-[#0f4a37] text-white rounded-br-sm' : 'bg-white border border-[#e2e8e5] text-stone-800 rounded-bl-sm'}`}>
+              ? 'bg-brand-700 text-white rounded-br-sm' : 'bg-white border border-stone-200 text-stone-800 rounded-bl-sm'}`}>
               <div className="whitespace-pre-wrap break-words">{m.text}</div>
               {m.proposal && (m.proposal.intent === 'sync' || m.proposal.intent === 'preview') && (
                 <ProposalCard m={m} running={sync.running} onConfirm={() => void sync.confirm(m.id)} onDismiss={() => void sync.dismiss(m.id)} />
@@ -304,7 +304,7 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
           </div>
         ))}
       </div>
-      <div className="border-t border-[#eef2f0] p-2.5 space-y-2">
+      <div className="border-t border-stone-100 p-2.5 space-y-2">
         <div className="flex flex-wrap gap-1.5">
           {EXAMPLES.map((x) => (
             <button key={x} type="button" onClick={() => void submit(x)} disabled={sending}
@@ -329,10 +329,10 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
             maxLength={2000}
             placeholder="Tell the sync what to do…"
             aria-label="Instruction for the sync"
-            className="flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40"
+            className="flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-700/40"
           />
           <button type="submit" disabled={!draft.trim() || sending}
-            className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#0f4a37] text-white disabled:opacity-40 cursor-pointer" aria-label="Send">
+            className="h-9 w-9 flex items-center justify-center rounded-xl bg-brand-700 text-white disabled:opacity-40 cursor-pointer" aria-label="Send">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
@@ -411,7 +411,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
             <div className="p-4 text-xs text-stone-700 space-y-3">
               <p>The sync is protected with an access key. Enter it once on this device to open the log, history and instructions.</p>
               <button type="button" onClick={sync.requestKey}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] text-white cursor-pointer">Enter access key</button>
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 text-white cursor-pointer">Enter access key</button>
             </div>
           </Card>
         )}
@@ -454,7 +454,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
       </div>
 
       {/* Run bar: which arrivals, then preview or sync */}
-      <section className="rounded-2xl bg-white border border-[#e2e8e5] shadow-2xs px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+      <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="text-[13px] font-medium text-stone-800 shrink-0 lg:w-24">Arrivals</div>
         <div className="flex-1 min-w-0">
           <SyncScopePicker scope={sync.scope} onChange={sync.setScope} today={config?.today ?? new Date().toISOString().slice(0, 10)}
@@ -495,7 +495,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
           icon={<Terminal className="w-4 h-4" />}
           right={<StatusPill status={shownJob.status} />}
         >
-          <div className="px-3.5 py-2.5 space-y-2 border-b border-[#eef2f0]">
+          <div className="px-3.5 py-2.5 space-y-2 border-b border-stone-100">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-600">
               <span className="font-bold text-stone-800">{shownJob.options.apply ? 'Sync' : 'Preview (nothing saved)'}</span>
               <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(shownJob.startedAt)}{shownJob.durationMs ? ` · ${fmtDuration(shownJob.durationMs)}` : ''}</span>
@@ -513,7 +513,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                   {progress && <span>{progress.current} / {progress.total}</span>}
                 </div>
                 <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden mt-1">
-                  <div className={`h-full bg-[#0f4a37] transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
+                  <div className={`h-full bg-brand-700 transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
                 </div>
               </div>
             )}
@@ -577,7 +577,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                 <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in local Sync History yet.</li>
               )}
               {sync.history.map((h) => (
-                <li key={h.runId} className="px-3.5 py-2 border-t border-[#eef2f0] first:border-t-0">
+                <li key={h.runId} className="px-3.5 py-2 border-t border-stone-100 first:border-t-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
                       <RefreshCcw className="w-3 h-3" />Sync <span className="font-normal text-stone-500">{h.runAt}</span>
@@ -592,7 +592,7 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
                 </li>
               ))}
             </ul>
-            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-[#eef2f0]">Previews save nothing, so they appear only on the device that ran them.</div>
+            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-stone-100">Previews save nothing, so they appear only on the device that ran them.</div>
           </Card>
         </div>
       </div>

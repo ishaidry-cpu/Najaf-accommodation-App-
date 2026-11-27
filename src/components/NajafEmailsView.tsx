@@ -229,7 +229,7 @@ const ActionBar: React.FC<{ emails: NajafEmailsState; onReview: () => void }> = 
   const pct = run.total ? Math.round((done / run.total) * 100) : 0;
   const s = run.summary;
   return (
-    <div className="fixed inset-x-3 bottom-[4.5rem] md:bottom-6 z-40 flex justify-center pointer-events-none">
+    <div className="fixed inset-x-3 lg:left-[calc(var(--rail-w)+0.75rem)] bottom-[4.75rem] lg:bottom-6 z-40 flex justify-center pointer-events-none">
       <div role="status" aria-live="polite" className="rise-enter pointer-events-auto w-full max-w-2xl rounded-2xl bg-stone-950 text-white shadow-2xl ring-1 ring-white/10 overflow-hidden">
         {run.running && <div className="h-0.5 bg-white/10"><div className="h-full bg-gold-400 transition-all duration-500" style={{ width: `${pct}%` }} /></div>}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
@@ -354,7 +354,7 @@ export const NajafEmailsView: React.FC<{ emails: NajafEmailsState; sync: NkerpSy
             {([['includePartial', 'Partly allotted tours'], ['includeSent', 'Already sent (send again)']] as const).map(([k, text]) => (
               <label key={k} className={`inline-flex items-center gap-2 h-9 px-3 rounded-lg text-[13px] cursor-pointer ring-1 ring-inset transition-colors ${
                 settings[k] ? 'bg-brand-50 text-brand-800 ring-brand-100' : 'bg-white text-stone-600 ring-stone-200 hover:ring-stone-300'}`}>
-                <input type="checkbox" checked={settings[k]} onChange={(e) => emails.setSettings({ [k]: e.target.checked })} className="accent-[#0f4a37] w-3.5 h-3.5" />
+                <input type="checkbox" checked={settings[k]} onChange={(e) => emails.setSettings({ [k]: e.target.checked })} className="accent-brand-700 w-3.5 h-3.5" />
                 {text}
               </label>
             ))}

@@ -9,13 +9,19 @@ interface Props {
   /** Open the Sync tab (for the attention badge, setup problems and while running). */
   onOpenSyncTab: () => void;
   compact?: boolean;
+  /** 'rail' is the gilded button on the emerald rail and the phone's top bar. */
+  variant?: 'bar' | 'rail';
+  /** Collapsed rail: the icon alone; the panel still opens beside it. */
+  iconOnly?: boolean;
 }
 
 /**
  * Sync to NKERP in the top bar. Opens a small panel to choose which arrivals to cover (everything, one date
  * or a date range), then Preview or Sync. While a run is going it opens the Sync tab instead.
  */
-export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compact = false }) => {
+export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compact = false, variant = 'bar', iconOnly = false }) => {
+  const rail = variant === 'rail';
+  const inRail = rail && !compact;
   const { active, running, busy, config, attentionCount, last } = sync;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -61,7 +67,7 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
       : 'Choose the arrivals, then preview or sync Najaf rooms to NKERP';
 
   return (
-    <div className="relative flex items-center gap-1 shrink-0" ref={ref}>
+    <div className={`relative flex items-center gap-1 ${inRail ? (iconOnly ? 'flex-col' : 'w-full') : 'shrink-0'}`} ref={ref}>
       <button
         type="button"
         onClick={onClick}
@@ -70,30 +76,32 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
         aria-label={label}
         aria-haspopup={running ? undefined : 'dialog'}
         aria-expanded={running ? undefined : open}
-        className={`group relative overflow-hidden flex items-center gap-1.5 rounded-lg font-medium cursor-pointer whitespace-nowrap h-9 ${
-          compact ? 'px-2.5 text-[13px]' : 'pl-3 pr-2.5 text-[13px]'
+        className={`group relative overflow-hidden flex items-center justify-center gap-1.5 rounded-lg font-semibold cursor-pointer whitespace-nowrap text-sm ${
+          inRail ? (iconOnly ? 'w-full h-10' : 'flex-1 min-w-0 h-10 px-3') : compact ? 'h-10 px-3' : 'h-10 pl-3.5 pr-3'
         } ${
           running
-            ? 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200'
+            ? 'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300'
             : notConfigured
-              ? 'bg-stone-100 text-stone-600'
-              : open
-                ? 'bg-brand-800 text-white shadow-xs'
-                : 'bg-brand-700 hover:bg-brand-800 text-white shadow-xs'
+              ? (rail ? 'bg-white/10 text-brand-100' : 'bg-stone-100 text-stone-600')
+              : rail
+                ? `text-brand-950 shadow-sm ${open ? 'bg-gold-100' : 'bg-gold-200 hover:bg-gold-100'}`
+                : open
+                  ? 'bg-brand-800 text-white shadow-xs'
+                  : 'bg-brand-700 hover:bg-brand-600 text-white shadow-xs'
         }`}
       >
         {running && pct !== null && (
-          <span className="absolute inset-y-0 left-0 bg-amber-200/60 transition-all duration-500" style={{ width: `${pct}%` }} aria-hidden />
+          <span className="absolute inset-y-0 left-0 bg-amber-300/60 transition-all duration-500" style={{ width: `${pct}%` }} aria-hidden />
         )}
-        <span className="relative flex items-center gap-1.5">
+        <span className="relative flex items-center gap-1.5 min-w-0">
           {running || busy ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
           ) : (
-            <RefreshCcw className={`w-4 h-4 transition-transform duration-500 group-hover:-rotate-180 ${notConfigured ? '' : 'text-gold-200'}`} />
+            <RefreshCcw className={`w-4 h-4 shrink-0 transition-transform duration-500 group-hover:-rotate-180 ${notConfigured || rail ? '' : 'text-gold-200'}`} />
           )}
-          <span>{compact && !running ? 'NKERP' : label}</span>
-          {!running && !compact && (
-            <ChevronDown className={`w-3.5 h-3.5 ${notConfigured ? 'text-stone-400' : 'text-white/70'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+          {!iconOnly && <span className="truncate">{compact && !running ? 'Sync' : label}</span>}
+          {!running && !compact && !iconOnly && (
+            <ChevronDown className={`w-3.5 h-3.5 shrink-0 opacity-70 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${inRail ? '-rotate-90' : ''}`} />
           )}
         </span>
       </button>
@@ -103,8 +111,10 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
           onClick={onOpenSyncTab}
           title={attentionCount ? `${attentionCount} item(s) from the last sync need you` : 'Last sync: nothing needs you'}
           aria-label={attentionCount ? `${attentionCount} sync items need you` : 'Last sync finished cleanly'}
-          className={`flex items-center justify-center rounded-lg cursor-pointer h-9 ${compact ? 'min-w-8 px-1.5' : 'min-w-9 px-2'} ${
-            attentionCount ? 'bg-rose-50 text-rose-700 hover:bg-rose-100' : 'text-emerald-700 hover:bg-emerald-50'
+          className={`flex items-center justify-center rounded-lg cursor-pointer ${iconOnly ? 'w-full h-7' : 'h-10'} ${compact ? 'min-w-9 px-1.5' : 'min-w-10 px-2'} ${
+            attentionCount
+              ? (rail ? 'bg-rose-500/20 text-rose-200 hover:bg-rose-500/30' : 'bg-rose-50 text-rose-700 hover:bg-rose-100')
+              : (rail ? 'text-emerald-300 hover:bg-white/10' : 'text-emerald-700 hover:bg-emerald-50')
           }`}
         >
           {attentionCount ? (
@@ -117,8 +127,10 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
 
       {open && (
         <div role="dialog" aria-label="Sync to NKERP"
-          className={`pop-enter z-50 rounded-2xl border border-stone-200 bg-white p-4 shadow-2xl ${
-            compact ? 'fixed left-3 right-3 top-16' : 'absolute right-0 top-[calc(100%+8px)] w-[23rem]'}`}>
+          className={`z-50 rounded-2xl border border-stone-200 bg-white p-4 text-stone-800 shadow-2xl ${
+            compact ? 'pop-enter fixed left-3 right-3 top-16 sm:left-auto sm:w-[23rem]'
+              : inRail ? 'animate-in fade-in zoom-in-95 origin-bottom-left absolute left-[calc(100%+12px)] bottom-0 w-[23rem]'
+              : 'pop-enter absolute right-0 top-[calc(100%+8px)] w-[23rem]'}`}>
           <div className="mb-3">
             <div className="text-[15px] font-semibold text-stone-950">Sync to NKERP</div>
             <p className="mt-0.5 text-xs leading-relaxed text-stone-500">Brings Najaf rooms in NKERP in line with saved app allocations, for the arrivals you choose.</p>
@@ -136,11 +148,11 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
           </p>
           <div className="mt-3 flex items-center gap-2">
             <button type="button" onClick={() => go(true)} disabled={!sync.scopeReady || busy || notConfigured}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 disabled:opacity-50 cursor-pointer">
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-lg text-sm font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-300 hover:bg-stone-50 disabled:opacity-50 cursor-pointer">
               <Eye className="w-3.5 h-3.5" />Preview
             </button>
             <button type="button" onClick={() => go(false)} disabled={!sync.scopeReady || busy || notConfigured}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs disabled:opacity-50 cursor-pointer">
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-lg text-sm font-semibold bg-brand-700 hover:bg-brand-600 text-white shadow-xs disabled:opacity-50 cursor-pointer">
               <RefreshCcw className="w-3.5 h-3.5 text-gold-200" />Sync now
             </button>
           </div>

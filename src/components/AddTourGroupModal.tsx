@@ -652,7 +652,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
+      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
         {/* Close Button */}
         <button
           type="button"
@@ -666,11 +666,11 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
         {/* Modal Header */}
         <div className="pb-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-[#0f4a37] text-white shadow-2xs">
+            <span className="p-2 rounded-xl bg-brand-700 text-white shadow-2xs">
               <Users className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="text-base font-bold text-[#0f4a37]">
+              <h3 className="text-base font-bold text-brand-700">
                 Add Tour Group — Bulk ITS Paste &amp; Quick Setup
               </h3>
               <p className="text-xs text-stone-600 mt-0.5">
@@ -684,8 +684,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
             onClick={() => setIsPasteOpen((v) => !v)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 ${
               isPasteOpen
-                ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
-                : 'bg-white hover:bg-stone-100 text-[#0f4a37] border-[#0f4a37]/30'
+                ? 'bg-brand-700 text-white border-brand-700'
+                : 'bg-white hover:bg-stone-100 text-brand-700 border-brand-700/30'
             }`}
           >
             <ClipboardPaste className="w-3.5 h-3.5" />
@@ -705,13 +705,13 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           {/* 1. Shared Tour & Schedule Header */}
           <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0f4a37]">
-                <Briefcase className="w-4 h-4 text-[#0f4a37]" />
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
+                <Briefcase className="w-4 h-4 text-brand-700" />
                 <span>1. Tour Details &amp; Stay Dates</span>
               </div>
               <div className="flex items-center gap-3 text-xs text-stone-600 tabular-nums">
                 <span>
-                  Duration: <strong className="text-[#0f4a37]">{calculatedNights} Nights</strong>
+                  Duration: <strong className="text-brand-700">{calculatedNights} Nights</strong>
                 </span>
                 <span>·</span>
                 <span>
@@ -744,7 +744,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="Enter new or pick existing Tour ID"
                   value={tourRefNo}
                   onChange={(e) => handleSelectTour(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-700/40"
                 />
                 <datalist id="existing-tour-ids-list">
                   {existingTourIds.map((t) => (
@@ -763,7 +763,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="e.g. Fayz E Husayni Trust Mumbai"
                   value={officeName}
                   onChange={(e) => setOfficeName(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-700/40"
                 />
                 <datalist id="existing-offices-list">
                   {existingOffices.map((o) => (
@@ -784,14 +784,14 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     required
                     value={arrivalDate}
                     onChange={(e) => setArrivalDate(e.target.value)}
-                    className="w-full bg-[#f6f8f7] border border-emerald-300 rounded-lg px-2 py-1.5 font-bold text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer tabular-nums"
+                    className="w-full bg-stone-50 border border-emerald-300 rounded-lg px-2 py-1.5 font-bold text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer tabular-nums"
                   />
                   <input
                     type="text"
                     placeholder="11:00 AM"
                     value={arrivalTime}
                     onChange={(e) => setArrivalTime(e.target.value)}
-                    className="w-24 bg-[#f6f8f7] border border-emerald-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-emerald-950 focus:outline-none tabular-nums"
+                    className="w-24 bg-stone-50 border border-emerald-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-emerald-950 focus:outline-none tabular-nums"
                   />
                 </div>
               </div>
@@ -808,14 +808,14 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     required
                     value={departureDate}
                     onChange={(e) => setDepartureDate(e.target.value)}
-                    className="w-full bg-[#f6f8f7] border border-amber-300 rounded-lg px-2 py-1.5 font-bold text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-700 cursor-pointer tabular-nums"
+                    className="w-full bg-stone-50 border border-amber-300 rounded-lg px-2 py-1.5 font-bold text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-700 cursor-pointer tabular-nums"
                   />
                   <input
                     type="text"
                     placeholder="01:00 AM"
                     value={departureTime}
                     onChange={(e) => setDepartureTime(e.target.value)}
-                    className="w-24 bg-[#f6f8f7] border border-amber-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-amber-950 focus:outline-none tabular-nums"
+                    className="w-24 bg-stone-50 border border-amber-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-amber-950 focus:outline-none tabular-nums"
                   />
                 </div>
               </div>
@@ -828,7 +828,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   placeholder="e.g. Mulla Shabbir"
                   value={groupLeadName}
                   onChange={(e) => setGroupLeadName(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -838,7 +838,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <select
                   value={defaultCategory}
                   onChange={(e) => setDefaultCategory(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none"
                 >
                   {categories.map((c) => (
                     <option key={c} value={c}>
@@ -851,7 +851,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
               {/* Default Building + Batch Room Apply */}
               <div className="sm:col-span-2">
                 <label className="block font-semibold text-stone-700 mb-1 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-[#0f4a37]" />
+                  <Building2 className="w-3.5 h-3.5 text-brand-700" />
                   <span>Quick Assign Hotel &amp; Room to All Rows</span>
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -861,7 +861,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       setDefaultBuilding(e.target.value);
                       setBatchRoomNumber('');
                     }}
-                    className="bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-[#0f4a37] focus:outline-none cursor-pointer"
+                    className="bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-brand-700 focus:outline-none cursor-pointer"
                   >
                     {distinctBuildings.map((bldg) => (
                       <option key={bldg} value={bldg}>
@@ -872,7 +872,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   <select
                     value={batchRoomNumber}
                     onChange={(e) => setBatchRoomNumber(e.target.value)}
-                    className="flex-1 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-800 focus:outline-none cursor-pointer"
+                    className="flex-1 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-800 focus:outline-none cursor-pointer"
                   >
                     <option value="">Allot rooms later (Unallotted)</option>
                     {activeDefaultVacantRooms.map((rm) => (
@@ -898,8 +898,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
             <div className="bg-white border border-emerald-300 rounded-xl p-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0f4a37]">
-                    <ClipboardPaste className="w-4 h-4 text-[#0f4a37]" />
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
+                    <ClipboardPaste className="w-4 h-4 text-brand-700" />
                     <span>Bulk Paste All ITS IDs or Excel Rows</span>
                   </div>
                   <p className="text-[11px] text-stone-600 mt-0.5">
@@ -915,7 +915,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       type="button"
                       onClick={() => setPasteFamilyMode('separate')}
                       className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'separate' ? 'bg-white text-[#0f4a37] shadow-2xs' : 'text-stone-600'
+                        pasteFamilyMode === 'separate' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
                       }`}
                     >
                       Separate
@@ -924,7 +924,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       type="button"
                       onClick={() => setPasteFamilyMode('same')}
                       className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'same' ? 'bg-white text-[#0f4a37] shadow-2xs' : 'text-stone-600'
+                        pasteFamilyMode === 'same' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
                       }`}
                     >
                       Same Family
@@ -933,7 +933,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       type="button"
                       onClick={() => setPasteFamilyMode('pasted')}
                       className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'pasted' ? 'bg-white text-[#0f4a37] shadow-2xs' : 'text-stone-600'
+                        pasteFamilyMode === 'pasted' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
                       }`}
                     >
                       From Sheet
@@ -945,7 +945,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       value={pasteSameFamilyId}
                       onChange={(e) => setPasteSameFamilyId(e.target.value)}
                       placeholder="101"
-                      className="w-16 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2 py-1 font-mono font-bold text-xs text-stone-900"
+                      className="w-16 bg-stone-50 border border-stone-300 rounded-lg px-2 py-1 font-mono font-bold text-xs text-stone-900"
                       title="Family ID assigned to all pasted rows"
                     />
                   )}
@@ -957,7 +957,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 value={pasteRawText}
                 onChange={(e) => setPasteRawText(e.target.value)}
                 placeholder={'Paste ITS numbers or Excel rows here, for example:\n30318214\n20491822, 40581920\n30318214\tMulla Shabbir Bhai\t48\tM\t101'}
-                className="w-full bg-[#f6f8f7] border border-stone-300 rounded-xl px-3 py-2 font-mono text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]/40 resize-y"
+                className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 font-mono text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700/40 resize-y"
               />
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -965,7 +965,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   {pasteRawText.trim() ? (
                     <>
                       <span>
-                        Detected <strong className="text-[#0f4a37]">{parsedPastePreview.entries.length}</strong> ITS
+                        Detected <strong className="text-brand-700">{parsedPastePreview.entries.length}</strong> ITS
                       </span>
                       {parsedPastePreview.autoMatchedCount > 0 && (
                         <span>
@@ -1004,9 +1004,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     type="button"
                     disabled={parsedPastePreview.entries.length === 0}
                     onClick={handleApplyBulkPaste}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
                   >
-                    <Wand2 className="w-3.5 h-3.5 text-[#ecdcae]" />
+                    <Wand2 className="w-3.5 h-3.5 text-gold-200" />
                     <span>Add {parsedPastePreview.entries.length || ''} Pasted ITS to List</span>
                   </button>
                 </div>
@@ -1034,8 +1034,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-3">
               <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0f4a37]">
-                  <Hash className="w-4 h-4 text-[#0f4a37]" />
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
+                  <Hash className="w-4 h-4 text-brand-700" />
                   <span>2. Tour Members ({rows.length})</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600 mt-1 tabular-nums">
@@ -1078,9 +1078,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleAddIndividual(false)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white transition cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
                 >
-                  <Plus className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <Plus className="w-3.5 h-3.5 text-gold-200" />
                   <span>New Family Zaer</span>
                 </button>
 
@@ -1146,7 +1146,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             placeholder="101"
                             value={row.family}
                             onChange={(e) => handleUpdateRow(row.id, 'family', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-mono font-bold text-stone-900 text-xs focus:ring-1 focus:ring-[#0f4a37] tabular-nums"
+                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-mono font-bold text-stone-900 text-xs focus:ring-1 focus:ring-brand-700 tabular-nums"
                           />
                         </td>
 
@@ -1157,7 +1157,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             value={row.itsId}
                             onChange={(e) => handleUpdateRow(row.id, 'itsId', e.target.value)}
                             onPaste={(e) => handleRowItsPaste(e, idx, row.id)}
-                            className={`w-full bg-white border rounded px-2 py-1 font-mono text-xs focus:ring-1 focus:ring-[#0f4a37] tabular-nums ${
+                            className={`w-full bg-white border rounded px-2 py-1 font-mono text-xs focus:ring-1 focus:ring-brand-700 tabular-nums ${
                               batchErr || tourConflict
                                 ? 'border-rose-400 text-rose-900 font-bold'
                                 : row.matchedFromHistory
@@ -1184,7 +1184,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             placeholder={row.itsId ? 'Optional (or auto-filled)' : 'Full Name *'}
                             value={row.applicantName}
                             onChange={(e) => handleUpdateRow(row.id, 'applicantName', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-semibold text-stone-900 text-xs focus:ring-1 focus:ring-[#0f4a37]"
+                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-semibold text-stone-900 text-xs focus:ring-1 focus:ring-brand-700"
                           />
                         </td>
 
@@ -1195,7 +1195,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             max="120"
                             value={row.age}
                             onChange={(e) => handleUpdateRow(row.id, 'age', e.target.value)}
-                            className="w-12 text-center bg-white border border-stone-300 rounded px-1 py-1 font-mono text-xs focus:ring-1 focus:ring-[#0f4a37] tabular-nums"
+                            className="w-12 text-center bg-white border border-stone-300 rounded px-1 py-1 font-mono text-xs focus:ring-1 focus:ring-brand-700 tabular-nums"
                           />
                         </td>
 
@@ -1203,7 +1203,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                           <select
                             value={row.gender}
                             onChange={(e) => handleUpdateRow(row.id, 'gender', e.target.value)}
-                            className="bg-white border border-stone-300 rounded px-1.5 py-1 text-xs font-medium focus:ring-1 focus:ring-[#0f4a37]"
+                            className="bg-white border border-stone-300 rounded px-1.5 py-1 text-xs font-medium focus:ring-1 focus:ring-brand-700"
                           >
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
@@ -1215,7 +1215,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             <select
                               value={row.building}
                               onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value)}
-                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-[#0f4a37] focus:ring-1 focus:ring-[#0f4a37] cursor-pointer"
+                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-brand-700 focus:ring-1 focus:ring-brand-700 cursor-pointer"
                             >
                               {distinctBuildings.map((bldg) => (
                                 <option key={bldg} value={bldg}>
@@ -1265,7 +1265,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(row)}
-                              className="p-1 text-stone-400 hover:text-[#0f4a37] hover:bg-stone-200/60 rounded transition cursor-pointer"
+                              className="p-1 text-stone-400 hover:text-brand-700 hover:bg-stone-200/60 rounded transition cursor-pointer"
                               title="Add another member to same Family ID"
                             >
                               <Copy className="w-3.5 h-3.5" />
@@ -1291,7 +1291,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
           {/* Modal Footer Controls */}
           <div className="pt-3 border-t border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-stone-600 tabular-nums">
-              Ready to save <strong className="text-[#0f4a37]">{readyCount} Zaereen</strong> across{' '}
+              Ready to save <strong className="text-brand-700">{readyCount} Zaereen</strong> across{' '}
               <strong className="text-stone-900">{uniqueFamiliesCount} Families</strong> for Tour{' '}
               <strong className="font-mono text-stone-900">{tourRefNo.trim() || '—'}</strong>.
             </div>
@@ -1308,9 +1308,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
               <button
                 type="submit"
                 disabled={readyCount === 0 || rowChecks.duplicateRowCount > 0}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white shadow-sm transition cursor-pointer whitespace-nowrap"
+                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white shadow-sm transition cursor-pointer whitespace-nowrap"
               >
-                <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
+                <CheckCircle2 className="w-4 h-4 text-gold-200" />
                 <span>Save Tour Group ({readyCount} Zaereen)</span>
               </button>
             </div>

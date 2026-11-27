@@ -32,7 +32,7 @@ const roomId = (building: string, roomNumber: string) =>
   `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
 const inputClass =
-  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-[#0f4a37]';
+  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-brand-700';
 
 export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> = ({
   isOpen,
@@ -193,12 +193,12 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-rooms-title"
-        className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-t-3xl sm:rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[94vh] overflow-hidden text-stone-800"
+        className="bg-stone-50 border border-stone-200 rounded-t-3xl sm:rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[94vh] overflow-hidden text-stone-800"
       >
-        <div className="bg-[#0f4a37] text-white p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
+        <div className="bg-brand-700 text-white p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-[#ecdcae]" />
+              <Building2 className="w-5 h-5 text-gold-200" />
               <h2 id="add-rooms-title" className="text-base sm:text-lg font-bold font-serif tracking-wide">
                 {isNewBuilding ? 'Add new building & rooms' : 'Add building or rooms'}
               </h2>
@@ -237,7 +237,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       }}
                       className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer ${
                         selected
-                          ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                          ? 'bg-brand-700 text-white border-brand-700'
                           : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
                       }`}
                     >
@@ -259,7 +259,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                   }}
                   className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer inline-flex items-center gap-1.5 ${
                     isNewBuilding
-                      ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                      ? 'bg-brand-700 text-white border-brand-700'
                       : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
                   }`}
                 >
@@ -269,7 +269,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               </div>
 
               {isNewBuilding && (
-                <div className="mt-3 p-3 rounded-xl bg-[#f6f8f7] border border-[#c9a85a]/50 space-y-1.5">
+                <div className="mt-3 p-3 rounded-xl bg-stone-50 border border-gold-400/50 space-y-1.5">
                   <label className="block max-w-md">
                     <span className="block text-stone-700 font-bold mb-1">New building name *</span>
                     <input
@@ -289,7 +289,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                       "{existingBuildingMatch}" already exists ({buildingCount(existingBuildingMatch)} rooms). New rooms will be added to {existingBuildingMatch}.
                     </p>
                   ) : hasValidBuildingName ? (
-                    <p className="text-[11px] font-semibold text-[#0f4a37]">
+                    <p className="text-[11px] font-semibold text-brand-700">
                       Ready to create building "{activeBuilding}" with the rooms configured below.
                     </p>
                   ) : (
@@ -311,7 +311,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     aria-pressed={mode === m}
                     onClick={() => { setMode(m); setError(null); }}
                     className={`min-h-[36px] sm:min-h-0 px-3 py-1 rounded-md transition cursor-pointer ${
-                      mode === m ? 'bg-[#0f4a37] text-white shadow-2xs' : 'text-stone-700 hover:text-stone-900'
+                      mode === m ? 'bg-brand-700 text-white shadow-2xs' : 'text-stone-700 hover:text-stone-900'
                     }`}
                   >
                     {m === 'single' ? 'One room' : 'Several rooms, same setup'}
@@ -384,7 +384,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
 
           {/* Room setup */}
           <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-3">
-            <h3 className="font-bold text-[#0f4a37] uppercase tracking-wider pb-1 border-b border-stone-100">
+            <h3 className="font-bold text-brand-700 uppercase tracking-wider pb-1 border-b border-stone-100">
               {mode === 'single' ? 'Room setup' : 'Setup for every room'}
             </h3>
             <RoomSpecFields
@@ -395,13 +395,13 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
           </div>
 
           {/* Preview */}
-          <div className="bg-[#f6f8f7] p-3 rounded-xl border border-[#e2e8e5] space-y-2">
+          <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-2">
             <div className="flex items-center justify-between gap-2 font-bold text-stone-800">
               <span className="flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                 Preview {hasValidBuildingName ? `— ${activeBuilding}` : ''}
               </span>
-              <span className="text-[#0f4a37] bg-emerald-100 px-2.5 py-0.5 rounded-full tabular-nums">
+              <span className="text-brand-700 bg-emerald-100 px-2.5 py-0.5 rounded-full tabular-nums">
                 {additions} new{updates ? ` · ${updates} existing` : ''}
               </span>
             </div>
@@ -450,7 +450,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
             type="button"
             onClick={handleSave}
             disabled={preview.length === 0 || !hasValidBuildingName}
-            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-50 text-white transition flex items-center gap-1.5 cursor-pointer"
+            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white transition flex items-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             {saveLabel}

@@ -7,87 +7,281 @@
 @import "tailwindcss";
 
 /*
- * Faiz-e-Husaini design tokens
- * Najaf emerald + shrine gold on a cool porcelain canvas. Gold is reserved for the
- * brand mark and the active-navigation marker; everything else stays quiet.
+ * Faiz-e-Husaini design tokens: "Fatemi stone"
+ * A deep emerald rail, warm sandstone ground and near-white work surfaces, after the stone, teak doors and
+ * gilding of the Fatemi masjids. Gold marks the brand and the current place; it is never a fill for content.
+ * Every Tailwind colour family the screens use is retuned here so the whole app speaks one palette:
+ *   stone / slate          warm sandstone neutrals
+ *   emerald / green / teal success, vacant, allotted
+ *   amber / yellow         waiting, departing, needs a look
+ *   orange                 terracotta (rarely: late, overdue)
+ *   rose / red             madder: problems and destructive actions
+ *   blue / sky / cyan / indigo   lapis: arrivals and information
+ *   purple / violet / fuchsia    plum: same-day turnover, special handling
  */
 @theme {
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   /* Data labels (ITS, room no., tour IDs) use the UI face with tabular figures, not a code font. */
-  --font-mono: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-arabic: "Amiri", "Noto Naskh Arabic", serif;
+  --font-mono: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* Page titles, big figures and the wordmark: a Kufic-built face, Latin and Arabic from one hand. */
+  --font-display: "Reem Kufi", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Reem Kufi", "Noto Kufi Arabic", "Amiri", serif;
 
   /* Calmer weight scale: heavy weights read as shouting in dense tables. */
-  --font-weight-semibold: 560;
-  --font-weight-bold: 620;
-  --font-weight-extrabold: 660;
-  --font-weight-black: 700;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 650;
+  --font-weight-extrabold: 700;
+  --font-weight-black: 740;
 
-  /* Cool, faintly green neutrals replace the warm stone scale app-wide. */
-  --color-stone-50: #f6f8f7;
-  --color-stone-100: #eef2f0;
-  --color-stone-200: #e2e8e5;
-  --color-stone-300: #cdd5d1;
-  --color-stone-400: #9aa6a0;
-  --color-stone-500: #6d7a74;
-  --color-stone-600: #535f59;
-  --color-stone-700: #3d4843;
-  --color-stone-800: #28322d;
-  --color-stone-900: #18211d;
-  --color-stone-950: #0e1512;
+  --color-white: #fffdf9;
 
-  /* Status greens and ambers retuned toward the brand emerald and shrine gold. */
-  --color-emerald-50: #eef7f2;
-  --color-emerald-100: #d8eee2;
-  --color-emerald-200: #b4dcc7;
-  --color-emerald-300: #86c3a6;
-  --color-emerald-400: #55a682;
-  --color-emerald-500: #2f8a65;
-  --color-emerald-600: #1f7253;
-  --color-emerald-700: #175c43;
-  --color-emerald-800: #124a37;
-  --color-emerald-900: #0e3c2d;
-  --color-emerald-950: #082419;
+  /* Sandstone neutrals. 400 and darker are safe for text on white (4.5:1 or better). */
+  --color-stone-50: #f9f7f2;
+  --color-stone-100: #f3efe7;
+  --color-stone-200: #e7e1d4;
+  --color-stone-300: #d3cbba;
+  --color-stone-400: #7c7566;
+  --color-stone-500: #655f52;
+  --color-stone-600: #4e493f;
+  --color-stone-700: #3b372f;
+  --color-stone-800: #292620;
+  --color-stone-900: #1c1a15;
+  --color-stone-950: #12110d;
 
-  --color-amber-50: #fbf7ec;
-  --color-amber-100: #f6ecd0;
-  --color-amber-200: #eedaa5;
-  --color-amber-300: #e3c274;
-  --color-amber-400: #d6a648;
-  --color-amber-500: #c48a2a;
-  --color-amber-600: #a86f1f;
-  --color-amber-700: #87561c;
-  --color-amber-800: #6d451b;
-  --color-amber-900: #5a3a19;
-  --color-amber-950: #331e0a;
+  --color-slate-50: #f9f7f2;
+  --color-slate-100: #f3efe7;
+  --color-slate-200: #e7e1d4;
+  --color-slate-300: #d3cbba;
+  --color-slate-400: #7c7566;
+  --color-slate-500: #655f52;
+  --color-slate-600: #4e493f;
+  --color-slate-700: #3b372f;
+  --color-slate-800: #292620;
+  --color-slate-900: #1c1a15;
+  --color-slate-950: #12110d;
 
-  /* Brand */
-  --color-brand-50: #eef6f2;
-  --color-brand-100: #d7ebe1;
-  --color-brand-600: #136048;
-  --color-brand-700: #0f4a37;
-  --color-brand-800: #0b3a2b;
-  --color-gold-200: #ecdcae;
-  --color-gold-400: #c9a85a;
-  --color-gold-600: #a6853a;
+  --color-emerald-50: #edf5f0;
+  --color-emerald-100: #d7eadf;
+  --color-emerald-200: #b1d6c2;
+  --color-emerald-300: #82bb9f;
+  --color-emerald-400: #4f9c7a;
+  --color-emerald-500: #2c8160;
+  --color-emerald-600: #1c6a4d;
+  --color-emerald-700: #15563e;
+  --color-emerald-800: #114533;
+  --color-emerald-900: #0d382a;
+  --color-emerald-950: #072219;
 
-  --color-canvas: #f3f6f4;
-  --color-line: #e2e8e5;
-  --color-ink: #16201b;
+  --color-green-50: #edf5f0;
+  --color-green-100: #d7eadf;
+  --color-green-200: #b1d6c2;
+  --color-green-300: #82bb9f;
+  --color-green-400: #4f9c7a;
+  --color-green-500: #2c8160;
+  --color-green-600: #1c6a4d;
+  --color-green-700: #15563e;
+  --color-green-800: #114533;
+  --color-green-900: #0d382a;
+  --color-green-950: #072219;
+
+  --color-teal-50: #edf5f0;
+  --color-teal-100: #d7eadf;
+  --color-teal-200: #b1d6c2;
+  --color-teal-300: #82bb9f;
+  --color-teal-400: #4f9c7a;
+  --color-teal-500: #2c8160;
+  --color-teal-600: #1c6a4d;
+  --color-teal-700: #15563e;
+  --color-teal-800: #114533;
+  --color-teal-900: #0d382a;
+  --color-teal-950: #072219;
+
+  --color-amber-50: #fcf6e8;
+  --color-amber-100: #f8eac8;
+  --color-amber-200: #f0d596;
+  --color-amber-300: #e6bb5e;
+  --color-amber-400: #d99e35;
+  --color-amber-500: #c4801f;
+  --color-amber-600: #a36618;
+  --color-amber-700: #824f17;
+  --color-amber-800: #693f18;
+  --color-amber-900: #563416;
+  --color-amber-950: #2f1a08;
+
+  --color-yellow-50: #fcf6e8;
+  --color-yellow-100: #f8eac8;
+  --color-yellow-200: #f0d596;
+  --color-yellow-300: #e6bb5e;
+  --color-yellow-400: #d99e35;
+  --color-yellow-500: #c4801f;
+  --color-yellow-600: #a36618;
+  --color-yellow-700: #824f17;
+  --color-yellow-800: #693f18;
+  --color-yellow-900: #563416;
+  --color-yellow-950: #2f1a08;
+
+  --color-orange-50: #fbf1e8;
+  --color-orange-100: #f6dfc9;
+  --color-orange-200: #edc095;
+  --color-orange-300: #e29b5f;
+  --color-orange-400: #d47b37;
+  --color-orange-500: #bd6222;
+  --color-orange-600: #9c4e1b;
+  --color-orange-700: #7c3e19;
+  --color-orange-800: #653318;
+  --color-orange-900: #532b16;
+  --color-orange-950: #2d1509;
+
+  --color-rose-50: #fbf0ee;
+  --color-rose-100: #f6dcd8;
+  --color-rose-200: #edbab3;
+  --color-rose-300: #e09186;
+  --color-rose-400: #cf6558;
+  --color-rose-500: #b8463a;
+  --color-rose-600: #9c342b;
+  --color-rose-700: #7f2a24;
+  --color-rose-800: #672420;
+  --color-rose-900: #55201d;
+  --color-rose-950: #2d0e0c;
+
+  --color-red-50: #fbf0ee;
+  --color-red-100: #f6dcd8;
+  --color-red-200: #edbab3;
+  --color-red-300: #e09186;
+  --color-red-400: #cf6558;
+  --color-red-500: #b8463a;
+  --color-red-600: #9c342b;
+  --color-red-700: #7f2a24;
+  --color-red-800: #672420;
+  --color-red-900: #55201d;
+  --color-red-950: #2d0e0c;
+
+  --color-blue-50: #eef3f8;
+  --color-blue-100: #dbe6f0;
+  --color-blue-200: #b9cee2;
+  --color-blue-300: #8eafce;
+  --color-blue-400: #5f8cb6;
+  --color-blue-500: #40709e;
+  --color-blue-600: #305a84;
+  --color-blue-700: #28496b;
+  --color-blue-800: #233d58;
+  --color-blue-900: #1f334a;
+  --color-blue-950: #121f2f;
+
+  --color-sky-50: #eef3f8;
+  --color-sky-100: #dbe6f0;
+  --color-sky-200: #b9cee2;
+  --color-sky-300: #8eafce;
+  --color-sky-400: #5f8cb6;
+  --color-sky-500: #40709e;
+  --color-sky-600: #305a84;
+  --color-sky-700: #28496b;
+  --color-sky-800: #233d58;
+  --color-sky-900: #1f334a;
+  --color-sky-950: #121f2f;
+
+  --color-cyan-50: #eef3f8;
+  --color-cyan-100: #dbe6f0;
+  --color-cyan-200: #b9cee2;
+  --color-cyan-300: #8eafce;
+  --color-cyan-400: #5f8cb6;
+  --color-cyan-500: #40709e;
+  --color-cyan-600: #305a84;
+  --color-cyan-700: #28496b;
+  --color-cyan-800: #233d58;
+  --color-cyan-900: #1f334a;
+  --color-cyan-950: #121f2f;
+
+  --color-indigo-50: #eef3f8;
+  --color-indigo-100: #dbe6f0;
+  --color-indigo-200: #b9cee2;
+  --color-indigo-300: #8eafce;
+  --color-indigo-400: #5f8cb6;
+  --color-indigo-500: #40709e;
+  --color-indigo-600: #305a84;
+  --color-indigo-700: #28496b;
+  --color-indigo-800: #233d58;
+  --color-indigo-900: #1f334a;
+  --color-indigo-950: #121f2f;
+
+  --color-purple-50: #f5f0f6;
+  --color-purple-100: #e9dfec;
+  --color-purple-200: #d4c0da;
+  --color-purple-300: #b999c2;
+  --color-purple-400: #9a70a6;
+  --color-purple-500: #7f528c;
+  --color-purple-600: #684173;
+  --color-purple-700: #55355e;
+  --color-purple-800: #462d4d;
+  --color-purple-900: #3a2740;
+  --color-purple-950: #221426;
+
+  --color-violet-50: #f5f0f6;
+  --color-violet-100: #e9dfec;
+  --color-violet-200: #d4c0da;
+  --color-violet-300: #b999c2;
+  --color-violet-400: #9a70a6;
+  --color-violet-500: #7f528c;
+  --color-violet-600: #684173;
+  --color-violet-700: #55355e;
+  --color-violet-800: #462d4d;
+  --color-violet-900: #3a2740;
+  --color-violet-950: #221426;
+
+  --color-fuchsia-50: #f5f0f6;
+  --color-fuchsia-100: #e9dfec;
+  --color-fuchsia-200: #d4c0da;
+  --color-fuchsia-300: #b999c2;
+  --color-fuchsia-400: #9a70a6;
+  --color-fuchsia-500: #7f528c;
+  --color-fuchsia-600: #684173;
+  --color-fuchsia-700: #55355e;
+  --color-fuchsia-800: #462d4d;
+  --color-fuchsia-900: #3a2740;
+  --color-fuchsia-950: #221426;
+
+  /* Brand emerald: the rail, primary buttons, selection. */
+  --color-brand-50: #edf5f0;
+  --color-brand-100: #d7eadf;
+  --color-brand-200: #b1d6c2;
+  --color-brand-300: #82bb9f;
+  --color-brand-400: #4f9c7a;
+  --color-brand-500: #1c6a4d;
+  --color-brand-600: #14593f;
+  --color-brand-700: #0f4735;
+  --color-brand-800: #0b392b;
+  --color-brand-900: #082c21;
+  --color-brand-950: #051d16;
+
+  --color-gold-50: #fbf6e6;
+  --color-gold-100: #f6eac4;
+  --color-gold-200: #eedb9f;
+  --color-gold-300: #e2c572;
+  --color-gold-400: #d0aa4d;
+  --color-gold-500: #b98f34;
+  --color-gold-600: #8f6b24;
+  --color-gold-700: #725419;
+
+  --color-canvas: #f0ebe1;
+  --color-surface: #fffdf9;
+  --color-sunken: #f7f4ed;
+  --color-line: #e7e1d4;
+  --color-ink: #1c1a15;
 
   --radius-lg: 0.5rem;
-  --radius-xl: 0.625rem;
-  --radius-2xl: 0.875rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
 
-  /* One soft, low elevation family instead of heavy drop shadows. */
-  --shadow-2xs: 0 1px 0 rgb(16 32 26 / 0.03);
-  --shadow-xs: 0 1px 2px rgb(16 32 26 / 0.05);
-  --shadow-sm: 0 1px 2px rgb(16 32 26 / 0.04), 0 1px 1px rgb(16 32 26 / 0.03);
-  --shadow-md: 0 2px 6px -1px rgb(16 32 26 / 0.07), 0 1px 2px rgb(16 32 26 / 0.04);
-  --shadow-lg: 0 8px 20px -6px rgb(16 32 26 / 0.12), 0 2px 4px rgb(16 32 26 / 0.04);
-  --shadow-xl: 0 16px 32px -10px rgb(16 32 26 / 0.16), 0 3px 6px rgb(16 32 26 / 0.05);
-  --shadow-2xl: 0 28px 60px -18px rgb(16 32 26 / 0.28), 0 4px 10px rgb(16 32 26 / 0.06);
+  /* One soft, low elevation family, tinted from the stone rather than black. */
+  --shadow-2xs: 0 1px 0 rgb(60 48 24 / 0.04);
+  --shadow-xs: 0 1px 2px rgb(60 48 24 / 0.07);
+  --shadow-sm: 0 1px 2px rgb(60 48 24 / 0.06), 0 2px 6px -2px rgb(60 48 24 / 0.06);
+  --shadow-md: 0 2px 4px -1px rgb(60 48 24 / 0.07), 0 6px 14px -6px rgb(60 48 24 / 0.10);
+  --shadow-lg: 0 4px 8px -2px rgb(60 48 24 / 0.07), 0 14px 28px -10px rgb(60 48 24 / 0.16);
+  --shadow-xl: 0 6px 12px -4px rgb(60 48 24 / 0.08), 0 22px 44px -14px rgb(60 48 24 / 0.22);
+  --shadow-2xl: 0 10px 20px -6px rgb(40 32 16 / 0.10), 0 36px 72px -20px rgb(40 32 16 / 0.34);
 }
 
 @layer base {
@@ -95,22 +289,38 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    scrollbar-color: var(--color-stone-300) transparent;
   }
 
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01", "cv11";
+    font-variant-numeric: lining-nums;
+    caret-color: var(--color-brand-600);
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-600);
+    outline: 2px solid var(--color-brand-500);
     outline-offset: 2px;
+  }
+  /* On the emerald rail the ring turns gold so it stays visible. */
+  .app-rail :focus-visible,
+  .app-topbar :focus-visible {
+    outline-color: var(--color-gold-300);
   }
 
   input, select, textarea {
     font: inherit;
+  }
+
+  ::placeholder {
+    color: var(--color-stone-400);
+    opacity: 1;
   }
 
   /* Every field answers the pointer and focus the same way, whatever screen it is on. */
@@ -122,11 +332,11 @@
   }
   :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea):focus-visible:not(td *) {
     outline: none;
-    border-color: var(--color-brand-600);
-    box-shadow: 0 0 0 3px rgb(15 74 55 / 0.14);
+    border-color: var(--color-brand-500);
+    box-shadow: 0 0 0 3px rgb(28 106 77 / 0.16);
   }
   :where(input[type="checkbox"], input[type="radio"]) {
-    accent-color: var(--color-brand-700);
+    accent-color: var(--color-brand-600);
   }
   :where(select) {
     cursor: pointer;
@@ -134,7 +344,25 @@
 
   ::selection {
     background: var(--color-brand-700);
-    color: var(--color-gold-200);
+    color: var(--color-gold-100);
+  }
+
+  /* Scroll areas inside the app wear the stone, not the browser's grey. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-stone-300);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-stone-400);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
@@ -160,6 +388,20 @@
 .tracking-wider,
 .tracking-widest {
   letter-spacing: 0.01em;
+}
+
+/*
+ * Legibility floor. On screen nothing is set below 11px, and what was 11px reads at 12px.
+ * Printed slips keep their own sizes so they still fit the page.
+ */
+.text-\[8px\]:not(.reception-slip-modal-card *):not(#accounts-slip-print-area *):not(.keep-size),
+.text-\[9px\]:not(.reception-slip-modal-card *):not(#accounts-slip-print-area *):not(.keep-size),
+.text-\[10px\]:not(.reception-slip-modal-card *):not(#accounts-slip-print-area *):not(.keep-size) {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+.text-\[11px\]:not(.reception-slip-modal-card *):not(#accounts-slip-print-area *):not(.keep-size) {
+  font-size: 0.75rem;
 }
 
 .app-scroll-x {
@@ -247,14 +489,44 @@
   }
 }
 
-/* Signage voice: Instrument Sans at its condensed width for page titles and big numbers. */
+/* Signage voice: the Kufic-built display face for page titles and big figures. */
 .type-display {
-  font-stretch: 84%;
-  font-variation-settings: "wdth" 84;
-  letter-spacing: -0.012em;
+  font-family: var(--font-display);
+  letter-spacing: -0.005em;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
-/* The gold thread: a thin line under the top bar while a sync or an email run is working. */
+/* ------------------------------------------------------------------ */
+/* Shell: the emerald rail and the room the page leaves for it.         */
+/* ------------------------------------------------------------------ */
+:root {
+  --rail-w: 236px;
+}
+.app-rail {
+  transition: width 220ms var(--ease-out);
+  box-shadow: inset -1px 0 0 rgb(208 170 77 / 0.16);
+}
+@media (min-width: 64rem) {
+  .app-content {
+    padding-left: var(--rail-w);
+    transition: padding-left 220ms var(--ease-out);
+  }
+}
+/* A lattice of eight-pointed stars, cut faintly into the head of the rail like a carved frieze. */
+.app-rail-lattice {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 260px;
+  pointer-events: none;
+  opacity: 0.11;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44' fill='none' stroke='%23e2c572' stroke-width='1'%3E%3Cpath d='M11 11h22v22H11z'/%3E%3Cpath d='M22 6.4L37.6 22 22 37.6 6.4 22z'/%3E%3Cpath d='M22 0v6.4M22 37.6V44M0 22h6.4M37.6 22H44'/%3E%3C/svg%3E");
+  background-size: 44px 44px;
+  background-position: center top;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+}
+
+/* The gold thread: a thin line on the shell while a sync or an email run is working. */
 .gold-thread {
   position: absolute;
   inset: auto 0 -1px 0;
@@ -269,6 +541,9 @@
   width: 38%;
   background: linear-gradient(90deg, transparent, var(--color-gold-400) 30%, var(--color-gold-200) 55%, var(--color-gold-400) 75%, transparent);
   animation: gold-thread 1.6s var(--ease-out) infinite;
+}
+.gold-thread-top {
+  inset: 0 0 auto 0;
 }
 @keyframes gold-thread {
   from { transform: translateX(-100%); }
@@ -336,7 +611,7 @@
   }
 
   /* Hide app shell and background views so zero blank pages precede modal */
-  header, nav, main, footer, .print-hidden, .print-hidden-element, .print\:hidden {
+  header, nav, aside, main, footer, .print-hidden, .print-hidden-element, .print\:hidden {
     display: none !important;
   }
 

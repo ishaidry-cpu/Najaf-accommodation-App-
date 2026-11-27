@@ -151,7 +151,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               className={btn.ghost}
               title="Add a new building and configure its rooms"
             >
-              <Building2 className="w-4 h-4 text-[#0f4a37]" />
+              <Building2 className="w-4 h-4 text-brand-700" />
               Add building
             </button>
             <button
@@ -170,7 +170,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
       />
 
       {/* Filter Toolbar */}
-      <div className="bg-white border border-[#e2e8e5] rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white border border-stone-200 rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
           {/* Search Box */}
           <div className="relative min-w-[160px] flex-1 sm:flex-none">
@@ -180,7 +180,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               placeholder="Search Room, Building, Bed..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg pl-8 pr-3 py-2 sm:py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg pl-8 pr-3 py-2 sm:py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
@@ -191,7 +191,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 setSelectedBuilding('ALL');
                 setSelectedFloorLabel('ALL');
               }}
-              className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === 'ALL' ? 'bg-[#0f4a37] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
+              className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === 'ALL' ? 'bg-brand-700 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
             >
               All Buildings ({totalCount})
             </button>
@@ -204,7 +204,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                     setSelectedBuilding(bldg);
                     setSelectedFloorLabel('ALL');
                   }}
-                  className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === bldg ? 'bg-[#0f4a37] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
+                  className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === bldg ? 'bg-brand-700 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
                 >
                   {bldg} ({bCount})
                 </button>
@@ -232,8 +232,8 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
         {/* Status Filter & Date Picker */}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="flex items-center gap-1.5 min-h-[44px] sm:min-h-0 bg-[#f6f8f7] px-2.5 py-1 rounded-lg border border-stone-300">
-            <Calendar className="w-3.5 h-3.5 text-[#0f4a37]" />
+          <div className="flex items-center gap-1.5 min-h-[44px] sm:min-h-0 bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-300">
+            <Calendar className="w-3.5 h-3.5 text-brand-700" />
             <span className="text-[11px] text-stone-500 font-semibold">Check Date:</span>
             <input
               type="date"
@@ -353,7 +353,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setInspectingRoom(room)}
-                    className="min-h-[44px] sm:min-h-0 px-2 text-[#0f4a37] hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
+                    className="min-h-[44px] sm:min-h-0 px-2 text-brand-700 hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
                   >
                     Details
                   </button>
@@ -417,7 +417,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               setStatusFilter('ALL');
               setSearchQuery('');
             }}
-            className="text-xs text-[#0f4a37] underline font-bold cursor-pointer"
+            className="text-xs text-brand-700 underline font-bold cursor-pointer"
           >
             Clear all filters
           </button>
@@ -432,7 +432,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
             <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl border border-stone-200 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-2 border-b border-stone-200">
                 <div className="flex items-center gap-2">
-                  <BedDouble className="w-5 h-5 text-[#0f4a37]" />
+                  <BedDouble className="w-5 h-5 text-brand-700" />
                   <h3 className="font-bold text-base text-stone-900">
                     Room {inspectingRoom.roomNumber} ({inspectingRoom.building} Hotel)
                   </h3>
@@ -449,7 +449,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               <div className="space-y-2 text-xs text-stone-700">
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Building / Hotel:</span>
-                  <span className="font-bold text-[#0f4a37]">{inspectingRoom.building} Hotel</span>
+                  <span className="font-bold text-brand-700">{inspectingRoom.building} Hotel</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Floor:</span>
@@ -477,7 +477,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Accommodation Category:</span>
-                  <span className="font-bold text-[#0f4a37]">{inspectingRoom.category}</span>
+                  <span className="font-bold text-brand-700">{inspectingRoom.category}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-stone-200">
                   <span className="text-stone-500">Status:</span>
@@ -489,7 +489,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   <div className="pt-2 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-stone-700 font-bold flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-[#0f4a37]" />
+                        <Users className="w-3.5 h-3.5 text-brand-700" />
                         <span>Occupants on {checkDate} ({occupantsOnDate.length})</span>
                       </span>
                       {onOpenSwitchRoomModal && (
@@ -509,7 +509,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                     </div>
                     <div className="space-y-1.5 max-h-44 overflow-y-auto">
                       {occupantsOnDate.map((occ) => (
-                        <div key={occ.id} className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl p-2.5 flex items-center justify-between gap-2">
+                        <div key={occ.id} className="bg-stone-50 border border-stone-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-bold text-stone-900 truncate">{occ.applicantName}</div>
                             <div className="text-[11px] text-stone-600 font-mono">
@@ -616,7 +616,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setInspectingRoom(null)}
-                    className="min-h-[44px] px-5 py-2 rounded-lg bg-[#0f4a37] text-white text-xs font-bold cursor-pointer"
+                    className="min-h-[44px] px-5 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold cursor-pointer"
                   >
                     Close
                   </button>

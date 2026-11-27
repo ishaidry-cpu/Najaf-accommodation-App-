@@ -332,13 +332,13 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-[#f6f8f7] w-full sm:max-w-3xl rounded-t-2xl sm:rounded-2xl border border-[#e2e8e5] shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+      <div className="bg-stone-50 w-full sm:max-w-3xl rounded-t-2xl sm:rounded-2xl border border-stone-200 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-[#0f4a37] text-white px-4 py-3.5 sm:px-5 sm:py-4 flex items-start justify-between gap-3 shrink-0">
+        <div className="bg-brand-700 text-white px-4 py-3.5 sm:px-5 sm:py-4 flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <ArrowRightLeft className="w-4 h-4 text-[#ecdcae] shrink-0" />
-              <h3 className="font-bold text-sm sm:text-base text-[#ecdcae] tracking-tight truncate">
+              <ArrowRightLeft className="w-4 h-4 text-gold-200 shrink-0" />
+              <h3 className="font-bold text-sm sm:text-base text-gold-200 tracking-tight truncate">
                 Switch or Swap Room Allotment
               </h3>
             </div>
@@ -360,7 +360,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
             <div className="text-[11px] text-emerald-100/90 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums">
               <span>
                 Current:{' '}
-                <strong className="text-[#ecdcae]">
+                <strong className="text-gold-200">
                   {hasCurrentRoom ? `${currentBuilding} Rm ${currentRoom}` : 'Unallotted'}
                 </strong>
               </span>
@@ -383,7 +383,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
         </div>
 
         {/* Scope & Mode Bar */}
-        <div className="bg-white border-b border-[#e2e8e5] px-4 py-3 space-y-2.5 shrink-0">
+        <div className="bg-white border-b border-stone-200 px-4 py-3 space-y-2.5 shrink-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             {/* Mode Switcher: Move vs 2-Way Swap */}
             <div className="grid grid-cols-2 sm:inline-flex bg-stone-100 p-1 rounded-xl gap-1">
@@ -395,7 +395,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                 }}
                 className={`min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                   mode === 'move'
-                    ? 'bg-[#0f4a37] text-white shadow-xs'
+                    ? 'bg-brand-700 text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950'
                 }`}
               >
@@ -413,7 +413,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                 title={hasCurrentRoom ? 'Swap rooms 2-way with occupants of another room' : 'Assign a room first before swapping'}
                 className={`min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                   mode === 'swap'
-                    ? 'bg-[#0f4a37] text-white shadow-xs'
+                    ? 'bg-brand-700 text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950'
                 }`}
               >
@@ -433,7 +433,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                   }}
                   className={`min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer ${
                     scope === 'single'
-                      ? 'bg-white text-[#0f4a37] shadow-xs border border-stone-200'
+                      ? 'bg-white text-brand-700 shadow-xs border border-stone-200'
                       : 'text-stone-600'
                   }`}
                 >
@@ -448,7 +448,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                   }}
                   className={`min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer ${
                     scope === 'group'
-                      ? 'bg-white text-[#0f4a37] shadow-xs border border-stone-200'
+                      ? 'bg-white text-brand-700 shadow-xs border border-stone-200'
                       : 'text-stone-600'
                   }`}
                 >
@@ -474,7 +474,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     ? 'Search room #, guest, office, tour ID...'
                     : 'Search room #, hotel, floor, bed...'
                 }
-                className="w-full min-h-[44px] sm:min-h-[38px] bg-[#f6f8f7] border border-stone-300 rounded-xl pl-9 pr-3 text-xs font-medium text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                className="w-full min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl pl-9 pr-3 text-xs font-medium text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
               />
             </div>
 
@@ -484,7 +484,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                 setHotelFilter(e.target.value);
                 setFloorFilter('ALL');
               }}
-              className="col-span-1 sm:col-span-3 min-h-[44px] sm:min-h-[38px] bg-[#f6f8f7] border border-stone-300 rounded-xl px-2.5 text-xs font-bold text-[#0f4a37] cursor-pointer"
+              className="col-span-1 sm:col-span-3 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-bold text-brand-700 cursor-pointer"
             >
               <option value="ALL">All Hotels</option>
               {distinctBuildings.map((b) => (
@@ -497,7 +497,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
             <select
               value={floorFilter}
               onChange={(e) => setFloorFilter(e.target.value)}
-              className="col-span-1 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-[#f6f8f7] border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
+              className="col-span-1 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
             >
               {floorOptions.map((fl) => (
                 <option key={fl} value={fl}>
@@ -510,7 +510,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
               <select
                 value={availabilityFilter}
                 onChange={(e) => setAvailabilityFilter(e.target.value as any)}
-                className="col-span-2 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-[#f6f8f7] border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
+                className="col-span-2 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
               >
                 <option value="vacant_first">Vacant First</option>
                 <option value="vacant_only">Vacant Only</option>
@@ -526,7 +526,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Optional reason for switching room (e.g. Ground floor needed for senior)..."
-              className="w-full min-h-[40px] sm:min-h-[34px] bg-white border border-stone-200 rounded-xl px-3 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+              className="w-full min-h-[40px] sm:min-h-[34px] bg-white border border-stone-200 rounded-xl px-3 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-brand-700"
             />
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
               {QUICK_REASONS.map((preset) => (
@@ -536,7 +536,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                   onClick={() => setReason(preset)}
                   className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
                     reason === preset
-                      ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                      ? 'bg-brand-700 text-white border-brand-700'
                       : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
                   }`}
                 >
@@ -552,7 +552,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
           <div className="bg-amber-50 border-b border-amber-300 p-4 space-y-3 shrink-0 animate-in fade-in">
             <div className="flex items-start gap-2.5">
               {pendingConfirm.isSwap ? (
-                <ArrowRightLeft className="w-5 h-5 text-[#0f4a37] shrink-0 mt-0.5" />
+                <ArrowRightLeft className="w-5 h-5 text-brand-700 shrink-0 mt-0.5" />
               ) : (
                 <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
               )}
@@ -567,14 +567,14 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     <div>
                       <strong>{activeSourceList.map((r) => r.applicantName).slice(0, 2).join(', ')}{activeSourceList.length > 2 ? ` +${activeSourceList.length - 2}` : ''}</strong>{' '}
                       ({currentBuilding} Rm {currentRoom}) ➔{' '}
-                      <strong className="text-[#0f4a37]">
+                      <strong className="text-brand-700">
                         {pendingConfirm.room.building} Rm {pendingConfirm.room.roomNumber}
                       </strong>
                     </div>
                     <div>
                       <strong>{pendingConfirm.targetOccupants.map((o) => o.applicantName).slice(0, 2).join(', ')}{pendingConfirm.targetOccupants.length > 2 ? ` +${pendingConfirm.targetOccupants.length - 2}` : ''}</strong>{' '}
                       ({pendingConfirm.room.building} Rm {pendingConfirm.room.roomNumber}) ➔{' '}
-                      <strong className="text-[#0f4a37]">
+                      <strong className="text-brand-700">
                         {currentBuilding} Rm {currentRoom}
                       </strong>
                     </div>
@@ -596,7 +596,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
               <button
                 type="button"
                 onClick={executePending}
-                className="min-h-[44px] sm:min-h-[36px] px-4 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className="min-h-[44px] sm:min-h-[36px] px-4 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{pendingConfirm.isSwap ? 'Confirm Swap ↔' : 'Confirm Move'}</span>
@@ -627,7 +627,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     <div className="space-y-1.5">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="font-mono font-extrabold text-sm text-[#0f4a37] tabular-nums">
+                          <div className="font-mono font-extrabold text-sm text-brand-700 tabular-nums">
                             {room.building} · Room {room.roomNumber}
                           </div>
                           <div className="text-[11px] text-stone-500">
@@ -657,7 +657,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                       </div>
 
                       {occupants.length > 0 && (
-                        <div className="bg-[#f6f8f7] border border-stone-200/80 rounded-lg p-2 text-[11px] space-y-0.5">
+                        <div className="bg-stone-50 border border-stone-200/80 rounded-lg p-2 text-[11px] space-y-0.5">
                           <div className="font-bold text-stone-800 truncate">
                             {occupants.map((o) => o.applicantName).join(', ')}
                           </div>
@@ -681,7 +681,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleChooseSwapRoom(item)}
-                          className="w-full min-h-[44px] sm:min-h-[36px] rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                          className="w-full min-h-[44px] sm:min-h-[36px] rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
                         >
                           <ArrowRightLeft className="w-3.5 h-3.5" />
                           <span>
@@ -694,7 +694,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                           onClick={() => handleChooseMoveRoom(item)}
                           className={`w-full min-h-[44px] sm:min-h-[36px] rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
                             isVacant
-                              ? 'bg-[#0f4a37] hover:bg-[#0b3a2b] text-white'
+                              ? 'bg-brand-700 hover:bg-brand-800 text-white'
                               : canFitInRemaining
                               ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                               : 'bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300'

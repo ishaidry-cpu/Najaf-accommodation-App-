@@ -95,7 +95,7 @@ export function applyRoomSpec(base: Pick<Room, 'id' | 'building' | 'roomNumber'>
 }
 
 const inputClass =
-  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-[#0f4a37]';
+  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-brand-700';
 
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; className?: string }> = ({
   label,
@@ -285,11 +285,11 @@ export const RoomEditModal: React.FC<{
         role="dialog"
         aria-modal="true"
         aria-labelledby="room-edit-title"
-        className="bg-[#f6f8f7] rounded-t-3xl sm:rounded-2xl max-w-2xl w-full shadow-2xl border border-stone-200 flex flex-col max-h-[92vh] overflow-hidden"
+        className="bg-stone-50 rounded-t-3xl sm:rounded-2xl max-w-2xl w-full shadow-2xl border border-stone-200 flex flex-col max-h-[92vh] overflow-hidden"
       >
-        <div className="bg-[#0f4a37] text-white px-5 py-4 flex items-start justify-between gap-3 shrink-0">
+        <div className="bg-brand-700 text-white px-5 py-4 flex items-start justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <BedDouble className="w-5 h-5 text-[#ecdcae]" />
+            <BedDouble className="w-5 h-5 text-gold-200" />
             <div>
               <h2 id="room-edit-title" className="text-base font-bold">Edit room {room.roomNumber}</h2>
               <p className="text-xs text-stone-200">{room.building}</p>
@@ -323,7 +323,7 @@ export const RoomEditModal: React.FC<{
           <button
             type="button"
             onClick={save}
-            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white flex items-center gap-1.5 cursor-pointer"
+            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white flex items-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             Save room

@@ -618,7 +618,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
           </div>
 
           {/* Allocate bar */}
-          <div className="fixed bottom-14 md:bottom-0 left-0 right-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur-md">
+          <div className="fixed bottom-[60px] lg:bottom-0 left-0 lg:left-[var(--rail-w)] right-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur-md">
             <div className="mx-auto max-w-[1680px] px-3 sm:px-4 lg:px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="flex-1 text-sm text-stone-700">
                 {confirming ? (

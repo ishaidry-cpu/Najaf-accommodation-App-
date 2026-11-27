@@ -243,17 +243,17 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
-      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-3xl w-full p-5 sm:p-7 shadow-2xl relative text-stone-800 max-h-[92vh] flex flex-col">
+      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-3xl w-full p-5 sm:p-7 shadow-2xl relative text-stone-800 max-h-[92vh] flex flex-col">
         
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-stone-200">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#0f4a37] text-white shadow-xs">
+            <div className="p-2.5 rounded-xl bg-brand-700 text-white shadow-xs">
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-[#0f4a37]">Add New Zair</h3>
+                <h3 className="text-lg font-bold text-brand-700">Add New Zair</h3>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
                   Unique-Check Active
                 </span>
@@ -277,7 +277,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
         {onSwitchToAddTourGroup && (
           <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-emerald-950 shadow-2xs">
             <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#0f4a37] shrink-0" />
+              <Users className="w-4 h-4 text-brand-700 shrink-0" />
               <span>
                 Adding a full tour group? Add one Tour ID with <strong>different family IDs</strong> & multiple individuals sharing the same dates.
               </span>
@@ -288,7 +288,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 onClose();
                 onSwitchToAddTourGroup();
               }}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer shrink-0 text-xs"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-2xs transition cursor-pointer shrink-0 text-xs"
             >
               <span>Add Tour Group Instead</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -337,7 +337,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
 
           {/* Section 1: Personal Details */}
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#0f4a37] border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
               <span>1. Zair Personal Information</span>
             </h4>
 
@@ -352,8 +352,8 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. 30318214"
                   value={itsId}
                   onChange={(e) => setItsId(e.target.value)}
-                  className={`w-full bg-[#f6f8f7] border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 ${
-                    duplicateMatch ? 'border-rose-400 focus:ring-rose-500' : 'border-stone-300 focus:ring-[#0f4a37]'
+                  className={`w-full bg-stone-50 border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 ${
+                    duplicateMatch ? 'border-rose-400 focus:ring-rose-500' : 'border-stone-300 focus:ring-brand-700'
                   }`}
                 />
               </div>
@@ -369,7 +369,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. Nafisa Abbas Fatehi"
                   value={applicantName}
                   onChange={(e) => setApplicantName(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -382,7 +382,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   max="120"
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -392,7 +392,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value as 'Male' | 'Female')}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 >
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
@@ -405,7 +405,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 >
                   {categories.map((c) => (
                     <option key={c} value={c}>
@@ -425,7 +425,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. HATEMI MOHALLA (MUMBAI)"
                   value={jamaat}
                   onChange={(e) => setJamaat(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -439,7 +439,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. 20304504"
                   value={hofId}
                   onChange={(e) => setHofId(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
             </div>
@@ -447,7 +447,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
 
           {/* Section 2: Tour & Family Affiliation */}
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#0f4a37] border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
               <span>2. Tour ID & Family Grouping</span>
             </h4>
 
@@ -468,7 +468,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. NKERP/TOUR/2026/1333"
                   value={tourRefNo}
                   onChange={(e) => setTourRefNo(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
 
                 {/* Quick tour chips */}
@@ -481,7 +481,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                         onClick={() => handleSelectTour(tid)}
                         className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
                           tourRefNo === tid
-                            ? 'bg-[#0f4a37] text-white border-[#0f4a37] font-bold'
+                            ? 'bg-brand-700 text-white border-brand-700 font-bold'
                             : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                         }`}
                       >
@@ -508,7 +508,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. F-1, 102"
                   value={family}
                   onChange={(e) => setFamily(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
 
                 {/* Quick family chips */}
@@ -521,7 +521,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                         onClick={() => handleSelectFamily(fam)}
                         className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
                           family === fam
-                            ? 'bg-[#0f4a37] text-white border-[#0f4a37] font-bold'
+                            ? 'bg-brand-700 text-white border-brand-700 font-bold'
                             : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                         }`}
                       >
@@ -542,7 +542,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. Fayz E Husayni Trust Mumbai"
                   value={officeName}
                   onChange={(e) => setOfficeName(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -556,7 +556,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. Husain Shaikh Asgar Arsiwala"
                   value={groupLeadName}
                   onChange={(e) => setGroupLeadName(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
             </div>
@@ -564,7 +564,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
 
           {/* Section 3: Arrival, Departure & Room Allotment */}
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#0f4a37] border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
               <span>3. Dates & Room Allotment</span>
             </h4>
 
@@ -579,7 +579,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   required
                   value={arrivalDate}
                   onChange={(e) => setArrivalDate(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37] cursor-pointer"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
                 />
               </div>
 
@@ -591,7 +591,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. 11:00 AM"
                   value={arrivalTime}
                   onChange={(e) => setArrivalTime(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
 
@@ -605,7 +605,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   required
                   value={departureDate}
                   onChange={(e) => setDepartureDate(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37] cursor-pointer"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
                 />
               </div>
 
@@ -617,7 +617,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   placeholder="e.g. 01:00 AM"
                   value={departureTime}
                   onChange={(e) => setDepartureTime(e.target.value)}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 />
               </div>
             </div>
@@ -634,7 +634,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                     setBuilding(e.target.value);
                     setRoomNumber('');
                   }}
-                  className="w-full bg-[#f6f8f7] border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-[#0f4a37] focus:outline-none focus:ring-1 focus:ring-[#0f4a37] cursor-pointer"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
                 >
                   {distinctBuildings.map((bldg) => {
                     const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
@@ -654,7 +654,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <select
                   value={roomNumber}
                   onChange={(e) => setRoomNumber(e.target.value)}
-                  className="w-full bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                  className="w-full bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
                 >
                   <option value="">-- Leave Unallotted for Now --</option>
                   {vacantRooms.map((rm) => (
@@ -676,7 +676,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                     type="checkbox"
                     checked={shiftToCategoryA}
                     onChange={(e) => setShiftToCategoryA(e.target.checked)}
-                    className="w-4 h-4 text-[#0f4a37] rounded border-stone-300 focus:ring-[#0f4a37] cursor-pointer"
+                    className="w-4 h-4 text-brand-700 rounded border-stone-300 focus:ring-brand-700 cursor-pointer"
                   />
                   <span>Shift from Standard (B) to Nizaam (Category A)</span>
                 </label>
@@ -687,7 +687,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
             </div>
 
             {shiftToCategoryA && (
-              <div className="p-3 bg-[#f6f8f7] border border-[#0f4a37]/30 rounded-xl space-y-3 animate-in fade-in duration-150">
+              <div className="p-3 bg-stone-50 border border-brand-700/30 rounded-xl space-y-3 animate-in fade-in duration-150">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-stone-700 mb-1">
@@ -739,7 +739,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition ${
               duplicateMatch
                 ? 'bg-stone-300 text-stone-500 cursor-not-allowed'
-                : 'bg-[#0f4a37] hover:bg-[#0b3a2b] text-white cursor-pointer'
+                : 'bg-brand-700 hover:bg-brand-800 text-white cursor-pointer'
             }`}
           >
             <UserPlus className="w-4 h-4" />

@@ -71,12 +71,12 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden text-stone-800">
+      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden text-stone-800">
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#0f4a37] to-[#0b3a2b] text-white p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-brand-700 to-brand-800 text-white p-5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-white/10 text-[#ecdcae]">
+            <div className="p-2 rounded-xl bg-white/10 text-gold-200">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
@@ -125,7 +125,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
               onClick={() => setSelectedRole('admin')}
               className={`p-3.5 rounded-xl border-2 transition cursor-pointer flex items-start gap-3 ${
                 selectedRole === 'admin'
-                  ? 'border-[#0f4a37] bg-emerald-50/80 shadow-xs'
+                  ? 'border-brand-700 bg-emerald-50/80 shadow-xs'
                   : 'border-stone-200 bg-white hover:border-stone-300'
               }`}
             >
@@ -134,11 +134,11 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                 name="roleOption"
                 checked={selectedRole === 'admin'}
                 onChange={() => setSelectedRole('admin')}
-                className="mt-1 text-[#0f4a37] focus:ring-[#0f4a37]"
+                className="mt-1 text-brand-700 focus:ring-brand-700"
               />
               <div className="space-y-1 flex-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#0f4a37] flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-brand-700 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-emerald-700" />
                     Admin / Myself (Full Editable Rights)
                   </span>
@@ -162,7 +162,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
               onClick={() => setSelectedRole('receptionist')}
               className={`p-3.5 rounded-xl border-2 transition cursor-pointer flex items-start gap-3 ${
                 selectedRole === 'receptionist'
-                  ? 'border-[#0f4a37] bg-amber-50/80 shadow-xs'
+                  ? 'border-brand-700 bg-amber-50/80 shadow-xs'
                   : 'border-stone-200 bg-white hover:border-stone-300'
               }`}
             >
@@ -171,7 +171,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                 name="roleOption"
                 checked={selectedRole === 'receptionist'}
                 onChange={() => setSelectedRole('receptionist')}
-                className="mt-1 text-[#0f4a37] focus:ring-[#0f4a37]"
+                className="mt-1 text-brand-700 focus:ring-brand-700"
               />
               <div className="space-y-1 flex-1">
                 <div className="flex items-center justify-between">
@@ -207,7 +207,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
                 placeholder="Enter 4-digit PIN (Default: 1234)"
-                className="w-full px-3 py-1.5 text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
+                className="w-full px-3 py-1.5 text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-700"
                 autoFocus
               />
               <p className="text-[10px] text-amber-800">
@@ -222,14 +222,14 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsChangingPin(!isChangingPin)}
-                className="text-[#0f4a37] font-bold underline hover:text-[#0b3a2b] flex items-center gap-1 cursor-pointer"
+                className="text-brand-700 font-bold underline hover:text-brand-800 flex items-center gap-1 cursor-pointer"
               >
                 <KeyRound className="w-3.5 h-3.5" />
                 <span>{isChangingPin ? 'Hide PIN Settings' : 'Change Admin Security PIN'}</span>
               </button>
 
               {isChangingPin && (
-                <div className="mt-2.5 p-3 rounded-xl bg-white border border-[#cdd5d1] space-y-2">
+                <div className="mt-2.5 p-3 rounded-xl bg-white border border-stone-300 space-y-2">
                   <label className="block text-[11px] font-bold text-stone-700">
                     New Admin Security PIN:
                   </label>
@@ -259,7 +259,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-sm transition"
+              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white shadow-sm transition"
             >
               Apply Rights
             </button>

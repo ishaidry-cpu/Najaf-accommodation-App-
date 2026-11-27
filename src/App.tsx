@@ -1165,11 +1165,13 @@ export default function App() {
         }}
         nkerpSync={syncWithSavedData}
         emailsRunning={najafEmails.run.running}
+        pullStatus={pullStatus}
       />
       <SyncAccessKeyModal sync={nkerpSync} />
 
       {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
-      <main key={activeTab} className="tab-enter mx-auto w-full max-w-[1680px] px-3 sm:px-4 lg:px-6 pt-3 md:pt-5 pb-24 md:pb-12">
+      <div className="app-content">
+      <main key={activeTab} className="tab-enter mx-auto w-full max-w-[1720px] px-3 sm:px-5 lg:px-8 pt-4 sm:pt-6 lg:pt-9 pb-28 lg:pb-14">
         {activeTab === 'dashboard' && (
           <Dashboard
             reservations={reservations}
@@ -1295,6 +1297,7 @@ export default function App() {
           />
         )}
       </main>
+      </div>
 
       {/* Excel Upload Modal */}
       <ExcelUploadModal
@@ -1485,9 +1488,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={allocationNotice.onConfirm}
-                className="px-5 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-[#ecdcae]" />
+                <CheckCircle2 className="w-4 h-4 text-gold-200" />
                 <span>{allocationNotice.confirmLabel || 'Allot anyway'}</span>
               </button>
             </div>
@@ -1496,11 +1499,11 @@ export default function App() {
       )}
 
       {/* User request: "when the app is opened first ask to upload excel and then sync the document" */}
-      {isSaving && <div role="status" className="fixed bottom-5 left-5 rounded-lg bg-stone-900 px-3 py-2 text-xs text-white">Saving to the app…</div>}
+      {isSaving && <div role="status" className="fixed bottom-20 lg:bottom-5 left-5 lg:left-[calc(var(--rail-w)+1.25rem)] z-50 rounded-lg bg-stone-900 px-3 py-2 text-xs text-white">Saving to the app…</div>}
 
       {/* Toast Notification */}
       {toast && (
-        <div role="status" className="fixed bottom-20 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-xl shadow-2xl text-[13px] leading-snug animate-in fade-in slide-in-from-bottom-2">
+        <div role="status" className="fixed bottom-20 lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-xl shadow-2xl text-[13px] leading-snug animate-in fade-in slide-in-from-bottom-2">
           {toast.type === 'error' ? (
             <AlertCircle className="w-4 h-4 mt-px text-rose-300 shrink-0" />
           ) : (

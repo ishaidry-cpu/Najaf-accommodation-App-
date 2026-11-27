@@ -2622,7 +2622,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         }
       `}} />
 
-      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh] reception-slip-modal-card">
+      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh] reception-slip-modal-card">
         
         {/* Close Button */}
         <button
@@ -2638,7 +2638,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             <div>
               <div className="flex items-center gap-2">
                 <FaizHusainiLogo size="sm" showSubtitle={false} />
-                <h3 className="text-base font-bold text-[#0f4a37]">
+                <h3 className="text-base font-bold text-brand-700">
                   Daily Reception Slip — Room Turnover & Guest Roster
                 </h3>
               </div>
@@ -2660,18 +2660,18 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               </button>
 
               {/* Dedicated Chosen Arrival Date PDF Group */}
-              <div className="flex items-center rounded-xl bg-[#0f4a37] p-0.5 border border-[#c9a85a] shadow-sm">
+              <div className="flex items-center rounded-xl bg-brand-700 p-0.5 border border-gold-400 shadow-sm">
                 <button
                   type="button"
                   onClick={() => handleDownloadArrivalsPdf('ALL')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#ecdcae] hover:bg-[#0b3a2b] transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer"
                   title={`Download official Arrival Slip PDF (Joined & Bifurcated with page breaks) for chosen arrival date: ${selectedDate}`}
                 >
-                  <LogIn className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <LogIn className="w-3.5 h-3.5 text-gold-200" />
                   <span>Arrival Slip PDF ({selectedDate})</span>
                 </button>
 
-                <div className="h-4 w-px bg-[#c9a85a]/40 my-auto" />
+                <div className="h-4 w-px bg-gold-400/40 my-auto" />
 
                 <button
                   type="button"
@@ -2730,12 +2730,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => handleDownloadPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'turnover'
-                    ? 'bg-[#0f4a37] text-white ring-2 ring-[#ecdcae]'
-                    : 'bg-emerald-900/80 hover:bg-[#0f4a37] text-white'
+                    ? 'bg-brand-700 text-white ring-2 ring-gold-200'
+                    : 'bg-emerald-900/80 hover:bg-brand-700 text-white'
                 }`}
                 title={`Download Room Turnover Slip PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
-                <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <Download className="w-3.5 h-3.5 text-gold-200" />
                 <span>Turnover PDF</span>
               </button>
 
@@ -2744,12 +2744,12 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => handleDownloadRosterPdf(activeHotelFilter)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
                   activeTab === 'roster'
-                    ? 'bg-[#0f4a37] text-white ring-2 ring-[#ecdcae]'
-                    : 'bg-emerald-900/80 hover:bg-[#0f4a37] text-white'
+                    ? 'bg-brand-700 text-white ring-2 ring-gold-200'
+                    : 'bg-emerald-900/80 hover:bg-brand-700 text-white'
                 }`}
                 title={`Download Tour ID Roster PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
-                <Users className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <Users className="w-3.5 h-3.5 text-gold-200" />
                 <span>Roster PDF</span>
               </button>
 
@@ -2763,7 +2763,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 }`}
                 title={`Download Worker Operations Summary PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
               >
-                <HardHat className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <HardHat className="w-3.5 h-3.5 text-gold-200" />
                 <span>Worker Sheet PDF</span>
               </button>
 
@@ -2802,7 +2802,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   <a
                     href={pdfDownloadStatus.blobUrl}
                     download={pdfDownloadStatus.fileName}
-                    className="px-3 py-1.5 rounded-lg bg-[#0f4a37] text-white font-bold text-xs hover:bg-[#0b3a2b] shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-brand-700 text-white font-bold text-xs hover:bg-brand-800 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Direct Download</span>
@@ -2847,7 +2847,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
 
-                <Calendar className="w-4 h-4 text-[#0f4a37]" />
+                <Calendar className="w-4 h-4 text-brand-700" />
                 <span className="font-semibold text-stone-600">Date:</span>
                 <input
                   type="date"
@@ -2890,7 +2890,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       }}
                       className={`px-2 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap shadow-2xs flex items-center gap-1 ${
                         isSelected
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
                       }`}
                     >
@@ -2911,7 +2911,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               </div>
 
               {/* Dynamic 1-Click Download PDF for current tab & chosen date */}
-              <div className="flex items-center rounded-xl bg-[#0f4a37] p-0.5 border border-[#c9a85a]/50 shadow-xs">
+              <div className="flex items-center rounded-xl bg-brand-700 p-0.5 border border-gold-400/50 shadow-xs">
                 <button
                   type="button"
                   onClick={() => {
@@ -2922,10 +2922,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(portalHotelFilter);
                     else handleDownloadPdf(activeHotelFilter);
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-[#ecdcae] hover:bg-[#0b3a2b] transition cursor-pointer whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer whitespace-nowrap"
                   title={`Download dedicated PDF for ${activeTab} (${selectedDate})`}
                 >
-                  <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <Download className="w-3.5 h-3.5 text-gold-200" />
                   <span>
                     {activeTab === 'arrival_slip'
                       ? 'Download Arrival Slip PDF'
@@ -2941,7 +2941,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     ({selectedDate})
                   </span>
                 </button>
-                <div className="h-3.5 w-px bg-[#c9a85a]/40 my-auto" />
+                <div className="h-3.5 w-px bg-gold-400/40 my-auto" />
                 <button
                   type="button"
                   onClick={() => {
@@ -2982,7 +2982,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => setActiveHotelFilter('ALL')}
                 className={`px-2.5 py-1 rounded-lg transition ${
                   activeHotelFilter === 'ALL'
-                    ? 'bg-[#0f4a37] text-white shadow-xs font-bold'
+                    ? 'bg-brand-700 text-white shadow-xs font-bold'
                     : 'text-stone-700 hover:text-stone-900'
                 }`}
               >
@@ -2993,7 +2993,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => setActiveHotelFilter('Saifee')}
                 className={`px-2.5 py-1 rounded-lg transition ${
                   activeHotelFilter === 'Saifee'
-                    ? 'bg-[#0f4a37] text-white shadow-xs font-bold'
+                    ? 'bg-brand-700 text-white shadow-xs font-bold'
                     : 'text-stone-700 hover:text-stone-900'
                 }`}
               >
@@ -3004,7 +3004,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => setActiveHotelFilter('Burhani')}
                 className={`px-2.5 py-1 rounded-lg transition ${
                   activeHotelFilter === 'Burhani'
-                    ? 'bg-[#0f4a37] text-white shadow-xs font-bold'
+                    ? 'bg-brand-700 text-white shadow-xs font-bold'
                     : 'text-stone-700 hover:text-stone-900'
                 }`}
               >
@@ -3023,11 +3023,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('arrival_slip')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'arrival_slip'
-                  ? 'bg-[#0f4a37] text-white shadow-xs font-bold'
+                  ? 'bg-brand-700 text-white shadow-xs font-bold'
                   : 'text-stone-700 hover:text-stone-900 font-semibold'
               }`}
             >
-              <LogIn className="w-3.5 h-3.5 text-[#ecdcae]" />
+              <LogIn className="w-3.5 h-3.5 text-gold-200" />
               <span>Arrival Slip (Simple)</span>
             </button>
 
@@ -3037,7 +3037,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('departure_list')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'departure_list'
-                  ? 'bg-[#0f4a37] text-white shadow-xs font-bold'
+                  ? 'bg-brand-700 text-white shadow-xs font-bold'
                   : 'text-stone-700 hover:text-stone-900 font-semibold'
               }`}
             >
@@ -3050,11 +3050,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('turnover')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
                 activeTab === 'turnover'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
+                  ? 'bg-brand-700 text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
-              <DoorClosed className="w-3.5 h-3.5 text-[#ecdcae]" />
+              <DoorClosed className="w-3.5 h-3.5 text-gold-200" />
               <span>Room-by-Room Turnover Schedule</span>
             </button>
             <button
@@ -3062,7 +3062,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('roster')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
                 activeTab === 'roster'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
+                  ? 'bg-brand-700 text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
@@ -3074,11 +3074,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('worker_summary')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
                 activeTab === 'worker_summary'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
+                  ? 'bg-brand-700 text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
-              <HardHat className="w-3.5 h-3.5 text-[#ecdcae]" />
+              <HardHat className="w-3.5 h-3.5 text-gold-200" />
               <span>Worker Room Operations Sheet (By Office ➔ Tour ➔ Time)</span>
             </button>
             <button
@@ -3086,7 +3086,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               onClick={() => setActiveTab('portal_upload')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
                 activeTab === 'portal_upload'
-                  ? 'bg-[#0f4a37] text-white shadow-xs'
+                  ? 'bg-brand-700 text-white shadow-xs'
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
@@ -3101,7 +3101,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 type="checkbox"
                 checked={showOnlyActiveRooms}
                 onChange={(e) => setShowOnlyActiveRooms(e.target.checked)}
-                className="rounded text-[#0f4a37] focus:ring-[#0f4a37]"
+                className="rounded text-brand-700 focus:ring-brand-700"
               />
               <span>Show only rooms with Turnover / Activity Today ({filteredRoomPrep.length})</span>
             </label>
@@ -3114,7 +3114,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => setRosterGroupByTour(true)}
                 className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                   rosterGroupByTour
-                    ? 'bg-[#0f4a37] text-white shadow-xs'
+                    ? 'bg-brand-700 text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-900'
                 }`}
               >
@@ -3126,7 +3126,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 onClick={() => setRosterGroupByTour(false)}
                 className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
                   !rosterGroupByTour
-                    ? 'bg-[#0f4a37] text-white shadow-xs'
+                    ? 'bg-brand-700 text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-900'
                 }`}
               >
@@ -3156,14 +3156,14 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         {/* Printable Paper Slip View Container */}
         <div
           id="reception-slip-printable-area"
-          className="flex-1 overflow-y-auto mt-4 p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs space-y-6"
+          className="flex-1 overflow-y-auto mt-4 p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs space-y-6"
         >
           {/* Slip Official Header */}
-          <div className="text-center pb-4 border-b-2 border-[#0f4a37]">
+          <div className="text-center pb-4 border-b-2 border-brand-700">
             <div className="flex items-center justify-center gap-3 mb-1">
               <FaizHusainiLogo size="lg" />
             </div>
-            <div className="inline-block bg-[#0f4a37] text-white font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1">
+            <div className="inline-block bg-brand-700 text-white font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1">
               {activeTab === 'arrival_slip'
                 ? 'Official Arrival Slip — Room Allotments & Dates'
                 : activeTab === 'departure_list'
@@ -3180,7 +3180,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {activeTab === 'arrival_slip' ? (
                 <>
                   Official Arrival Date:{' '}
-                  <span className="text-[#0f4a37] font-bold underline">
+                  <span className="text-brand-700 font-bold underline">
                     {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </span>{' '}
                   • Saifee Hotel & Burhani Hotel
@@ -3188,7 +3188,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               ) : activeTab === 'departure_list' ? (
                 <>
                   Official Departure Date:{' '}
-                  <span className="text-[#0f4a37] font-bold underline">
+                  <span className="text-brand-700 font-bold underline">
                     {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </span>{' '}
                   • Saifee Hotel & Burhani Hotel
@@ -3196,7 +3196,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               ) : (
                 <>
                   Operational Date:{' '}
-                  <span className="text-[#0f4a37] font-bold underline">
+                  <span className="text-brand-700 font-bold underline">
                     {formatSafeDateLabel(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </span>{' '}
                   • Najaf Al-Ashraf Lodging
@@ -3226,7 +3226,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span className="text-base font-extrabold text-amber-950">{simpleArrivalsData.totalTurnovers} Turnover Rooms</span>
                 <span className="text-[10px] text-amber-800 font-semibold block">Same-day checkout & arrival</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#f6f8f7] border border-[#e2e8e5] flex flex-col justify-between">
+              <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200 flex flex-col justify-between">
                 <div>
                   <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Pax & Export</span>
                   <span className="text-xs font-bold text-stone-800">{simpleArrivalsData.totalPax} Zaereen ({simpleArrivalsData.totalRooms} Rooms)</span>
@@ -3234,9 +3234,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <button
                   type="button"
                   onClick={() => handleDownloadArrivalsPdf(activeHotelFilter)}
-                  className="mt-1 flex items-center gap-1 text-[11px] font-bold text-[#0f4a37] hover:text-[#0b3a2b] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
+                  className="mt-1 flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:text-brand-800 bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
                 >
-                  <Download className="w-3 h-3 text-[#0f4a37]" />
+                  <Download className="w-3 h-3 text-brand-700" />
                   <span>Download PDF</span>
                 </button>
               </div>
@@ -3261,7 +3261,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span className="text-base font-extrabold text-amber-950">{simpleDeparturesData.totalTurnovers} Turnover Rooms</span>
                 <span className="text-[10px] text-amber-800 font-semibold block">Same-day checkout & arrival</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#f6f8f7] border border-[#e2e8e5] flex flex-col justify-between">
+              <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200 flex flex-col justify-between">
                 <div>
                   <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Pax & Export</span>
                   <span className="text-xs font-bold text-stone-800">{simpleDeparturesData.totalPax} Zaereen ({simpleDeparturesData.totalRooms} Rooms)</span>
@@ -3292,10 +3292,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <button
                   type="button"
                   onClick={() => handleDownloadArrivalsPdf(activeHotelFilter)}
-                  className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-[#0f4a37] hover:text-[#0b3a2b] bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
+                  className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:text-brand-800 bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs w-fit cursor-pointer"
                   title={`Download official PDF of arrivals for ${selectedDate}`}
                 >
-                  <Download className="w-3 h-3 text-[#0f4a37]" />
+                  <Download className="w-3 h-3 text-brand-700" />
                   <span>Arrivals PDF</span>
                 </button>
               </div>
@@ -3304,9 +3304,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <span className="text-base font-extrabold text-amber-800">{checkoutCleansCount} Rooms ({departuresOnDate.length} Zaereen)</span>
                 <span className="text-[10px] text-stone-500 block">Vacating to clean inventory</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-[#f6f8f7] border border-[#e2e8e5]">
+              <div className="p-2.5 rounded-lg bg-stone-50 border border-stone-200">
                 <span className="text-stone-500 text-[10px] uppercase font-bold block">Total Hotel Inventory</span>
-                <span className="text-base font-extrabold text-[#0f4a37]">114 Official Rooms</span>
+                <span className="text-base font-extrabold text-brand-700">114 Official Rooms</span>
                 <span className="text-[10px] text-stone-500 block">Saifee (70) • Burhani (44)</span>
               </div>
             </div>
@@ -3318,7 +3318,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {/* Building filter & Turnover toggle bar */}
               <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-stone-700">
-                  <Building2 className="w-4 h-4 text-[#0f4a37]" />
+                  <Building2 className="w-4 h-4 text-brand-700" />
                   <span>Building View:</span>
                   <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
                     <button
@@ -3326,7 +3326,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('ALL')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'ALL'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -3337,7 +3337,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('Saifee')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'Saifee'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -3348,7 +3348,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('Burhani')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'Burhani'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -3377,10 +3377,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {/* Saifee Hotel Arrivals */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-[#0f4a37] text-white px-4 py-2.5 rounded-xl shadow-xs">
+                  <div className="flex items-center justify-between bg-brand-700 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-[#ecdcae]" />
-                      <span className="font-black text-sm text-[#ecdcae] tracking-wide">
+                      <Building2 className="w-4 h-4 text-gold-200" />
+                      <span className="font-black text-sm text-gold-200 tracking-wide">
                         SAIFEE HOTEL (70 ROOMS) — ARRIVALS
                       </span>
                     </div>
@@ -3412,13 +3412,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         {groups.map((group) => (
                           <div key={group.tourId} className="border border-stone-300 rounded-xl overflow-hidden shadow-2xs bg-white">
                             {/* Tour ID & Office Name Clubbed Banner */}
-                            <div className="bg-[#0b3a2b] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
+                            <div className="bg-brand-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
                               <div className="flex items-center gap-2.5 flex-wrap">
-                                <span className="text-[10px] uppercase font-black tracking-wider text-[#ecdcae] bg-black/30 px-2 py-0.5 rounded border border-[#c9a85a]/40">
+                                <span className="text-[10px] uppercase font-black tracking-wider text-gold-200 bg-black/30 px-2 py-0.5 rounded border border-gold-400/40">
                                   Tour Group
                                 </span>
                                 <span className="font-mono font-bold text-sm text-white">
-                                  Tour ID: <span className="text-[#ecdcae] font-black">{group.tourId}</span>
+                                  Tour ID: <span className="text-gold-200 font-black">{group.tourId}</span>
                                 </span>
                                 <span className="text-white/40 font-bold">•</span>
                                 <span className="text-xs text-white/90">
@@ -3474,7 +3474,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                       }`}
                                     >
                                       <td className="py-2.5 px-3 text-center align-middle">
-                                        <span className="font-mono font-black text-sm text-[#0f4a37] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
+                                        <span className="font-mono font-black text-sm text-brand-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
                                           Room {entry.roomNumber}
                                         </span>
                                       </td>
@@ -3556,10 +3556,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {/* Burhani Hotel Arrivals */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Burhani') && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-[#0f4a37] text-white px-4 py-2.5 rounded-xl shadow-xs">
+                  <div className="flex items-center justify-between bg-brand-700 text-white px-4 py-2.5 rounded-xl shadow-xs">
                     <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-[#ecdcae]" />
-                      <span className="font-black text-sm text-[#ecdcae] tracking-wide">
+                      <Building2 className="w-4 h-4 text-gold-200" />
+                      <span className="font-black text-sm text-gold-200 tracking-wide">
                         BURHANI HOTEL (44 ROOMS) — ARRIVALS
                       </span>
                     </div>
@@ -3591,13 +3591,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         {groups.map((group) => (
                           <div key={group.tourId} className="border border-stone-300 rounded-xl overflow-hidden shadow-2xs bg-white">
                             {/* Tour ID & Office Name Clubbed Banner */}
-                            <div className="bg-[#0b3a2b] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
+                            <div className="bg-brand-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-black/20">
                               <div className="flex items-center gap-2.5 flex-wrap">
-                                <span className="text-[10px] uppercase font-black tracking-wider text-[#ecdcae] bg-black/30 px-2 py-0.5 rounded border border-[#c9a85a]/40">
+                                <span className="text-[10px] uppercase font-black tracking-wider text-gold-200 bg-black/30 px-2 py-0.5 rounded border border-gold-400/40">
                                   Tour Group
                                 </span>
                                 <span className="font-mono font-bold text-sm text-white">
-                                  Tour ID: <span className="text-[#ecdcae] font-black">{group.tourId}</span>
+                                  Tour ID: <span className="text-gold-200 font-black">{group.tourId}</span>
                                 </span>
                                 <span className="text-white/40 font-bold">•</span>
                                 <span className="text-xs text-white/90">
@@ -3653,7 +3653,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                       }`}
                                     >
                                       <td className="py-2.5 px-3 text-center align-middle">
-                                        <span className="font-mono font-black text-sm text-[#0f4a37] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
+                                        <span className="font-mono font-black text-sm text-brand-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg inline-block">
                                           Room {entry.roomNumber}
                                         </span>
                                       </td>
@@ -3866,7 +3866,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               {/* Building filter bar */}
               <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
                 <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
-                  <Building2 className="w-4 h-4 text-[#0f4a37]" />
+                  <Building2 className="w-4 h-4 text-brand-700" />
                   <span>Building View:</span>
                   <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
                     <button
@@ -3874,7 +3874,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('ALL')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'ALL'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -3885,7 +3885,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('Saifee')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'Saifee'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -3896,7 +3896,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       onClick={() => setActiveHotelFilter('Burhani')}
                       className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                         activeHotelFilter === 'Burhani'
-                          ? 'bg-[#0f4a37] text-white shadow-xs'
+                          ? 'bg-brand-700 text-white shadow-xs'
                           : 'text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -4439,9 +4439,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           {/* ============================================================ */}
           {activeTab === 'turnover' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-[#0f4a37]/30 pb-2">
-                <div className="flex items-center gap-2 text-sm font-bold text-[#0f4a37]">
-                  <DoorClosed className="w-4 h-4 text-[#0f4a37]" />
+              <div className="flex items-center justify-between border-b border-brand-700/30 pb-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-brand-700">
+                  <DoorClosed className="w-4 h-4 text-brand-700" />
                   <span>Room Turnover & Preparation Schedule (Housekeeping & Reception Handover)</span>
                 </div>
                 <span className="text-xs text-stone-500 font-semibold">
@@ -4451,11 +4451,11 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
               <div className="overflow-x-auto border border-stone-300 rounded-xl shadow-2xs">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-[#0f4a37] text-white uppercase text-[10px] font-bold tracking-wider">
+                  <thead className="bg-brand-700 text-white uppercase text-[10px] font-bold tracking-wider">
                     <tr>
                       <th className="py-3 px-3 w-[22%]">Room & Hotel (Pax & Family)</th>
-                      <th className="py-3 px-3 w-[29%] bg-[#0f4a37]/95">Departures (Vacating & Times)</th>
-                      <th className="py-3 px-3 w-[29%] bg-[#0f4a37]/95">Arrivals (New Zaereen & Times)</th>
+                      <th className="py-3 px-3 w-[29%] bg-brand-700/95">Departures (Vacating & Times)</th>
+                      <th className="py-3 px-3 w-[29%] bg-brand-700/95">Arrivals (New Zaereen & Times)</th>
                       <th className="py-3 px-3 w-[20%]">Turnover Status & Housekeeping Sign-off</th>
                     </tr>
                   </thead>
@@ -4500,9 +4500,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           >
                             {/* 1. Room & Hotel (with Count of Pax & Family Number) */}
                             <td className="py-3 px-3 align-top">
-                              <div className="bg-[#0f4a37]/10 border-2 border-[#0f4a37]/30 rounded-xl p-2 text-center shadow-xs">
+                              <div className="bg-brand-700/10 border-2 border-brand-700/30 rounded-xl p-2 text-center shadow-xs">
                                 <div className="text-[10px] uppercase font-bold tracking-wider text-stone-600">Room</div>
-                                <div className="font-mono font-black text-3xl sm:text-4xl text-[#0f4a37] leading-tight tracking-tight my-0.5">
+                                <div className="font-mono font-black text-3xl sm:text-4xl text-brand-700 leading-tight tracking-tight my-0.5">
                                   {item.room.roomNumber}
                                 </div>
                                 <div className="text-xs font-black text-stone-900">
@@ -4517,10 +4517,10 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               <div className="mt-2 p-2 rounded-xl bg-white border border-stone-300 text-stone-900 shadow-2xs space-y-1.5">
                                 <div className="flex items-center justify-between pb-1 border-b border-stone-200">
                                   <span className="text-[11px] font-bold text-stone-700 flex items-center gap-1">
-                                    <Users className="w-3.5 h-3.5 text-[#0f4a37]" />
+                                    <Users className="w-3.5 h-3.5 text-brand-700" />
                                     <span>Room Pax:</span>
                                   </span>
-                                  <span className="px-2 py-0.5 rounded-full bg-[#0f4a37] text-white font-black font-mono text-[11px]">
+                                  <span className="px-2 py-0.5 rounded-full bg-brand-700 text-white font-black font-mono text-[11px]">
                                     {totalPaxInRoom > 0 ? `${totalPaxInRoom} Pax in Room` : '0 Pax (Vacant)'}
                                   </span>
                                 </div>
@@ -4533,7 +4533,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                         <span className="font-mono font-black text-stone-950">
                                           Family #{f.family}
                                         </span>
-                                        <span className="font-extrabold text-[#0f4a37] text-[10px] bg-white px-1.5 py-0.5 rounded border border-[#0f4a37]/20">
+                                        <span className="font-extrabold text-brand-700 text-[10px] bg-white px-1.5 py-0.5 rounded border border-brand-700/20">
                                           {f.count} Pax in Room
                                         </span>
                                       </div>
@@ -4666,7 +4666,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           <span className="font-bold text-stone-900 bg-stone-200 px-1.5 py-0.5 rounded text-[10px]">
                                             Tour: {a.tourRefNo || '—'}
                                           </span>
-                                          <span className="font-bold text-[#0f4a37] text-[10px] bg-emerald-50 border border-emerald-200 px-1 py-0.5 rounded">
+                                          <span className="font-bold text-brand-700 text-[10px] bg-emerald-50 border border-emerald-200 px-1 py-0.5 rounded">
                                             {a.category}
                                           </span>
                                           <span className="text-[10px] text-stone-600 truncate">{a.officeName}</span>
@@ -4749,7 +4749,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   key={d}
                                   type="button"
                                   onClick={() => setSelectedDate(d)}
-                                  className="px-2.5 py-1 rounded bg-[#0f4a37] text-white font-bold text-xs shadow-2xs hover:bg-[#0b3a2b]"
+                                  className="px-2.5 py-1 rounded bg-brand-700 text-white font-bold text-xs shadow-2xs hover:bg-brand-800"
                                 >
                                   {d}
                                 </button>
@@ -4759,7 +4759,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           <button
                             type="button"
                             onClick={() => setShowOnlyActiveRooms(false)}
-                            className="mt-3 text-xs text-[#0f4a37] font-bold underline hover:text-stone-900"
+                            className="mt-3 text-xs text-brand-700 font-bold underline hover:text-stone-900"
                           >
                             View All 114 Hotel Rooms
                           </button>
@@ -4795,7 +4795,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       <div key={tourGroup.tourRefNo} className="border border-emerald-300 rounded-xl overflow-hidden bg-white shadow-2xs">
                         <div className="bg-emerald-800 text-white px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-black text-xs text-[#ecdcae] bg-emerald-950 px-2 py-0.5 rounded">
+                            <span className="font-mono font-black text-xs text-gold-200 bg-emerald-950 px-2 py-0.5 rounded">
                               Tour ID: {tourGroup.tourRefNo}
                             </span>
                             <span className="text-xs text-emerald-100 font-semibold">• Office: {tourGroup.officeName}</span>
@@ -4810,7 +4810,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-[#0f4a37] text-white uppercase text-[10px] font-bold">
+                            <thead className="bg-brand-700 text-white uppercase text-[10px] font-bold">
                               <tr>
                                 <th className="py-2.5 px-3">Room #</th>
                                 <th className="py-2.5 px-3">Family # & Room Pax</th>
@@ -4831,7 +4831,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 const depTime = getReservationDepartureTime(r, '12:00 PM');
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
-                                    <td className="py-2.5 px-3 font-mono font-black text-sm text-[#0f4a37]">
+                                    <td className="py-2.5 px-3 font-mono font-black text-sm text-brand-700">
                                       {r.roomNumber ? `Room ${r.roomNumber}` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
                                     </td>
                                     <td className="py-2.5 px-3">
@@ -4894,7 +4894,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               return (
                 <div className="overflow-x-auto border border-stone-200 rounded-lg">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#0f4a37] text-white uppercase text-[10px] font-bold">
+                    <thead className="bg-brand-700 text-white uppercase text-[10px] font-bold">
                       <tr>
                         <th className="py-2.5 px-3">Room # & Hotel (Base)</th>
                         <th className="py-2.5 px-3">Family # & Room Pax</th>
@@ -4916,7 +4916,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           const depTime = getReservationDepartureTime(r, '12:00 PM');
                           return (
                             <tr key={i} className="hover:bg-stone-50">
-                              <td className="py-2.5 px-3 font-mono font-black text-sm text-[#0f4a37]">
+                              <td className="py-2.5 px-3 font-mono font-black text-sm text-brand-700">
                                 {r.roomNumber ? `Room ${r.roomNumber} (${r.building || ''})` : <span className="text-amber-800 font-extrabold text-xs">Unallotted</span>}
                               </td>
                               <td className="py-2.5 px-3">
@@ -4986,7 +4986,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       <div key={tourGroup.tourRefNo} className="border border-stone-300 rounded-xl overflow-hidden bg-white shadow-2xs">
                         <div className="bg-stone-800 text-white px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-black text-xs text-[#ecdcae] bg-stone-900 px-2 py-0.5 rounded">
+                            <span className="font-mono font-black text-xs text-gold-200 bg-stone-900 px-2 py-0.5 rounded">
                               Tour ID: {tourGroup.tourRefNo}
                             </span>
                             <span className="text-xs text-stone-200 font-semibold">• Office: {tourGroup.officeName}</span>
@@ -5151,8 +5151,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     {/* Tab 2 Header Banner & Quick PDF Download */}
                     <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs">
                       <div>
-                        <div className="flex items-center gap-2 font-bold text-sm text-[#0f4a37]">
-                          <Users className="w-4 h-4 text-[#0f4a37]" />
+                        <div className="flex items-center gap-2 font-bold text-sm text-brand-700">
+                          <Users className="w-4 h-4 text-brand-700" />
                           <span>Tour ID Grouped Roster — Arrivals & Departures Chronologically Sorted</span>
                         </div>
                         <p className="text-xs text-stone-600 mt-0.5">
@@ -5160,17 +5160,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex items-center rounded-xl bg-[#0f4a37] p-0.5 border border-[#c9a85a]/40 shadow-xs">
+                        <div className="flex items-center rounded-xl bg-brand-700 p-0.5 border border-gold-400/40 shadow-xs">
                           <button
                             type="button"
                             onClick={() => handleDownloadRosterPdf(activeHotelFilter)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-[#ecdcae] hover:bg-[#0b3a2b] transition cursor-pointer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer"
                             title={`Download Tour Roster PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
                           >
-                            <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
+                            <Download className="w-3.5 h-3.5 text-gold-200" />
                             <span>Download Roster PDF ({activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})</span>
                           </button>
-                          <div className="h-3.5 w-px bg-[#c9a85a]/40 my-auto" />
+                          <div className="h-3.5 w-px bg-gold-400/40 my-auto" />
                           <button
                             type="button"
                             onClick={() => handleDownloadRosterPdf('Saifee')}
@@ -5206,7 +5206,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadRosterPdf('ALL')}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#ecdcae] hover:bg-[#d9bf7d] text-[#0f4a37] shadow-2xs transition cursor-pointer"
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-gold-200 hover:bg-gold-300 text-brand-700 shadow-2xs transition cursor-pointer"
                                   title={`Download Tour Roster PDF with Saifee and Burhani bifurcated on separate pages for ${selectedDate}`}
                                 >
                                   <Download className="w-3.5 h-3.5" />
@@ -5256,22 +5256,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     {/* Saifee Hotel Section */}
                     {activeHotelFilter === 'Saifee' && (
                       <div className="space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#0f4a37]/10 border border-[#0f4a37]/30 px-3 py-2 rounded-lg">
-                          <div className="flex items-center gap-2 font-bold text-sm text-[#0f4a37]">
-                            <Building2 className="w-4 h-4 text-[#0f4a37]" />
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-brand-700/10 border border-brand-700/30 px-3 py-2 rounded-lg">
+                          <div className="flex items-center gap-2 font-bold text-sm text-brand-700">
+                            <Building2 className="w-4 h-4 text-brand-700" />
                             <span>SAIFEE HOTEL — DAILY ROSTER ({selectedDate})</span>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
                               onClick={() => handleDownloadRosterPdf('Saifee')}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-2xs transition cursor-pointer"
                               title={`Download separate PDF for Saifee Hotel Roster on ${selectedDate}`}
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>Download Saifee Roster PDF</span>
                             </button>
-                            <span className="text-xs font-semibold text-[#0f4a37]">
+                            <span className="text-xs font-semibold text-brand-700">
                               {saifeeArrivals.length} Arrivals • {saifeeDepartures.length} Departures
                             </span>
                           </div>
@@ -5300,22 +5300,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     {/* Burhani Hotel Section */}
                     {activeHotelFilter === 'Burhani' && (
                       <div className="space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#0f4a37]/10 border border-[#0f4a37]/30 px-3 py-2 rounded-lg">
-                          <div className="flex items-center gap-2 font-bold text-sm text-[#0f4a37]">
-                            <Building2 className="w-4 h-4 text-[#0f4a37]" />
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-brand-700/10 border border-brand-700/30 px-3 py-2 rounded-lg">
+                          <div className="flex items-center gap-2 font-bold text-sm text-brand-700">
+                            <Building2 className="w-4 h-4 text-brand-700" />
                             <span>BURHANI HOTEL — DAILY ROSTER ({selectedDate})</span>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <button
                               type="button"
                               onClick={() => handleDownloadRosterPdf('Burhani')}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-2xs transition cursor-pointer"
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-2xs transition cursor-pointer"
                               title={`Download separate PDF for Burhani Hotel Roster on ${selectedDate}`}
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>Download Burhani Roster PDF</span>
                             </button>
-                            <span className="text-xs font-semibold text-[#0f4a37]">
+                            <span className="text-xs font-semibold text-brand-700">
                               {burhaniArrivals.length} Arrivals • {burhaniDepartures.length} Departures
                             </span>
                           </div>
@@ -5396,7 +5396,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:bg-amber-900 transition cursor-pointer"
                       title={`Download Worker Room Operations PDF (${activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})`}
                     >
-                      <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
+                      <Download className="w-3.5 h-3.5 text-gold-200" />
                       <span>Download Worker PDF ({activeHotelFilter === 'ALL' ? 'Joined' : activeHotelFilter})</span>
                     </button>
                     <div className="h-3.5 w-px bg-amber-600 my-auto" />
@@ -5502,22 +5502,22 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                 <div className="border border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
                   <div className="bg-stone-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <DoorClosed className="w-4 h-4 text-[#ecdcae]" />
+                      <DoorClosed className="w-4 h-4 text-gold-200" />
                       <span className="font-bold text-sm tracking-wide">
                         ROOM NUMBER SEQUENCE (BASE ROOM # ➔ ARRIVAL & DEPARTURE TIMINGS)
                       </span>
                     </div>
-                    <div className="text-xs font-bold bg-stone-900 text-[#ecdcae] border border-[#ecdcae]/30 px-2.5 py-0.5 rounded-md">
+                    <div className="text-xs font-bold bg-stone-900 text-gold-200 border border-gold-200/30 px-2.5 py-0.5 rounded-md">
                       {workerNumericRoomList.length} Rooms • Sequenced by Room #
                     </div>
                   </div>
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#0f4a37] text-white uppercase text-[10px] font-bold">
+                      <thead className="bg-brand-700 text-white uppercase text-[10px] font-bold">
                         <tr>
                           <th className="py-2.5 px-3 w-[15%]">Room # & Hotel (Base)</th>
-                          <th className="py-2.5 px-3 w-[25%] bg-[#0b3a2b]">Event & Timing Sequence</th>
+                          <th className="py-2.5 px-3 w-[25%] bg-brand-800">Event & Timing Sequence</th>
                           <th className="py-2.5 px-3 w-[18%]">Office & Tour ID</th>
                           <th className="py-2.5 px-3 w-[18%]">Family # & Room Pax</th>
                           <th className="py-2.5 px-3 w-[24%]">Worker Checklist & Sign-off</th>
@@ -5530,7 +5530,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                             return (
                               <tr key={roomItem.id} className={`transition ${isDone ? 'bg-emerald-50/70' : 'hover:bg-stone-50'}`}>
                                 <td className="py-3 px-3 align-top font-bold">
-                                  <div className="inline-block bg-[#0f4a37] text-white font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
+                                  <div className="inline-block bg-brand-700 text-white font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
                                     Room {roomItem.roomNumber}
                                   </div>
                                   <div className="text-[11px] font-semibold text-stone-700 mt-1">
@@ -5539,7 +5539,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 </td>
                                 <td className="py-3 px-3 align-top">
                                   <div className="flex items-center gap-1 font-mono font-extrabold text-xs text-stone-900">
-                                    <Clock className="w-3.5 h-3.5 text-[#0f4a37] shrink-0" />
+                                    <Clock className="w-3.5 h-3.5 text-brand-700 shrink-0" />
                                     <span>{roomItem.timeLabel}</span>
                                   </div>
                                   <div className="mt-1">
@@ -5572,7 +5572,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                   <div className="font-mono font-bold text-stone-950">
                                     Family #{roomItem.familyNumbers}
                                   </div>
-                                  <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-[#0f4a37]/10 text-[#0f4a37] border border-[#0f4a37]/30">
+                                  <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-brand-700/10 text-brand-700 border border-brand-700/30">
                                     <Users className="w-3 h-3" />
                                     {roomItem.totalPaxInRoom} Pax in Room
                                   </div>
@@ -5647,17 +5647,17 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   workerRoomSummary.map((officeGroup) => (
                     <div key={officeGroup.officeName} className="border-2 border-stone-300 rounded-2xl overflow-hidden shadow-xs bg-white">
                       {/* Office Banner */}
-                      <div className="bg-[#0f4a37] text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                      <div className="bg-brand-700 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-[#ecdcae]" />
+                          <Building2 className="w-4 h-4 text-gold-200" />
                           <span className="font-bold text-sm tracking-wide">
                             OFFICE: {officeGroup.officeName}
                           </span>
-                          <span className="text-xs text-[#ecdcae] font-medium">
+                          <span className="text-xs text-gold-200 font-medium">
                             ({officeGroup.tours.length} Tours under this office)
                           </span>
                         </div>
-                        <div className="text-xs font-bold bg-[#0b3a2b] border border-[#ecdcae]/40 text-[#ecdcae] px-2.5 py-0.5 rounded-full">
+                        <div className="text-xs font-bold bg-brand-800 border border-gold-200/40 text-gold-200 px-2.5 py-0.5 rounded-full">
                           {officeGroup.tours.reduce((sum, t) => sum + t.totalRooms, 0)} Rooms • {officeGroup.tours.reduce((sum, t) => sum + t.totalPax, 0)} Pax
                         </div>
                       </div>
@@ -5674,8 +5674,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <span className="text-xs text-stone-600 font-semibold">
                                   (Office: {officeGroup.officeName})
                                 </span>
-                                <span className="text-[11px] font-bold text-[#0f4a37] bg-[#0f4a37]/10 border border-[#0f4a37]/30 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-[#0f4a37]" />
+                                <span className="text-[11px] font-bold text-brand-700 bg-brand-700/10 border border-brand-700/30 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-brand-700" />
                                   Timing Sequence Sorted
                                 </span>
                               </div>
@@ -5703,7 +5703,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                       <tr key={roomItem.id} className={`transition ${isDone ? 'bg-emerald-50/70' : 'hover:bg-stone-50'}`}>
                                         {/* 1. Base: Room Number */}
                                         <td className="py-3 px-3 align-top font-bold">
-                                          <div className="inline-block bg-[#0f4a37] text-white font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
+                                          <div className="inline-block bg-brand-700 text-white font-mono font-black text-sm px-2.5 py-1 rounded-lg shadow-2xs">
                                             Room {roomItem.roomNumber}
                                           </div>
                                           <div className="text-[11px] font-semibold text-stone-700 mt-1">
@@ -5714,7 +5714,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                         {/* 2. Timing Sequence & Event */}
                                         <td className="py-3 px-3 align-top">
                                           <div className="flex items-center gap-1 font-mono font-extrabold text-xs text-stone-900">
-                                            <Clock className="w-3.5 h-3.5 text-[#0f4a37] shrink-0" />
+                                            <Clock className="w-3.5 h-3.5 text-brand-700 shrink-0" />
                                             <span>{roomItem.timeLabel}</span>
                                           </div>
                                           <div className="mt-1">
@@ -5738,7 +5738,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                           <div className="font-mono font-bold text-stone-950">
                                             Family #{roomItem.familyNumbers}
                                           </div>
-                                          <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-[#0f4a37]/10 text-[#0f4a37] border border-[#0f4a37]/30">
+                                          <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-brand-700/10 text-brand-700 border border-brand-700/30">
                                             <Users className="w-3 h-3" />
                                             {roomItem.totalPaxInRoom} Pax in Room
                                           </div>
@@ -5951,7 +5951,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     onClick={() => setPortalHotelFilter('ALL')}
                     className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
                       portalHotelFilter === 'ALL'
-                        ? 'bg-[#0f4a37] text-white shadow-2xs'
+                        ? 'bg-brand-700 text-white shadow-2xs'
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
@@ -5962,7 +5962,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     onClick={() => setPortalHotelFilter('Saifee')}
                     className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
                       portalHotelFilter === 'Saifee'
-                        ? 'bg-[#0f4a37] text-white shadow-2xs'
+                        ? 'bg-brand-700 text-white shadow-2xs'
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
@@ -5973,7 +5973,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                     onClick={() => setPortalHotelFilter('Burhani')}
                     className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
                       portalHotelFilter === 'Burhani'
-                        ? 'bg-[#0f4a37] text-white shadow-2xs'
+                        ? 'bg-brand-700 text-white shadow-2xs'
                         : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
@@ -6041,7 +6041,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       {/* Tour ID Banner */}
                       <div className="bg-stone-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2.5 flex-wrap">
-                          <span className="font-mono font-black text-sm text-[#ecdcae] bg-stone-900 border border-[#ecdcae]/30 px-2.5 py-0.5 rounded-md">
+                          <span className="font-mono font-black text-sm text-gold-200 bg-stone-900 border border-gold-200/30 px-2.5 py-0.5 rounded-md">
                             Tour ID: {tourGroup.tourRefNo}
                           </span>
                           <span className="text-xs text-stone-300">
@@ -6238,7 +6238,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                               key={d}
                               type="button"
                               onClick={() => setSelectedDate(d)}
-                              className="px-2 py-0.5 rounded bg-[#0f4a37] text-white font-bold text-[11px] shadow-2xs hover:bg-[#0b3a2b]"
+                              className="px-2 py-0.5 rounded bg-brand-700 text-white font-bold text-[11px] shadow-2xs hover:bg-brand-800"
                             >
                               {d}
                             </button>
@@ -6285,9 +6285,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       {pdfPreviewBlobUrl && (
         <div className="fixed inset-0 z-70 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl border border-stone-400 overflow-hidden">
-            <div className="flex items-center justify-between bg-[#0f4a37] text-white px-4 py-3 shrink-0">
+            <div className="flex items-center justify-between bg-brand-700 text-white px-4 py-3 shrink-0">
               <div className="flex items-center gap-2 font-bold text-sm">
-                <FileCheck className="w-5 h-5 text-[#ecdcae]" />
+                <FileCheck className="w-5 h-5 text-gold-200" />
                 <span>Faiz-e-Husaini — PDF Document Preview & Print</span>
                 {pdfDownloadStatus?.fileName && (
                   <span className="hidden sm:inline text-xs text-emerald-200 font-mono">
@@ -6314,13 +6314,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white shadow-xs transition cursor-pointer"
                   title="Print document directly"
                 >
-                  <Printer className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <Printer className="w-3.5 h-3.5 text-gold-200" />
                   <span>Print Document</span>
                 </button>
                 <a
                   href={pdfPreviewBlobUrl}
                   download={pdfDownloadStatus?.fileName || 'document.pdf'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#ecdcae] hover:bg-amber-300 text-stone-950 shadow-xs transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-gold-200 hover:bg-amber-300 text-stone-950 shadow-xs transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download File</span>

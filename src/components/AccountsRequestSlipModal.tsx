@@ -1007,7 +1007,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
         }}
       />
 
-      <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-2xl max-w-5xl w-full p-3.5 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[95vh] overflow-hidden">
+      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-5xl w-full p-3.5 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[95vh] overflow-hidden">
         {/* Close Button */}
         <button
           type="button"
@@ -1023,7 +1023,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
           <div className="pr-10 sm:pr-0">
             <div className="flex items-center gap-2 flex-wrap">
               <FaizHusainiLogo size="sm" showSubtitle={false} />
-              <h3 className="text-sm sm:text-base font-bold text-[#0f4a37]">
+              <h3 className="text-sm sm:text-base font-bold text-brand-700">
                 {isAToB
                   ? 'Category A ➔ B Refund Receipt (Full Pax Roster)'
                   : 'Category B ➔ A Shift & Accounts Payment Slip'}
@@ -1053,7 +1053,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
             <button
               type="button"
               onClick={handleDownloadPdfSlip}
-              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition cursor-pointer whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{isAToB ? 'Download Refund PDF' : 'Download Slip PDF'}</span>
@@ -1072,11 +1072,11 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                 onClick={() => setDirection('B_TO_A')}
                 className={`flex-1 sm:flex-initial min-h-[36px] flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
                   direction === 'B_TO_A'
-                    ? 'bg-[#0f4a37] text-white shadow-xs'
+                    ? 'bg-brand-700 text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-950'
                 }`}
               >
-                <ArrowUpRight className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <ArrowUpRight className="w-3.5 h-3.5 text-gold-200" />
                 <span>B ➔ A (Collect)</span>
               </button>
               <button
@@ -1112,7 +1112,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                       setSlipMode('tour');
                     }
                   }}
-                  className="bg-transparent font-mono font-bold text-[#0f4a37] focus:outline-none max-w-[200px] truncate cursor-pointer"
+                  className="bg-transparent font-mono font-bold text-brand-700 focus:outline-none max-w-[200px] truncate cursor-pointer"
                 >
                   <option value="ALL">All Tours ({allReservations.length} pax)</option>
                   {distinctTourOptions.map((opt) => (
@@ -1128,20 +1128,20 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   type="button"
                   onClick={() => setSlipMode('tour')}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                    slipMode === 'tour' ? 'bg-[#0f4a37] text-white' : 'text-stone-700 hover:text-stone-900'
+                    slipMode === 'tour' ? 'bg-brand-700 text-white' : 'text-stone-700 hover:text-stone-900'
                   }`}
                 >
-                  <Layers className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <Layers className="w-3.5 h-3.5 text-gold-200" />
                   <span>Selected List ({selectedReservations.length})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSlipMode('single')}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                    slipMode === 'single' ? 'bg-[#0f4a37] text-white' : 'text-stone-700 hover:text-stone-900'
+                    slipMode === 'single' ? 'bg-brand-700 text-white' : 'text-stone-700 hover:text-stone-900'
                   }`}
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-[#ecdcae]" />
+                  <UserCheck className="w-3.5 h-3.5 text-gold-200" />
                   <span>Single Pax</span>
                 </button>
               </div>
@@ -1157,7 +1157,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                 placeholder="Search pax by Name, ITS ID, Age, Family, Room..."
                 value={searchMemberQuery}
                 onChange={(e) => setSearchMemberQuery(e.target.value)}
-                className="w-full bg-white border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-[#0f4a37]"
+                className="w-full bg-white border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-brand-700"
               />
             </div>
 
@@ -1190,7 +1190,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                 <button
                   type="button"
                   onClick={handleSelectSavedBToAPax}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white transition cursor-pointer whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
                   title="Select all pax already marked as B to A"
                 >
                   Saved B➔A ({savedBToAPax.length})
@@ -1199,7 +1199,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
               <button
                 type="button"
                 onClick={handleSelectAllFiltered}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#0f4a37] hover:bg-[#0b3a2b] text-white transition cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
               >
                 Select All ({filteredPoolMembers.length})
               </button>
@@ -1231,7 +1231,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     ? 'Select Pax Shifting from Category A ➔ B (Name, ITS & Age shown):'
                     : 'Choose Pax Shifting from Category B ➔ A:'}
                 </span>
-                <span className="text-[11px] font-bold text-[#0f4a37] tabular-nums">
+                <span className="text-[11px] font-bold text-brand-700 tabular-nums">
                   {selectedMemberIds.length} of {filteredPoolMembers.length} Selected
                 </span>
               </div>
@@ -1301,7 +1301,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleMember(member.id)}
-                          className="rounded text-[#0f4a37] focus:ring-[#0f4a37] w-4 h-4 shrink-0"
+                          className="rounded text-brand-700 focus:ring-brand-700 w-4 h-4 shrink-0"
                         />
                         <div className="flex items-center gap-x-2.5 gap-y-0.5 flex-wrap min-w-0">
                           <span className="font-bold text-stone-900">{member.applicantName}</span>
@@ -1384,7 +1384,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                       <span className="px-2 py-0.5 rounded bg-amber-800 text-amber-50 font-extrabold">
                         Slip {groupIdx + 1} of {tourSlipGroups.length}
                       </span>
-                      <span className="font-mono font-bold text-[#0f4a37]">{group.tourId}</span>
+                      <span className="font-mono font-bold text-brand-700">{group.tourId}</span>
                       <span className="text-stone-600">
                         · {group.officeName} · <strong>{group.paxCount} Pax</strong> ·{' '}
                         <strong>{group.nights} Nights</strong>
@@ -1393,7 +1393,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     <button
                       type="button"
                       onClick={() => generateAToBPdfForGroups([group])}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs shadow-2xs transition cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Download Tour Slip PDF</span>
@@ -1401,18 +1401,18 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   </div>
 
                   {/* PAGE 1: FRONT PAGE (Same structure as B to A slip) */}
-                  <div className="p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+                  <div className="p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs text-xs space-y-4">
                     <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
                       <span>Page 1 · Front Page (Summary &amp; Accounts)</span>
-                      <span className="font-mono text-[#0f4a37]">{group.tourId}</span>
+                      <span className="font-mono text-brand-700">{group.tourId}</span>
                     </div>
 
                     {/* Official Header */}
-                    <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+                    <div className="text-center pb-3 border-b-2 border-brand-700">
                       <div className="flex justify-center mb-1">
                         <FaizHusainiLogo size="md" />
                       </div>
-                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-brand-700 text-white">
                         ACCOUNTS DEPARTMENT — CATEGORY A TO B SHIFT SLIP
                       </div>
                       <div className="text-xs font-semibold text-stone-600 mt-1">
@@ -1425,7 +1425,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     <div className="flex items-center justify-between bg-stone-50 px-4 py-2 rounded-lg border border-stone-200 text-xs">
                       <div>
                         <span className="text-stone-500 text-[11px] block">Slip / Refund Receipt No:</span>
-                        <span className="font-mono font-bold text-[#0f4a37] text-sm tabular-nums">{group.slipNo}</span>
+                        <span className="font-mono font-bold text-brand-700 text-sm tabular-nums">{group.slipNo}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-stone-500 text-[11px] block">Date of Issue:</span>
@@ -1436,10 +1436,10 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     </div>
 
                     {/* Front Page Core Specification Table (Same as B to A slip) */}
-                    <div className="overflow-x-auto border-2 border-[#0f4a37]/30 rounded-xl shadow-xs">
+                    <div className="overflow-x-auto border-2 border-brand-700/30 rounded-xl shadow-xs">
                       <table className="w-full text-left text-sm border-collapse bg-white">
                         <thead>
-                          <tr className="bg-[#0f4a37] text-white">
+                          <tr className="bg-brand-700 text-white">
                             <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[44%]">
                               A to B Slip Detail
                             </th>
@@ -1451,7 +1451,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                         <tbody className="divide-y divide-stone-200">
                           <tr>
                             <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Tour ID</td>
-                            <td className="py-2.5 px-4 font-mono font-bold text-base text-[#0f4a37] break-all">
+                            <td className="py-2.5 px-4 font-mono font-bold text-base text-brand-700 break-all">
                               {group.tourId}
                             </td>
                           </tr>
@@ -1514,7 +1514,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
                           <tr>
                             <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Room given in</td>
-                            <td className="py-2.5 px-4 font-bold text-[#0f4a37] text-sm">{group.roomSummary}</td>
+                            <td className="py-2.5 px-4 font-bold text-brand-700 text-sm">{group.roomSummary}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1549,23 +1549,23 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   </div>
 
                   {/* PAGE 2: SECOND PAGE — NAMES OF ALL PAX SENT TO A TO B FOR THIS TOUR ID */}
-                  <div className="a2b-page-break p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+                  <div className="a2b-page-break p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs text-xs space-y-4">
                     <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
                       <span>Page 2 · Names of All Pax Sent to A to B</span>
-                      <span className="font-mono text-[#0f4a37]">{group.tourId}</span>
+                      <span className="font-mono text-brand-700">{group.tourId}</span>
                     </div>
 
                     {/* Page 2 Header */}
-                    <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+                    <div className="text-center pb-3 border-b-2 border-brand-700">
                       <div className="flex justify-center mb-1">
                         <FaizHusainiLogo size="sm" showSubtitle={false} />
                       </div>
-                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                      <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-brand-700 text-white">
                         PAGE 2 — PAX NAMES SENT TO A TO B
                       </div>
                       <div className="text-xs text-stone-700 font-semibold mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                         <span>
-                          Tour ID: <strong className="font-mono text-[#0f4a37]">{group.tourId}</strong>
+                          Tour ID: <strong className="font-mono text-brand-700">{group.tourId}</strong>
                         </span>
                         <span>•</span>
                         <span>
@@ -1578,12 +1578,12 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                       </div>
                     </div>
 
-                    <div className="border-2 border-[#0f4a37]/25 rounded-xl overflow-hidden bg-white shadow-xs">
-                      <div className="bg-[#0f4a37] text-white px-4 py-2 flex items-center justify-between">
+                    <div className="border-2 border-brand-700/25 rounded-xl overflow-hidden bg-white shadow-xs">
+                      <div className="bg-brand-700 text-white px-4 py-2 flex items-center justify-between">
                         <span className="font-bold text-xs uppercase tracking-wider">
                           Shifted Pax Roster — {group.tourId}
                         </span>
-                        <span className="font-mono font-bold text-xs tabular-nums text-[#ecdcae]">
+                        <span className="font-mono font-bold text-xs tabular-nums text-gold-200">
                           {group.paxList.length} Pax
                         </span>
                       </div>
@@ -1640,13 +1640,13 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
               ))}
             </>
           ) : (
-            <div className="p-4 sm:p-6 bg-white border border-[#e2e8e5] rounded-xl shadow-xs text-xs space-y-4">
+            <div className="p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs text-xs space-y-4">
               {/* Official Header */}
-              <div className="text-center pb-3 border-b-2 border-[#0f4a37]">
+              <div className="text-center pb-3 border-b-2 border-brand-700">
                 <div className="flex justify-center mb-1">
                   <FaizHusainiLogo size="md" />
                 </div>
-                <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-[#0f4a37] text-white">
+                <div className="inline-block font-bold text-xs uppercase px-3 py-1 rounded-md tracking-wider mt-1 bg-brand-700 text-white">
                   {slipMode === 'tour' && effectiveSlipPaxList.length > 1
                     ? 'ACCOUNTS DEPARTMENT — CONSOLIDATED TOUR B TO A SHIFT PAYMENT SLIP'
                     : 'ACCOUNTS DEPARTMENT — PILGRIM B TO A SHIFT REQUEST SLIP'}
@@ -1661,7 +1661,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
               <div className="flex items-center justify-between bg-stone-50 px-4 py-2 rounded-lg border border-stone-200 text-xs">
                 <div>
                   <span className="text-stone-500 text-[11px] block">Slip Reference No:</span>
-                  <span className="font-mono font-bold text-[#0f4a37] text-sm tabular-nums">{slipNo}</span>
+                  <span className="font-mono font-bold text-brand-700 text-sm tabular-nums">{slipNo}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-stone-500 text-[11px] block">Date of Issue:</span>
@@ -1672,10 +1672,10 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
               </div>
 
               {/* Core Specification Rows */}
-              <div className="overflow-x-auto border-2 border-[#0f4a37]/30 rounded-xl shadow-xs">
+              <div className="overflow-x-auto border-2 border-brand-700/30 rounded-xl shadow-xs">
                 <table className="w-full text-left text-sm border-collapse bg-white">
                   <thead>
-                    <tr className="bg-[#0f4a37] text-white">
+                    <tr className="bg-brand-700 text-white">
                       <th className="py-2.5 px-4 font-bold text-xs uppercase tracking-wider w-[44%]">
                         Shift Slip Detail
                       </th>
@@ -1687,7 +1687,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   <tbody className="divide-y divide-stone-200">
                     <tr>
                       <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Tour ID</td>
-                      <td className="py-2.5 px-4 font-mono font-bold text-base text-[#0f4a37] break-all">
+                      <td className="py-2.5 px-4 font-mono font-bold text-base text-brand-700 break-all">
                         {tourIdVal}
                       </td>
                     </tr>
@@ -1750,7 +1750,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
                     <tr>
                       <td className="py-2.5 px-4 font-semibold text-stone-700 bg-stone-50/50">Room given in</td>
-                      <td className="py-2.5 px-4 font-bold text-[#0f4a37] text-sm">{roomVal}</td>
+                      <td className="py-2.5 px-4 font-bold text-brand-700 text-sm">{roomVal}</td>
                     </tr>
                   </tbody>
                 </table>

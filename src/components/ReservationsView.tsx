@@ -876,9 +876,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       return <ArrowUpDown className="w-3.5 h-3.5 text-emerald-200/50 inline ml-1 opacity-40 hover:opacity-100" />;
     }
     return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
+      <ArrowUp className="w-3.5 h-3.5 text-gold-200 inline ml-1 font-bold" />
     ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-[#ecdcae] inline ml-1 font-bold" />
+      <ArrowDown className="w-3.5 h-3.5 text-gold-200 inline ml-1 font-bold" />
     );
   };
 
@@ -1020,7 +1020,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       />
 
       {/* Filter and Search Bar */}
-      <div className="bg-white border border-[#e2e8e5] rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="bg-white border border-stone-200 rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">
@@ -1033,7 +1033,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setSearchTerm(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="w-full min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
             />
           </div>
 
@@ -1046,7 +1046,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setCategoryFilter(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Categories ({categories.length})</option>
               {categories.map((cat) => (
@@ -1064,7 +1064,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               setBuildingFilter(e.target.value);
               setMobileVisibleCount(40);
             }}
-            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
+            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
           >
             <option value="ALL">All Hotels</option>
             {distinctBuildings.map((bldg) => (
@@ -1080,7 +1080,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               setPortalUploadFilter(e.target.value);
               setMobileVisibleCount(40);
             }}
-            className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
           >
             <option value="ALL">Portal: All</option>
             <option value="Uploaded">Uploaded ✓</option>
@@ -1090,7 +1090,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           {/* Arrival Date Filter (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
           <div className="flex items-center gap-1">
             <span className="text-stone-500 font-semibold flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-[#0f4a37]" />
+              <Calendar className="w-3.5 h-3.5 text-brand-700" />
               <span className="hidden sm:inline">Arrival:</span>
             </span>
             <select
@@ -1099,7 +1099,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setArrivalDateFilter(e.target.value);
                 setMobileVisibleCount(40);
               }}
-              className="min-h-[44px] sm:min-h-0 bg-[#f6f8f7] border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
             >
               <option value="ALL">All Arrival Dates</option>
               {distinctArrivalDates.map(({ date, count }) => (
@@ -1112,7 +1112,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
           {/* 1-Click Download PDF for chosen arrival date with Hotel Bifurcation options */}
           {arrivalDateFilter !== 'ALL' && (
-            <div className="flex items-center rounded-lg bg-[#0f4a37] p-0.5 border border-[#c9a85a] shadow-xs">
+            <div className="flex items-center rounded-lg bg-brand-700 p-0.5 border border-gold-400 shadow-xs">
               <button
                 type="button"
                 onClick={() => {
@@ -1123,17 +1123,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     includeSignatures: true,
                   });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-[#ecdcae] hover:bg-[#0b3a2b] transition cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer"
                 title={`Download official PDF for arrival date ${arrivalDateFilter} (${buildingFilter === 'ALL' ? 'Joined Bifurcated Both Hotels' : `${buildingFilter} Hotel`})`}
               >
-                <Download className="w-3.5 h-3.5 text-[#ecdcae]" />
+                <Download className="w-3.5 h-3.5 text-gold-200" />
                 <span>
                   {buildingFilter === 'ALL'
                     ? `Download PDF (${arrivalDateFilter})`
                     : `Download ${buildingFilter} PDF (${arrivalDateFilter})`}
                 </span>
               </button>
-              <div className="h-3.5 w-px bg-[#c9a85a]/40 my-auto" />
+              <div className="h-3.5 w-px bg-gold-400/40 my-auto" />
               <button
                 type="button"
                 onClick={() => {
@@ -1278,7 +1278,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 setBatchBuilding(e.target.value);
                 setBatchRoomNumber('');
               }}
-              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-[#0f4a37] shadow-2xs cursor-pointer"
+              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-brand-700 shadow-2xs cursor-pointer"
             >
               {distinctBuildings.map((bldg) => (
                 <option key={bldg} value={bldg}>{bldg}</option>
@@ -1310,7 +1310,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   setBatchRoomNumber('');
                 }
               }}
-              className="px-3.5 py-1.5 bg-[#0f4a37] hover:bg-[#0b3a2b] disabled:opacity-40 text-white font-extrabold rounded-lg text-xs shadow-xs transition cursor-pointer"
+              className="px-3.5 py-1.5 bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white font-extrabold rounded-lg text-xs shadow-xs transition cursor-pointer"
             >
               Allot All ({selectedFamilyMembers.length}) Members
             </button>
@@ -1336,7 +1336,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         {/* Selected Family Member Preview Chips */}
         {selectedFamilyMembers.length > 0 && (
           <div className="pt-2 border-t border-emerald-200/80 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-extrabold text-[#0f4a37] mr-1">
+            <span className="font-extrabold text-brand-700 mr-1">
               Family "{batchFamily}" ({selectedFamilyMembers.length} Zaereen):
             </span>
             {selectedFamilyMembers.map((m) => (
@@ -1363,9 +1363,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Floating / Sticky Batch Selection Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-2 z-30 mb-3 bg-[#0f4a37] text-white px-4 py-2.5 rounded-xl shadow-xl border border-[#c9a85a]/40 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2">
+        <div className="sticky top-2 z-30 mb-3 bg-brand-700 text-white px-4 py-2.5 rounded-xl shadow-xl border border-gold-400/40 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 bg-[#0b3a2b] px-3 py-1 rounded-lg text-xs font-bold text-[#ecdcae] border border-[#c9a85a]/30">
+            <span className="flex items-center gap-1.5 bg-brand-800 px-3 py-1 rounded-lg text-xs font-bold text-gold-200 border border-gold-400/30">
               <CheckSquare className="w-3.5 h-3.5" />
               <span>{selectedIds.size} Selected</span>
             </span>
@@ -1379,7 +1379,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenBToASlip(null, Array.from(selectedIds))}
-                className="px-2.5 py-1 bg-[#c9a85a] hover:bg-[#b89545] text-[#0b3a2b] rounded-lg text-xs font-extrabold flex items-center gap-1 transition cursor-pointer shadow-xs"
+                className="px-2.5 py-1 bg-gold-400 hover:bg-gold-500 text-brand-800 rounded-lg text-xs font-extrabold flex items-center gap-1 transition cursor-pointer shadow-xs"
                 title="Shift selected zaereen to Category A (B to A) & generate Accounts Slip"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -1402,7 +1402,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <button
               type="button"
               onClick={() => handleBulkMarkSelectedPortal(true)}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-[#ecdcae] rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-gold-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
               title="Mark selected zaereen as Uploaded to main portal"
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -1451,7 +1451,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <button
             type="button"
             onClick={handleToggleSelectAllVisible}
-            className="text-[#0f4a37] font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
+            className="text-brand-700 font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
           >
             {isAllVisibleSelected ? 'Deselect All' : 'Select All'}
           </button>
@@ -1470,7 +1470,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <div
                   key={res.id}
                   className={`bg-white border rounded-2xl p-3.5 shadow-2xs space-y-2.5 ${
-                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-[#e2e8e5]'
+                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-stone-200'
                   }`}
                 >
                   {/* Top row: Checkbox, Name, Star, Room Status */}
@@ -1481,7 +1481,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelectRow(res.id)}
-                          className="w-4 h-4 rounded border-stone-300 accent-[#0f4a37]"
+                          className="w-4 h-4 rounded border-stone-300 accent-brand-700"
                         />
                       </label>
                       <div className="min-w-0">
@@ -1533,8 +1533,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   {/* NKERP photo + Tour ID + Office Name */}
                   <div className="flex items-start gap-2.5">
                   <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
-                  <div className="flex-1 min-w-0 bg-[#f6f8f7] rounded-xl px-3 py-2 border border-[#e2e8e5] text-xs space-y-1">
-                    <div className="font-mono font-bold text-[#0f4a37] break-all">
+                  <div className="flex-1 min-w-0 bg-stone-50 rounded-xl px-3 py-2 border border-stone-200 text-xs space-y-1">
+                    <div className="font-mono font-bold text-brand-700 break-all">
                       Tour: {res.tourRefNo || res.tourId || '—'}
                     </div>
                     <div className="text-stone-700 font-semibold">
@@ -1573,7 +1573,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
                           isAllotted
                             ? 'bg-stone-100 text-stone-800 border border-stone-300'
-                            : 'bg-[#0f4a37] text-white border border-[#0f4a37]'
+                            : 'bg-brand-700 text-white border border-brand-700'
                         }`}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -1599,7 +1599,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       onClick={() => handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)}
                       className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border cursor-pointer ${
                         res.isUploadedToPortal
-                          ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                          ? 'bg-brand-700 text-white border-brand-700'
                           : 'bg-white text-stone-600 border-stone-300'
                       }`}
                     >
@@ -1652,14 +1652,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setMobileVisibleCount((c) => c + 40)}
-                className="w-full min-h-[44px] py-3 rounded-xl bg-[#f6f8f7] hover:bg-stone-100 border border-[#c9a85a] text-[#0f4a37] font-extrabold text-xs shadow-2xs cursor-pointer"
+                className="w-full min-h-[44px] py-3 rounded-xl bg-stone-50 hover:bg-stone-100 border border-gold-400 text-brand-700 font-extrabold text-xs shadow-2xs cursor-pointer"
               >
                 Show 40 More ({filteredAndSortedReservations.length - mobileVisibleCount} remaining)
               </button>
             )}
           </>
         ) : (
-          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-8 text-center text-sm text-stone-500">
+          <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center text-sm text-stone-500">
             No zaereen found matching your filter criteria.
           </div>
         )}
@@ -1668,7 +1668,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       {/* ========================================================================= */}
       {/* MAIN ZAEREEN GRID TABLE: DESKTOP FULL SCREEN TABLE                       */}
       {/* ========================================================================= */}
-      <div className="hidden md:flex bg-white border border-[#e2e8e5] rounded-2xl shadow-sm overflow-hidden flex-col w-full">
+      <div className="hidden md:flex bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden flex-col w-full">
         <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
           <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2110px]'}`}>
             {/* Table Header with interactive sorting on all columns */}
@@ -1683,7 +1683,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         if (el) el.indeterminate = isSomeVisibleSelected;
                       }}
                       onChange={handleToggleSelectAllVisible}
-                      className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#0f4a37]"
+                      className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-brand-700"
                       title="Select / Deselect all visible zaereen"
                     />
                     <span>#</span>
@@ -1921,7 +1921,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   return (
                     <tr
                       key={res.id}
-                      className={`hover:bg-[#f6f8f7] transition ${
+                      className={`hover:bg-stone-50 transition ${
                         isSelected ? 'bg-amber-100/40' : !isAllotted ? 'bg-amber-50/25' : ''
                       }`}
                     >
@@ -1932,7 +1932,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelectRow(res.id)}
-                            className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#0f4a37]"
+                            className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-brand-700"
                             title="Select record"
                           />
                           <span className="text-[10px] text-stone-400 font-normal">{index + 1}</span>
@@ -1989,7 +1989,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           <OtherStays others={otherStays.get(res.id)} />
                           {isShiftedToA && (
                             <span 
-                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-[#0f4a37] text-white border border-[#c9a85a]/50 shadow-2xs"
+                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-brand-700 text-white border border-gold-400/50 shadow-2xs"
                               title="Shifted to Category A (Nizaam)"
                             >
                               A
@@ -2045,7 +2045,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         <select
                           value={chosenBldg}
                           onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
-                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-[#0f4a37] cursor-pointer shadow-2xs w-full"
+                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-brand-700 cursor-pointer shadow-2xs w-full"
                         >
                           {distinctBuildings.map((bldg) => (
                             <option key={bldg} value={bldg}>{bldg}</option>
@@ -2069,10 +2069,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => onOpenQuickAllotModal(res)}
-                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-[#0f4a37] hover:bg-[#0b3a2b] text-white border border-[#0f4a37] text-[10px] font-extrabold shadow-xs transition cursor-pointer"
+                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-brand-700 hover:bg-brand-800 text-white border border-brand-700 text-[10px] font-extrabold shadow-xs transition cursor-pointer"
                                   title="Open Quick Room Allotment Modal with capacity, buffer, & auto-recommendation"
                                 >
-                                  <Sparkles className="w-3.5 h-3.5 text-[#ecdcae]" />
+                                  <Sparkles className="w-3.5 h-3.5 text-gold-200" />
                                   <span>✨ Allot Room (Modal)</span>
                                 </button>
                               )}
@@ -2155,7 +2155,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => onOpenQuickAllotModal(res)}
-                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-[#0f4a37] hover:text-white text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
+                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-brand-700 hover:text-white text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
                                     title="Open Quick Room Allotment modal"
                                   >
                                     <Sparkles className="w-3 h-3 text-amber-600" />
@@ -2293,14 +2293,14 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           }
                           className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition shadow-2xs cursor-pointer ${
                             res.isUploadedToPortal
-                              ? 'bg-[#0f4a37] text-white border border-[#0f4a37]'
+                              ? 'bg-brand-700 text-white border border-brand-700'
                               : 'bg-white hover:bg-stone-100 text-stone-500 border border-stone-300'
                           }`}
                           title={res.isUploadedToPortal ? 'Uploaded to portal (Click to untick)' : 'Mark uploaded'}
                         >
                           {res.isUploadedToPortal ? (
                             <>
-                              <CheckSquare className="w-3.5 h-3.5 text-[#ecdcae]" />
+                              <CheckSquare className="w-3.5 h-3.5 text-gold-200" />
                               <span>Done ✓</span>
                             </>
                           ) : (
@@ -2375,7 +2375,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
 
         {/* Footer Summary Bar */}
-        <div className="bg-[#f6f8f7] border-t border-[#e2e8e5] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-stone-600 font-medium">
+        <div className="bg-stone-50 border-t border-stone-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-stone-600 font-medium">
           <div className="flex items-center gap-4">
             <span>
               Showing <strong className="text-stone-900">{filteredAndSortedReservations.length}</strong> of{' '}
@@ -2398,7 +2398,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <span>•</span>
             <span>
               Uploaded to Portal:{' '}
-              <strong className="text-[#0f4a37]">
+              <strong className="text-brand-700">
                 {reservations.filter((r) => r.isUploadedToPortal).length}
               </strong>
             </span>
@@ -2445,7 +2445,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               </div>
               <div>
                 <span className="text-stone-500">Tour ID:</span>{' '}
-                <span className="font-mono font-bold text-[#0f4a37]">{bToABlockedRecord.tourRefNo}</span>
+                <span className="font-mono font-bold text-brand-700">{bToABlockedRecord.tourRefNo}</span>
               </div>
               <div>
                 <span className="text-stone-500">Category:</span>{' '}
@@ -2531,7 +2531,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
                     <div>
-                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-[#0f4a37]">{recordToDelete.tourRefNo}</span>
+                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-brand-700">{recordToDelete.tourRefNo}</span>
                     </div>
                     <div>
                       <span className="text-stone-400">Family #:</span> <span className="font-bold">{recordToDelete.family}</span>
@@ -2815,15 +2815,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-[#0f4a37]">
-                <Calendar className="w-5 h-5 text-[#0f4a37]" />
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-brand-700">
+                <Calendar className="w-5 h-5 text-brand-700" />
               </div>
               <div className="flex-1">
                 <h3 className="text-base font-bold text-stone-900">
                   Update Tour Schedule for All Zaereen?
                 </h3>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="font-mono text-xs font-black text-[#0f4a37] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span className="font-mono text-xs font-black text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     Tour: {pendingTourDateChange.tourId}
                   </span>
                   <span className="text-xs text-stone-500 font-semibold">
@@ -2842,7 +2842,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </div>
 
             {/* Change Detail Card */}
-            <div className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
               <div className="flex items-center justify-between pb-1.5 border-b border-stone-200">
                 <span className="font-bold text-stone-700">
                   {pendingTourDateChange.field === 'arrivalDate'
@@ -2873,7 +2873,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
               <p className="text-[11px] text-stone-600 pt-1 leading-relaxed">
                 There are <strong>{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in Tour{' '}
-                <strong className="font-mono text-[#0f4a37]">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
+                <strong className="font-mono text-brand-700">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
               </p>
             </div>
 
@@ -2928,10 +2928,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmApplyToAllTour}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
                 title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in Tour ${pendingTourDateChange.tourId}`}
               >
-                <Users className="w-4 h-4 text-[#ecdcae]" />
+                <Users className="w-4 h-4 text-gold-200" />
                 <span>Update All ({pendingTourDateChange.allTourZaereen.length}) in Tour</span>
               </button>
             </div>
@@ -3051,15 +3051,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
       {/* Toast Feedback Notification */}
       {toastMessage && (
-        <div className="fixed bottom-20 md:bottom-5 right-4 md:right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 lg:bottom-5 right-4 lg:right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div
             className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold ${
               toastMessage.type === 'success'
-                ? 'bg-[#0f4a37] text-white border-[#0f4a37]'
+                ? 'bg-brand-700 text-white border-brand-700'
                 : 'bg-stone-800 text-white border-stone-700'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4 text-[#ecdcae] shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-gold-200 shrink-0" />
             <span>{toastMessage.text}</span>
             <button
               type="button"

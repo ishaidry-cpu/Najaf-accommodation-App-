@@ -74,19 +74,19 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
       <div 
-        className="bg-[#f6f8f7] border border-[#e2e8e5] rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-stone-50 border border-stone-200 rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-[#0f4a37] text-white p-5 flex items-center justify-between">
+        <div className="bg-brand-700 text-white p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[#ecdcae] border border-[#c9a85a]/40">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-gold-200 border border-gold-400/40">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>Zaereen categories</span>
-                <span className="text-[11px] bg-[#ecdcae] text-[#0f4a37] px-2 py-0.5 rounded-full font-extrabold uppercase">
+                <span className="text-[11px] bg-gold-200 text-brand-700 px-2 py-0.5 rounded-full font-extrabold uppercase">
                   {currentList.length} Active
                 </span>
               </h2>
@@ -122,11 +122,11 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
           )}
 
           {/* Section 2: Current Active Categories */}
-          <div className="bg-white border border-[#e2e8e5] rounded-2xl p-4 shadow-2xs space-y-3">
+          <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Tag className="w-4 h-4 text-[#0f4a37]" />
-                <h3 className="text-sm font-bold text-[#0f4a37]">Active Categories in System</h3>
+                <Tag className="w-4 h-4 text-brand-700" />
+                <h3 className="text-sm font-bold text-brand-700">Active Categories in System</h3>
               </div>
               <button
                 type="button"
@@ -142,7 +142,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
               {currentList.map((cat) => (
                 <div
                   key={cat}
-                  className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#0f4a37] font-bold text-xs shadow-2xs hover:bg-emerald-100 transition"
+                  className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-brand-700 font-bold text-xs shadow-2xs hover:bg-emerald-100 transition"
                 >
                   <span>{cat}</span>
                   <button
@@ -170,7 +170,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
                     handleAddManualCategory();
                   }
                 }}
-                className="flex-1 bg-[#f6f8f7] border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#0f4a37]"
+                className="flex-1 bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700"
               />
               <button
                 type="button"
@@ -185,7 +185,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-stone-100/80 border-t border-[#e2e8e5] flex items-center justify-between">
+        <div className="p-4 bg-stone-100/80 border-t border-stone-200 flex items-center justify-between">
           <button
             type="button"
             onClick={onClose}
@@ -197,9 +197,9 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
           <button
             type="button"
             onClick={handleSaveAndApply}
-            className="px-5 py-2.5 rounded-xl bg-[#0f4a37] hover:bg-[#0b3a2b] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+            className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
           >
-            <Check className="w-4 h-4 text-[#ecdcae]" />
+            <Check className="w-4 h-4 text-gold-200" />
             <span>Save & Apply Categories</span>
           </button>
         </div>
