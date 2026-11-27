@@ -103,6 +103,8 @@ export default function App() {
   const [switchRoomTarget, setSwitchRoomTarget] = useState<SwitchRoomTarget | null>(null);
 
   const [pullStatus, setPullStatus] = useState<PullStatus | null>(null);
+  /** NKERP stays the app hides because they were deleted here. */
+  const [hiddenStays, setHiddenStays] = useState(0);
   const [manualPullRunning, setManualPullRunning] = useState(false);
   const saveQueue = useRef(Promise.resolve());
   const pendingSaves = useRef(0);
@@ -273,6 +275,7 @@ export default function App() {
     const status = () => fetchBackendStatus().then(result => {
       if (!active) return;
       setPullStatus(result.pull);
+      setHiddenStays(result.hiddenStays ?? 0);
       if (lastRevision === undefined) unsubscribe = subscribeToMultiWindowSync(refresh, result.events);
       if (lastRevision !== result.revision) refresh();
       lastRevision = result.revision;
@@ -1231,6 +1234,12 @@ export default function App() {
             userRole={userRole}
             onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
             onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
+            hiddenStays={hiddenStays}
+            onHiddenStaysRestored={(count) => {
+              setHiddenStays((n) => Math.max(0, n - count));
+              showToast(`Restored ${count} stay${count === 1 ? '' : 's'}. ${count === 1 ? 'It returns' : 'They return'} with the NKERP pull that has just started.`);
+              window.setTimeout(() => void handleRefreshLiveComputerData(false), 4000);
+            }}
           />
         )}
 

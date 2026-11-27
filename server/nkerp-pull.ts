@@ -5,16 +5,24 @@ import { nkerpLogin } from './nkerp-sync/credentials.js';
 import { NkerpClient } from './nkerp-sync/nkerpClient.js';
 import { NkerpEmailClient } from './nkerp-sync/emails.js';
 import { peopleOnTour } from './nkerp-sync/planner.js';
-import { addDays, day, norm, todayIn } from './nkerp-sync/util.js';
+import { addDays, day, norm, parseArrival, todayIn } from './nkerp-sync/util.js';
 import type { NkRecord } from './nkerp-sync/types.js';
-import { expiry, guests, identityHash, read, rooms, stayKey, write, transaction, prune } from './accommodation-store.js';
+import { expiry, guests, identityHash, read, removals, removalUntil, rooms, stayDates, stayKey, write, transaction, prune, type Removal } from './accommodation-store.js';
 import { photoStore, prunePhotos } from './nkerp-photos.js';
 import { prioritizeTravel, readTravel, reconcileTravel, travelEndpoints, travelRequests } from './nkerp-travel.js';
 
 export interface StoredReservation extends Reservation {
   nkerpBaseline?: { building: string; roomNumber: string };
+  /** The stay's dates as NKERP last reported them (see stayDates). */
+  nkerpDates?: string;
   localFields?: string[];
   allocationObservedOnly?: boolean;
+}
+
+/** A stay NKERP still lists that the app hides because someone deleted it. */
+export interface HiddenStay {
+  key: string; tour: string; its: string; name: string; office: string;
+  arrival: string; departure: string; deletedAt: string | null;
 }
 
 export const removalKey = (stay: Reservation) => identityHash(stayKey(stay));
@@ -48,58 +56,130 @@ function mapStay(a: NkRecord, start: unknown, end: unknown, nkRoom?: {building:s
   };
 }
 
+const dateFields = ['arrivalDate','arrivalTime','rawArrivalStr','arrivalDateTime',
+  'departureDate','departureTime','rawDepartureStr','departureDateTime'] as const;
 const profileFields = ['itsId','applicantName','age','gender','category','family','familyNo','jamaat','rotationId',
-  'idara','hofId','officeName','groupLeadName','guestLeaderName','arrivalDate','arrivalTime','rawArrivalStr',
-  'departureDate','departureTime','rawDepartureStr','arrivalDateTime','departureDateTime'] as const;
+  'idara','hofId','officeName','groupLeadName','guestLeaderName',...dateFields] as const;
+const isDateField = (field: string) => (dateFields as readonly string[]).includes(field);
+
+/**
+ * A deleted stay stays hidden only while NKERP still reports it with the dates it had when it was deleted.
+ * Once NKERP moves it, it is a different stay and comes back. Older entries hold only the expiry, which
+ * follows the departure, so a changed departure brings those back too.
+ */
+export function isDeleted(entry: Removal | undefined, source: Reservation, now = Date.now()) {
+  if (!entry || removalUntil(entry) <= now) return false;
+  if (typeof entry === 'number') return entry === expiry(source);
+  return entry.dates ? entry.dates === stayDates(source) : true;
+}
+
+/** NKERP changed this stay's dates since the app last saw them. */
+function nkerpMoved(previous: StoredReservation, source: StoredReservation) {
+  if (previous.nkerpDates) return previous.nkerpDates !== stayDates(source);
+  // Saved before the app kept NKERP's dates: a different day is a move, a different time may be a local edit.
+  const days = (r: Reservation) => [parseArrival(r.arrivalDate) || r.arrivalDate, parseArrival(r.departureDate) || r.departureDate].join();
+  return days(previous) !== days(source);
+}
+
+/**
+ * An outdated copy of a moved stay is kept only when it holds something the app would otherwise lose: a room
+ * the guest's current stay doesn't have yet, a star, a B to A shift or money given.
+ */
+function keepOutdatedCopy(stale: StoredReservation, currentStays: StoredReservation[]) {
+  if (stale.isSpecialGuest || stale.shiftToCategoryA || stale.moneyGiven === 'Yes' || stale.id.startsWith('b2a-') ||
+      /b to a/i.test(stale.category || '')) return true;
+  return Boolean(String(stale.roomNumber || '').trim()) && !currentStays.some(r => String(r.roomNumber || '').trim());
+}
+
+const overlaps = (a: Reservation, b: Reservation) => a.arrivalDate <= b.departureDate && b.arrivalDate <= a.departureDate;
+const daysApart = (a: Reservation, b: Reservation) =>
+  Math.abs(Date.parse(a.arrivalDate+'T00:00:00Z') - Date.parse(b.arrivalDate+'T00:00:00Z')) || 0;
 
 export function reconcileNkerp(incoming: StoredReservation[], now = Date.now()) {
   return transaction(() => {
     const history = new Set(read<Record<string,string>[]>('history',[]).map(row => JSON.stringify([norm(row['Tour ID']),str(row.ITS)])));
     const current = new Map(guests().map(r => [r.itsId && r.tourRefNo && r.arrivalDate ? stayKey(r) : r.id, r as StoredReservation]));
-    const removed = read<Record<string,number>>('removed-stays', {});
+    const removed = removals();
     const inventory = rooms();
     const byTourGuest = (r: Reservation) => JSON.stringify([norm(r.tourRefNo), str(r.itsId)]);
+    const stamp = new Date(now).toISOString();
+    const hidden: HiddenStay[] = [];
+    const live: StoredReservation[] = [];
+    for (const source of incoming) {
+      if (!source.tourRefNo || !source.itsId || !source.arrivalDate || !source.departureDate || expiry(source) <= now) continue;
+      const entry = removed[removalKey(source)];
+      if (isDeleted(entry, source, now)) {
+        hidden.push({ key: removalKey(source), tour: source.tourRefNo, its: source.itsId, name: source.applicantName,
+          office: source.officeName, arrival: source.arrivalDateTime || source.arrivalDate,
+          departure: source.departureDateTime || source.departureDate,
+          deletedAt: typeof entry === 'object' ? entry.deletedAt ?? null : null });
+      } else live.push(source);
+    }
+
+    // Match each NKERP stay to the saved stay it updates. The same arrival day is the same stay. When NKERP
+    // moves a stay, the guest's saved stay on that tour that NKERP no longer reports is the one that moved,
+    // overlapping or not; it keeps its room and app details and takes NKERP's new dates.
     const storedByPerson = new Map<string,StoredReservation[]>();
-    const receivedByPerson = new Map<string,number>();
     for (const r of current.values()) {
       const identity = byTourGuest(r);
-      const personStays = storedByPerson.get(identity) || [];
-      personStays.push(r);
-      storedByPerson.set(identity,personStays);
+      storedByPerson.set(identity, [...(storedByPerson.get(identity) || []), r]);
     }
-    for (const r of incoming) {
+    const sourcesByPerson = new Map<string,StoredReservation[]>();
+    for (const r of live) {
       const identity = byTourGuest(r);
-      receivedByPerson.set(identity,(receivedByPerson.get(identity) || 0)+1);
+      sourcesByPerson.set(identity, [...(sourcesByPerson.get(identity) || []), r]);
     }
-    const stamp = new Date(now).toISOString();
+    const matches: [StoredReservation, StoredReservation | undefined][] = [];
+    const stale: StoredReservation[] = [];
+    for (const [person, sources] of sourcesByPerson) {
+      const keys = new Set(sources.map(stayKey));
+      const unmatched = (storedByPerson.get(person) || []).filter(r => !keys.has(stayKey(r)));
+      const moved = sources.filter(r => !current.has(stayKey(r)));
+      for (const source of sources) if (current.has(stayKey(source))) matches.push([source, current.get(stayKey(source))]);
+      const pairs = moved.flatMap(source => unmatched.map(stored => ({source, stored,
+        rank: (overlaps(source, stored) ? 0 : 1e15) + daysApart(source, stored)})))
+        .sort((a, b) => a.rank - b.rank);
+      const used = new Set<StoredReservation>();
+      for (const {source, stored} of pairs) {
+        if (used.has(source) || used.has(stored)) continue;
+        used.add(source); used.add(stored);
+        matches.push([source, stored]);
+      }
+      for (const source of moved) if (!used.has(source)) matches.push([source, undefined]);
+      // NKERP lists this guest on this tour, but not this stay: an outdated copy of a moved stay.
+      for (const stored of unmatched) if (!used.has(stored)) stale.push(stored);
+    }
+
     let changed = 0;
-    for (const source of incoming) {
-      if (!source.tourRefNo || !source.itsId || !source.arrivalDate || !source.departureDate ||
-          expiry(source) <= now || removed[removalKey(source)] > now) continue;
-      const key = stayKey(source);
-      const person = byTourGuest(source);
-      const candidates = storedByPerson.get(person) || [];
-      const [alternate] = candidates;
-      // A changed date on a single overlapping stay is a correction, while another tour or
-      // a separate stay on the same tour gets its own reservation.
-      const previous = current.get(key) ?? (receivedByPerson.get(person) === 1 && candidates.length === 1 &&
-        alternate.arrivalDate < source.departureDate && source.arrivalDate < alternate.departureDate ? alternate : undefined);
+    for (const stored of stale) {
+      const person = byTourGuest(stored);
+      const stays = matches.filter(([source]) => byTourGuest(source) === person).map(([source, previous]) => previous ?? source);
+      if (keepOutdatedCopy(stored, stays)) continue;
+      current.delete(stayKey(stored));
+      changed++;
+    }
+    for (const [source, previous] of matches) {
       const merged: StoredReservation = previous ? {...previous} : {...source, allocationObservedOnly: true, createdAt: stamp};
+      const person = byTourGuest(source);
       if (previous) {
+        // NKERP's latest dates win over an earlier edit in the app once NKERP changes them.
+        const localFields = nkerpMoved(previous, source) ? previous.localFields?.filter(f => !isDateField(f)) : previous.localFields;
+        if (localFields) merged.localFields = localFields;
         for (const field of profileFields) {
           const value = source[field];
-          if (value !== '' && value !== undefined && !previous.localFields?.includes(field)) Object.assign(merged, {[field]:value});
+          if (value !== '' && value !== undefined && !localFields?.includes(field)) Object.assign(merged, {[field]:value});
         }
         const canFollowNkerp = previous.allocationObservedOnly || previous.id.startsWith('nkerp-') ||
           (!previous.roomNumber && !history.has(person));
-        if (canFollowNkerp && !previous.localFields?.includes('roomNumber') && !previous.localFields?.includes('building')) {
+        if (canFollowNkerp && !localFields?.includes('roomNumber') && !localFields?.includes('building')) {
           merged.building = source.building;
           merged.roomNumber = source.roomNumber;
           merged.allocationObservedOnly = true;
         }
-        if (!previous.localFields?.includes('isUploadedToPortal')) merged.isUploadedToPortal = Boolean(source.roomNumber && merged.roomNumber === source.roomNumber && merged.building === source.building);
+        if (!localFields?.includes('isUploadedToPortal')) merged.isUploadedToPortal = Boolean(source.roomNumber && merged.roomNumber === source.roomNumber && merged.building === source.building);
       }
       merged.nkerpBaseline = source.nkerpBaseline;
+      merged.nkerpDates = stayDates(source);
       merged.category ||= 'Mumineen';
       merged.groupLeadName ||= merged.applicantName;
       merged.guestLeaderName ||= merged.groupLeadName;
@@ -117,7 +197,9 @@ export function reconcileNkerp(incoming: StoredReservation[], now = Date.now()) 
       const categories = [...new Set([...settings.categories, ...incoming.map(r=>r.category).filter(Boolean)])];
       if (categories.length !== settings.categories.length) write('settings',{...settings,categories});
     }
-    return { received: incoming.length, changed, expired: prune(now) };
+    const before = read<HiddenStay[]>('hidden-stays', []);
+    if (JSON.stringify(before) !== JSON.stringify(hidden)) write('hidden-stays', hidden);
+    return { received: incoming.length, changed, hidden: hidden.length, expired: prune(now) };
   });
 }
 
@@ -247,10 +329,11 @@ export async function explainTour(refInput: string, today = todayIn(), now = Dat
     pending: async () => (pendingRows = await client.pending()),
     currentForTours: (refs, from) => client.currentForTours(refs, from),
   }, { tourList: async from => (tourRows = await tours.tourList(from)) }, today, now);
-  const removed = read<Record<string,number|{until:number}>>('removed-stays', {});
+  const removed = removals();
   const brief = (r: StoredReservation) => ({ id:r.id, its:r.itsId, name:r.applicantName, arrival:r.arrivalDateTime || r.arrivalDate,
     departure:r.departureDateTime || r.departureDate, room:[r.building,r.roomNumber].filter(Boolean).join(' '),
-    localFields:r.localFields, deletedUntil: removed[removalKey(r)] ?? null });
+    localFields:r.localFields, deleted: removed[removalKey(r)] ?? null,
+    hiddenAsDeleted: isDeleted(removed[removalKey(r)], r, now) });
   return {
     pending: pendingRows.filter(a => want(a.TourRefenceNO)).map(a => ({ its:a.ITSId, name:a.ApplicantName, subVenue:a.SubVenueID,
       itinerary:(a.TourIternaryDates || []).map((s: NkRecord) => [s.ArrivalDate, s.DepartureDate]) })),

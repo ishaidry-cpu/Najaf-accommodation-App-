@@ -4,8 +4,8 @@ import { credentialStatus, MissingCredentials } from './nkerp-sync/credentials.j
 import { norm, familyNo } from './nkerp-sync/util.js';
 import { dispatch, json, type HandlerDeps } from './nkerp-sync/handlers.js';
 import { photoIndex, photoResponse } from './nkerp-photos.js';
-import { createPull, explainTour, removalKey, type StoredReservation } from './nkerp-pull.js';
-import { expiry, guests, localHistory, prune, read, rooms, transaction, write } from './accommodation-store.js';
+import { createPull, explainTour, removalKey, type HiddenStay, type StoredReservation } from './nkerp-pull.js';
+import { expiry, guests, localHistory, prune, read, removals, rooms, stayDates, transaction, write } from './accommodation-store.js';
 import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
@@ -25,7 +25,7 @@ function saveChanges(input: unknown) {
   }
   return transaction(() => {
       const current = new Map(read<(StoredReservation|Room)[]>(collection,[]).map(r => [r.id,r]));
-      const deleted = read<Record<string,number>>('removed-stays',{});
+      const deleted = removals();
       for (const {id,before,after} of changes) {
         const row = current.get(id);
         if (!after) {
@@ -37,7 +37,11 @@ function saveChanges(input: unknown) {
           if (collection === 'reservations') {
             const stay = row as StoredReservation;
             const until = expiry(stay);
-            if (Number.isFinite(until)) deleted[removalKey(stay)] = until;
+            // Hide only this stay, with the dates NKERP gave it. If NKERP later moves it, it comes back.
+            if (Number.isFinite(until)) deleted[removalKey(stay)] = { until, dates: stay.nkerpDates ?? stayDates(stay),
+              its: stay.itsId, name: stay.applicantName, tour: stay.tourRefNo,
+              arrival: stay.arrivalDateTime || stay.arrivalDate, departure: stay.departureDateTime || stay.departureDate,
+              deletedAt: new Date().toISOString() };
           }
           continue;
         }
@@ -110,7 +114,7 @@ export function accommodationApi(onChange: () => void = () => {}) {
     if (req.method === 'GET') {
       if (route === '/api/status') return json({
         status:'ok', liveBackend:true, reservationsCount:guests().length, roomsCount:rooms().length,
-        revision:read('revision',0), events:!hosted,
+        revision:read('revision',0), events:!hosted, hiddenStays:read<HiddenStay[]>('hidden-stays',[]).length,
         pull:{ ...pull.status, lastSyncedAt:pull.status.lastSyncedAt ?? read('last-pull',null) },
       });
       if (route === '/api/reservations') return json(guests());
@@ -119,6 +123,8 @@ export function accommodationApi(onChange: () => void = () => {}) {
       const photo = /^\/api\/photos\/([0-9A-Za-z_-]+)$/.exec(route);
       if (photo) return photoResponse(photo[1]);
       if (route === '/api/settings') return json(read('settings',{}));
+      // Stays NKERP still lists that the app hides because they were deleted here.
+      if (route === '/api/hidden-stays') return json(read<HiddenStay[]>('hidden-stays',[]));
       if (route === '/api/nkerp/tour') {
         const ref = new URL(req.url).searchParams.get('ref') || '';
         if (!ref.trim()) return json({error:'Add ?ref=<tour reference>.'},400);
@@ -142,6 +148,24 @@ export function accommodationApi(onChange: () => void = () => {}) {
           console.error('Could not save app changes');
           return json({error:'Changes could not be saved to the app database.'},500);
         }
+      }
+      if (route === '/api/hidden-stays/restore') {
+        const { keys } = await req.json().catch(() => ({})) as { keys?: unknown };
+        if (!Array.isArray(keys) || !keys.length || keys.some(k => typeof k !== 'string')) return json({error:'Choose the stays to restore.'},400);
+        const restored = transaction(() => {
+          const deleted = removals();
+          const wanted = new Set(keys as string[]);
+          let count = 0;
+          for (const key of wanted) if (key in deleted) { delete deleted[key]; count++; }
+          write('removed-stays', deleted);
+          write('hidden-stays', read<HiddenStay[]>('hidden-stays',[]).filter(h => !wanted.has(h.key)));
+          return count;
+        });
+        invalidate();
+        // The next pull adds them back; start one now rather than waiting for the minute timer.
+        const pulling = refresh().catch(() => {});
+        if (waitUntil) waitUntil(pulling); else await pulling;
+        return json({restored});
       }
       if (route === '/api/rooms/reset') {
         const fresh = reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(deduplicateRooms([

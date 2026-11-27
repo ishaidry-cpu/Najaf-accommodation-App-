@@ -34,7 +34,15 @@ export async function loadAccommodation() {
   ]);
   return {reservations,rooms,settings,photos};
 }
-export const fetchBackendStatus = () => request<{ pull: PullStatus; revision: number; events: boolean }>('status');
+export const fetchBackendStatus = () => request<{ pull: PullStatus; revision: number; events: boolean; hiddenStays?: number }>('status');
+
+/** A stay NKERP still lists that the app hides because it was deleted here. */
+export interface HiddenStay {
+  key: string; tour: string; its: string; name: string; office: string;
+  arrival: string; departure: string; deletedAt: string | null;
+}
+export const fetchHiddenStays = () => request<HiddenStay[]>('hidden-stays');
+export const restoreHiddenStays = (keys: string[]) => request<{ restored: number }>('hidden-stays/restore', { keys });
 export const pullNkerp = () => request<{
   received: number;
   changed: number;

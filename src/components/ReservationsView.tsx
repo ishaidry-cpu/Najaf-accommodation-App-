@@ -34,7 +34,8 @@ import {
   LayoutGrid,
   ShieldAlert,
   Star,
-  ArrowRightLeft
+  ArrowRightLeft,
+  RotateCcw
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole, type TravelLeg } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
@@ -55,6 +56,7 @@ import { generateAdministrativePdf } from '../services/pdfExport';
 import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
 import { ZairPhoto, type PhotoIndex } from './ZairPhoto';
 import { oneRowPerIts } from '../utils/deduplication';
+import { HiddenStaysModal } from './HiddenStaysModal';
 
 /** Baghdad calendar date. */
 const baghdadDay = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
@@ -82,6 +84,9 @@ interface ReservationsViewProps {
   onUpdateReservation: (updatedReservation: Reservation) => void;
   onBatchUpdateReservations?: (updatedReservations: Reservation[]) => void;
   onDeleteReservation: (id: string) => void;
+  /** NKERP stays hidden because they were deleted in the app. */
+  hiddenStays?: number;
+  onHiddenStaysRestored?: (count: number) => void;
   onBatchDeleteReservations?: (ids: string[]) => void;
   onOpenUploadExcel: () => void;
   onDownloadTemplate: () => void;
@@ -149,6 +154,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   onUpdateReservation,
   onBatchUpdateReservations,
   onDeleteReservation,
+  hiddenStays = 0,
+  onHiddenStaysRestored,
   onBatchDeleteReservations,
   onOpenUploadExcel,
   onDownloadTemplate,
@@ -171,6 +178,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const isReadOnly = userRole === 'receptionist';
   // Deletion modal state & multi-selection state
   const [recordToDelete, setRecordToDelete] = useState<Reservation | null>(null);
+  const [isHiddenStaysOpen, setIsHiddenStaysOpen] = useState(false);
   const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -970,6 +978,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       A→B slip
                     </MenuItem>
                   )}
+                  <MenuItem icon={RotateCcw} onClick={() => { close(); setIsHiddenStaysOpen(true); }}
+                    hint={hiddenStays ? `${hiddenStays} NKERP stays hidden because they were deleted` : 'Nothing hidden'}>
+                    Deleted NKERP stays
+                  </MenuItem>
                   <MenuDivider />
                   <MenuItem
                     icon={Clock}
@@ -2465,6 +2477,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       )}
 
       {/* Single Delete Confirmation Modal */}
+      {isHiddenStaysOpen && (
+        <HiddenStaysModal onClose={() => setIsHiddenStaysOpen(false)} onRestored={(count) => onHiddenStaysRestored?.(count)} />
+      )}
       {recordToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
@@ -2621,6 +2636,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                       Zaer is currently unallotted (no room).
                     </div>
                   )}
+                  <div className="mt-2 text-[11px] text-stone-500">
+                    If NKERP still lists this stay, it stays hidden until NKERP changes its dates. You can bring it back from
+                    More → Deleted NKERP stays.
+                  </div>
                 </div>
 
                 {/* Modal Actions */}

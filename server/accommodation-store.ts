@@ -36,6 +36,21 @@ export function expiry(r: Pick<Reservation,'departureDate'|'departureTime'>) {
 }
 export const stayKey = (r: Reservation) => JSON.stringify([r.tourRefNo.trim().toUpperCase(),String(r.itsId ?? '').replace(/^['’]/,'').trim(),(parseArrival(r.arrivalDate) || r.arrivalDate)]);
 export const identityHash = (key: string) => createHash('sha256').update(key).digest('hex');
+
+/** Arrival and departure as NKERP last reported them: a change to either means NKERP moved the stay. */
+export const stayDates = (r: Pick<Reservation,'arrivalDate'|'arrivalTime'|'departureDate'|'departureTime'>) =>
+  JSON.stringify([parseArrival(r.arrivalDate) || r.arrivalDate || '', r.arrivalTime || '',
+    parseArrival(r.departureDate) || r.departureDate || '', r.departureTime || '']);
+
+/**
+ * A stay deleted in the app. It keeps NKERP from adding that exact stay back until it expires. Older entries are
+ * only the expiry time; newer ones also hold the dates and who it was, so a moved stay comes back and the
+ * Zaereen page can list what is hidden.
+ */
+export type Removal = number | { until: number; dates?: string; its?: string; name?: string; tour?: string;
+  arrival?: string; departure?: string; deletedAt?: string };
+export const removalUntil = (entry: Removal | undefined) => typeof entry === 'number' ? entry : entry?.until ?? 0;
+export const removals = () => read<Record<string, Removal>>('removed-stays', {});
 export const historyKey = (r: HistoryRow) => JSON.stringify([r['Tour ID']?.trim().toUpperCase(),r.ITS?.trim(),r.Arrival?.slice(0,10)]);
 export function prune(now = Date.now()) {
   const all = guests();
@@ -44,14 +59,14 @@ export function prune(now = Date.now()) {
     departureDate: parseArrival(r.departureDate) || r.departureDate}));
   if (JSON.stringify(all) !== JSON.stringify(normalized)) write('reservations', normalized);
   const ends = new Map(all.map(r => [stayKey(r), expiry(r)]));
-  const removed = read<Record<string,number>>('removed-stays', {});
-  const activeRemovals = Object.fromEntries(Object.entries(removed).filter(([,until]) => until > now));
+  const removed = removals();
+  const activeRemovals = Object.fromEntries(Object.entries(removed).filter(([,entry]) => removalUntil(entry) > now));
   if (Object.keys(removed).length !== Object.keys(activeRemovals).length) write('removed-stays', activeRemovals);
   const hist = read<HistoryRow[]>('history', []);
   const recent = hist.filter(row => {
     const key = historyKey(row);
     const runAt = Date.parse(row['Run At']?.replace(' ', 'T') + '+03:00');
-    const until = ends.get(key) ?? activeRemovals[identityHash(key)] ?? (runAt + 3 * 86400000);
+    const until = ends.get(key) ?? (activeRemovals[identityHash(key)] ? removalUntil(activeRemovals[identityHash(key)]) : undefined) ?? (runAt + 3 * 86400000);
     return until > now;
   });
   if (hist.length !== recent.length) write('history', recent);
