@@ -975,7 +975,7 @@ function dueLine(p: TourPlan) {
 export function followUpMessage(p: TourPlan): string {
   const t = p.tour;
   return [
-    'Taslimaat Janab, Salaam Jameel',
+    'Salaam Jameel',
     '',
     `*Tour ID:* ${t.ref}`,
     `*Office:* ${t.office}`,
@@ -1004,7 +1004,7 @@ export function officeFollowUps(plans: TourPlan[]): { office: string; tours: Tou
     ]);
     const cutoff = tours[0].submission.cutoffDays;
     return { office, tours, message: [
-      'Taslimaat Janab, Salaam Jameel', '', `*${office}*: the following Tour IDs still have pending submissions:`, '', ...lines, '',
+      'Salaam Jameel', '', `*${office}*: the following Tour IDs still have pending submissions:`, '', ...lines, '',
       ...(tours.some(needsDates) ? [...DATES_EXAMPLE, ''] : []),
       `Submissions are due ${cutoff} days before arrival in Iraq. Kindly complete them at the earliest so the accommodation can be approved.`, '', 'Shukran',
     ].join('\n') };
