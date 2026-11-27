@@ -7,7 +7,7 @@
  * come from an in-memory copy of the stored JSON, parsed fresh for each caller so nobody can change the cache.
  *
  * The callers keep the same read/write API. The first time a collection is used, its old blob is copied into
- * rows inside one transaction and kept under `legacy:<key>` as a backup.
+ * rows inside one transaction; the old blob stays where it was, untouched, as the backup.
  */
 import { createHash } from 'node:crypto';
 import type { StorageDriver } from './accommodation-store.js';
@@ -57,12 +57,11 @@ export function rowStore(db: SqlBackend): StorageDriver & { stats(): { rowWrites
     if (db.readBlob(MARK(collection)) === null) {
       const legacy = db.readBlob(collection);
       if (legacy === null) return null;
-      // First use since the switch to rows: move the old blob into rows, keep it as a backup.
+      // First use since the switch to rows: copy the old blob into rows. The blob itself is left in place as the
+      // backup, so code from before this change (if it were ever deployed again) still finds its data.
       tx(() => {
         if (db.readBlob(MARK(collection)) !== null) return;
         store(collection, JSON.parse(legacy), { order: [], json: new Map(), pos: new Map() });
-        db.writeBlob(`legacy:${collection}`, legacy);
-        db.removeBlob(collection);
       });
       return cache.get(collection) ?? null;
     }

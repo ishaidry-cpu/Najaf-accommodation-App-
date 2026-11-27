@@ -34,7 +34,7 @@ The app keeps repeat trips separate by tour reference, guest, and arrival. When 
 
 **B→A slip records:** every B→A slip printed or downloaded is recorded with its number, date, tours, zaereen and accounts note; reprints add to the same record. The list is under **B→A shifts**.
 
-**Storage:** reservations, rooms, sync history, slip records and approval records are stored one SQLite row per record (`server/row-store.ts`), so a save writes only the records that changed. The first start after this change copies each old collection into rows and keeps the original under `legacy:<name>` as a backup.
+**Storage:** reservations, rooms, sync history, slip records and approval records are stored one SQLite row per record (`server/row-store.ts`), so a save writes only the records that changed. The first start after this change copies each old collection into rows and leaves the original value untouched as a backup.
 
 **Sync to NKERP** still previews or applies deallocations, reallocations, and allocations from the saved app records using the existing Najaf allocation checks. The applied-run history lives in the app. Automatic pulls do not send allocation updates or emails.
 

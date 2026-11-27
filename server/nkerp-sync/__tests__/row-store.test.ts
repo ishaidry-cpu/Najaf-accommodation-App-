@@ -26,7 +26,7 @@ function backend(file = ':memory:') {
 }
 const stay = (id: string, extra = {}) => ({ id, itsId: id, applicantName: 'Name ' + id, ...extra });
 
-test('moves the old blob into rows once and keeps it as a backup', () => {
+test('copies the old blob into rows once and leaves the blob as the backup', () => {
   const b = backend();
   const old = [stay('a'), stay('b'), stay('c')];
   b.writeBlob('reservations', JSON.stringify(old));
@@ -34,11 +34,11 @@ test('moves the old blob into rows once and keeps it as a backup', () => {
   const s = rowStore(b);
   assert.deepEqual(s.read('reservations', []), old);
   assert.deepEqual(s.read('settings', {}), { categories: ['X'] });
-  assert.equal(b.readBlob('reservations'), null);
-  assert.equal(b.readBlob('legacy:reservations'), JSON.stringify(old));
+  assert.equal(b.readBlob('reservations'), JSON.stringify(old), 'older code still finds its data');
   assert.equal((b.all('SELECT COUNT(*) AS n FROM rows WHERE collection=?', 'reservations')[0].n), 3);
   // A fresh process reads the rows, not the backup.
-  assert.deepEqual(rowStore(b).read('reservations', []), old);
+  s.write('reservations', [stay('z')]);
+  assert.deepEqual(rowStore(b).read('reservations', []), [stay('z')]);
 });
 
 test('writes only the records that changed', () => {
