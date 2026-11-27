@@ -9,6 +9,9 @@ import { expiry, guests, localHistory, prune, read, removals, rooms, stayDates, 
 import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
+import { ApprovalError, approvalClient, approveTour, createApprovalRefresh, records as approvalRecords, saveEdit, saveReview,
+  settings as approvalSettings, snapshot as approvalSnapshot } from './nkerp-approvals.js';
+import { normalizeApprovalSettings } from '../src/services/approvalPlanner.js';
 
 interface RecordChange {
   id:string;
@@ -83,6 +86,9 @@ export function accommodationApi(onChange: () => void = () => {}) {
     onChange();
   };
   const pull = createPull(invalidate);
+  const approvals = createApprovalRefresh();
+  const approvalState = () => ({ snapshot: approvalSnapshot(), records: approvalRecords(), settings: approvalSettings(),
+    refresh: { ...approvals.status } });
   const deps: HandlerDeps = {
     credentials: credentialStatus,
     readHistory: localHistory.read,
@@ -98,7 +104,11 @@ export function accommodationApi(onChange: () => void = () => {}) {
 
   async function tick() {
     if (transaction(() => prune())) invalidate();
-    if (process.env.NAJAF_AUTO_PULL !== 'false') await refresh().catch(() => {});
+    if (process.env.NAJAF_AUTO_PULL !== 'false') {
+      // The approval queues refresh every 15 minutes alongside the minute pull.
+      await Promise.all([refresh().catch(() => {}),
+        approvals.due() ? approvals.refresh().then(invalidate, () => {}) : Promise.resolve()]);
+    }
   }
 
   async function refresh() {
@@ -123,6 +133,7 @@ export function accommodationApi(onChange: () => void = () => {}) {
       const photo = /^\/api\/photos\/([0-9A-Za-z_-]+)$/.exec(route);
       if (photo) return photoResponse(photo[1]);
       if (route === '/api/settings') return json(read('settings',{}));
+      if (route === '/api/approvals') return json(approvalState());
       // Stays NKERP still lists that the app hides because they were deleted here.
       if (route === '/api/hidden-stays') return json(read<HiddenStay[]>('hidden-stays',[]));
       if (route === '/api/nkerp/tour') {
@@ -136,6 +147,36 @@ export function accommodationApi(onChange: () => void = () => {}) {
       if (route === '/api/nkerp/pull') {
         try { return json(await refresh()); }
         catch (err) { return json({error:pull.status.error}, err instanceof MissingCredentials ? 503 : 502); }
+      }
+      if (route.startsWith('/api/approvals/')) {
+        const action = route.slice('/api/approvals/'.length);
+        const body = await req.json().catch(() => ({})) as Record<string, any>;
+        try {
+          if (action === 'refresh') {
+            await approvals.refresh();
+            invalidate();
+            return json(approvalState());
+          }
+          if (action === 'edit') { saveEdit(body as never); invalidate(); return json(approvalState()); }
+          if (action === 'review') { saveReview(body as never); invalidate(); return json(approvalState()); }
+          if (action === 'settings') {
+            const saved = {...read('settings',{}), approvalSettings: normalizeApprovalSettings(body)};
+            write('settings', saved);
+            invalidate();
+            return json(approvalState());
+          }
+          if (action === 'approve') {
+            if (body.confirm !== true) return json({error:'Confirm the approval first.'},400);
+            const record = await approveTour(approvalClient(true), body as never);
+            invalidate();
+            return json({ record, ...approvalState() });
+          }
+        } catch (err) {
+          if (err instanceof ApprovalError) return json({error:err.message}, err.status);
+          if (err instanceof MissingCredentials) return json({error:err.message}, 503);
+          return json({error: err instanceof Error ? err.message : 'NKERP approval request failed.'}, 502);
+        }
+        return json({error:'API route unavailable.'},404);
       }
       if (route === '/api/changes') {
         try {

@@ -66,6 +66,7 @@ import { ReservationsView } from './components/ReservationsView';
 import { CategoryUpgradeView } from './components/CategoryUpgradeView';
 import { RoomsManagementView } from './components/RoomsManagementView';
 import { AllocationPlannerView, type PlanAllocationItem } from './components/AllocationPlannerView';
+import { ApprovalsView } from './components/ApprovalsView';
 import { ExcelUploadModal } from './components/ExcelUploadModal';
 import { ReceptionDailySlipModal } from './components/ReceptionDailySlipModal';
 import { AccountsRequestSlipModal } from './components/AccountsRequestSlipModal';
@@ -1255,6 +1256,8 @@ export default function App() {
             onSaveRules={handleSavePlannerRules}
           />
         )}
+
+        {activeTab === 'approvals' && <ApprovalsView />}
 
         {activeTab === 'upgrades' && (
           <CategoryUpgradeView

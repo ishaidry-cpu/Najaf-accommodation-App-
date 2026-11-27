@@ -25,6 +25,7 @@ import {
   Mail,
   Loader2,
   Sparkles,
+  BadgeCheck,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserRole } from '../types';
@@ -33,7 +34,7 @@ import { SyncToNkerpButton } from './SyncToNkerpButton';
 import { Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 
-export type AppTab = 'dashboard' | 'reservations' | 'planner' | 'upgrades' | 'rooms' | 'sync' | 'emails';
+export type AppTab = 'dashboard' | 'reservations' | 'planner' | 'approvals' | 'upgrades' | 'rooms' | 'sync' | 'emails';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -60,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   { tab: 'dashboard', label: 'Overview', short: 'Overview', icon: LayoutGrid },
   { tab: 'reservations', label: 'Zaereen', short: 'Zaereen', icon: CalendarDays },
   { tab: 'planner', label: 'AI Planner', short: 'Planner', icon: Sparkles },
+  { tab: 'approvals', label: 'Approvals', short: 'Approve', icon: BadgeCheck },
   { tab: 'rooms', label: 'Rooms', short: 'Rooms', icon: BedDouble },
   { tab: 'upgrades', label: 'B→A shifts', short: 'B→A', icon: Repeat2 },
   { tab: 'sync', label: 'NKERP sync', short: 'Sync', icon: RefreshCcw },
@@ -294,7 +296,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         aria-label="Main"
         className="fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="grid grid-cols-7 h-14">
+        <div className="grid grid-cols-8 h-14">
           {NAV_ITEMS.map(({ tab, short, icon: Icon }) => {
             const active = activeTab === tab;
             return (

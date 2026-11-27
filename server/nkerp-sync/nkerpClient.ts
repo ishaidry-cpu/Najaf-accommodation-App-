@@ -103,7 +103,7 @@ export class CookieJar {
 export interface NkerpClientOptions {
   allowWrite?: boolean;
   /** The endpoints this client may call (default: the room sync's). The email client gets its own lists. */
-  endpoints?: { reads: readonly string[]; writes: readonly string[] };
+  endpoints?: { reads: readonly string[] | ((path: string) => boolean); writes: readonly string[] };
   /** Cancels in-flight *reads* (never writes). */
   signal?: AbortSignal;
   /** Read-only pulls: receives each zair photo (`ImageUrl`) found in listed rows. Without it photos are dropped. */
@@ -116,7 +116,7 @@ export interface NkerpClientOptions {
 
 export class NkerpClient implements NkerpApi {
   readonly allowWrite: boolean;
-  private readonly reads: readonly string[];
+  private readonly reads: readonly string[] | ((path: string) => boolean);
   private readonly writes: readonly string[];
   private cookies = new CookieJar();
   private ready = false;
@@ -206,7 +206,7 @@ export class NkerpClient implements NkerpApi {
 
   /** POST (or GET when body is undefined) to an allow-listed read endpoint, with retries. */
   async read(path: string, body?: unknown): Promise<NkRecord> {
-    if (!this.reads.includes(path)) throw new Error('not a read endpoint');
+    if (!(typeof this.reads === 'function' ? this.reads(path) : this.reads.includes(path))) throw new Error('not a read endpoint');
     let relogged = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (this.signal?.aborted) throw new Error('cancelled');
