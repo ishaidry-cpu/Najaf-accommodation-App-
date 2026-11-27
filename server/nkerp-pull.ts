@@ -233,3 +233,32 @@ export function createPull(onChange: () => void) {
   }
   return { pull, status };
 }
+
+/** Read-only: what NKERP and the app each hold for one tour, and why a stay is or isn't in the app. */
+export async function explainTour(refInput: string, today = todayIn(), now = Date.now()) {
+  nkerpLogin();
+  const want = (v: unknown) => { const r = norm(v); return r === norm(refInput) || r.endsWith('/'+norm(refInput)); };
+  const signal = AbortSignal.timeout(55_000);
+  const client = new NkerpClient({signal});
+  const tours = new NkerpEmailClient({signal});
+  let pendingRows: NkRecord[] = [];
+  let tourRows: NkRecord[] = [];
+  const incoming = await collectNkerp({
+    pending: async () => (pendingRows = await client.pending()),
+    currentForTours: (refs, from) => client.currentForTours(refs, from),
+  }, { tourList: async from => (tourRows = await tours.tourList(from)) }, today, now);
+  const removed = read<Record<string,number|{until:number}>>('removed-stays', {});
+  const brief = (r: StoredReservation) => ({ id:r.id, its:r.itsId, name:r.applicantName, arrival:r.arrivalDateTime || r.arrivalDate,
+    departure:r.departureDateTime || r.departureDate, room:[r.building,r.roomNumber].filter(Boolean).join(' '),
+    localFields:r.localFields, deletedUntil: removed[removalKey(r)] ?? null });
+  return {
+    pending: pendingRows.filter(a => want(a.TourRefenceNO)).map(a => ({ its:a.ITSId, name:a.ApplicantName, subVenue:a.SubVenueID,
+      itinerary:(a.TourIternaryDates || []).map((s: NkRecord) => [s.ArrivalDate, s.DepartureDate]) })),
+    tours: tourRows.filter(t => want(t.TourReferenceId)).map(t => ({ ref:t.TourReferenceId, active:t.IsActive,
+      plans:(t.TourSubvenuePlan || []).map((p: NkRecord) => ({ subVenue:p.SubvenueId, name:p.SubvenueName, start:p.StartDateTimeZone,
+        end:p.EndDateTimeZone, removed:p.IsRemoved, status:p.AccomudationStatusID })),
+      applicants:(t.ApplicantList || []).map((a: NkRecord) => ({ its:a.ITSId ?? a.AppicantITSId, name:a.ApplicantName })) })),
+    incoming: incoming.filter(r => want(r.tourRefNo)).map(brief),
+    app: (guests() as StoredReservation[]).filter(r => want(r.tourRefNo)).map(brief),
+  };
+}

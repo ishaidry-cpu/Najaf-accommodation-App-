@@ -4,7 +4,7 @@ import { credentialStatus, MissingCredentials } from './nkerp-sync/credentials.j
 import { norm, familyNo } from './nkerp-sync/util.js';
 import { dispatch, json, type HandlerDeps } from './nkerp-sync/handlers.js';
 import { photoIndex, photoResponse } from './nkerp-photos.js';
-import { createPull, removalKey, type StoredReservation } from './nkerp-pull.js';
+import { createPull, explainTour, removalKey, type StoredReservation } from './nkerp-pull.js';
 import { expiry, guests, localHistory, prune, read, rooms, transaction, write } from './accommodation-store.js';
 import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
@@ -119,6 +119,12 @@ export function accommodationApi(onChange: () => void = () => {}) {
       const photo = /^\/api\/photos\/([0-9A-Za-z_-]+)$/.exec(route);
       if (photo) return photoResponse(photo[1]);
       if (route === '/api/settings') return json(read('settings',{}));
+      if (route === '/api/nkerp/tour') {
+        const ref = new URL(req.url).searchParams.get('ref') || '';
+        if (!ref.trim()) return json({error:'Add ?ref=<tour reference>.'},400);
+        try { return json(await explainTour(ref)); }
+        catch (err) { return json({error:err instanceof Error ? err.message : 'NKERP read failed.'}, err instanceof MissingCredentials ? 503 : 502); }
+      }
     }
     if (req.method === 'POST') {
       if (route === '/api/nkerp/pull') {
