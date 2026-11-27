@@ -935,3 +935,62 @@ export function suggestion(p: TourPlan, plan?: ApprovalPlan): { issue: string; n
     default: return { issue: '', next: 'Approve.' };
   }
 }
+
+// ------------------------------------------------------------------------------------------------ follow-ups
+
+/** Tour IDs whose Tour Operator should be chased now: dustbin inside the cut-off, or a hotel tour with no chat dates. */
+export const needsFollowUp = (p: TourPlan) => p.recommendation === 'follow-up' ||
+  (p.recommendation === 'needs-chat' && p.submission.daysToArrival <= p.submission.cutoffDays);
+
+function pendingItems(p: TourPlan): string[] {
+  const items: string[] = [];
+  if (p.tour.dustbin) items.push('Red-click itinerary and zaereen details are not fully submitted in NKERP');
+  if (!p.segments.length || p.recommendation === 'needs-chat') items.push('Karbala and Najaf dates are not in the NKERP chat box (please send them as "DD Mon to DD Mon – City")');
+  if (p.tour.option === 1) items.push('Please confirm whether Faiz accommodation is Required or Not Required');
+  return items;
+}
+function dueLine(p: TourPlan) {
+  const due = addDays(tripStart(p.tour), -p.submission.cutoffDays);
+  const left = p.submission.daysToArrival - p.submission.cutoffDays;
+  return left < 0
+    ? `Submissions were due ${p.submission.cutoffDays} days before arrival (${fmtDay(due, true)}), so this is now urgent.`
+    : `Submissions are due ${p.submission.cutoffDays} days before arrival, by ${fmtDay(due, true)}.`;
+}
+
+/** A WhatsApp message to the Tour Operator for one Tour ID (to copy and paste). */
+export function followUpMessage(p: TourPlan): string {
+  const t = p.tour;
+  return [
+    'Taslimaat Janab,',
+    '',
+    `*Tour ID:* ${t.ref}`,
+    `*Office:* ${t.office}`,
+    `*Iraq arrival:* ${fmtDay(tripStart(t), true)} · ${t.paxTotal} pax`,
+    '',
+    'The following is still pending:',
+    ...pendingItems(p).map(x => `• ${x}`),
+    '',
+    `${dueLine(p)} Kindly complete it at the earliest so the accommodation can be approved.`,
+    '',
+    'Shukran',
+  ].join('\n');
+}
+
+/** One WhatsApp message per office covering all its Tour IDs that need chasing. */
+export function officeFollowUps(plans: TourPlan[]): { office: string; tours: TourPlan[]; message: string }[] {
+  const byOffice = new Map<string, TourPlan[]>();
+  for (const p of plans.filter(needsFollowUp)) byOffice.set(p.tour.office || 'Unknown office', [...(byOffice.get(p.tour.office || 'Unknown office') ?? []), p]);
+  return [...byOffice].map(([office, tours]) => {
+    tours.sort((a, b) => a.tour.arrivalAt.localeCompare(b.tour.arrivalAt));
+    if (tours.length === 1) return { office, tours, message: followUpMessage(tours[0]) };
+    const lines = tours.flatMap(p => [
+      `*${p.tour.ref}* · arrives ${fmtDay(tripStart(p.tour), true)} · ${p.tour.paxTotal} pax`,
+      ...pendingItems(p).map(x => `   • ${x}`),
+    ]);
+    const cutoff = tours[0].submission.cutoffDays;
+    return { office, tours, message: [
+      'Taslimaat Janab,', '', `*${office}*: the following Tour IDs still have pending submissions:`, '', ...lines, '',
+      `Submissions are due ${cutoff} days before arrival in Iraq. Kindly complete them at the earliest so the accommodation can be approved.`, '', 'Shukran',
+    ].join('\n') };
+  }).sort((a, b) => a.tours[0].tour.arrivalAt.localeCompare(b.tours[0].tour.arrivalAt));
+}

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { deduplicateRooms, pruneLegacyBadriRooms, reconcileOfficialSaifeeBurhaniRooms } from '../src/services/storage.js';
 import type { StorageDriver } from './accommodation-store.js';
+import { ROWS_TABLE, rowStore } from './row-store.js';
 
 export const dataDir = process.env.NAJAF_DATA_DIR || path.join(homedir(), '.local/share/najaf-accommodation');
 let database: DatabaseSync;
@@ -16,21 +17,33 @@ export function db() {
   database.exec('PRAGMA busy_timeout=5000; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
   return database;
 }
-export function read<T>(key: string, fallback: T): T {
-  const row = db().prepare('SELECT value FROM state WHERE key=?').get(key);
-  return row ? JSON.parse(String(row.value)) : fallback;
+let driver: ReturnType<typeof rowStore> | undefined;
+let dataVersion = -1;
+function store() {
+  if (driver) return driver;
+  const d = db();
+  d.exec(ROWS_TABLE);
+  const version = () => Number((d.prepare('PRAGMA data_version').get() as { data_version: number }).data_version);
+  driver = rowStore({
+    all: (sql, ...params) => d.prepare(sql).all(...(params as never[])) as Record<string, unknown>[],
+    run: (sql, ...params) => { d.prepare(sql).run(...(params as never[])); },
+    transaction<T>(fn: () => T): T {
+      d.exec('BEGIN IMMEDIATE');
+      try { const value = fn(); d.exec('COMMIT'); dataVersion = version(); return value; }
+      catch (e) { d.exec('ROLLBACK'); throw e; }
+    },
+    readBlob: key => { const row = d.prepare('SELECT value FROM state WHERE key=?').get(key); return row ? String(row.value) : null; },
+    writeBlob: (key, json) => { d.prepare('INSERT INTO state VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, json); },
+    removeBlob: key => { d.prepare('DELETE FROM state WHERE key=?').run(key); },
+    // Other working copies on this computer share the database: drop the cache when one of them commits.
+    changedElsewhere() { const v = version(); const changed = dataVersion !== -1 && v !== dataVersion; dataVersion = v; return changed; },
+  });
+  return driver;
 }
-export function write(key: string, value: unknown) {
-  db().prepare('INSERT INTO state VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value));
-}
-export function remove(key: string) {
-  db().prepare('DELETE FROM state WHERE key=?').run(key);
-}
-export function transaction<T>(fn: () => T): T {
-  db().exec('BEGIN IMMEDIATE');
-  try { const value = fn(); db().exec('COMMIT'); return value; }
-  catch (e) { db().exec('ROLLBACK'); throw e; }
-}
+export const read = <T>(key: string, fallback: T): T => store().read(key, fallback);
+export const write = (key: string, value: unknown) => store().write(key, value);
+export const remove = (key: string) => store().remove(key);
+export const transaction = <T>(fn: () => T): T => store().transaction(fn);
 export function setup() {
   transaction(() => {
     if (!read('rooms', null)) {

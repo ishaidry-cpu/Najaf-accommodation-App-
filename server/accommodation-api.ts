@@ -12,6 +12,26 @@ import type { Room } from '../src/types/index.js';
 import { ApprovalError, approvalClient, approveTour, createApprovalRefresh, records as approvalRecords, saveEdit, saveReview,
   settings as approvalSettings, snapshot as approvalSnapshot } from './nkerp-approvals.js';
 import { normalizeApprovalSettings } from '../src/services/approvalPlanner.js';
+import { recordSlip, SlipError, slips } from './slips.js';
+import { createHash } from 'node:crypto';
+import { EMPTY_DRAFTS, normalizeRoomDraftSettings, type RoomDrafts, updateDrafts } from '../src/services/roomDrafts.js';
+import { todayBaghdad } from '../src/services/approvalPlanner.js';
+
+/** Room drafts for approved Najaf stays arriving soon, refreshed only when their inputs changed. */
+function roomDrafts(force = false): RoomDrafts {
+  const saved = read<{ plannerRules?: unknown; roomDrafts?: unknown }>('settings', {});
+  const settings = normalizeRoomDraftSettings(saved.roomDrafts);
+  const rules = normalizeRules(saved.plannerRules);
+  const reservations = guests();
+  const inventory = rooms();
+  const today = todayBaghdad();
+  const signature = createHash('sha1').update(JSON.stringify([today, settings, rules, inventory, reservations])).digest('hex');
+  const previous = read<RoomDrafts>('room-drafts', EMPTY_DRAFTS);
+  if (!force && previous.signature === signature) return previous;
+  const next = { ...updateDrafts(previous, { reservations, rooms: inventory, rules, settings, today }), signature };
+  write('room-drafts', next);
+  return next;
+}
 
 interface RecordChange {
   id:string;
@@ -109,6 +129,8 @@ export function accommodationApi(onChange: () => void = () => {}) {
       await Promise.all([refresh().catch(() => {}),
         approvals.due() ? approvals.refresh().then(invalidate, () => {}) : Promise.resolve()]);
     }
+    // After the pull, so drafts follow NKERP's latest dates.
+    try { roomDrafts(); } catch { console.error('Room drafts could not be refreshed.'); }
   }
 
   async function refresh() {
@@ -134,6 +156,8 @@ export function accommodationApi(onChange: () => void = () => {}) {
       if (photo) return photoResponse(photo[1]);
       if (route === '/api/settings') return json(read('settings',{}));
       if (route === '/api/approvals') return json(approvalState());
+      if (route === '/api/slips') return json(slips());
+      if (route === '/api/room-drafts') return json(roomDrafts());
       // Stays NKERP still lists that the app hides because they were deleted here.
       if (route === '/api/hidden-stays') return json(read<HiddenStay[]>('hidden-stays',[]));
       if (route === '/api/nkerp/tour') {
@@ -147,6 +171,39 @@ export function accommodationApi(onChange: () => void = () => {}) {
       if (route === '/api/nkerp/pull') {
         try { return json(await refresh()); }
         catch (err) { return json({error:pull.status.error}, err instanceof MissingCredentials ? 503 : 502); }
+      }
+      if (route.startsWith('/api/room-drafts/')) {
+        const action = route.slice('/api/room-drafts/'.length);
+        const body = await req.json().catch(() => ({})) as { tourRef?: unknown; basis?: unknown; enabled?: unknown; daysAhead?: unknown };
+        if (action === 'refresh') return json(roomDrafts(true));
+        if (action === 'settings') {
+          write('settings', {...read('settings',{}), roomDrafts: normalizeRoomDraftSettings(body)});
+          invalidate();
+          return json(roomDrafts(true));
+        }
+        if (action === 'dismiss' || action === 'restore') {
+          const ref = String(body.tourRef ?? '').trim().toUpperCase();
+          if (!ref) return json({error:'Choose a tour.'},400);
+          transaction(() => {
+            const drafts = read<RoomDrafts>('room-drafts', EMPTY_DRAFTS);
+            const dismissed = {...drafts.dismissed};
+            if (action === 'dismiss') dismissed[ref] = String(body.basis ?? drafts.tours[ref]?.basis ?? '');
+            else delete dismissed[ref];
+            write('room-drafts', {...drafts, dismissed, signature: undefined});
+          });
+          return json(roomDrafts(true));
+        }
+        return json({error:'API route unavailable.'},404);
+      }
+      if (route === '/api/slips') {
+        try {
+          const record = recordSlip(await req.json().catch(() => null));
+          invalidate();
+          return json(record);
+        } catch (err) {
+          if (err instanceof SlipError) return json({error:err.message},400);
+          throw err;
+        }
       }
       if (route.startsWith('/api/approvals/')) {
         const action = route.slice('/api/approvals/'.length);

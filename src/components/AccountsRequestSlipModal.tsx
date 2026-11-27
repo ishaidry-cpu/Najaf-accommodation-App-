@@ -18,6 +18,7 @@ import autoTable from 'jspdf-autotable';
 import { Reservation, MoneyGivenStatus } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
 import { saveOrDownloadPdf } from '../services/pdfExport';
+import { recordSlip } from '../services/api';
 
 function safeAutoTable(doc: jsPDF, options: any) {
   try {
@@ -70,6 +71,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
   const [searchMemberQuery, setSearchMemberQuery] = useState('');
   const [accountsAmountNote, setAccountsAmountNote] = useState('');
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [fallbackSlipSuffix, setFallbackSlipSuffix] = useState(() => Date.now().toString().slice(-4));
 
   // Distinct Tour IDs across portal
   const distinctTourOptions = useMemo(() => {
@@ -106,6 +108,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     if (!modalOpen) return;
 
     setDirection(initialDirection);
+    setFallbackSlipSuffix(Date.now().toString().slice(-4));
     setAccountsAmountNote('');
     setSearchMemberQuery('');
     setActionFeedback(null);
@@ -339,7 +342,16 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     }
   };
 
+  /** Every B→A slip printed or downloaded is recorded in the app (a reprint adds to its record). */
+  const recordBToASlip = (action: 'print' | 'pdf') => {
+    if (isAToB || effectiveSlipPaxList.length === 0) return;
+    recordSlip({ slipNo, reservationIds: effectiveSlipPaxList.map((r) => r.id), amountNote: accountsAmountNote, action })
+      .then(() => setActionFeedback(`Slip ${slipNo} recorded in B→A slip records.`))
+      .catch(() => setActionFeedback(`Slip ${slipNo} could not be recorded. Check the connection and print or download it again.`));
+  };
+
   const handlePrint = () => {
+    recordBToASlip('print');
     window.print();
   };
 
@@ -418,9 +430,11 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       ? formatRoomGivenIn(activeSingleZaer)
       : formatRoomsSummary(effectiveSlipPaxList);
 
+  // A slip without a saved number gets one fixed number while the slip is open, so the printed, downloaded and
+  // recorded numbers are the same.
   const slipNo = isAToB
-    ? refForMeta?.refundSlipNo || `REF-A2B-${Date.now().toString().slice(-4)}`
-    : refForMeta?.requestSlipNo || `SLIP-B2A-${Date.now().toString().slice(-4)}`;
+    ? refForMeta?.refundSlipNo || `REF-A2B-${fallbackSlipSuffix}`
+    : refForMeta?.requestSlipNo || `SLIP-B2A-${fallbackSlipSuffix}`;
 
   const amountDisplayForPdf = accountsAmountNote.trim()
     ? `$  ${accountsAmountNote.trim()}   (Accounts Verification: ___________________)`
@@ -798,6 +812,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
       generateAToBPdfForGroups(tourSlipGroups);
       return;
     }
+    recordBToASlip('pdf');
 
     const doc = new jsPDF({
       orientation: 'portrait',

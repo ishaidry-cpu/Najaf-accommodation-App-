@@ -67,6 +67,7 @@ import { CategoryUpgradeView } from './components/CategoryUpgradeView';
 import { RoomsManagementView } from './components/RoomsManagementView';
 import { AllocationPlannerView, type PlanAllocationItem } from './components/AllocationPlannerView';
 import { ApprovalsView } from './components/ApprovalsView';
+import { SlipRecordsPanel } from './components/SlipRecordsPanel';
 import { ExcelUploadModal } from './components/ExcelUploadModal';
 import { ReceptionDailySlipModal } from './components/ReceptionDailySlipModal';
 import { AccountsRequestSlipModal } from './components/AccountsRequestSlipModal';
@@ -1259,7 +1260,7 @@ export default function App() {
 
         {activeTab === 'approvals' && <ApprovalsView />}
 
-        {activeTab === 'upgrades' && (
+        {activeTab === 'upgrades' && (<>
           <CategoryUpgradeView
             reservations={reservations}
             rooms={rooms}
@@ -1274,7 +1275,8 @@ export default function App() {
             onDeleteReservation={handleDeleteReservation}
             userRole={userRole}
           />
-        )}
+          <SlipRecordsPanel refreshKey={isAccountsSlipOpen} />
+        </>)}
 
         {activeTab === 'sync' && <NkerpSyncView sync={syncWithSavedData} />}
 

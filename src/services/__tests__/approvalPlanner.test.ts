@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   type ApprovalSnapshot, type ApprovalTour, approvalPayload, compareWithOriginal, DEFAULT_APPROVAL_SETTINGS, dustbinVisible,
-  fromSubvenueDates, latestPlanSet, najafReport, normalizeApprovalSettings, planApprovals, readChat, splitInOrder,
+  followUpMessage, fromSubvenueDates, latestPlanSet, needsFollowUp, officeFollowUps, najafReport, normalizeApprovalSettings, planApprovals, readChat, splitInOrder,
   submissionState, suggestion, toSubvenueDates,
 } from '../approvalPlanner';
 
@@ -217,5 +217,23 @@ describe('NKERP approval request', () => {
       { Id: 4, SubvenueId: 4, StartDate: '2026-11-25T21:00:00', EndDate: '2026-11-28T21:00:00', IsActive: false },
     ];
     assert.deepEqual(latestPlanSet(rows), [{ city: 'NAJAF', start: '2026-11-22', end: '2026-11-26' }, { city: 'KARBALA', start: '2026-11-26', end: '2026-11-29' }]);
+  });
+});
+
+describe('WhatsApp follow-ups', () => {
+  it('drafts one message per office for tours inside the cut-off', () => {
+    const a = tour({ office: 'Kerai Tours', dustbin: true, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' });
+    const b = tour({ office: 'Kerai Tours', option: 3, paxFaiz: 0, paxHotel: 3, paxTotal: 3, arrivalAt: '2026-12-06T05:00:00', departureAt: '2026-12-09T05:00:00' });
+    const far = tour({ office: 'Other', dustbin: true, arrivalAt: '2027-01-20T05:00:00', departureAt: '2027-01-25T05:00:00' });
+    const plan = planApprovals(snap([a, b, far]), {}, settings(), TODAY);
+    assert.deepEqual(plan.plans.filter(needsFollowUp).map(p => p.tour.id).sort(), [a.id, b.id].sort());
+    const msg = followUpMessage(plan.plans.find(p => p.tour.id === a.id)!);
+    assert.match(msg, new RegExp(a.ref.replace(/\//g, '\\/')));
+    assert.match(msg, /Red-click itinerary/);
+    assert.match(msg, /due 15 days before arrival/);
+    const groups = officeFollowUps(plan.plans);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].tours.length, 2);
+    assert.match(groups[0].message, /Karbala and Najaf dates/);
   });
 });

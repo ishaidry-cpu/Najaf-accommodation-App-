@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { accommodationApi } from '../server/accommodation-api.js';
 import { guests, prune, read, rooms, transaction, withStore, write, type StorageDriver } from '../server/accommodation-store.js';
 import { json } from '../server/nkerp-sync/handlers.js';
+import { ROWS_TABLE, rowStore } from '../server/row-store.js';
 import { deduplicateRooms, pruneLegacyBadriRooms, reconcileOfficialSaifeeBurhaniRooms } from '../src/services/storage.js';
 import seedRooms from '../data/rooms.json';
 import seedSettings from '../data/config.json';
@@ -28,26 +29,31 @@ export class Accommodation extends DurableObject<Env> {
     super(ctx, env);
     const {sql} = ctx.storage;
     sql.exec('CREATE TABLE IF NOT EXISTS state (key TEXT NOT NULL, part INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY (key,part))');
-    this.store = {
-      read<T>(key: string, fallback: T): T {
+    sql.exec(ROWS_TABLE);
+    const blob = {
+      read(key: string): string | null {
         const parts = sql.exec<{value:string}>('SELECT value FROM state WHERE key=? ORDER BY part',key).toArray();
-        return parts.length ? JSON.parse(parts.map(p=>p.value).join('')) : fallback;
+        return parts.length ? parts.map(p=>p.value).join('') : null;
       },
-      write(key,value) {
+      write(key: string, encoded: string) {
         ctx.storage.transactionSync(() => {
           sql.exec('DELETE FROM state WHERE key=?',key);
-          const encoded = JSON.stringify(value);
           // Keep each individual SQLite value below the per-row size limit.
           for (let i=0; i<encoded.length; i+=200_000) {
             sql.exec('INSERT INTO state (key,part,value) VALUES (?,?,?)',key,i,encoded.slice(i,i+200_000));
           }
         });
       },
-      remove(key) {
-        sql.exec('DELETE FROM state WHERE key=?',key);
-      },
-      transaction: fn => ctx.storage.transactionSync(fn),
     };
+    // One row per record for the big collections (server/row-store.ts); other keys stay JSON values.
+    this.store = rowStore({
+      all: (query, ...params) => sql.exec(query, ...params).toArray() as Record<string, unknown>[],
+      run: (query, ...params) => { sql.exec(query, ...params); },
+      transaction: fn => ctx.storage.transactionSync(fn),
+      readBlob: blob.read,
+      writeBlob: blob.write,
+      removeBlob: key => { sql.exec('DELETE FROM state WHERE key=?',key); },
+    });
     withStore(this.store, () => transaction(() => {
       if (!read('rooms', null)) write('rooms', reconcileOfficialSaifeeBurhaniRooms(pruneLegacyBadriRooms(deduplicateRooms(seedRooms as never))));
       if (!read('settings', null)) write('settings', seedSettings);

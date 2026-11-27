@@ -10,6 +10,8 @@ import {
   planEmptyBeds, planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
 } from '../services/allocationPlanner';
 import { btn, PageHeader } from './ui';
+import { RoomDraftsPanel } from './RoomDraftsPanel';
+import type { DraftTour } from '../services/roomDrafts';
 import { describeRoomCapacity } from '../services/storage';
 import {
   APPROVAL_BUILDING, APPROVAL_ROOMS, AMATULLAH_VENUES, INSTRUCTION_EXAMPLES, KUN_HR_BUILDING, KUN_HR_GROUP_ROOMS, KUN_HR_SMALL_ROOMS,
@@ -282,6 +284,18 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
   };
 
   const isAdmin = userRole === 'admin';
+  /** Open drafted tours in the planner below to change their rooms, then allocate as usual. */
+  const editDrafts = (list: DraftTour[]) => {
+    const units = list.flatMap((t) => t.units);
+    if (!units.length) return;
+    const from = units.reduce((m, u) => (u.arrivalDate < m ? u.arrivalDate : m), units[0].arrivalDate);
+    const to = units.reduce((m, u) => (u.arrivalDate > m ? u.arrivalDate : m), units[0].arrivalDate);
+    setDraft({ plan: { generatedAt: new Date().toISOString(), options: { ...options, rules, fromDate: from < today ? today : from, toDate: to },
+      units, assignments: Object.assign({}, ...list.map((t) => t.assignments)), unplaced: Object.assign({}, ...list.map((t) => t.unplaced)) },
+      excluded: [], changes: 0 });
+    setExpanded(new Set(list.map((t) => t.tourRef)));
+    setResult(null);
+  };
   const changes = draft?.changes || 0;
   const setOpt = <K extends keyof PlannerOptions>(key: K, value: PlannerOptions[K]) => setOptions((o) => ({ ...o, [key]: value }));
   const peak = nightly.length ? Math.max(...nightly.map((d) => Math.max(d.beds, d.saved + d.planned + d.waiting))) : 1;
@@ -363,6 +377,8 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
             : <>Nobody arriving {shortDate(options.fromDate)} – {shortDate(options.toDate)} is waiting for a room.</>}
         </p>
       </section>
+
+      <RoomDraftsPanel reservations={reservations} canApply={isAdmin} onApply={onApplyPlan} onEdit={editDrafts} />
 
       <RulesPanel rooms={rooms} reservations={reservations} rules={rules} isAdmin={userRole === 'admin'}
         onSave={async (next) => {

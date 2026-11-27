@@ -110,3 +110,22 @@ test('a Tour ID that returns for re-approval keeps its earlier details as the or
   r = mergeRecords(r, [tour({ reapproval: true, modifiedOn: 'm3' })], '2026-11-23T10:00:00.000Z');
   assert.equal(r['5'].status, 'reapproval-pending', 'a change after review needs a new review');
 });
+
+test('records each B→A slip once and counts reprints', async () => {
+  const { recordSlip, slips, SlipError } = await import('../../slips.js');
+  const { write } = await import('../../accommodation-store.js');
+  withStore(memory(), () => {
+    write('reservations', [{ id: 'a', itsId: '1', applicantName: 'One', tourRefNo: 'T1', officeName: 'O', arrivalDate: '2026-12-01', departureDate: '2026-12-03', building: 'Saifee', roomNumber: '101', category: 'B to A', moneyGiven: 'Yes' },
+      { id: 'b', itsId: '2', applicantName: 'Two', tourRefNo: 'T1', officeName: 'O', arrivalDate: '2026-12-01', departureDate: '2026-12-03' }]);
+    const first = recordSlip({ slipNo: 'SLIP-1', reservationIds: ['a', 'b'], action: 'print' }, now);
+    assert.equal(first.paxCount, 2);
+    assert.equal(first.pax[0].room, 'Saifee 101');
+    recordSlip({ slipNo: 'SLIP-1', reservationIds: ['b', 'a'], action: 'pdf' }, now + 1000);
+    assert.equal(slips().length, 1);
+    assert.equal(slips()[0].issues.length, 2);
+    recordSlip({ slipNo: 'SLIP-2', reservationIds: ['a'], action: 'pdf' }, now + 2000);
+    assert.deepEqual(slips().map(s => s.slipNo), ['SLIP-2', 'SLIP-1']);
+    assert.throws(() => recordSlip({ slipNo: 'X', reservationIds: ['zzz'] }), SlipError);
+    assert.throws(() => recordSlip({ slipNo: '', reservationIds: ['a'] }), SlipError);
+  });
+});

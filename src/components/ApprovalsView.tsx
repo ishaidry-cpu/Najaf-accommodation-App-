@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, BadgeCheck, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Hotel, Info,
-  Loader2, MessageSquare, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2, X,
+  Copy, Loader2, MessageSquare, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2, X,
 } from 'lucide-react';
 import { btn, PageHeader } from './ui';
 import {
   type ApprovalPlan, type ApprovalRecord, type ApprovalSettings, CHANGE_CATEGORIES, CITY_NAME, type City, cityNights,
-  fmtDay, fmtSegments, fromSubvenueDates, inProposal, localDay, localTime, najafReport, planApprovals, reapprovalStatus,
+  fmtDay, fmtSegments, followUpMessage, fromSubvenueDates, inProposal, needsFollowUp, officeFollowUps, localDay, localTime, najafReport, planApprovals, reapprovalStatus,
   type Segment, type SegmentSource, segmentProblems, type SubvenueDates, suggestion, toSubvenueDates, type TourPlan, tripEnd,
   tripStart,
 } from '../services/approvalPlanner';
@@ -78,6 +78,52 @@ const ConfirmDialog: React.FC<{ state: ConfirmState | null; onClose: () => void 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-stone-100">
           <button type="button" className={btn.secondary} onClick={onClose}>Cancel</button>
           <button type="button" className={btn.primary} onClick={() => { onClose(); state.onConfirm(); }}>{state.action}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------------------------------------------ WhatsApp
+
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const area = document.createElement('textarea');
+    area.value = text; document.body.appendChild(area); area.select();
+    const ok = document.execCommand('copy'); area.remove(); return ok;
+  }
+}
+const WhatsAppBox: React.FC<{ title: string; message: string }> = ({ title, message }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-emerald-950">{title}</h3>
+        <div className="flex gap-2">
+          <button type="button" className={btn.secondary} onClick={async () => { setCopied(await copyText(message)); window.setTimeout(() => setCopied(false), 2500); }}>
+            {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />}{copied ? 'Copied' : 'Copy'}</button>
+          <a className={btn.secondary} href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">Open WhatsApp</a>
+        </div>
+      </div>
+      <pre className="whitespace-pre-wrap text-xs text-stone-800 font-sans bg-white rounded-lg border border-emerald-100 p-2.5 max-h-64 overflow-y-auto">{message}</pre>
+    </div>
+  );
+};
+
+const FollowUpsDialog: React.FC<{ plans: TourPlan[]; onClose: () => void }> = ({ plans, onClose }) => {
+  const groups = officeFollowUps(plans);
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/40 p-4" role="dialog" aria-modal="true" aria-label="WhatsApp follow-ups">
+      <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 sticky top-0 bg-white">
+          <h3 className="text-base font-semibold text-stone-900">WhatsApp follow-ups · {groups.length} office{groups.length === 1 ? '' : 's'}</h3>
+          <button type="button" onClick={onClose} className={btn.ghost} aria-label="Close"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-xs text-stone-600">One message per office for every Tour ID inside the cut-off that still shows the dustbin sign or has no city dates in chat. Copy it into the office's WhatsApp chat. Nothing is sent from the app.</p>
+          {groups.length ? groups.map(g => <WhatsAppBox key={g.office} title={`${g.office} · ${g.tours.length} Tour ID${g.tours.length === 1 ? '' : 's'}`} message={g.message} />)
+            : <p className="text-sm text-stone-500">Nobody needs chasing right now.</p>}
         </div>
       </div>
     </div>
@@ -192,6 +238,8 @@ const TourDetail: React.FC<{
           )}
         </div>
       </div>
+
+      {needsFollowUp(p) && <WhatsAppBox title="WhatsApp message to the Tour Operator" message={followUpMessage(p)} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
@@ -441,6 +489,7 @@ export const ApprovalsView: React.FC = () => {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [batch, setBatch] = useState<{ total: number; done: number; results: { ref: string; state: string; message?: string }[] } | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ApprovalSettings | null>(null);
+  const [followUps, setFollowUps] = useState(false);
   const autoRefreshed = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -699,7 +748,8 @@ export const ApprovalsView: React.FC = () => {
 
       {section === 'pending' && (
         <Card title={`Pending submission (dustbin sign) · ${lists.pending.length}`}
-          right={<span className="text-xs text-stone-500">Cut-off: {s.cutoffDays} days before arrival</span>}>
+          right={<div className="flex items-center gap-2"><span className="text-xs text-stone-500">Cut-off: {s.cutoffDays} days before arrival</span>
+            <button type="button" className={btn.secondary} onClick={() => setFollowUps(true)}><MessageSquare className="w-4 h-4" />WhatsApp follow-ups ({plan.plans.filter(needsFollowUp).length})</button></div>}>
           <p className="px-4 py-2 text-xs text-stone-600 border-b border-stone-100">Outside the cut-off: wait for the Tour Operator. Inside it: contact the Tour Operator now and follow up until the dustbin sign disappears. Their Faiz pax are kept free as buffer.</p>
           <TourTable plans={filter(lists.pending)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty="Every Tour ID in the window has completed its submission." />
         </Card>
@@ -770,6 +820,7 @@ export const ApprovalsView: React.FC = () => {
       <p className="flex items-center gap-1.5 text-[11px] text-stone-400"><Clock className="w-3.5 h-3.5" />The queues refresh every 15 minutes and when you press Refresh. <Hotel className="w-3.5 h-3.5 ml-2" />Hotel tours are approved only on the Tour Operator's chat dates. <ClipboardList className="w-3.5 h-3.5 ml-2" />Every approval is logged with the Tour ID's history.</p>
 
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
+      {followUps && <FollowUpsDialog plans={plan.plans} onClose={() => setFollowUps(false)} />}
     </div>
   );
 };

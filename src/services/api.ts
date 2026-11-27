@@ -80,3 +80,21 @@ export async function saveBackendSettings(settings: Partial<BackendSettings>) {
   try { await request('settings',settings); return true; }
   catch { return false; }
 }
+
+/** A B→A slip as recorded when it was printed or downloaded (see server/slips.ts). */
+export interface SlipRecord {
+  id: string; slipNo: string; direction: 'B_TO_A'; createdAt: string;
+  issues: { at: string; action: 'print' | 'pdf' }[]; tours: string[]; offices: string[]; paxCount: number; amountNote: string;
+  pax: { reservationId: string; its: string; name: string; tour: string; office: string; arrival: string; departure: string;
+    room: string; category: string; moneyGiven: string }[];
+}
+export const fetchSlips = () => request<SlipRecord[]>('slips');
+export const recordSlip = (slip: { slipNo: string; reservationIds: string[]; amountNote: string; action: 'print' | 'pdf' }) =>
+  request<SlipRecord>('slips', { ...slip, direction: 'B_TO_A' });
+
+export type { RoomDrafts, DraftTour } from './roomDrafts';
+export const fetchRoomDrafts = () => request<import('./roomDrafts').RoomDrafts>('room-drafts');
+export const refreshRoomDrafts = () => request<import('./roomDrafts').RoomDrafts>('room-drafts/refresh', {});
+export const dismissRoomDraft = (tourRef: string, basis: string) => request<import('./roomDrafts').RoomDrafts>('room-drafts/dismiss', { tourRef, basis });
+export const restoreRoomDraft = (tourRef: string) => request<import('./roomDrafts').RoomDrafts>('room-drafts/restore', { tourRef });
+export const saveRoomDraftSettings = (settings: import('./roomDrafts').RoomDraftSettings) => request<import('./roomDrafts').RoomDrafts>('room-drafts/settings', settings);
