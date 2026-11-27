@@ -101,7 +101,7 @@ export const SyncToNkerpButton: React.FC<Props> = ({ sync, onOpenSyncTab, compac
           )}
           {!iconOnly && <span className="truncate">{compact && !running ? 'Sync' : label}</span>}
           {!running && !compact && !iconOnly && (
-            <ChevronDown className={`w-3.5 h-3.5 shrink-0 opacity-70 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${inRail ? '-rotate-90' : ''}`} />
+            <ChevronDown className={`w-3.5 h-3.5 shrink-0 opacity-70 transition-transform duration-200 ${inRail ? '-rotate-90' : open ? 'rotate-180' : ''}`} />
           )}
         </span>
       </button>

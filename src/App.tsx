@@ -56,6 +56,7 @@ import {
 import { subscribeToMultiWindowSync } from './utils/multiWindowSync';
 
 import { Navbar, type AppTab } from './components/Navbar';
+import { btn, modalScrim, modalCard, modalHeader, modalTitle, modalClose, modalFooter } from './components/ui';
 import { NkerpSyncView } from './components/NkerpSyncView';
 import { NajafEmailsView } from './components/NajafEmailsView';
 import { useNajafEmails } from './hooks/useNajafEmails';
@@ -1427,70 +1428,46 @@ export default function App() {
 
       {/* Allocation Notice Confirmation Modal (Same-day turnover hour difference & Room not vacant force allocation notice) */}
       {allocationNotice && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-lg w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between gap-3 pb-3 border-b border-stone-100">
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${allocationNotice.isSameDayTurnover || allocationNotice.isApproval ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
-                  {allocationNotice.isSameDayTurnover ? (
-                    <Clock className="w-5 h-5" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-bold text-stone-900 text-base leading-tight">
-                    {allocationNotice.title}
-                  </h3>
-                  <p className="text-xs text-stone-500">
-                    Room {allocationNotice.roomNumber} • {allocationNotice.building} Hotel • For {allocationNotice.guestName}
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="allocation-notice-title">
+          <div className={`${modalCard} max-w-lg`}>
+            <div className={modalHeader}>
+              <div className="flex items-start gap-3 min-w-0">
+                <span className={`mt-0.5 w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${allocationNotice.isSameDayTurnover || allocationNotice.isApproval ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                  {allocationNotice.isSameDayTurnover ? <Clock className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                </span>
+                <div className="min-w-0">
+                  <h3 id="allocation-notice-title" className={modalTitle}>{allocationNotice.title}</h3>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Room {allocationNotice.roomNumber} · {allocationNotice.building} · for {allocationNotice.guestName}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setAllocationNotice(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg cursor-pointer"
-              >
+              <button type="button" onClick={() => setAllocationNotice(null)} aria-label="Close" className={modalClose}>
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className={`p-3.5 rounded-xl text-xs space-y-2 border ${
-              allocationNotice.isSameDayTurnover || allocationNotice.isApproval
-                ? 'bg-amber-50/80 border-amber-200 text-amber-950'
-                : 'bg-rose-50/80 border-rose-200 text-rose-950'
-            }`}>
-              <div className="font-semibold text-sm leading-snug">
-                {allocationNotice.message}
+            <div className="px-5 sm:px-6 py-5 space-y-3 overflow-y-auto">
+              <div className={`rounded-xl px-4 py-3 text-sm leading-relaxed ring-1 ring-inset ${
+                allocationNotice.isSameDayTurnover || allocationNotice.isApproval
+                  ? 'bg-amber-50 ring-amber-200 text-amber-900'
+                  : 'bg-rose-50 ring-rose-200 text-rose-900'
+              }`}>
+                <p className="font-medium">{allocationNotice.message}</p>
+                {allocationNotice.diffHoursText && (
+                  <p className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold tabular-nums">
+                    <Clock className="w-4 h-4" />
+                    Hour difference: {allocationNotice.diffHoursText} hours
+                  </p>
+                )}
               </div>
-              {allocationNotice.diffHoursText && (
-                <div className="flex items-center gap-2 pt-1 font-mono text-xs">
-                  <span className="bg-amber-200/80 border border-amber-300 px-2 py-0.5 rounded font-bold">
-                    ⏱ Hour Difference: {allocationNotice.diffHoursText} Hours
-                  </span>
-                </div>
-              )}
+              <p className="text-[13px] text-stone-500">Allotting will save this room and update the room grid.</p>
             </div>
 
-            <p className="text-[11px] text-stone-500">
-              Allotting will save this room and update the room grid.
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setAllocationNotice(null)}
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={allocationNotice.onConfirm}
-                className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4 text-gold-200" />
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setAllocationNotice(null)} className={btn.secondary}>Cancel</button>
+              <button type="button" onClick={allocationNotice.onConfirm} className={btn.primary}>
+                <CheckCircle2 className="w-4 h-4" />
                 <span>{allocationNotice.confirmLabel || 'Allot anyway'}</span>
               </button>
             </div>
@@ -1499,11 +1476,11 @@ export default function App() {
       )}
 
       {/* User request: "when the app is opened first ask to upload excel and then sync the document" */}
-      {isSaving && <div role="status" className="fixed bottom-20 lg:bottom-5 left-5 lg:left-[calc(var(--rail-w)+1.25rem)] z-50 rounded-lg bg-stone-900 px-3 py-2 text-xs text-white">Saving to the app…</div>}
+      {isSaving && <div role="status" className="fixed bottom-20 lg:bottom-5 left-5 lg:left-[calc(var(--rail-w)+1.25rem)] z-50 rounded-lg bg-stone-900 px-3 py-2 text-[13px] font-medium text-white shadow-lg">Saving to the app…</div>}
 
       {/* Toast Notification */}
       {toast && (
-        <div role="status" className="fixed bottom-20 lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-xl shadow-2xl text-[13px] leading-snug animate-in fade-in slide-in-from-bottom-2">
+        <div role="status" className="fixed bottom-20 lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-xl shadow-2xl text-sm leading-snug animate-in fade-in slide-in-from-bottom-2">
           {toast.type === 'error' ? (
             <AlertCircle className="w-4 h-4 mt-px text-rose-300 shrink-0" />
           ) : (
@@ -1513,9 +1490,9 @@ export default function App() {
           <button
             onClick={() => setToast(null)}
             aria-label="Dismiss"
-            className="-mr-1 -mt-0.5 p-1 rounded text-stone-400 hover:text-white cursor-pointer"
+            className="-mr-1.5 -mt-1 w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-white/10 cursor-pointer"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
