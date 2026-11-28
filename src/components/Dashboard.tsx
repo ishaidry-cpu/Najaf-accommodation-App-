@@ -1,57 +1,170 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { 
-  Building2, 
-  BedDouble, 
-  Users, 
-  CheckCircle2, 
-  Clock, 
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import {
+  Building2,
+  CheckCircle2,
   Calendar,
   AlertCircle,
-  FileSpreadsheet,
   Printer,
   Upload,
-  Download,
-  Filter,
   ArrowRight,
-  ShieldAlert,
-  Info,
   ChevronRight,
   ChevronDown,
   Lock,
   Unlock,
-  CheckSquare,
   Sparkles,
   Trash2,
   X,
-  ArrowUpRight,
   RefreshCw,
   Search,
   Plus,
   ArrowRightLeft,
-  History,
-  UploadCloud,
-  LogIn,
-  LogOut,
   Star,
-  FileText
+  FileText,
+  Users,
+  Pencil,
 } from 'lucide-react';
 import type { PullStatus } from '../services/api';
 import { Reservation, Room, UserRole } from '../types';
-import { FaizHusainiLogo } from './FaizHusainiLogo';
 import {
-  getRoomStatusOnDate,
-  getRoomBookingOnDate,
   getRoomBookingsOnDate,
   countEffectivePax,
   getVacantRoomsForDuration,
-  normalizeBuildingName,
   getDistinctBuildings,
   getRoomBedCount,
 } from '../services/storage';
+import { extractCleanTime } from '../utils/turnoverTiming';
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
-import { CountUp } from './ui';
+import { BuildingBoard, formatDay, HATCH } from './BuildingBoard';
+import {
+  CountUp,
+  PageHeader,
+  SectionHeader,
+  btn,
+  btnSm,
+  btnDanger,
+  chip,
+  card,
+  panel,
+  field,
+  fieldSm,
+  fieldLabel,
+  modalScrim,
+  modalCard,
+  modalHeader,
+  modalTitle,
+  modalClose,
+  modalFooter,
+} from './ui';
+
+/* ------------------------------------------------------------------ */
+/* Display helpers. They only change how a value reads on screen.      */
+/* ------------------------------------------------------------------ */
+
+/** `23:59`, `11:00 AM` and the like read `11:59 PM`; anything unrecognised is shown as it is. */
+const formatTime = (value?: string | null): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  return extractCleanTime(raw, undefined, undefined, raw).replace(/^0(?=\d:)/, '');
+};
+
+/** A day and, when there is one, its time: `28 Nov, 11:00 AM`. */
+const formatStay = (date?: string | null, time?: string | null): string => {
+  const day = formatDay(date);
+  const t = formatTime(time);
+  return t ? `${day}, ${t}` : day;
+};
+
+/** Tour IDs all start `NKERP/TOUR/`; tight lists show the part that differs (the full ID stays in the tooltip). */
+const shortTour = (id?: string | null): string => String(id ?? '').trim().replace(/^NKERP\/TOUR\//i, '');
+
+/** A saved timestamp: `27 Nov, 3:15 PM`. */
+const formatWhen = (iso?: string): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const day = d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${day}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+};
+
+/** On the phone and tablet layout, compact controls grow to a 40px touch target. */
+const touch = 'max-lg:h-10';
+
+/** Segmented choice (Timeline / Grid, building, room state): a quiet track with the chosen option raised. */
+const segTrack = 'inline-flex flex-wrap items-center gap-1 rounded-lg bg-stone-200/70 p-1';
+const segBtn = (on: boolean) =>
+  `inline-flex items-center justify-center gap-1.5 h-8 max-lg:h-10 px-3 rounded-md text-[13px] font-medium whitespace-nowrap transition cursor-pointer ${
+    on ? 'bg-white text-stone-950 shadow-xs' : 'text-stone-600 hover:text-stone-950'
+  }`;
+
+/**
+ * The amber "Room changed" chip. Hover, focus or tap opens the list of changes;
+ * the list is nudged left when it would run off the screen.
+ */
+const ChangeHistory: React.FC<{ label: React.ReactNode; title: string; children: React.ReactNode }> = ({ label, title, children }) => {
+  const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const show = () => {
+    const el = ref.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const width = Math.min(352, window.innerWidth - 24);
+      const overflow = rect.left + width - (window.innerWidth - 12);
+      setShift(overflow > 0 ? -overflow : 0);
+    }
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      className="relative inline-flex"
+      // Hover is for a mouse only; a finger opens the list with a tap and closes it by tapping elsewhere.
+      onPointerEnter={(e) => {
+        if (e.pointerType === 'mouse') show();
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'mouse') setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={show}
+        onFocus={show}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setOpen(false);
+        }}
+        className={`${chip('wait')} relative cursor-help before:absolute before:-inset-y-2 before:inset-x-0 before:content-['']`}
+      >
+        <ArrowRightLeft className="w-3 h-3" />
+        {label}
+      </button>
+      {open && (
+        <div className="absolute top-full z-40 pt-1.5 w-[22rem] max-w-[calc(100vw-1.5rem)]" style={{ left: shift }}>
+          <div role="tooltip" className="rounded-xl border border-stone-200 bg-white p-3 text-left shadow-xl">
+            <div className="text-[13px] font-semibold text-stone-950">{title}</div>
+            <div className="mt-2 max-h-60 overflow-y-auto divide-y divide-stone-200">{children}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface DashboardProps {
   reservations: Reservation[];
@@ -509,53 +622,55 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const vacantCount = completelyAvailableCount;
   const occupiedCount = partialOccupiedCount + fullOccupiedCount;
 
-  // Render function for each room button in Compact Matrix:
-  // Color Concept:
-  // - full occupied (No space) - RED
-  // - occupied but still space - ORANGE
-  // - completely available - Green
-  // - Blocked - Grey and lock sign (just like it is now)
-  // - if occupied by VIP (written in tour ID) mention a small v in the button
+  // The room grid's quick filter: which states a room has to be in to be shown.
+  const matchesStatusFilter = (state: ReturnType<typeof getMatrixState>) => {
+    if (statusFilter === 'available' && state.status !== 'available') return false;
+    if (statusFilter === 'partial' && state.status !== 'partial') return false;
+    if (statusFilter === 'full' && state.status !== 'full') return false;
+    if (statusFilter === 'occupied' && state.status !== 'partial' && state.status !== 'full') return false;
+    if (statusFilter === 'blocked' && state.status !== 'blocked') return false;
+    if (statusFilter === 'vip' && !state.isVip) return false;
+    return true;
+  };
+
+  // One room in the grid. The look matches the "Buildings today" board:
+  // free = white with an emerald ring, occupied = stone, blocked = hatched.
+  // A room that is occupied but still has space carries a small emerald dot; a VIP tour a small gold "v".
   const renderMatrixRoomButton = (room: Room) => {
     const state = getMatrixState(room);
-    if (statusFilter === 'available' && state.status !== 'available') return null;
-    if (statusFilter === 'partial' && state.status !== 'partial') return null;
-    if (statusFilter === 'full' && state.status !== 'full') return null;
-    if (statusFilter === 'occupied' && state.status !== 'partial' && state.status !== 'full') return null;
-    if (statusFilter === 'blocked' && state.status !== 'blocked') return null;
-    if (statusFilter === 'vip' && !state.isVip) return null;
+    if (!matchesStatusFilter(state)) return null;
 
-    let btnBg = 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700'; // completely available - Green
-    if (state.status === 'full') {
-      btnBg = 'bg-red-600 hover:bg-red-700 text-white border border-red-700'; // full occupied (No space) - RED
-    } else if (state.status === 'partial') {
-      btnBg = 'bg-orange-500 hover:bg-orange-600 text-white border border-orange-600'; // occupied but still space - ORANGE
+    let look = 'bg-white text-emerald-800 font-bold ring-2 ring-inset ring-emerald-500';
+    if (state.status === 'full' || state.status === 'partial') {
+      look = 'bg-stone-200 text-stone-600 font-medium';
     } else if (state.status === 'blocked') {
-      btnBg = 'bg-stone-300 hover:bg-stone-400 text-stone-800 border border-stone-400'; // Blocked - Grey
+      look = 'bg-stone-100 text-stone-500 font-medium';
     }
 
-    const tooltipLines = [
-      `Room ${room.roomNumber} (${room.building})`,
-      `Occupancy: ${state.currentOccupancy} / ${state.maxCapacity} Pax${state.remainingSlots > 0 ? ` (${state.remainingSlots} space left)` : ' (No space)'}`,
-      `Beds: ${getRoomBedCount(room)} × ${room.bedType || 'Single Beds'} • Toilet: ${room.toiletType || 'Standard'}`,
+    const statusLine =
       state.status === 'blocked'
-        ? `Status: BLOCKED (${room.blockedReason || 'Maintenance buffer'})`
+        ? `Blocked (${room.blockedReason || 'Maintenance buffer'})`
         : state.status === 'full'
-        ? 'Status: FULL OCCUPIED (No space - RED)'
+        ? 'Full, no space'
         : state.status === 'partial'
-        ? `Status: OCCUPIED BUT STILL SPACE (${state.remainingSlots} open - ORANGE)`
-        : 'Status: COMPLETELY AVAILABLE (Green)',
+        ? `Occupied, ${state.remainingSlots} ${state.remainingSlots === 1 ? 'place' : 'places'} free`
+        : 'Free';
+
+    const tooltipLines = [
+      `${room.building} ${room.roomNumber}: ${statusLine}`,
+      `${state.currentOccupancy} of ${state.maxCapacity} places taken`,
+      `Beds: ${getRoomBedCount(room)} × ${room.bedType || 'Single Beds'} · Toilet: ${room.toiletType || 'Standard'}`,
     ];
 
     if (state.isVip) {
-      tooltipLines.push(`⭐ VIP Tour ID: ${state.vipTourIds.join(', ')}`);
+      tooltipLines.push(`VIP Tour ID: ${state.vipTourIds.join(', ')}`);
     }
 
     if (state.occupants.length > 0) {
       tooltipLines.push(
-        `Guests (${state.occupants.length}):\n` +
+        `Zaereen (${state.occupants.length}):\n` +
           state.occupants
-            .map((o: Reservation) => `• ${o.applicantName} (Fam #${o.family}, Tour: ${o.tourRefNo || o.tourId || '—'})`)
+            .map((o: Reservation) => `• ${o.applicantName} (Family ${o.family}, Tour ${o.tourRefNo || o.tourId || '—'})`)
             .join('\n')
       );
     }
@@ -566,23 +681,73 @@ export const Dashboard: React.FC<DashboardProps> = ({
         type="button"
         onClick={() => setInspectedRoom(room)}
         title={tooltipLines.join('\n')}
-        className={`w-11 h-11 sm:w-11 sm:h-9 rounded-md text-[11px] font-bold flex flex-col items-center justify-center transition shadow-2xs cursor-pointer relative tabular-nums ${btnBg} ${
-          inspectedRoom?.id === room.id ? 'ring-2 ring-stone-900 ring-offset-1' : ''
+        aria-label={`${room.building} ${room.roomNumber}, ${statusLine}${state.isVip ? ', VIP tour' : ''}`}
+        style={state.status === 'blocked' ? HATCH : undefined}
+        className={`relative w-11 h-11 sm:h-9 rounded-md text-xs tabular-nums flex items-center justify-center cursor-pointer hover:outline-2 hover:outline-offset-1 hover:outline-brand-500/70 ${look} ${
+          inspectedRoom?.id === room.id ? 'outline-2 outline-offset-1 outline-stone-900' : ''
         }`}
       >
-        <span className="leading-tight">{room.roomNumber}</span>
-        {state.status === 'blocked' && (
-          <Lock className="w-2.5 h-2.5 text-stone-700 absolute bottom-0.5 right-0.5" />
+        <span>{room.roomNumber}</span>
+        {state.status === 'partial' && (
+          <span aria-hidden="true" className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />
         )}
+        {state.status === 'blocked' && <Lock aria-hidden="true" className="w-2.5 h-2.5 text-stone-500 absolute bottom-0.5 right-0.5" />}
         {state.isVip && (
           <span
-            className="absolute top-0.5 right-0.5 text-[8.5px] font-black leading-none px-1 py-0.2 rounded-xs bg-amber-300 text-stone-950 border border-amber-400 shadow-2xs font-mono"
-            title={`VIP Tour: ${state.vipTourIds.join(', ')}`}
+            aria-hidden="true"
+            className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-gold-300 text-[11px] leading-[14px] font-semibold text-stone-950 text-center"
           >
             v
           </span>
         )}
       </button>
+    );
+  };
+
+  // One building in the room grid: its name, its counts, and a row of rooms per floor.
+  const renderGridBuilding = (
+    name: string,
+    detail: string,
+    buildingRooms: Room[],
+    floorGroups: { label: string; rooms: Room[] }[]
+  ) => {
+    const counts = { available: 0, partial: 0, full: 0, blocked: 0 };
+    buildingRooms.forEach((r) => {
+      counts[getMatrixState(r).status] += 1;
+    });
+    const rows = floorGroups
+      .map((g) => ({ label: g.label, rooms: g.rooms.filter((r) => matchesStatusFilter(getMatrixState(r))) }))
+      .filter((g) => g.rooms.length > 0);
+
+    return (
+      <section key={name} aria-label={name} className="border-t border-stone-200 pt-4 first:border-t-0 first:pt-0">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h4 className="text-[15px] font-semibold text-stone-950">
+            {name}
+            <span className="ml-2 text-[13px] font-normal text-stone-500">{detail}</span>
+          </h4>
+          <p className="text-[13px] text-stone-600 tabular-nums">
+            <span className={counts.available > 0 ? 'font-semibold text-emerald-800' : ''}>{counts.available} free</span>
+            {' · '}
+            {counts.partial} with space
+            {' · '}
+            {counts.full} full
+            {counts.blocked > 0 && ` · ${counts.blocked} blocked`}
+          </p>
+        </div>
+        {rows.length > 0 ? (
+          <div className="mt-3 space-y-1.5">
+            {rows.map((g) => (
+              <div key={g.label} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                <div className="sm:w-32 shrink-0 text-xs text-stone-500 tabular-nums">{g.label}</div>
+                <div className="flex flex-wrap gap-1.5 flex-1">{g.rooms.map(renderMatrixRoomButton)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-[13px] text-stone-500">No rooms in {name} match this filter.</p>
+        )}
+      </section>
     );
   };
 
@@ -623,112 +788,165 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
   }, [reservations, selectedDate]);
 
+  const isToday = selectedDate === todayStr;
+  const dayPhrase = isToday ? 'today' : `on ${formatDay(selectedDate)}`;
+  const hasTourFilter = !!(tourSearchQuery || tourArrivalDateFilter || tourDepartureDateFilter);
+  const resetTourFilters = () => {
+    setTourSearchQuery('');
+    setTourArrivalDateFilter('');
+    setTourDepartureDateFilter('');
+  };
+
+  // The room whose details are open, re-read from the inventory so a block or unblock shows at once.
+  const openRoom = inspectedRoom ? rooms.find((r) => r.id === inspectedRoom.id) || inspectedRoom : null;
+  const roomScrimRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!inspectedRoom && !recordToDelete) return;
+    // Escape closes the top pop-up only: the delete confirmation first, then the room details,
+    // and nothing here while another window (switch room, special guest) is open above them.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (recordToDelete) {
+        setRecordToDelete(null);
+        return;
+      }
+      const mine = roomScrimRef.current;
+      if (!mine) return;
+      const covered = Array.from(document.querySelectorAll<HTMLElement>('.fixed.inset-0')).some(
+        (el) => el !== mine && !mine.contains(el) && !!(mine.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+      );
+      if (!covered) setInspectedRoom(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [inspectedRoom, recordToDelete]);
+
+  // With a search or date filter that matches no tour, say so instead of leaving the last tour on show.
+  const showTour = filteredTourSummaries.length > 0 || !hasTourFilter;
+
+  const pullLine = !isLiveBackendConnected
+    ? 'App database unavailable'
+    : pullStatus?.running
+    ? 'Pulling from NKERP…'
+    : pullStatus?.error
+    ? pullStatus.error
+    : pullStatus?.lastSyncedAt
+    ? `NKERP pulled at ${new Date(pullStatus.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : 'Waiting for the first NKERP pull';
+  const pullIsBad = !!pullStatus?.error || !isLiveBackendConnected;
+  const nkerpLine = (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[13px]">
+      <span className={`inline-flex items-center gap-1.5 max-md:w-full ${pullIsBad ? 'text-rose-700' : 'text-stone-600'}`} role="status">
+        <span
+          aria-hidden="true"
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${pullIsBad ? 'bg-rose-500' : pullStatus?.lastSyncedAt ? 'bg-emerald-500' : 'bg-stone-400'}`}
+        />
+        {pullLine}
+      </span>
+      <button
+        type="button"
+        className="inline-flex items-center max-lg:min-h-10 font-medium text-brand-700 hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        onClick={onPullNkerp}
+        disabled={isPulling}
+      >
+        Pull from NKERP
+      </button>
+      <button
+        type="button"
+        className="inline-flex items-center max-lg:min-h-10 font-medium text-brand-700 hover:underline cursor-pointer"
+        onClick={onExportRoomAllocation}
+      >
+        Export room allocation
+      </button>
+    </div>
+  );
+
+  const arrivalsWithoutRoom = arrivalsOnDate.filter((r) => !r.roomNumber || r.roomNumber.trim() === '').length;
+
   return (
     <div className="space-y-4 sm:space-y-6 pb-8">
-      {/* MOBILE QUICK-CHECK PANEL (Fast instant lookup on mobile phones) */}
-      <div className="md:hidden bg-white ring-1 ring-stone-200 rounded-2xl p-4 shadow-xs space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-semibold tracking-[-0.01em] text-stone-950">Find a zair</h2>
-            <p className="text-[11px] text-stone-500">
-              Search by name, ITS, tour, office or room
-            </p>
+      {/* Phones: the quick look-up comes first */}
+      <section aria-label="Find a zair" className={`md:hidden ${card} p-4`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold leading-tight text-stone-950">Find a zair</h2>
+            <p className="mt-1 text-[13px] text-stone-600">Search by name, ITS, tour, office or room</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            {onOpenAddZaer && (
-              <button
-                type="button"
-                onClick={onOpenAddZaer}
-                className="min-h-[40px] px-3 rounded-xl bg-brand-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Zair</span>
-              </button>
-            )}
-          </div>
+          {onOpenAddZaer && (
+            <button type="button" onClick={onOpenAddZaer} className={`${btn.primary} shrink-0`}>
+              <Plus className="w-4 h-4" />
+              Add zair
+            </button>
+          )}
         </div>
 
-        <div className="relative">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3.5" />
+        <div className="relative mt-3">
+          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={mobileQuickSearch}
             onChange={(e) => setMobileQuickSearch(e.target.value)}
             placeholder="Name, ITS, tour ID or room"
-            className="w-full min-h-[44px] bg-stone-50 border border-stone-200 rounded-xl pl-9 pr-9 text-[15px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700"
+            aria-label="Find a zair"
+            className={`${field} pl-9 pr-11`}
           />
           {mobileQuickSearch && (
             <button
               type="button"
               onClick={() => setMobileQuickSearch('')}
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center absolute right-1 top-1 text-stone-400 hover:text-stone-700 cursor-pointer"
-              aria-label="Clear mobile search"
+              className="absolute right-0 top-0 w-10 h-10 flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 cursor-pointer"
+              aria-label="Clear search"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {mobileQuickSearch.trim() && (
-          <div className="space-y-2 max-h-80 overflow-y-auto pt-1">
-            {mobileQuickMatches.length > 0 ? (
-              mobileQuickMatches.map((res) => (
-                <div
-                  key={res.id}
-                  className="bg-stone-50 border border-stone-200 rounded-xl p-3 space-y-2 text-xs"
-                >
-                  <div className="flex items-start justify-between gap-2">
+        {mobileQuickSearch.trim() &&
+          (mobileQuickMatches.length > 0 ? (
+            <ul className="mt-3 max-h-[26rem] overflow-y-auto divide-y divide-stone-200 border-t border-stone-200">
+              {mobileQuickMatches.map((res) => (
+                <li key={res.id} className="py-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-bold text-stone-950 flex items-center gap-1 truncate">
-                        {res.isSpecialGuest && (
-                          <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 shrink-0" />
-                        )}
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-stone-950">
+                        {res.isSpecialGuest && <Star aria-label="Starred" className="w-3.5 h-3.5 text-gold-500 fill-gold-400 shrink-0" />}
                         <span className="truncate">{res.applicantName}</span>
                       </div>
-                      <div className="text-[11px] text-stone-600 font-mono mt-0.5 tabular-nums">
-                        ITS {res.itsId || '—'} · Fam #{res.family || '—'}
+                      <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                        ITS {res.itsId || '—'} · Family {res.family || '—'}
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className={`font-extrabold text-xs tabular-nums ${res.roomNumber ? 'text-brand-700' : 'text-amber-700'}`}>
-                        {res.roomNumber ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-[11px] text-stone-700">
-                    <span className="font-mono font-bold text-brand-700">
-                      Tour {res.tourRefNo || res.tourId || '—'}
-                    </span>
-                    {res.officeName && (
-                      <span className="text-stone-600"> · {res.officeName}</span>
+                    {res.roomNumber ? (
+                      <span className="shrink-0 text-right text-[13px] font-bold text-stone-950 tabular-nums">
+                        {res.building} {res.roomNumber}
+                      </span>
+                    ) : (
+                      <span className={`${chip('wait')} shrink-0`}>Needs a room</span>
                     )}
                   </div>
 
-                  <div className="text-[11px] text-stone-500 tabular-nums">
-                    Arr: {(res.arrivalDate || '').slice(0, 10)} ({res.arrivalTime || '11:00 AM'}) ➔ Dep:{' '}
-                    {(res.departureDate || '').slice(0, 10)} ({res.departureTime || '01:00 AM'})
+                  <div className="mt-1 text-[13px] text-stone-600">
+                    <span className="tabular-nums">Tour {res.tourRefNo || res.tourId || '—'}</span>
+                    {res.officeName && <span> · {res.officeName}</span>}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-stone-500 tabular-nums">
+                    {formatStay((res.arrivalDate || '').slice(0, 10), res.arrivalTime || '11:00 AM')}
+                    {' → '}
+                    {formatStay((res.departureDate || '').slice(0, 10), res.departureTime || '01:00 AM')}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
                     {res.roomNumber && onOpenSwitchRoomModal ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenSwitchRoomModal({ reservations: [res] })}
-                        className="min-h-[44px] rounded-xl bg-brand-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
-                        <span>Switch Room</span>
+                      <button type="button" onClick={() => onOpenSwitchRoomModal({ reservations: [res] })} className={btn.primary}>
+                        <ArrowRightLeft className="w-4 h-4" />
+                        Switch room
                       </button>
                     ) : (
                       onOpenQuickAllotModal && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenQuickAllotModal(res)}
-                          className="min-h-[44px] rounded-xl bg-brand-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Allot Room</span>
+                        <button type="button" onClick={() => onOpenQuickAllotModal(res)} className={btn.primary}>
+                          <Sparkles className="w-4 h-4" />
+                          Allot room
                         </button>
                       )
                     )}
@@ -741,438 +959,405 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           setMobileQuickSearch('');
                         }
                       }}
-                      className="min-h-[44px] rounded-xl bg-white border border-stone-300 text-stone-800 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                      className={btn.secondary}
                     >
-                      <span>View Tour</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
+                      View tour
+                      <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 text-center text-xs text-stone-400">
-                No matching zaereen found for "{mobileQuickSearch}".
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 py-3 text-center text-[13px] text-stone-600">
+              No zaereen match "{mobileQuickSearch}". Try a name, an ITS number, a Tour ID or a room number.
+            </p>
+          ))}
+      </section>
 
-      {/* Page header: title, today's context, sheet status and the main actions */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between pt-1 md:pt-3">
-        <div className="min-w-0">
-          <h1 className="hidden md:block type-display text-[32px] leading-none font-semibold text-stone-950">
-            Reception overview
-          </h1>
-          <p className="hidden md:block mt-1 text-sm text-stone-500">
-            {new Date(selectedDate + 'T00:00:00').toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}
-            {', '}
-            {rooms.length} rooms in {distinctBuildings.join(', ')}
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-            <span className={pullStatus?.error ? 'text-rose-700' : 'text-stone-600'} role="status">
-              {!isLiveBackendConnected ? 'App database unavailable' : pullStatus?.running ? 'Pulling from NKERP…' :
-                pullStatus?.error ? pullStatus.error : pullStatus?.lastSyncedAt
-                  ? `NKERP pulled at ${new Date(pullStatus.lastSyncedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
-                  : 'Waiting for the first NKERP pull'}
+      {/* Page header: title, today's context, NKERP status and the main actions */}
+      <div className="hidden md:block">
+        <PageHeader
+          title="Reception overview"
+          description={
+            <span className="block text-balance">
+              {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {' · '}
+              {rooms.length} rooms in {distinctBuildings.join(', ')}
             </span>
-            <button type="button" className="font-medium text-brand-700 hover:underline" onClick={onPullNkerp} disabled={isPulling}>Pull from NKERP</button>
-            <button type="button" className="font-medium text-brand-700 hover:underline" onClick={onExportRoomAllocation}>Export room allocation</button>
-          </div>
-        </div>
-
-        <div className="hidden md:flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onDownloadTemplate}
-            className="h-9 px-3 rounded-lg text-[13px] font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition cursor-pointer"
-            title="Download a blank Excel file with the required columns"
-          >
-            Excel template
-          </button>
-          <button
-            type="button"
-            onClick={onOpenUploadExcel}
-            className="h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:ring-stone-300 hover:bg-stone-50 shadow-xs transition cursor-pointer flex items-center gap-1.5"
-          >
-            <Upload className="w-4 h-4 text-stone-500" />
-            Upload Excel
-          </button>
-          {onOpenAddTourGroup && (
-            <button
-              type="button"
-              onClick={onOpenAddTourGroup}
-              className="h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:ring-stone-300 hover:bg-stone-50 shadow-xs transition cursor-pointer flex items-center gap-1.5"
-              title="Add several zaereen who share a tour ID and dates"
-            >
-              <Users className="w-4 h-4 text-stone-500" />
-              Add tour group
-            </button>
-          )}
-          {onOpenAddZaer && (
-            <button
-              type="button"
-              onClick={onOpenAddZaer}
-              className="h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4 text-gold-200" />
-              Add zair
-            </button>
-          )}
-        </div>
+          }
+          meta={nkerpLine}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={onDownloadTemplate}
+                className={btn.ghost}
+                title="Download a blank Excel file with the required columns"
+              >
+                Excel template
+              </button>
+              <button type="button" onClick={onOpenUploadExcel} className={btn.secondary}>
+                <Upload className="w-4 h-4 text-stone-500" />
+                Upload Excel
+              </button>
+              {onOpenAddTourGroup && (
+                <button
+                  type="button"
+                  onClick={onOpenAddTourGroup}
+                  className={btn.secondary}
+                  title="Add several zaereen who share a Tour ID and dates"
+                >
+                  <Users className="w-4 h-4 text-stone-500" />
+                  Add tour group
+                </button>
+              )}
+              {onOpenAddZaer && (
+                <button type="button" onClick={onOpenAddZaer} className={btn.primary}>
+                  <Plus className="w-4 h-4" />
+                  Add zair
+                </button>
+              )}
+            </>
+          }
+        />
       </div>
+      <div className="md:hidden px-1">{nkerpLine}</div>
 
       {/* Key numbers: one quiet strip, colour only where it means something */}
-      <section aria-label="Key numbers" className="rounded-2xl bg-white ring-1 ring-stone-200 shadow-xs overflow-hidden">
-        <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-stone-100">
-          {[
-            {
-              label: 'Zaereen',
-              value: totalZaereen,
-              note: unallottedZaereen.length > 0 ? `${unallottedZaereen.length} need a room` : 'All have rooms',
-              noteClass: unallottedZaereen.length > 0 ? 'text-amber-700' : 'text-emerald-700',
-            },
-            { label: 'Vacant rooms', value: vacantCount, note: 'Ready to allot', dot: 'bg-emerald-500' },
-            { label: 'Occupied rooms', value: occupiedCount, note: 'Zaereen in house', dot: 'bg-amber-500' },
-            { label: 'Blocked rooms', value: blockedCount, note: 'Maintenance or VIP', dot: 'bg-stone-400' },
-            {
-              label: 'B→A shifts',
-              value: bToACount,
-              note: `${bToAPaidCount} paid, ${bToACount - bToAPaidCount} pending`,
-            },
-            {
-              label: 'Uploaded to portal',
-              value: uploadedCount,
-              suffix: `of ${totalZaereen}`,
-              progress: totalZaereen > 0 ? Math.round((uploadedCount / totalZaereen) * 100) : 0,
-            },
-          ].map((k: { label: string; value: number; note?: string; noteClass?: string; dot?: string; suffix?: string; progress?: number }) => (
-            <div key={k.label} className="bg-white px-4 py-3.5 sm:px-5 sm:py-4">
-              <dt className="flex items-center gap-1.5 text-[13px] text-stone-500">
-                {k.dot && <span className={`w-1.5 h-1.5 rounded-full ${k.dot}`} />}
+      <section aria-label="Key numbers" className={`${card} overflow-hidden`}>
+        <dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-stone-200">
+          {(
+            [
+              {
+                label: 'Zaereen',
+                value: totalZaereen,
+                foot:
+                  unallottedZaereen.length > 0 ? (
+                    <span className={chip('wait')}>
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {unallottedZaereen.length} need a room
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-700">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      All have rooms
+                    </span>
+                  ),
+              },
+              {
+                label: 'Vacant rooms',
+                value: vacantCount,
+                swatch: 'bg-white ring-[1.5px] ring-inset ring-emerald-500',
+                foot: 'Ready to allot',
+              },
+              { label: 'Occupied rooms', value: occupiedCount, swatch: 'bg-stone-300', foot: 'Zaereen in house' },
+              { label: 'Blocked rooms', value: blockedCount, swatch: 'bg-stone-100 ring-1 ring-inset ring-stone-300', hatch: true, foot: 'Maintenance or VIP' },
+              {
+                label: 'B→A shifts',
+                value: bToACount,
+                foot: (
+                  <span className="tabular-nums">
+                    {bToAPaidCount} paid,{' '}
+                    <span className={bToACount - bToAPaidCount > 0 ? 'text-amber-700' : ''}>{bToACount - bToAPaidCount} pending</span>
+                  </span>
+                ),
+              },
+              {
+                label: 'Uploaded to portal',
+                value: uploadedCount,
+                suffix: `of ${totalZaereen}`,
+                progress: totalZaereen > 0 ? Math.round((uploadedCount / totalZaereen) * 100) : 0,
+              },
+            ] as { label: string; value: number; foot?: React.ReactNode; swatch?: string; hatch?: boolean; suffix?: string; progress?: number }[]
+          ).map((k) => (
+            <div key={k.label} className="bg-white px-4 py-4 sm:px-5">
+              <dt className="flex items-center gap-1.5 text-[13px] text-stone-600">
+                {k.swatch && (
+                  <span aria-hidden="true" className={`w-2.5 h-2.5 rounded-[3px] shrink-0 ${k.swatch}`} style={k.hatch ? HATCH : undefined} />
+                )}
                 {k.label}
               </dt>
-              <dd className="mt-1.5 flex items-baseline gap-1.5">
-                <CountUp value={k.value} className="type-display text-[34px] leading-none font-semibold text-stone-950 tabular-nums" />
-                {k.suffix && <span className="text-[13px] text-stone-400 tabular-nums">{k.suffix}</span>}
+              <dd className="mt-2 flex items-baseline gap-1.5">
+                <CountUp value={k.value} className="type-display text-[34px] leading-none font-semibold text-stone-950" />
+                {k.suffix && <span className="text-[13px] text-stone-500 tabular-nums">{k.suffix}</span>}
               </dd>
-              {typeof k.progress === 'number' ? (
-                <div className="mt-2.5 flex items-center gap-2">
-                  <div className="h-1 flex-1 rounded-full bg-stone-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-brand-600 transition-[width] duration-700 ease-out" style={{ width: `${k.progress}%` }} />
-                  </div>
-                  <span className="text-xs text-stone-500 tabular-nums">{k.progress}%</span>
-                </div>
-              ) : (
-                <div className={`mt-1.5 text-xs ${k.noteClass || 'text-stone-500'}`}>{k.note}</div>
-              )}
+              <dd className="mt-2 min-h-6 flex items-center text-[13px] text-stone-600">
+                {typeof k.progress === 'number' ? (
+                  <span className="flex flex-1 items-center gap-2">
+                    <span className="h-1.5 flex-1 rounded-full bg-stone-200 overflow-hidden">
+                      <span className="block h-full rounded-full bg-brand-600 transition-[width] duration-700 ease-out" style={{ width: `${k.progress}%` }} />
+                    </span>
+                    <span className="tabular-nums">{k.progress}%</span>
+                  </span>
+                ) : (
+                  k.foot
+                )}
+              </dd>
             </div>
           ))}
         </dl>
       </section>
 
+      {/* Buildings today: every room, floor by floor */}
+      <BuildingBoard rooms={rooms} getRoomState={getMatrixState} date={selectedDate} isToday={isToday} onSelectRoom={setInspectedRoom} />
+
       {/* ========================================================================= */}
-      {/* DASHBOARD TOUR & FAMILY ROOM ALLOTMENT OVERVIEW                           */}
-      {/* "the dasborad and overview I should be able to allot to family members     */}
-      {/* for respective tour IDs"                                                  */}
+      {/* TOURS AND FAMILIES: allot or switch rooms for a whole family at once       */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="space-y-3 pb-3 border-b border-stone-200">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-[-0.01em] text-stone-950">
-                Tours and families
-              </h2>
-          <p className="text-[13px] text-stone-500 mt-0.5">
-            Find a tour by ID, office or date, then allot or switch rooms for a whole family at once.
-          </p>
-        </div>
-
-        {/* Tour count indicator & Reset button */}
-        <div className="flex items-center gap-2 text-xs flex-wrap">
-          {onOpenAddTourGroup && (
-            <button
-              type="button"
-              onClick={onOpenAddTourGroup}
-              className="md:hidden min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-2xs transition cursor-pointer"
-              title="Add a Tour ID with multiple individuals across different family IDs"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Add Tour Group</span>
-            </button>
-          )}
-
-          {tourSummaries.length > 0 && (
-            <span className="text-xs font-semibold text-stone-600 tabular-nums">
-              {filteredTourSummaries.length} of {tourSummaries.length} Tours
-            </span>
-          )}
-          {(tourSearchQuery || tourArrivalDateFilter || tourDepartureDateFilter) && (
-            <button
-              type="button"
-              onClick={() => {
-                setTourSearchQuery('');
-                setTourArrivalDateFilter('');
-                setTourDepartureDateFilter('');
-              }}
-              className="text-xs text-brand-700 hover:underline font-bold flex items-center gap-1 cursor-pointer"
-              title="Reset search and date filters"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Reset Search</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Search Controls: Tour ID / Office Name Search, Arrival Date Filter, Departure Date Filter, Tour Dropdown */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 pt-1">
-        {/* 1. Search by Tour ID or Office Name */}
-        <div className="lg:col-span-3 relative flex items-center">
-          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search Tour ID or Office Name..."
-            value={tourSearchQuery}
-            onChange={(e) => setTourSearchQuery(e.target.value)}
-            className="w-full min-h-[44px] sm:min-h-0 pl-8 pr-7 py-1.5 bg-stone-50 border border-brand-700/30 rounded-xl text-xs font-bold text-brand-700 placeholder:text-stone-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-brand-700 shadow-2xs"
-          />
-          {tourSearchQuery && (
-            <button
-              type="button"
-              onClick={() => setTourSearchQuery('')}
-              className="absolute right-2 text-stone-400 hover:text-stone-700 p-0.5 cursor-pointer"
-              title="Clear Tour ID / Office search"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {/* 2. Filter by Arrival Date */}
-        <div className="lg:col-span-2 flex items-center gap-1 bg-stone-50 border border-brand-700/30 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
-          <LogIn className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-          <span className="text-[10px] font-bold text-stone-600 shrink-0">Arr:</span>
-          <input
-            type="date"
-            value={tourArrivalDateFilter}
-            onChange={(e) => setTourArrivalDateFilter(e.target.value)}
-            className="bg-transparent text-xs font-bold text-brand-700 focus:outline-none cursor-pointer w-full min-w-0"
-            title="Filter tours arriving on date"
-          />
-          {tourArrivalDateFilter && (
-            <button
-              type="button"
-              onClick={() => setTourArrivalDateFilter('')}
-              className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
-              title="Clear arrival date filter"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {/* 3. Filter by Departure Date */}
-        <div className="lg:col-span-2 flex items-center gap-1 bg-stone-50 border border-amber-600/40 rounded-xl px-2 py-1.5 shadow-2xs min-h-[44px] sm:min-h-0">
-          <LogOut className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-          <span className="text-[10px] font-bold text-amber-900 shrink-0">Dep:</span>
-          <input
-            type="date"
-            value={tourDepartureDateFilter}
-            onChange={(e) => setTourDepartureDateFilter(e.target.value)}
-            className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer w-full min-w-0"
-            title="Filter tours departing on date"
-          />
-          {tourDepartureDateFilter && (
-            <button
-              type="button"
-              onClick={() => setTourDepartureDateFilter('')}
-              className="text-stone-400 hover:text-stone-700 p-0.5 shrink-0 cursor-pointer"
-              title="Clear departure date filter"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {/* 4. Tour Selection Dropdown (with Office Name + Tour ID) */}
-        <div className="lg:col-span-5 flex items-center gap-2">
-          <span className="text-xs font-bold text-stone-700 shrink-0 hidden lg:inline">Tour:</span>
-          <select
-            value={currentTourId}
-            onChange={(e) => setDashTourId(e.target.value)}
-            className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-brand-700/40 rounded-xl px-3 py-1.5 text-xs font-bold text-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer shadow-2xs truncate"
-          >
-            {filteredTourSummaries.length > 0 ? (
-              filteredTourSummaries.map((t) => (
-                <option key={t.tourId} value={t.tourId}>
-                  {t.tourId}{t.officeDisplay ? ` — ${t.officeDisplay}` : ''} • Arr: {t.primaryArrivalDate || '—'} • Dep: {t.primaryDepartureDate || '—'} ({t.totalZaereen} Pax)
-                </option>
-              ))
-            ) : (
-              <option value="">No tours found matching search</option>
-            )}
-          </select>
-        </div>
-      </div>
-
-      {/* Quick matching tour selector buttons if filtered with multiple matches */}
-      {filteredTourSummaries.length > 1 && filteredTourSummaries.length <= 8 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
-          <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider shrink-0">Matching Tours:</span>
-          {filteredTourSummaries.map((t) => {
-            const isSelected = t.tourId === currentTourId;
-            return (
-              <button
-                key={t.tourId}
-                type="button"
-                onClick={() => setDashTourId(t.tourId)}
-                className={`min-h-[38px] sm:min-h-0 px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-brand-700 text-white shadow-2xs'
-                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200'
-                }`}
-              >
-                <span className="font-mono">{t.tourId}</span>
-                {t.officeDisplay && (
-                  <span className="text-[10px] font-sans opacity-90 max-w-[140px] truncate">
-                    · {t.officeDisplay}
-                  </span>
-                )}
-                <span className="text-[10px] font-sans font-normal opacity-80 tabular-nums">
-                  ({t.primaryArrivalDate ? t.primaryArrivalDate.slice(5) : '—'} ➔ {t.primaryDepartureDate ? t.primaryDepartureDate.slice(5) : '—'})
+      <section aria-label="Tours and families" className={`${card} p-4 sm:p-6 @container`}>
+        <SectionHeader
+          title="Tours and families"
+          description="Find a tour by ID, office or date, then allot or switch rooms for a whole family at once."
+          actions={
+            <>
+              {tourSummaries.length > 0 && (
+                <span className="text-[13px] text-stone-600 tabular-nums">
+                  {filteredTourSummaries.length} of {tourSummaries.length} tours
                 </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-
-    {/* Selected Tour Summary & Office Name + Room Change History Header */}
-    {currentTourId && (
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-stone-200 shadow-2xs">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="font-mono font-black text-sm text-brand-700 bg-brand-700/10 px-2.5 py-1 rounded-lg border border-brand-700/20">
-            Tour ID: {currentTourId}
-          </span>
-          {(() => {
-            const tourSum = tourSummaries.find((t) => t.tourId === currentTourId);
-            const tourChanges = tourSum?.roomChanges || [];
-            return (
-              <>
-                {tourSum?.officeDisplay && (
-                  <span className="text-xs sm:text-sm font-extrabold text-stone-900">
-                    Office: {tourSum.officeDisplay}
-                  </span>
-                )}
-                {tourSum && (
-                  <div className="flex items-center gap-2 text-xs text-stone-600 font-medium flex-wrap tabular-nums">
-                    <span>· {tourSum.totalZaereen} Zaereen · {tourSum.familiesCount} Families</span>
-                    <span className="text-emerald-800 font-bold">
-                      · Arr: {tourSum.primaryArrivalDate || 'N/A'}
-                    </span>
-                    <span className="text-amber-900 font-bold">
-                      · Dep: {tourSum.primaryDepartureDate || 'N/A'}
-                    </span>
-                  </div>
-                )}
-
-                    {/* Room Change Indicator with Interactive Hover Bubble (User requirement: mark changed room with color & hover bubble) */}
-                    {tourSum?.hasRoomChange && (
-                      <div className="relative group">
-                        <span className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-950 border border-amber-400 font-extrabold text-xs flex items-center gap-1.5 shadow-2xs cursor-help hover:bg-amber-200 transition">
-                          <ArrowRightLeft className="w-3.5 h-3.5 text-amber-800" />
-                          <span>Room Changed ({tourChanges.length})</span>
-                        </span>
-
-                        {/* Floating Bubble on Hover */}
-                        <div className="absolute left-0 top-full mt-1.5 z-40 hidden group-hover:block w-84 sm:w-96 p-3.5 bg-stone-900 text-white rounded-xl shadow-2xl border-2 border-amber-400 text-xs animate-in fade-in">
-                          <div className="flex items-center justify-between pb-2 border-b border-stone-700">
-                            <div className="flex items-center gap-1.5 font-bold text-amber-300">
-                              <History className="w-4 h-4 text-amber-400" />
-                              <span>Room Change History for Tour {currentTourId}</span>
-                            </div>
-                            <span className="text-[10px] bg-amber-950 text-amber-200 border border-amber-800 px-1.5 py-0.5 rounded font-mono">
-                              {tourChanges.length} Change{tourChanges.length > 1 ? 's' : ''}
-                            </span>
-                          </div>
-
-                          <div className="mt-2.5 space-y-2 max-h-60 overflow-y-auto pr-1">
-                            {tourChanges.map((ch, idx) => (
-                              <div key={idx} className="bg-stone-800/95 p-2 rounded-lg border border-stone-700 space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-stone-100">{ch.guestName}</span>
-                                  <span className="text-[11px] font-mono text-stone-300 bg-stone-700 px-1.5 py-0.2 rounded">
-                                    Fam #{ch.family}
-                                  </span>
-                                </div>
-                                <div className="text-amber-300 font-extrabold flex items-center gap-1.5 text-xs bg-amber-950/40 p-1.5 rounded border border-amber-800/50">
-                                  <span className="line-through text-stone-400 font-mono">Room {ch.fromRoom}</span>
-                                  <ArrowRight className="w-3 h-3 text-amber-400 shrink-0" />
-                                  <span className="text-emerald-300 font-mono font-black">Room {ch.toRoom} ({ch.toBuilding || 'Hotel'})</span>
-                                </div>
-                                <div className="text-[10px] text-stone-400 flex items-center justify-between pt-0.5">
-                                  <span>{ch.reason || 'Room reallocated'}</span>
-                                  <span>{new Date(ch.changedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* Special Tour Action Button (Scope: Tour ID) & Tour Manifest Quick Button */}
-            <div className="flex items-center gap-2">
-              {onOpenPdfModal && currentTourId && (
-                <button
-                  type="button"
-                  onClick={() => onOpenPdfModal('tour_manifest', currentTourId)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border bg-brand-700 text-white hover:bg-brand-800 border-gold-400/50 shadow-2xs"
-                  title={`Open Tour ID Specific Lodging Manifest for Tour ${currentTourId} (Search, Pax Names, Allotments & PDF)`}
-                >
-                  <FileText className="w-3.5 h-3.5 text-gold-200" />
-                  <span>Tour Manifest</span>
+              )}
+              {hasTourFilter && (
+                <button type="button" onClick={resetTourFilters} className={`${btnSm.ghost} ${touch}`} title="Reset search and date filters">
+                  <RefreshCw className="w-4 h-4" />
+                  Reset
                 </button>
               )}
+              {onOpenAddTourGroup && (
+                <button
+                  type="button"
+                  onClick={onOpenAddTourGroup}
+                  className={`md:hidden ${btn.secondary}`}
+                  title="Add several zaereen who share a Tour ID and dates"
+                >
+                  <Users className="w-4 h-4 text-stone-500" />
+                  Add tour group
+                </button>
+              )}
+            </>
+          }
+        />
 
-              {(() => {
-                const tourMembers = reservations.filter((r) => r.tourRefNo === currentTourId);
-                const tourStarredCount = tourMembers.filter((r) => r.isSpecialGuest).length;
-                const hasSpecial = tourStarredCount > 0;
-                const firstMember = tourMembers[0];
-                if (!firstMember) return null;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSpecialGuestModalTarget(firstMember);
-                      setSpecialGuestInitialScope('tour');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border ${
-                      hasSpecial
-                        ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
-                        : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300'
-                    }`}
-                    title={`Click to mark or edit special requirements for Tour ${currentTourId}`}
-                  >
-                    <Star className={`w-3.5 h-3.5 ${hasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
-                    <span>{hasSpecial ? `Tour Special (${tourStarredCount}/${tourMembers.length})` : 'Star Tour'}</span>
-                  </button>
-                );
-              })()}
+        {/* Find a tour: search, arrival date, departure date, then the tour itself */}
+        <div className="mt-4 grid grid-cols-2 xl:grid-cols-12 gap-3">
+          <div className="col-span-2 sm:col-span-1 xl:col-span-3">
+            <label htmlFor="overview-tour-search" className={fieldLabel}>
+              Search
+            </label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                id="overview-tour-search"
+                type="text"
+                placeholder="Tour ID or office name"
+                value={tourSearchQuery}
+                onChange={(e) => setTourSearchQuery(e.target.value)}
+                className={`${field} pl-9 pr-10`}
+              />
+              {tourSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTourSearchQuery('')}
+                  className="absolute right-0 top-0 w-10 h-10 flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 cursor-pointer"
+                  title="Clear Tour ID / office search"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
+          </div>
+
+          <div className="xl:col-span-2">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label htmlFor="overview-tour-arrival" className="text-[13px] font-medium text-stone-700">
+                Arriving on
+              </label>
+              {tourArrivalDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTourArrivalDateFilter('')}
+                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer"
+                  title="Clear arrival date filter"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <input
+              id="overview-tour-arrival"
+              type="date"
+              value={tourArrivalDateFilter}
+              onChange={(e) => setTourArrivalDateFilter(e.target.value)}
+              className={`${field} cursor-pointer`}
+              title="Show tours arriving on this date"
+            />
+          </div>
+
+          <div className="xl:col-span-2">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label htmlFor="overview-tour-departure" className="text-[13px] font-medium text-stone-700">
+                Leaving on
+              </label>
+              {tourDepartureDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTourDepartureDateFilter('')}
+                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer"
+                  title="Clear departure date filter"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <input
+              id="overview-tour-departure"
+              type="date"
+              value={tourDepartureDateFilter}
+              onChange={(e) => setTourDepartureDateFilter(e.target.value)}
+              className={`${field} cursor-pointer`}
+              title="Show tours leaving on this date"
+            />
+          </div>
+
+          <div className="col-span-2 sm:col-span-1 xl:col-span-5">
+            <label htmlFor="overview-tour-select" className={fieldLabel}>
+              Tour
+            </label>
+            <select
+              id="overview-tour-select"
+              value={currentTourId}
+              onChange={(e) => setDashTourId(e.target.value)}
+              className={`${field} font-medium truncate`}
+            >
+              {filteredTourSummaries.length > 0 ? (
+                filteredTourSummaries.map((t) => (
+                  <option key={t.tourId} value={t.tourId}>
+                    {t.tourId}
+                    {t.officeDisplay ? ` · ${t.officeDisplay}` : ''} · {formatDay(t.primaryArrivalDate) || '—'} → {formatDay(t.primaryDepartureDate) || '—'} · {t.totalZaereen} zaereen
+                  </option>
+                ))
+              ) : (
+                <option value="">No tours match the search</option>
+              )}
+            </select>
+          </div>
+        </div>
+
+        {/* A short list of matches becomes one-tap choices */}
+        {filteredTourSummaries.length > 1 && filteredTourSummaries.length <= 8 && (
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto app-scroll-x">
+            <span className="text-xs text-stone-500 shrink-0">Matching tours</span>
+            {filteredTourSummaries.map((t) => {
+              const isSelected = t.tourId === currentTourId;
+              return (
+                <button
+                  key={t.tourId}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => setDashTourId(t.tourId)}
+                  className={`${isSelected ? btnSm.primary : btnSm.secondary} ${touch} shrink-0`}
+                >
+                  <span className="tabular-nums">{t.tourId}</span>
+                  {t.officeDisplay && <span className="max-w-[140px] truncate font-normal opacity-85">· {t.officeDisplay}</span>}
+                  <span className="font-normal opacity-85 tabular-nums">
+                    {formatDay(t.primaryArrivalDate) || '—'} → {formatDay(t.primaryDepartureDate) || '—'}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* Families list for the selected Tour ID */}
-        {familiesInTour.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* The chosen tour: who it is, when it stays, and its two actions */}
+        {currentTourId &&
+          showTour &&
+          (() => {
+            const tourSum = tourSummaries.find((t) => t.tourId === currentTourId);
+            const tourChanges = tourSum?.roomChanges || [];
+            const tourMembers = reservations.filter((r) => r.tourRefNo === currentTourId);
+            const tourStarredCount = tourMembers.filter((r) => r.isSpecialGuest).length;
+            const hasSpecial = tourStarredCount > 0;
+            const firstMember = tourMembers[0];
+            return (
+              <div className={`${panel} mt-4 px-4 py-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`}>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    <h3 className="text-base font-semibold text-stone-950 tabular-nums break-all">
+                      <span className="font-normal text-stone-500">Tour ID</span> {currentTourId}
+                    </h3>
+                    {tourSum?.hasRoomChange && (
+                      <ChangeHistory label={`Room changed (${tourChanges.length})`} title={`Room changes for Tour ${currentTourId}`}>
+                        {tourChanges.length > 0 ? (
+                          tourChanges.map((ch, idx) => (
+                            <div key={idx} className="py-2 first:pt-0 last:pb-0">
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-[13px] font-medium text-stone-900">{ch.guestName}</span>
+                                <span className="shrink-0 text-xs text-stone-500 tabular-nums">Family {ch.family}</span>
+                              </div>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums">
+                                <span className="text-stone-500 line-through">Room {ch.fromRoom}</span>
+                                <ArrowRight className="w-3 h-3 text-stone-400 shrink-0" />
+                                <span className="font-semibold text-stone-950">
+                                  Room {ch.toRoom} ({ch.toBuilding || 'Hotel'})
+                                </span>
+                              </div>
+                              <div className="mt-0.5 flex items-baseline justify-between gap-2 text-xs text-stone-500">
+                                <span>{ch.reason || 'Room reallocated'}</span>
+                                <span className="shrink-0 tabular-nums">{formatWhen(ch.changedAt)}</span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-[13px] text-stone-600">A room in this tour was changed. No details were recorded.</p>
+                        )}
+                      </ChangeHistory>
+                    )}
+                  </div>
+                  {tourSum && (
+                    <p className="mt-1 text-[13px] text-stone-600 tabular-nums">
+                      {tourSum.officeDisplay && <span className="font-medium text-stone-800">{tourSum.officeDisplay} · </span>}
+                      {tourSum.totalZaereen} zaereen · {tourSum.familiesCount} {tourSum.familiesCount === 1 ? 'family' : 'families'} ·{' '}
+                      {formatDay(tourSum.primaryArrivalDate) || '—'} → {formatDay(tourSum.primaryDepartureDate) || '—'}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {onOpenPdfModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenPdfModal('tour_manifest', currentTourId)}
+                      className={`${btnSm.secondary} ${touch}`}
+                      title={`Open the lodging manifest for Tour ${currentTourId} (names, allotments and PDF)`}
+                    >
+                      <FileText className="w-4 h-4 text-stone-500" />
+                      Tour manifest
+                    </button>
+                  )}
+                  {firstMember && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSpecialGuestModalTarget(firstMember);
+                        setSpecialGuestInitialScope('tour');
+                      }}
+                      className={`${btnSm.ghost} ${touch}`}
+                      title={`Mark or edit special requirements for Tour ${currentTourId}`}
+                    >
+                      <Star className={`w-4 h-4 ${hasSpecial ? 'fill-gold-400 text-gold-500' : ''}`} />
+                      <span className={hasSpecial ? 'text-gold-700' : ''}>
+                        {hasSpecial ? `Tour special (${tourStarredCount}/${tourMembers.length})` : 'Star tour'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+        {/* The families of the chosen tour, one row each */}
+        {familiesInTour.length > 0 && showTour ? (
+          <ul className="mt-1">
             {familiesInTour.map((famItem) => {
               const currentBuilding = familyDrafts[famItem.family]?.building || famItem.commonBuilding || 'Saifee';
               const currentRoom = familyDrafts[famItem.family]?.roomNumber !== undefined
@@ -1206,314 +1391,272 @@ export const Dashboard: React.FC<DashboardProps> = ({
               );
 
               const isExpanded = !!expandedFamilies[famItem.family];
+              const famStarredCount = famItem.members.filter((m) => m.isSpecialGuest).length;
+              const famHasSpecial = famStarredCount > 0;
+              const firstMember = famItem.members[0];
 
               return (
-                <div
-                  key={famItem.family}
-                  className={`p-4 rounded-xl border transition shadow-2xs ${
-                    famItem.isFullyAllotted
-                      ? famItem.hasRoomChange
-                        ? 'bg-amber-50/40 border-amber-200'
-                        : 'bg-white border-stone-200'
-                      : 'bg-white border-stone-200 border-l-[3px] border-l-amber-400'
-                  }`}
-                >
-                  {/* Family Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-[15px] text-stone-950 tabular-nums">
-                          Family {famItem.family}
+                <li key={famItem.family} className="border-t border-stone-200 py-4 first:border-t-0 last:pb-0">
+                  <div className="grid grid-cols-1 @min-[62rem]:grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-3">
+                    {/* Who they are */}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                        <h4 className="text-[15px] font-semibold text-stone-950 tabular-nums">Family {famItem.family}</h4>
+                        <span className="text-[13px] text-stone-600 tabular-nums">
+                          {famItem.totalCount} {famItem.totalCount === 1 ? 'member' : 'members'}
                         </span>
-                        <span className="text-[11px] text-stone-600 font-semibold">
-                          · {famItem.totalCount} Members
-                        </span>
-                        {famItem.officeName && (
-                          <span className="text-[11px] font-semibold text-emerald-900">
-                            · {famItem.officeName}
-                          </span>
-                        )}
-
-                        {/* Family Special Status Button (Scope: Whole Family) */}
-                        {(() => {
-                          const famStarredCount = famItem.members.filter((m) => m.isSpecialGuest).length;
-                          const famHasSpecial = famStarredCount > 0;
-                          const firstMember = famItem.members[0];
-                          if (!firstMember) return null;
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSpecialGuestModalTarget(firstMember);
-                                setSpecialGuestInitialScope('family');
-                              }}
-                              className={`text-[10px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 transition cursor-pointer border ${
-                                famHasSpecial
-                                  ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
-                                  : 'bg-white text-stone-600 border-stone-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
-                              }`}
-                              title={`Click to mark or edit special requirements for Family ${famItem.family}`}
-                            >
-                              <Star className={`w-3 h-3 ${famHasSpecial ? 'fill-amber-400 text-amber-600' : 'text-stone-400'}`} />
-                              <span>{famHasSpecial ? `Family Special (${famStarredCount})` : 'Star Family'}</span>
-                            </button>
-                          );
-                        })()}
                         {famItem.isFullyAllotted ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-700 text-white font-extrabold flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Room {famItem.commonRoom} ({famItem.commonBuilding})</span>
+                          <span className={chip('ok')}>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Room {famItem.commonRoom} · {famItem.commonBuilding}
+                          </span>
+                        ) : famItem.allottedCount > 0 ? (
+                          <span className={chip('wait')}>
+                            {famItem.allottedCount} of {famItem.totalCount} allotted
                           </span>
                         ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold">
-                            {famItem.allottedCount}/{famItem.totalCount} Allotted
-                          </span>
+                          <span className={chip('wait')}>Needs a room</span>
                         )}
-
-                        {/* Room Change badge on Family Header */}
                         {famItem.hasRoomChange && (
-                          <div className="relative group">
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-400 font-extrabold flex items-center gap-1 cursor-help shadow-2xs">
-                              <ArrowRightLeft className="w-3 h-3 text-amber-800" />
-                              <span>Room Changed</span>
-                            </span>
-
-                            {/* Hover Bubble for Family */}
-                            <div className="absolute left-0 top-full mt-1 z-30 hidden group-hover:block w-72 p-2.5 bg-stone-900 text-white rounded-lg shadow-xl border border-amber-400 text-xs animate-in fade-in">
-                              <div className="font-bold text-amber-300 flex items-center gap-1 pb-1 border-b border-stone-700 text-[11px]">
-                                <History className="w-3 h-3 text-amber-400" />
-                                <span>Family {famItem.family} Room Change History</span>
-                              </div>
-                              <div className="mt-1.5 space-y-1.5 max-h-40 overflow-y-auto">
-                                {famItem.familyChanges.map((ch, cIdx) => (
-                                  <div key={cIdx} className="bg-stone-800 p-1.5 rounded text-[11px]">
-                                    <div className="font-semibold text-stone-200">{ch.guestName}</div>
-                                    <div className="text-amber-300 font-bold flex items-center gap-1 font-mono text-[10px]">
-                                      <span className="line-through text-stone-400">Rm {ch.fromRoom}</span>
-                                      <ArrowRight className="w-2.5 h-2.5 text-amber-400" />
-                                      <span className="text-emerald-300">Rm {ch.toRoom} ({ch.toBuilding || 'Hotel'})</span>
-                                    </div>
-                                    <div className="text-[9px] text-stone-400 mt-0.5">
-                                      {new Date(ch.changedAt).toLocaleString()}
-                                    </div>
+                          <ChangeHistory label="Room changed" title={`Room changes for Family ${famItem.family}`}>
+                            {famItem.familyChanges.length > 0 ? (
+                              famItem.familyChanges.map((ch, cIdx) => (
+                                <div key={cIdx} className="py-2 first:pt-0 last:pb-0">
+                                  <div className="text-[13px] font-medium text-stone-900">{ch.guestName}</div>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums">
+                                    <span className="text-stone-500 line-through">Room {ch.fromRoom}</span>
+                                    <ArrowRight className="w-3 h-3 text-stone-400 shrink-0" />
+                                    <span className="font-semibold text-stone-950">
+                                      Room {ch.toRoom} ({ch.toBuilding || 'Hotel'})
+                                    </span>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
+                                  <div className="mt-0.5 text-xs text-stone-500 tabular-nums">{formatWhen(ch.changedAt)}</div>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-[13px] text-stone-600">A room in this family was changed. No details were recorded.</p>
+                            )}
+                          </ChangeHistory>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 mt-1.5 text-xs flex-wrap">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          <LogIn className="w-3 h-3 text-emerald-700" />
-                          <span>Arr: {famItem.arrivalDate}{famItem.arrivalTime ? ` (${famItem.arrivalTime})` : ''}</span>
-                        </span>
-                        <span className="text-stone-300">➔</span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-950 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 shadow-2xs">
-                          <LogOut className="w-3 h-3 text-amber-700" />
-                          <span>Dep: {famItem.departureDate}{famItem.departureTime ? ` (${famItem.departureTime})` : ''}</span>
-                        </span>
-                      </div>
-                    </div>
+                      <p className="mt-1 text-[13px] text-stone-600 tabular-nums">
+                        {formatStay(famItem.arrivalDate, famItem.arrivalTime)} → {formatStay(famItem.departureDate, famItem.departureTime)}
+                        {famItem.officeName && <span> · {famItem.officeName}</span>}
+                      </p>
 
-                    <button
-                      type="button"
-                      onClick={() => toggleExpandFamily(famItem.family)}
-                      className="text-stone-500 hover:text-stone-900 text-xs font-semibold flex items-center gap-1 p-1 rounded hover:bg-stone-100 cursor-pointer"
-                    >
-                      <span>{isExpanded ? 'Hide' : 'Edit Members'}</span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                  </div>
-
-                  {/* Special Guest Requirements Banner on Family Card */}
-                  {famItem.members.some((m) => m.isSpecialGuest) && (
-                    <div className="mt-2.5 p-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-xs shadow-2xs">
-                      <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-[11px] uppercase tracking-wide">
-                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                        <span>Special Guest Requirements (Do Not Overlook When Allocating):</span>
-                      </div>
-                      <div className="mt-1.5 space-y-1">
-                        {famItem.members
-                          .filter((m) => m.isSpecialGuest)
-                          .map((m) => (
-                            <div key={m.id} className="flex items-center gap-2 flex-wrap text-xs">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSpecialGuestModalTarget(m);
-                                  setSpecialGuestInitialScope('guest');
-                                }}
-                                className="font-black text-amber-950 underline decoration-amber-400 hover:text-amber-800 transition cursor-pointer text-left"
-                                title="Click to edit special guest scope & requirements"
-                              >
-                                {m.applicantName} ({m.itsId}):
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSpecialGuestModalTarget(m);
-                                  setSpecialGuestInitialScope('guest');
-                                }}
-                                className="px-2 py-0.5 rounded-md bg-amber-200/90 hover:bg-amber-300 text-amber-950 font-bold border border-amber-400/80 shadow-2xs transition cursor-pointer text-left"
-                                title="Click to edit special requirements"
-                              >
-                                {m.specialRemarks || 'Special VIP requirements noted'}
-                              </button>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Summary of members names */}
-                  <div className="text-xs text-stone-700 font-medium mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-stone-500 font-semibold">Guests:</span>
-                    {famItem.members.map((m, mIdx) => (
-                      <span key={m.id} className="inline-flex items-center gap-1">
-                        {m.isSpecialGuest && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-950 border border-amber-400 text-[10px] font-black shadow-2xs" title={m.specialRemarks || 'Special Guest'}>
-                            <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
-                            <span>STAR</span>
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-stone-800">
+                        {famItem.members.map((m, mIdx) => (
+                          <span key={m.id} className="inline-block mr-1.5" title={m.isSpecialGuest ? m.specialRemarks || 'Special guest' : undefined}>
+                            {m.isSpecialGuest && (
+                              <Star aria-label="Starred" className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 text-gold-500 fill-gold-400" />
+                            )}
+                            <span className={m.isSpecialGuest ? 'font-semibold' : ''}>{m.applicantName}</span>
+                            {m.age !== undefined && m.age !== null && String(m.age) !== '' && (
+                              <span className="text-stone-500 tabular-nums">, {m.age}</span>
+                            )}
+                            {mIdx < famItem.members.length - 1 && <span className="ml-1.5 text-stone-400">·</span>}
                           </span>
-                        )}
-                        <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
-                          {m.applicantName} ({m.age})
-                        </span>
-                        {mIdx < famItem.members.length - 1 && <span className="text-stone-300">,</span>}
-                      </span>
-                    ))}
-                  </div>
+                        ))}
+                      </p>
 
-                  {/* 1-Click Allotment Controls */}
-                  <div className="mt-3 pt-3 border-t border-stone-200/80 flex flex-wrap items-center gap-2">
-                    <select
-                      value={currentBuilding}
-                      onChange={(e) => {
-                        const newB = e.target.value;
-                        setFamilyDrafts((prev) => ({
-                          ...prev,
-                          [famItem.family]: { building: newB, roomNumber: '' },
-                        }));
-                      }}
-                      className="bg-stone-50 border border-stone-300 rounded-lg px-2 py-1 text-xs font-bold text-brand-700 focus:outline-none cursor-pointer"
-                    >
-                      {distinctBuildings.map((bldg) => (
-                        <option key={bldg} value={bldg}>
-                          {bldg}
-                        </option>
-                      ))}
-                    </select>
+                      {/* Special requirements: seen before a room is chosen */}
+                      {famHasSpecial && (
+                        <div className="mt-2.5 rounded-lg bg-amber-50 px-3 py-2">
+                          <div className="flex items-center gap-1.5 text-[13px] font-medium text-amber-900">
+                            <Star className="w-3.5 h-3.5 shrink-0 text-gold-500 fill-gold-400" />
+                            Special guest requirements. Do not overlook when allotting.
+                          </div>
+                          <ul className="mt-1 space-y-0.5">
+                            {famItem.members
+                              .filter((m) => m.isSpecialGuest)
+                              .map((m) => (
+                                <li key={m.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSpecialGuestModalTarget(m);
+                                      setSpecialGuestInitialScope('guest');
+                                    }}
+                                    className="text-left text-[13px] text-amber-900 hover:underline cursor-pointer max-lg:min-h-10"
+                                    title="Edit this guest's special requirements"
+                                  >
+                                    <span className="font-semibold tabular-nums">
+                                      {m.applicantName} ({m.itsId}):
+                                    </span>{' '}
+                                    {m.specialRemarks || 'Special VIP requirements noted'}
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
 
-                    <select
-                      value={currentRoom}
-                      onChange={(e) => {
-                        const newR = e.target.value;
-                        setFamilyDrafts((prev) => ({
-                          ...prev,
-                          [famItem.family]: { building: currentBuilding, roomNumber: newR },
-                        }));
-                      }}
-                      className="flex-1 min-w-[140px] bg-white border border-emerald-300 rounded-lg px-2 py-1 text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
-                    >
-                      <option value="">-- Choose Room in {currentBuilding} --</option>
-                      {currentRoom && (
-                        <option value={currentRoom}>
-                          Room {currentRoom} ({currentBuilding}) ✓ Current
-                        </option>
-                      )}
-                      {vacantRoomsForFam.length > 0 && (
-                        <optgroup label={`Vacant Rooms in ${currentBuilding} (${vacantRoomsForFam.length})`}>
-                          {vacantRoomsForFam
-                            .filter((rm) => rm.roomNumber !== currentRoom)
-                            .map((rm) => (
-                              <option key={rm.id} value={rm.roomNumber}>
-                                Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
-                              </option>
-                            ))}
-                        </optgroup>
-                      )}
-                      {otherRoomsInBuilding.length > 0 && (
-                        <optgroup label={`Other Rooms in ${currentBuilding} (${otherRoomsInBuilding.length})`}>
-                          {otherRoomsInBuilding.map((rm) => (
-                            <option key={rm.id} value={rm.roomNumber}>
-                              Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.status === 'blocked' ? ' • Blocked' : ''})
+                    {/* Where they go */}
+                    <div className="@min-[62rem]:w-[38rem] flex flex-wrap items-start gap-x-2 gap-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          aria-label={`Building for Family ${famItem.family}`}
+                          value={currentBuilding}
+                          onChange={(e) => {
+                            const newB = e.target.value;
+                            setFamilyDrafts((prev) => ({
+                              ...prev,
+                              [famItem.family]: { building: newB, roomNumber: '' },
+                            }));
+                          }}
+                          className={`${fieldSm} ${touch} w-[calc(40%-0.25rem)] sm:w-28 font-medium`}
+                        >
+                          {distinctBuildings.map((bldg) => (
+                            <option key={bldg} value={bldg}>
+                              {bldg}
                             </option>
                           ))}
-                        </optgroup>
-                      )}
-                      {allRoomsInBuilding.length === 0 && (
-                        <option value="" disabled>
-                          No rooms configured in {currentBuilding}
-                        </option>
-                      )}
-                    </select>
+                        </select>
 
-                    {allRoomsInBuilding.length === 0 && onOpenAddBuildingRooms && (
-                      <button
-                        type="button"
-                        onClick={onOpenAddBuildingRooms}
-                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold cursor-pointer"
-                        title={`Add rooms to ${currentBuilding}`}
-                      >
-                        + Add Rooms
-                      </button>
-                    )}
+                        <select
+                          aria-label={`Room for Family ${famItem.family}`}
+                          value={currentRoom}
+                          onChange={(e) => {
+                            const newR = e.target.value;
+                            setFamilyDrafts((prev) => ({
+                              ...prev,
+                              [famItem.family]: { building: currentBuilding, roomNumber: newR },
+                            }));
+                          }}
+                          className={`${fieldSm} ${touch} w-[calc(60%-0.25rem)] sm:w-40 font-medium`}
+                        >
+                          <option value="">Choose a room</option>
+                          {currentRoom && (
+                            <option value={currentRoom}>
+                              Room {currentRoom} · current
+                            </option>
+                          )}
+                          {vacantRoomsForFam.length > 0 && (
+                            <optgroup label={`Vacant rooms in ${currentBuilding} (${vacantRoomsForFam.length})`}>
+                              {vacantRoomsForFam
+                                .filter((rm) => rm.roomNumber !== currentRoom)
+                                .map((rm) => (
+                                  <option key={rm.id} value={rm.roomNumber}>
+                                    Room {rm.roomNumber} · {rm.floorLabel || `Floor ${rm.floor}`} · sleeps {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          )}
+                          {otherRoomsInBuilding.length > 0 && (
+                            <optgroup label={`Other rooms in ${currentBuilding} (${otherRoomsInBuilding.length})`}>
+                              {otherRoomsInBuilding.map((rm) => (
+                                <option key={rm.id} value={rm.roomNumber}>
+                                  Room {rm.roomNumber} · {rm.floorLabel || `Floor ${rm.floor}`} · sleeps {rm.capacity}{rm.status === 'blocked' ? ' · blocked' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {allRoomsInBuilding.length === 0 && (
+                            <option value="" disabled>
+                              No rooms set up in {currentBuilding}
+                            </option>
+                          )}
+                        </select>
 
-                    <button
-                      type="button"
-                      disabled={!currentRoom}
-                      onClick={() => {
-                        if (onBatchAllotFamily && currentRoom) {
-                          onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, currentRoom);
-                        }
-                      }}
-                      className="min-h-[40px] sm:min-h-0 px-3 py-1 bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-xs transition cursor-pointer"
-                    >
-                      Allot Family ({famItem.totalCount})
-                    </button>
+                        {allRoomsInBuilding.length === 0 && onOpenAddBuildingRooms && (
+                          <button
+                            type="button"
+                            onClick={onOpenAddBuildingRooms}
+                            className={`${btnSm.secondary} ${touch}`}
+                            title={`Add rooms to ${currentBuilding}`}
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add rooms
+                          </button>
+                        )}
 
-                    {famItem.allottedCount > 0 && onOpenSwitchRoomModal && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onOpenSwitchRoomModal({
-                            reservations: famItem.members,
-                            initialScope: 'group',
-                          })
-                        }
-                        className="min-h-[40px] sm:min-h-0 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-brand-700 border border-brand-700/30 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition"
-                        title="Switch or swap room for this family"
-                      >
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
-                        <span>Switch Room</span>
-                      </button>
-                    )}
+                        <button
+                          type="button"
+                          disabled={!currentRoom}
+                          onClick={() => {
+                            if (onBatchAllotFamily && currentRoom) {
+                              onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, currentRoom);
+                            }
+                          }}
+                          className={`${btnSm.primary} ${touch} tabular-nums`}
+                        >
+                          Allot family ({famItem.totalCount})
+                        </button>
 
-                    {famItem.allottedCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (onBatchAllotFamily) {
-                            onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, '');
-                          }
-                        }}
-                        className="min-h-[40px] sm:min-h-0 px-2 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 font-semibold rounded-lg text-xs cursor-pointer"
-                        title="Clear allotment for this entire family"
-                      >
-                        Clear
-                      </button>
-                    )}
+                        {famItem.allottedCount > 0 && onOpenSwitchRoomModal && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onOpenSwitchRoomModal({
+                                reservations: famItem.members,
+                                initialScope: 'group',
+                              })
+                            }
+                            className={`${btnSm.secondary} ${touch}`}
+                            title="Switch or swap room for this family"
+                          >
+                            <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                            Switch room
+                          </button>
+                        )}
+
+                        {famItem.allottedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onBatchAllotFamily) {
+                                onBatchAllotFamily(currentTourId, famItem.family, currentBuilding, '');
+                              }
+                            }}
+                            className={`${btnSm.ghost} ${touch}`}
+                            title="Clear allotment for this entire family"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="-ml-2.5 @min-[40rem]:ml-auto @min-[62rem]:-ml-2.5 flex items-center gap-x-1">
+                        {firstMember && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSpecialGuestModalTarget(firstMember);
+                              setSpecialGuestInitialScope('family');
+                            }}
+                            className={`${btnSm.ghost} ${touch}`}
+                            title={`Mark or edit special requirements for Family ${famItem.family}`}
+                          >
+                            <Star className={`w-4 h-4 ${famHasSpecial ? 'fill-gold-400 text-gold-500' : ''}`} />
+                            <span className={famHasSpecial ? 'text-gold-700' : ''}>
+                              {famHasSpecial ? `Family special (${famStarredCount})` : 'Star family'}
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          aria-expanded={isExpanded}
+                          onClick={() => toggleExpandFamily(famItem.family)}
+                          className={`${btnSm.ghost} ${touch}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                          {isExpanded ? 'Hide members' : 'Edit members'}
+                          <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Individual Member List if expanded ("and if needed it should be editable") */}
+                  {/* Each member on their own line, directly editable */}
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-stone-200 space-y-2 animate-in fade-in">
-                      <div className="text-[11px] font-bold text-stone-600 uppercase">
-                        Individual Family Members (Directly Editable):
+                    <div className={`${panel} mt-3 px-3 sm:px-4 py-3 animate-in fade-in`}>
+                      <div className="text-[13px] font-medium text-stone-800">
+                        Family members
+                        <span className="font-normal text-stone-500"> · choosing a building or room here applies straight away</span>
                       </div>
-                      <div className="space-y-1.5">
+                      <ul className="mt-1 divide-y divide-stone-200">
                         {famItem.members.map((m) => {
                           const memberBuilding = m.building || 'Saifee';
                           const vacantForMember = getVacantRoomsForDuration(
@@ -1538,32 +1681,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             (r) => !memberVacantSet.has(r.roomNumber) && r.roomNumber !== m.roomNumber
                           );
                           return (
-                            <div
-                              key={m.id}
-                              className="flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg bg-stone-50 border border-stone-200 gap-2 text-xs"
-                            >
-                              <div>
-                                <div className="font-bold text-stone-900 flex items-center gap-1.5 flex-wrap">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSpecialGuestModalTarget(m);
-                                      setSpecialGuestInitialScope('guest');
-                                    }}
-                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer ${
-                                      m.isSpecialGuest
-                                        ? 'bg-amber-100 text-amber-950 border-amber-400 shadow-2xs hover:bg-amber-200'
-                                        : 'bg-white text-stone-500 border-stone-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
-                                    }`}
-                                    title={`Click to mark or edit special requirements for ${m.applicantName} (Scope: Guest / Family / Tour ID)`}
-                                  >
-                                    <Star className={`w-3 h-3 ${m.isSpecialGuest ? 'text-amber-500 fill-amber-400' : 'text-stone-400'}`} />
-                                    <span>{m.isSpecialGuest ? 'Special' : 'Star'}</span>
-                                  </button>
-                                  <span className={m.isSpecialGuest ? 'font-black text-amber-950 underline decoration-amber-400' : ''}>
-                                    {m.applicantName}
-                                  </span>
-                                  <span className="font-mono text-stone-400 font-normal">({m.itsId})</span>
+                            <li key={m.id} className="py-2.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+                              <div className="flex items-start gap-1 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSpecialGuestModalTarget(m);
+                                    setSpecialGuestInitialScope('guest');
+                                  }}
+                                  className="-ml-2 -mt-1.5 w-8 h-8 max-lg:w-10 max-lg:h-10 shrink-0 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-200/70 cursor-pointer"
+                                  title={`Mark or edit special requirements for ${m.applicantName} (guest, family or Tour ID)`}
+                                  aria-label={m.isSpecialGuest ? `${m.applicantName} is starred. Edit special requirements` : `Star ${m.applicantName}`}
+                                >
+                                  <Star className={`w-4 h-4 ${m.isSpecialGuest ? 'text-gold-500 fill-gold-400' : ''}`} />
+                                </button>
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-baseline gap-x-2">
+                                    <span className={`text-[13px] text-stone-900 ${m.isSpecialGuest ? 'font-semibold' : 'font-medium'}`}>{m.applicantName}</span>
+                                    <span className="text-[13px] text-stone-500 tabular-nums">{m.itsId}</span>
+                                  </div>
+                                  <div className="mt-0.5 text-xs text-stone-500 tabular-nums">
+                                    Age {m.age} · {m.gender} · {formatStay(m.arrivalDate, m.arrivalTime)} → {formatStay(m.departureDate, m.departureTime)}
+                                  </div>
                                   {m.isSpecialGuest && m.specialRemarks && (
                                     <button
                                       type="button"
@@ -1571,35 +1710,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         setSpecialGuestModalTarget(m);
                                         setSpecialGuestInitialScope('guest');
                                       }}
-                                      className="px-2 py-0.5 rounded-md bg-amber-200/90 hover:bg-amber-300 text-amber-950 text-[11px] font-bold border border-amber-400/80 shadow-2xs cursor-pointer text-left transition"
-                                      title="Click to edit special lodging requirement"
+                                      className="mt-0.5 text-left text-xs font-medium text-amber-800 hover:underline cursor-pointer"
+                                      title="Edit this special lodging requirement"
                                     >
                                       Requirement: {m.specialRemarks}
                                     </button>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
-                                  <span>Age: {m.age} • {m.gender}</span>
-                                  <span>•</span>
-                                  <span className="text-emerald-800 font-semibold inline-flex items-center gap-0.5">
-                                    <LogIn className="w-2.5 h-2.5 text-emerald-600" />
-                                    <span>Arr: {m.arrivalDate}{m.arrivalTime ? ` (${m.arrivalTime})` : ''}</span>
-                                  </span>
-                                  <span>➔</span>
-                                  <span className="text-amber-800 font-bold inline-flex items-center gap-0.5">
-                                    <LogOut className="w-2.5 h-2.5 text-amber-600" />
-                                    <span>Dep: {m.departureDate}{m.departureTime ? ` (${m.departureTime})` : ''}</span>
-                                  </span>
-                                </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-2 shrink-0">
                                 <select
+                                  aria-label={`Building for ${m.applicantName}`}
                                   value={m.building || 'Saifee'}
                                   onChange={(e) => {
                                     onAllotRoom(m.id, e.target.value, m.roomNumber || '');
                                   }}
-                                  className="bg-white border border-stone-300 rounded px-1.5 py-0.5 text-xs font-bold text-brand-700 cursor-pointer"
+                                  className={`${fieldSm} ${touch} w-[calc(40%-0.25rem)] sm:w-28`}
                                 >
                                   {distinctBuildings.map((bldg) => (
                                     <option key={bldg} value={bldg}>
@@ -1609,15 +1736,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </select>
 
                                 <select
+                                  aria-label={`Room for ${m.applicantName}`}
                                   value={m.roomNumber || ''}
                                   onChange={(e) => {
                                     onAllotRoom(m.id, m.building || 'Saifee', e.target.value);
                                   }}
-                                  className="bg-white border border-stone-300 rounded px-2 py-0.5 text-xs font-bold text-stone-900 cursor-pointer min-w-[120px]"
+                                  className={`${fieldSm} ${touch} w-[calc(60%-0.25rem)] sm:w-40`}
                                 >
-                                  <option value="">-- No Room --</option>
+                                  <option value="">No room</option>
                                   {m.roomNumber && (
-                                    <option value={m.roomNumber}>Rm {m.roomNumber} ({memberBuilding}) ✓ Current</option>
+                                    <option value={m.roomNumber}>Room {m.roomNumber} · current</option>
                                   )}
                                   {vacantForMember.length > 0 && (
                                     <optgroup label={`Vacant (${vacantForMember.length})`}>
@@ -1625,16 +1753,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         .filter((rm) => rm.roomNumber !== m.roomNumber)
                                         .map((rm) => (
                                           <option key={rm.id} value={rm.roomNumber}>
-                                            Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity})
+                                            Room {rm.roomNumber} · {rm.floorLabel || `Floor ${rm.floor}`} · sleeps {rm.capacity}
                                           </option>
                                         ))}
                                     </optgroup>
                                   )}
                                   {otherRoomsForMember.length > 0 && (
-                                    <optgroup label={`Other Rooms (${otherRoomsForMember.length})`}>
+                                    <optgroup label={`Other rooms (${otherRoomsForMember.length})`}>
                                       {otherRoomsForMember.map((rm) => (
                                         <option key={rm.id} value={rm.roomNumber}>
-                                          Rm {rm.roomNumber} (Fl {rm.floor} • Cap {rm.capacity}{rm.status === 'blocked' ? ' • Blocked' : ''})
+                                          Room {rm.roomNumber} · {rm.floorLabel || `Floor ${rm.floor}`} · sleeps {rm.capacity}{rm.status === 'blocked' ? ' · blocked' : ''}
                                         </option>
                                       ))}
                                     </optgroup>
@@ -1653,11 +1781,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         initialScope: 'single',
                                       })
                                     }
-                                    className="min-h-[36px] sm:min-h-0 px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-brand-700 border border-brand-700/30 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition"
+                                    className={`${btnSm.secondary} ${touch}`}
                                     title={`Switch room for ${m.applicantName}`}
                                   >
-                                    <ArrowRightLeft className="w-3 h-3" />
-                                    <span>Switch</span>
+                                    <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                                    Switch
                                   </button>
                                 )}
 
@@ -1665,92 +1793,91 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => setRecordToDelete(m)}
-                                    className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
-                                    title={`Delete zaer record for ${m.applicantName}`}
+                                    className={`${btnSm.danger} ${touch} px-2`}
+                                    title={`Delete the zair record for ${m.applicantName}`}
+                                    aria-label={`Delete the zair record for ${m.applicantName}`}
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-4 h-4" />
                                   </button>
                                 )}
                               </div>
-                            </div>
+                            </li>
                           );
                         })}
-                      </div>
+                      </ul>
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <div className="py-10 text-center space-y-3">
-            <div className="text-stone-500 font-semibold text-xs">
-              {filteredTourSummaries.length === 0
-                ? `No tours found matching ${tourSearchQuery ? `Tour ID "${tourSearchQuery}"` : ''}${tourSearchQuery && tourArrivalDateFilter ? ' and ' : ''}${tourArrivalDateFilter ? `Arrival Date "${tourArrivalDateFilter}"` : ''}.`
-                : `No reservations found for the selected Tour ID ${currentTourId || ''}.`}
-            </div>
-            {(tourSearchQuery || tourArrivalDateFilter) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setTourSearchQuery('');
-                  setTourArrivalDateFilter('');
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-700 text-white font-bold text-xs shadow-2xs hover:bg-brand-800 transition cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset Tour Search & Arrival Date</span>
+          <div className="mt-4 border-t border-stone-200 py-10 text-center">
+            {tourSummaries.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-stone-800">No tours yet</p>
+                <p className="mt-1 text-[13px] text-stone-600">
+                  Tours and their families appear here after a pull from NKERP, an Excel upload or a tour group you add.
+                </p>
+              </>
+            ) : filteredTourSummaries.length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-stone-800">No tours match</p>
+                <p className="mt-1 text-[13px] text-stone-600">
+                  {[
+                    tourSearchQuery ? `Tour ID or office "${tourSearchQuery}"` : '',
+                    tourArrivalDateFilter ? `arriving on ${formatDay(tourArrivalDateFilter)}` : '',
+                    tourDepartureDateFilter ? `leaving on ${formatDay(tourDepartureDateFilter)}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(', ') || 'Nothing fits the current search.'}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm font-medium text-stone-800">No zaereen found for Tour ID {currentTourId || ''}</p>
+            )}
+            {hasTourFilter && (
+              <button type="button" onClick={resetTourFilters} className={`${btn.secondary} mt-4`}>
+                <RefreshCw className="w-4 h-4 text-stone-500" />
+                Reset search and dates
               </button>
             )}
           </div>
         )}
-      </div>
+      </section>
 
       {/* ========================================================================= */}
-      {/* ROOMS TIMELINE & OVERVIEW SECTION                                         */}
-      {/* "in Dashboard and overview I want timeline of rooms. as per arrival and   */}
-      {/* departure. showing when the room will be vacant as per the date of       */}
-      {/* departures. top row of dates and horizontal rooms"                        */}
+      {/* ROOMS: the timeline (rooms down, days across) or the grid                  */}
       {/* ========================================================================= */}
-
-      {/* View Mode Toggle: Timeline vs Compact Button Matrix */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pt-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-[-0.01em] text-stone-950">Rooms</h2>
-          <p className="text-[13px] text-stone-500 mt-0.5">
-            {rooms.length} rooms across {distinctBuildings.join(', ')}
-          </p>
-        </div>
-
-        {/* View Switcher Tabs */}
-        <div role="tablist" aria-label="Room view" className="flex items-center bg-stone-200/60 p-1 rounded-lg text-[13px] font-medium">
-          <button
-            type="button"
-            onClick={() => setRoomsViewMode('timeline')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              roomsViewMode === 'timeline'
-                ? 'bg-white text-stone-950 shadow-xs'
-                : 'text-stone-600 hover:text-stone-900'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Timeline</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRoomsViewMode('buttons')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              roomsViewMode === 'buttons'
-                ? 'bg-white text-stone-950 shadow-xs'
-                : 'text-stone-600 hover:text-stone-900'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Grid</span>
-          </button>
-        </div>
-      </div>
+      <SectionHeader
+        className="pt-2"
+        title="Rooms"
+        description={`${rooms.length} rooms across ${distinctBuildings.join(', ')}`}
+        actions={
+          <div role="tablist" aria-label="Room view" className={segTrack}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={roomsViewMode === 'timeline'}
+              onClick={() => setRoomsViewMode('timeline')}
+              className={segBtn(roomsViewMode === 'timeline')}
+            >
+              <Calendar className="w-4 h-4" />
+              Timeline
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={roomsViewMode === 'buttons'}
+              onClick={() => setRoomsViewMode('buttons')}
+              className={segBtn(roomsViewMode === 'buttons')}
+            >
+              <Building2 className="w-4 h-4" />
+              Grid
+            </button>
+          </div>
+        }
+      />
 
       {/* If Timeline View selected, render the dedicated RoomTimelineView */}
       {roomsViewMode === 'timeline' && (
@@ -1768,552 +1895,501 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Compact Room Buttons Matrix (Toggleable) */}
+      {/* The room grid: every room as a small button, by building and floor, for any date */}
       {roomsViewMode === 'buttons' && (
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4">
-        {/* Section Header & Minimalist Controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-stone-200">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-brand-700" />
-              <h3 className="text-sm font-bold text-brand-700 tracking-tight">
-                Hotel Room Vacancy & Allocation Overview
-              </h3>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-stone-100 text-stone-600">
-                {rooms.length} Rooms Inventory
-              </span>
+        <section aria-label="Room grid" className={`${card} p-4 sm:p-6`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold text-stone-950">Room vacancy and allotment</h3>
+              <p className="mt-1 text-[13px] text-stone-600">
+                Choose a room to see who is in it, switch rooms or allot a waiting zair.
+              </p>
             </div>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Click any small button to inspect room status, view guest booking, or allot to waiting zaer.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5 text-xs">
-            {/* Refresh Matrix Button (Takes all data fed in the same computer without changing selectedDate) */}
-            <button
-              type="button"
-              onClick={handleRefreshMatrix}
-              disabled={isRefreshingMatrix}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-50 hover:bg-emerald-50 text-brand-700 border border-brand-700/30 hover:border-brand-700 rounded-lg text-xs font-bold shadow-2xs transition cursor-pointer"
-              title="Refresh Compact Matrix: Pulls all room allocations & zaereen fed on this computer without changing the selected date"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-brand-700 ${isRefreshingMatrix ? 'animate-spin' : ''}`} />
-              <span>{isRefreshingMatrix ? 'Refreshing...' : 'Refresh Matrix'}</span>
-            </button>
-
-            {/* Date Picker Control */}
-            <div className="flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
-              <Calendar className="w-3.5 h-3.5 text-brand-700" />
-              <span className="text-stone-600 font-medium">Date:</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-transparent font-bold text-stone-800 focus:outline-none cursor-pointer"
-              />
-              <button
-                type="button"
-                onClick={() => setSelectedDate(todayStr)}
-                className="text-[10px] ml-1 font-semibold text-brand-700 hover:underline"
-              >
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label htmlFor="overview-grid-date" className={fieldLabel}>
+                  Date
+                </label>
+                <input
+                  id="overview-grid-date"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className={`${fieldSm} ${touch} cursor-pointer`}
+                />
+              </div>
+              <button type="button" onClick={() => setSelectedDate(todayStr)} className={`${btnSm.ghost} ${touch} mb-0.5`}>
                 Today
               </button>
-            </div>
-
-            {/* Hotel Tabs */}
-            <div className="flex items-center bg-stone-100 p-1 rounded-lg font-semibold flex-wrap gap-1">
               <button
                 type="button"
-                onClick={() => setSelectedHotel('ALL')}
-                className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
-                  selectedHotel === 'ALL'
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
+                onClick={handleRefreshMatrix}
+                disabled={isRefreshingMatrix}
+                className={`${btnSm.secondary} ${touch} mb-0.5`}
+                title="Reload the room allotments and zaereen saved on this computer. The chosen date stays as it is."
               >
-                All ({rooms.length})
+                <RefreshCw className={`w-4 h-4 text-stone-500 ${isRefreshingMatrix ? 'animate-spin' : ''}`} />
+                {isRefreshingMatrix ? 'Refreshing…' : 'Refresh grid'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            {/* Building */}
+            <div role="group" aria-label="Building" className={segTrack}>
+              <button type="button" aria-pressed={selectedHotel === 'ALL'} onClick={() => setSelectedHotel('ALL')} className={segBtn(selectedHotel === 'ALL')}>
+                All <span className="tabular-nums opacity-70">{rooms.length}</span>
               </button>
               {distinctBuildings.map((bldg) => {
-                const bldgCount = rooms.filter(r => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                const bldgCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                const on = selectedHotel.toLowerCase() === bldg.toLowerCase();
                 return (
-                  <button
-                    key={bldg}
-                    type="button"
-                    onClick={() => setSelectedHotel(bldg)}
-                    className={`px-2.5 py-1 rounded-md transition text-xs cursor-pointer ${
-                      selectedHotel.toLowerCase() === bldg.toLowerCase()
-                        ? 'bg-brand-700 text-white shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900'
-                    }`}
-                  >
-                    {bldg} ({bldgCount})
+                  <button key={bldg} type="button" aria-pressed={on} onClick={() => setSelectedHotel(bldg)} className={segBtn(on)}>
+                    {bldg} <span className="tabular-nums opacity-70">{bldgCount}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Status Quick Filter */}
-            <div className="flex items-center bg-stone-100 p-1 rounded-lg text-xs flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => setStatusFilter('all')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'all' ? 'bg-white font-bold text-stone-900 shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-              >
-                All ({filteredRooms.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('available')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'available' ? 'bg-emerald-600 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-                title="Completely Available Rooms (Green)"
-              >
-                Available ({completelyAvailableCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('partial')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'partial' ? 'bg-orange-500 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-                title="Occupied but Still Space (Orange)"
-              >
-                Has Space ({partialOccupiedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('full')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'full' ? 'bg-red-600 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-                title="Full Occupied - No Space Left (Red)"
-              >
-                Full ({fullOccupiedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('blocked')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'blocked' ? 'bg-stone-500 font-bold text-white shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-                title="Blocked Inventory (Grey with Lock)"
-              >
-                Blocked ({blockedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('vip')}
-                className={`px-2.5 py-0.5 rounded transition cursor-pointer ${statusFilter === 'vip' ? 'bg-amber-400 font-bold text-amber-950 shadow-2xs' : 'text-stone-600 hover:text-stone-900'}`}
-                title="Rooms occupied by VIP Tour ID ('v' badge)"
-              >
-                VIP ({vipRoomsCount})
-              </button>
+            {/* State: each choice carries its swatch, so this row is the legend too */}
+            <div role="group" aria-label="Room state" className={segTrack}>
+              {(
+                [
+                  { id: 'all', label: 'All', count: filteredRooms.length, title: 'Every room' },
+                  {
+                    id: 'available',
+                    label: 'Free',
+                    count: completelyAvailableCount,
+                    title: 'Nobody in the room, the whole room is free',
+                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-white ring-[1.5px] ring-inset ring-emerald-500" />,
+                  },
+                  {
+                    id: 'partial',
+                    label: 'Has space',
+                    count: partialOccupiedCount,
+                    title: 'Occupied, with places still open for a zair',
+                    swatch: (
+                      <span aria-hidden="true" className="relative w-3 h-3 rounded-[3px] bg-stone-300">
+                        <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-emerald-500" />
+                      </span>
+                    ),
+                  },
+                  {
+                    id: 'full',
+                    label: 'Full',
+                    count: fullOccupiedCount,
+                    title: 'Occupied, no space left',
+                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-stone-300" />,
+                  },
+                  {
+                    id: 'blocked',
+                    label: 'Blocked',
+                    count: blockedCount,
+                    title: 'Blocked for maintenance or on hold',
+                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-stone-100 ring-1 ring-inset ring-stone-300" style={HATCH} />,
+                  },
+                  {
+                    id: 'vip',
+                    label: 'VIP',
+                    count: vipRoomsCount,
+                    title: 'Rooms with a VIP Tour ID, marked with a small v',
+                    swatch: (
+                      <span aria-hidden="true" className="w-3.5 h-3.5 rounded-full bg-gold-300 text-[11px] leading-[14px] font-semibold text-stone-950 text-center">
+                        v
+                      </span>
+                    ),
+                  },
+                ] as { id: typeof statusFilter; label: string; count: number; title: string; swatch?: React.ReactNode }[]
+              ).map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={statusFilter === o.id}
+                  onClick={() => setStatusFilter(o.id)}
+                  title={o.title}
+                  className={segBtn(statusFilter === o.id)}
+                >
+                  {o.swatch}
+                  {o.label} <span className="tabular-nums opacity-70">{o.count}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* Legend Bar */}
-        <div className="flex flex-wrap items-center gap-3.5 text-xs bg-stone-50 p-2.5 rounded-xl border border-stone-200">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">✓</span>
-            <span className="font-semibold text-emerald-900">Green = Completely Available ({completelyAvailableCount})</span>
-            <span className="text-stone-500 text-[11px]">— No occupants, full room free</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center">●</span>
-            <span className="font-semibold text-orange-900">Orange = Occupied (Still Space) ({partialOccupiedCount})</span>
-            <span className="text-stone-500 text-[11px]">— Open slots remaining for zaer</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">✕</span>
-            <span className="font-semibold text-red-900">Red = Full Occupied ({fullOccupiedCount})</span>
-            <span className="text-stone-500 text-[11px]">— No space remaining</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-stone-300 text-stone-800 border border-stone-400 text-[9px] font-bold flex items-center justify-center">🔒</span>
-            <span className="font-semibold text-stone-800">Grey = Blocked ({blockedCount})</span>
-            <span className="text-stone-500 text-[11px]">— Maintenance or hold</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-3.5 rounded bg-amber-300 text-stone-950 font-mono text-[9px] font-black flex items-center justify-center border border-amber-400">v</span>
-            <span className="font-semibold text-amber-950">Small 'v' = VIP Tour</span>
-            <span className="text-stone-500 text-[11px]">— Occupied by VIP ({vipRoomsCount})</span>
-          </div>
-        </div>
-
-        {/* Minimalist Button Matrix for Buildings */}
-        <div className="space-y-6 pt-1">
-          {/* BURHANI HOTEL BUTTON MATRIX (44 Rooms) */}
-          {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'burhani') && (() => {
-            const burhaniRooms = rooms.filter(r => r.building.toLowerCase() === 'burhani');
-            const bVacant = burhaniRooms.filter(r => getMatrixState(r).status === 'available').length;
-            const bPartial = burhaniRooms.filter(r => getMatrixState(r).status === 'partial').length;
-            const bFull = burhaniRooms.filter(r => getMatrixState(r).status === 'full').length;
-            const bBlocked = burhaniRooms.filter(r => getMatrixState(r).status === 'blocked').length;
-
-            return (
-              <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-bold text-xs text-brand-700">
-                    <Building2 className="w-4 h-4 text-brand-700" />
-                    <span>BURHANI HOTEL (44 Rooms: Ground, Mezzanine, Floors 1 to 4)</span>
-                  </div>
-                  <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
-                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{bVacant} Free</span>
-                    <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{bPartial} Has Space</span>
-                    <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{bFull} Full</span>
-                    {bBlocked > 0 && <span className="text-stone-700 font-bold bg-stone-200 px-1.5 py-0.5 rounded border border-stone-300">{bBlocked} Blocked</span>}
-                    <span className="text-stone-400">•</span>
-                    <span>{burhaniRooms.length} Total</span>
-                  </div>
-                </div>
-
-                {/* Burhani Floor Sections */}
-                {[
-                  { label: 'Ground Fl', rooms: burhaniRooms.filter(r => r.roomNumber.startsWith('G')) },
-                  { label: 'Mezzanine', rooms: burhaniRooms.filter(r => r.roomNumber.startsWith('M')) },
-                  { label: 'Floor 1 (101-110)', rooms: burhaniRooms.filter(r => r.floor === 1 && !r.roomNumber.startsWith('M')) },
-                  { label: 'Floor 2 (201-210)', rooms: burhaniRooms.filter(r => r.floor === 2) },
-                  { label: 'Floor 3 (301-310)', rooms: burhaniRooms.filter(r => r.floor === 3) },
-                  { label: 'Floor 4 (401-410)', rooms: burhaniRooms.filter(r => r.floor === 4) },
-                ].map((flGroup, idx) => {
-                  if (flGroup.rooms.length === 0) return null;
-                  const sortedRooms = [...flGroup.rooms].sort((a, b) => {
+          {/* The buildings, floor by floor */}
+          <div className="mt-5 space-y-5 border-t border-stone-200 pt-5">
+            {/* Burhani: Ground, Mezzanine, Floors 1 to 4 */}
+            {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'burhani') &&
+              (() => {
+                const burhaniRooms = rooms.filter((r) => r.building.toLowerCase() === 'burhani');
+                const byNumber = (list: Room[]) =>
+                  [...list].sort((a, b) => {
                     const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
                     const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
                     return numA - numB;
                   });
+                return renderGridBuilding('Burhani', `${burhaniRooms.length} rooms · Ground, Mezzanine, Floors 1 to 4`, burhaniRooms, [
+                  { label: 'Ground', rooms: byNumber(burhaniRooms.filter((r) => r.roomNumber.startsWith('G'))) },
+                  { label: 'Mezzanine', rooms: byNumber(burhaniRooms.filter((r) => r.roomNumber.startsWith('M'))) },
+                  { label: 'Floor 1 (101–110)', rooms: byNumber(burhaniRooms.filter((r) => r.floor === 1 && !r.roomNumber.startsWith('M'))) },
+                  { label: 'Floor 2 (201–210)', rooms: byNumber(burhaniRooms.filter((r) => r.floor === 2)) },
+                  { label: 'Floor 3 (301–310)', rooms: byNumber(burhaniRooms.filter((r) => r.floor === 3)) },
+                  { label: 'Floor 4 (401–410)', rooms: byNumber(burhaniRooms.filter((r) => r.floor === 4)) },
+                ]);
+              })()}
 
-                  return (
-                    <div key={`burhani-fl-${idx}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
-                        {flGroup.label}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 flex-1">
-                        {sortedRooms.map(renderMatrixRoomButton)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+            {/* Saifee: Floors 1 to 7 */}
+            {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'saifee') &&
+              (() => {
+                const saifeeRooms = rooms.filter((r) => r.building.toLowerCase() === 'saifee');
+                return renderGridBuilding(
+                  'Saifee',
+                  `${saifeeRooms.length} rooms · Floors 1 to 7`,
+                  saifeeRooms,
+                  [1, 2, 3, 4, 5, 6, 7].map((fl) => ({
+                    label: `Floor ${fl} (${fl}01–${fl}10)`,
+                    rooms: saifeeRooms.filter((r) => r.floor === fl).sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber)),
+                  }))
+                );
+              })()}
 
-          {/* SAIFEE HOTEL BUTTON MATRIX (70 Rooms) */}
-          {(selectedHotel === 'ALL' || selectedHotel.toLowerCase() === 'saifee') && (() => {
-            const saifeeRooms = rooms.filter(r => r.building.toLowerCase() === 'saifee');
-            const sVacant = saifeeRooms.filter(r => getMatrixState(r).status === 'available').length;
-            const sPartial = saifeeRooms.filter(r => getMatrixState(r).status === 'partial').length;
-            const sFull = saifeeRooms.filter(r => getMatrixState(r).status === 'full').length;
-            const sBlocked = saifeeRooms.filter(r => getMatrixState(r).status === 'blocked').length;
+            {/* Every other building in the inventory (Badri, Mohammedi, any added later) */}
+            {distinctBuildings
+              .filter((bldg) => !['burhani', 'saifee'].includes(bldg.toLowerCase()))
+              .filter((bldg) => selectedHotel === 'ALL' || selectedHotel.toLowerCase() === bldg.toLowerCase())
+              .map((bldg) => {
+                const bldgRooms = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase());
+                if (bldgRooms.length === 0) return null;
 
-            return (
-              <div className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-bold text-xs text-brand-700">
-                    <Building2 className="w-4 h-4 text-brand-700" />
-                    <span>SAIFEE HOTEL (70 Rooms: Floors 1 to 7)</span>
-                  </div>
-                  <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
-                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{sVacant} Free</span>
-                    <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{sPartial} Has Space</span>
-                    <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{sFull} Full</span>
-                    {sBlocked > 0 && <span className="text-stone-700 font-bold bg-stone-200 px-1.5 py-0.5 rounded border border-stone-300">{sBlocked} Blocked</span>}
-                    <span className="text-stone-400">•</span>
-                    <span>{saifeeRooms.length} Total</span>
-                  </div>
-                </div>
+                // Group by floor
+                const floorMap = new Map<string, Room[]>();
+                bldgRooms.forEach((r) => {
+                  const flKey = r.floorLabel || `Floor ${r.floor}`;
+                  if (!floorMap.has(flKey)) floorMap.set(flKey, []);
+                  floorMap.get(flKey)!.push(r);
+                });
 
-                {/* Floors 1 through 7 */}
-                {[1, 2, 3, 4, 5, 6, 7].map((fl) => {
-                  const floorRooms = saifeeRooms
-                    .filter((r) => r.floor === fl)
-                    .sort((a, b) => parseInt(a.roomNumber) - parseInt(b.roomNumber));
-
-                  if (floorRooms.length === 0) return null;
-
-                  return (
-                    <div key={`saifee-fl-${fl}`} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
-                        Floor {fl} ({fl}01-{fl}10)
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 flex-1">
-                        {floorRooms.map(renderMatrixRoomButton)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* DYNAMIC ADDITIONAL BUILDINGS (e.g. Al-Rawda, Najaf Grand, etc.) */}
-          {distinctBuildings
-            .filter((bldg) => !['burhani', 'saifee'].includes(bldg.toLowerCase()))
-            .filter((bldg) => selectedHotel === 'ALL' || selectedHotel.toLowerCase() === bldg.toLowerCase())
-            .map((bldg) => {
-              const bldgRooms = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase());
-              if (bldgRooms.length === 0) return null;
-
-              // Group by floor
-              const floorMap = new Map<string, Room[]>();
-              bldgRooms.forEach((r) => {
-                const flKey = r.floorLabel || `Floor ${r.floor}`;
-                if (!floorMap.has(flKey)) floorMap.set(flKey, []);
-                floorMap.get(flKey)!.push(r);
-              });
-
-              const bldgVacant = bldgRooms.filter((r) => getMatrixState(r).status === 'available').length;
-              const bldgPartial = bldgRooms.filter((r) => getMatrixState(r).status === 'partial').length;
-              const bldgFull = bldgRooms.filter((r) => getMatrixState(r).status === 'full').length;
-
-              return (
-                <div key={bldg} className="p-3.5 rounded-xl bg-stone-50/60 border border-stone-200 space-y-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 font-bold text-xs text-brand-700">
-                      <Building2 className="w-4 h-4 text-brand-700" />
-                      <span>{bldg.toUpperCase()} HOTEL ({bldgRooms.length} Rooms)</span>
-                    </div>
-                    <div className="text-[11px] font-semibold text-stone-600 flex items-center gap-1.5 flex-wrap">
-                      <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">{bldgVacant} Free</span>
-                      <span className="text-orange-700 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">{bldgPartial} Has Space</span>
-                      <span className="text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{bldgFull} Full</span>
-                      <span className="text-stone-400">•</span>
-                      <span>{bldgRooms.length} Total</span>
-                    </div>
-                  </div>
-
-                  {Array.from(floorMap.entries()).map(([flLabel, flRooms]) => {
-                    const sortedRooms = [...flRooms].sort((a, b) => {
+                return renderGridBuilding(
+                  bldg,
+                  `${bldgRooms.length} rooms`,
+                  bldgRooms,
+                  Array.from(floorMap.entries()).map(([flLabel, flRooms]) => ({
+                    label: flLabel,
+                    rooms: [...flRooms].sort((a, b) => {
                       const numA = parseInt(a.roomNumber.replace(/\D/g, '')) || 0;
                       const numB = parseInt(b.roomNumber.replace(/\D/g, '')) || 0;
                       return numA - numB;
-                    });
+                    }),
+                  }))
+                );
+              })}
+          </div>
+        </section>
+      )}
 
-                    return (
-                      <div key={flLabel} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <div className="w-28 text-[11px] font-bold text-stone-600 flex-shrink-0">
-                          {flLabel}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 flex-1">
-                          {sortedRooms.map(renderMatrixRoomButton)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-        </div>
-
-        {/* Selected Room Inspection Panel */}
-        {inspectedRoom && (
-          <div className="mt-4 p-4 rounded-xl bg-stone-50 border border-brand-700/30 animate-in fade-in">
-            <div className="flex items-center justify-between pb-2 border-b border-stone-200">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-extrabold text-sm text-brand-700">
-                  {inspectedRoom.building} Hotel — Room {inspectedRoom.roomNumber}
-                </span>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-white text-stone-700 border border-stone-200 font-medium">
-                  {inspectedRoom.floorLabel || `Floor ${inspectedRoom.floor}`} • Beds: {getRoomBedCount(inspectedRoom)} • Pax: {inspectedRoom.capacity}{inspectedRoom.buffer ? ` (+${inspectedRoom.buffer} Buffer)` : ''} • Toilet: {inspectedRoom.toiletType || 'Standard'} • Bed: {inspectedRoom.bedType || 'Single Beds'} • {inspectedRoom.category}
-                </span>
-              </div>
-              <button
-                onClick={() => setInspectedRoom(null)}
-                className="text-stone-400 hover:text-stone-700 text-xs font-semibold cursor-pointer"
-              >
-                ✕ Close
-              </button>
+      {/* Arrivals and departures for the chosen date */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* Arrivals */}
+        <section aria-label={`Arrivals ${dayPhrase}`} className={`${card} flex flex-col min-w-0`}>
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-stone-950">
+                <span aria-hidden="true" className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                Arrivals {dayPhrase}
+              </h2>
+              <p className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                {arrivalsOnDate.length} {arrivalsOnDate.length === 1 ? 'zair' : 'zaereen'}
+                {arrivalsWithoutRoom > 0 && <span className="text-amber-700"> · {arrivalsWithoutRoom} need a room</span>}
+              </p>
             </div>
+            <button type="button" onClick={() => onOpenReceptionSlip?.('arrival_slip')} className={`${btnSm.secondary} ${touch} shrink-0`}>
+              <Printer className="w-4 h-4 text-stone-500" />
+              Arrival slip
+            </button>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 text-xs">
-              <div>
-                <div className="text-stone-500 font-semibold mb-1">Status on {selectedDate}:</div>
-                {(() => {
-                  const state = getMatrixState(inspectedRoom);
+          {arrivalsOnDate.length > 0 ? (
+            <ul className="border-t border-stone-200 divide-y divide-stone-200 max-h-[26rem] overflow-y-auto">
+              {arrivalsOnDate.map((res) => (
+                <li key={res.id} className="px-4 sm:px-5 py-2.5 hover:bg-stone-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-sm font-medium text-stone-950">{res.applicantName}</span>
+                    {res.roomNumber ? (
+                      <span className="shrink-0 text-[13px] font-bold text-stone-950 tabular-nums">
+                        {res.building} {res.roomNumber}
+                      </span>
+                    ) : (
+                      <span className={`${chip('wait')} shrink-0`}>Needs a room</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-3 text-[13px] text-stone-500">
+                    <span className="flex min-w-0 items-baseline">
+                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.arrivalTime || '11:00 AM')}</span>
+                      <span className="truncate tabular-nums" title={`Tour ${res.tourRefNo || res.tourId || '—'}${res.officeName ? ` · ${res.officeName}` : ''}`}>
+                        {res.family} · Tour {shortTour(res.tourRefNo || res.tourId) || '—'}
+                        {res.officeName ? ` · ${res.officeName}` : ''}
+                      </span>
+                    </span>
+                    {res.category && <span className="shrink-0 text-xs">{res.category}</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="border-t border-stone-200 px-5 py-8 text-center">
+              <p className="text-sm font-medium text-stone-800">No arrivals {dayPhrase}</p>
+              <p className="mt-1 text-[13px] text-stone-600">Zaereen whose arrival date is {isToday ? 'today' : 'this day'} are listed here.</p>
+            </div>
+          )}
+        </section>
 
-                  if (state.status === 'blocked') {
-                    return (
-                      <div className="p-3 rounded-xl bg-stone-200 border border-stone-300 text-stone-800 space-y-1.5">
-                        <div className="font-bold flex items-center gap-1.5 text-stone-900">
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>BLOCKED INVENTORY (GREY)</span>
-                        </div>
-                        <div className="text-[11px] text-stone-600">
-                          {inspectedRoom.blockedReason || 'Maintenance buffer'}
-                        </div>
-                        {onToggleBlockRoom && (
-                          <button
-                            type="button"
-                            onClick={() => onToggleBlockRoom(inspectedRoom.id)}
-                            className="mt-1 px-2.5 py-1 rounded bg-stone-800 text-white text-[10px] font-bold hover:bg-stone-900 cursor-pointer"
-                          >
-                            Unblock Room
-                          </button>
-                        )}
-                      </div>
-                    );
-                  }
+        {/* Departures */}
+        <section aria-label={`Departures ${dayPhrase}`} className={`${card} flex flex-col min-w-0`}>
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-stone-950">
+                <span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                Departures {dayPhrase}
+              </h2>
+              <p className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                {departuresOnDate.length} {departuresOnDate.length === 1 ? 'zair' : 'zaereen'}
+              </p>
+            </div>
+            <button type="button" onClick={() => onOpenReceptionSlip?.('departure_list')} className={`${btnSm.secondary} ${touch} shrink-0`}>
+              <Printer className="w-4 h-4 text-stone-500" />
+              Departure list
+            </button>
+          </div>
 
-                  if (state.occupants.length > 0) {
-                    const isFull = state.status === 'full';
-                    return (
-                      <div className={`p-3 rounded-xl border space-y-2.5 ${
-                        isFull
-                          ? 'bg-red-50/90 border-red-300 text-red-950'
-                          : 'bg-orange-50/90 border-orange-300 text-orange-950'
-                      }`}>
-                        <div className="flex items-center justify-between flex-wrap gap-1">
-                          <div className="font-extrabold flex items-center gap-1.5 text-xs">
-                            <span className={`w-2.5 h-2.5 rounded-full ${isFull ? 'bg-red-600' : 'bg-orange-500'}`} />
-                            <span>
-                              {isFull
-                                ? 'FULL OCCUPIED (NO SPACE - RED)'
-                                : `OCCUPIED BUT STILL SPACE (${state.remainingSlots} SLOTS LEFT - ORANGE)`}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white border border-stone-200 text-stone-800">
-                            Pax: {state.currentOccupancy} / {state.maxCapacity}
-                          </span>
-                        </div>
+          {departuresOnDate.length > 0 ? (
+            <ul className="border-t border-stone-200 divide-y divide-stone-200 max-h-[26rem] overflow-y-auto">
+              {departuresOnDate.map((res) => (
+                <li key={res.id} className="px-4 sm:px-5 py-2.5 hover:bg-stone-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-sm font-medium text-stone-950">{res.applicantName}</span>
+                    <span className="shrink-0 text-[13px] font-bold text-stone-950 tabular-nums">
+                      {res.roomNumber ? `${res.building} ${res.roomNumber}` : '—'}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between gap-3 text-[13px] text-stone-500">
+                    <span className="flex min-w-0 items-baseline">
+                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.departureTime || '01:00 AM')}</span>
+                      <span className="truncate tabular-nums" title={`Tour ${res.tourRefNo || res.tourId || '—'}${res.officeName ? ` · ${res.officeName}` : ''}`}>
+                        {res.family} · Tour {shortTour(res.tourRefNo || res.tourId) || '—'}
+                        {res.officeName ? ` · ${res.officeName}` : ''}
+                      </span>
+                    </span>
+                    <span className={`${chip('wait')} shrink-0`}>Ready for check-out</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="border-t border-stone-200 px-5 py-8 text-center">
+              <p className="text-sm font-medium text-stone-800">No departures {dayPhrase}</p>
+              <p className="mt-1 text-[13px] text-stone-600">Zaereen whose departure date is {isToday ? 'today' : 'this day'} are listed here.</p>
+            </div>
+          )}
+        </section>
+      </div>
 
+      {/* Room details: who is in the room, switch or delete, unblock, or allot it */}
+      {openRoom &&
+        (() => {
+          const state = getMatrixState(openRoom);
+          const isFull = state.status === 'full';
+          return (
+            <div
+              ref={roomScrimRef}
+              className={modalScrim}
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setInspectedRoom(null);
+              }}
+            >
+              <div role="dialog" aria-modal="true" aria-labelledby="overview-room-title" className={`${modalCard} max-w-2xl`}>
+                <div className={modalHeader}>
+                  <div className="min-w-0">
+                    <h3 id="overview-room-title" className={`${modalTitle} tabular-nums`}>
+                      {openRoom.building} · Room {openRoom.roomNumber}
+                    </h3>
+                    <p className="mt-1 text-[13px] text-stone-600 tabular-nums">
+                      {openRoom.floorLabel || `Floor ${openRoom.floor}`} · {getRoomBedCount(openRoom)} beds · sleeps {openRoom.capacity}
+                      {openRoom.buffer ? ` (+${openRoom.buffer} buffer)` : ''} · Toilet: {openRoom.toiletType || 'Standard'} · {openRoom.bedType || 'Single Beds'} · {openRoom.category}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setInspectedRoom(null)} className={modalClose} aria-label="Close">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    <span className="text-[13px] text-stone-600">Status {dayPhrase}</span>
+                    {state.status === 'blocked' ? (
+                      <span className={chip('neutral')}>
+                        <Lock className="w-3 h-3" />
+                        Blocked
+                      </span>
+                    ) : state.occupants.length > 0 ? (
+                      <>
+                        <span className={chip(isFull ? 'neutral' : 'ok')}>
+                          {isFull
+                            ? 'Full, no space'
+                            : `Occupied, ${state.remainingSlots} ${state.remainingSlots === 1 ? 'place' : 'places'} free`}
+                        </span>
+                        <span className="text-[13px] text-stone-600 tabular-nums">
+                          {state.currentOccupancy} of {state.maxCapacity} places taken
+                        </span>
                         {state.isVip && (
-                          <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-amber-950 bg-amber-100 border border-amber-300 px-2 py-1 rounded-md">
-                            <span className="font-mono font-black bg-amber-300 text-stone-950 px-1 rounded text-[10px] border border-amber-400">v</span>
-                            <span>VIP Tour Group Booking ({state.vipTourIds.join(', ')})</span>
-                          </div>
+                          <span className={chip('gold')}>
+                            <Star className="w-3 h-3 fill-gold-400 text-gold-500" />
+                            VIP tour {state.vipTourIds.join(', ')}
+                          </span>
                         )}
+                      </>
+                    ) : (
+                      <span className={chip('ok')}>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Free
+                      </span>
+                    )}
+                  </div>
 
-                        {/* Occupants list */}
-                        <div className="space-y-1.5 pt-0.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-[11px] font-bold text-stone-700">
-                              Occupants in this Room ({state.occupants.length}):
-                            </div>
-                            {onOpenSwitchRoomModal && state.occupants.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onOpenSwitchRoomModal({
-                                    reservations: state.occupants,
-                                    initialScope: 'group',
-                                  })
-                                }
-                                className="min-h-[36px] sm:min-h-0 px-2.5 py-1 rounded-lg bg-brand-700 hover:bg-brand-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition"
-                              >
-                                <ArrowRightLeft className="w-3 h-3" />
-                                <span>Switch / Swap Room</span>
-                              </button>
-                            )}
-                          </div>
-                          {state.occupants.map((booking: Reservation) => (
-                            <div
-                              key={booking.id}
-                              className="bg-white p-2.5 rounded-lg border border-stone-200 flex items-start justify-between gap-2 text-[11px] shadow-2xs"
-                            >
-                              <div className="space-y-0.5">
-                                <div className="font-bold text-stone-900">
-                                  {booking.applicantName} ({booking.gender}, {booking.age} yrs)
-                                </div>
-                                <div className="text-stone-600 text-[10px]">
-                                  Family #{booking.family} · ITS: {booking.itsId} · Tour: {booking.tourRefNo || booking.tourId || '—'}
-                                </div>
-                                {booking.officeName && (
-                                  <div className="text-emerald-800 font-semibold text-[10px]">
-                                    Office: {booking.officeName}
-                                  </div>
-                                )}
-                                <div className="text-stone-500 text-[10px] tabular-nums">
-                                  Dates: {booking.arrivalDate} ({booking.arrivalTime || '11:00 AM'}) to {booking.departureDate} ({booking.departureTime || '01:00 AM'}) · {booking.category}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {onOpenSwitchRoomModal && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      onOpenSwitchRoomModal({
-                                        reservations: [booking],
-                                        initialScope: 'single',
-                                      })
-                                    }
-                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-brand-700 border border-emerald-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
-                                    title="Switch room for this guest"
-                                  >
-                                    <ArrowRightLeft className="w-3 h-3" />
-                                    <span>Switch</span>
-                                  </button>
-                                )}
-                                {onDeleteReservation && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setRecordToDelete(booking)}
-                                    className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded transition cursor-pointer"
-                                    title="Delete this Zair record"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {!isFull && state.remainingSlots > 0 && (
-                          <div className="text-[10px] text-orange-900 font-semibold bg-orange-100/80 p-1.5 rounded border border-orange-200">
-                            ✓ {state.remainingSlots} slot(s) still open. You can allot another zaer to this room using the allotment form below.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="font-extrabold text-emerald-950 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                          <span>COMPLETELY AVAILABLE (GREEN)</span>
-                        </div>
-
-                        {/* Allotment Mode Toggle */}
-                        <div className="flex items-center bg-white rounded-lg p-0.5 border border-emerald-300 text-[11px]">
+                  {state.status === 'blocked' ? (
+                    <div className={`${panel} px-4 py-3`}>
+                      <p className="text-sm text-stone-800">{openRoom.blockedReason || 'Maintenance buffer'}</p>
+                      {onToggleBlockRoom && (
+                        <button type="button" onClick={() => onToggleBlockRoom(openRoom.id)} className={`${btnSm.secondary} ${touch} mt-3`}>
+                          <Unlock className="w-4 h-4 text-stone-500" />
+                          Unblock room
+                        </button>
+                      )}
+                    </div>
+                  ) : state.occupants.length > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-[13px] font-medium text-stone-700 tabular-nums">In this room ({state.occupants.length})</h4>
+                        {onOpenSwitchRoomModal && (
                           <button
                             type="button"
-                            onClick={() => setInspectAllotMode('family')}
-                            className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                              inspectAllotMode === 'family'
-                                ? 'bg-brand-700 text-white'
-                                : 'text-stone-600 hover:text-stone-900'
-                            }`}
+                            onClick={() =>
+                              onOpenSwitchRoomModal({
+                                reservations: state.occupants,
+                                initialScope: 'group',
+                              })
+                            }
+                            className={`${btnSm.secondary} ${touch}`}
                           >
-                            👨‍👩‍👧 Whole Family
+                            <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                            Switch or swap room
+                          </button>
+                        )}
+                      </div>
+                      <ul className="mt-2 divide-y divide-stone-200 border-y border-stone-200">
+                        {state.occupants.map((booking: Reservation) => (
+                          <li key={booking.id} className="py-2.5 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-stone-950">
+                                {booking.applicantName}
+                                <span className="font-normal text-stone-500">
+                                  {' '}
+                                  · {booking.gender}, {booking.age}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                                Family {booking.family} · ITS {booking.itsId} · Tour {booking.tourRefNo || booking.tourId || '—'}
+                                {booking.officeName ? ` · ${booking.officeName}` : ''}
+                              </div>
+                              <div className="mt-0.5 text-[13px] text-stone-500 tabular-nums">
+                                {formatStay(booking.arrivalDate, booking.arrivalTime || '11:00 AM')} → {formatStay(booking.departureDate, booking.departureTime || '01:00 AM')}
+                                {booking.category ? ` · ${booking.category}` : ''}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {onOpenSwitchRoomModal && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onOpenSwitchRoomModal({
+                                      reservations: [booking],
+                                      initialScope: 'single',
+                                    })
+                                  }
+                                  className={`${btnSm.secondary} ${touch}`}
+                                  title="Switch room for this zair"
+                                >
+                                  <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                                  Switch
+                                </button>
+                              )}
+                              {onDeleteReservation && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRecordToDelete(booking)}
+                                  className={`${btnSm.danger} ${touch} px-2`}
+                                  title="Delete this zair record"
+                                  aria-label={`Delete the zair record for ${booking.applicantName}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                      {!isFull && state.remainingSlots > 0 && (
+                        <p className="mt-2 text-[13px] text-emerald-800">
+                          {state.remainingSlots} {state.remainingSlots === 1 ? 'place is' : 'places are'} still open in this room for another zair.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={`${panel} px-4 py-4`}>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h4 className="text-sm font-semibold text-stone-950">Allot this room</h4>
+                        <div role="group" aria-label="Allot to" className={segTrack}>
+                          <button
+                            type="button"
+                            aria-pressed={inspectAllotMode === 'family'}
+                            onClick={() => setInspectAllotMode('family')}
+                            className={segBtn(inspectAllotMode === 'family')}
+                          >
+                            <Users className="w-4 h-4" />
+                            Whole family
                           </button>
                           <button
                             type="button"
+                            aria-pressed={inspectAllotMode === 'individual'}
                             onClick={() => setInspectAllotMode('individual')}
-                            className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                              inspectAllotMode === 'individual'
-                                ? 'bg-brand-700 text-white'
-                                : 'text-stone-600 hover:text-stone-900'
-                            }`}
+                            className={segBtn(inspectAllotMode === 'individual')}
                           >
-                            👤 Single Zaer
+                            Single zair
                           </button>
                         </div>
                       </div>
 
                       {inspectAllotMode === 'family' ? (
-                        <div className="space-y-2.5 pt-1">
-                          <p className="text-[11px] text-emerald-900">
-                            Allot {inspectedRoom.building} Room {inspectedRoom.roomNumber} (Capacity: {inspectedRoom.capacity}{inspectedRoom.buffer ? `+${inspectedRoom.buffer} Buffer` : ''}) to an entire family for their Tour ID in one go.
+                        <div className="mt-3">
+                          <p className="text-[13px] text-stone-600">
+                            Allot {openRoom.building} room {openRoom.roomNumber} (sleeps {openRoom.capacity}
+                            {openRoom.buffer ? `, +${openRoom.buffer} buffer` : ''}) to an entire family of a Tour ID in one go.
                           </p>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                              <label className="text-[10px] font-bold text-stone-600 uppercase">1. Tour ID:</label>
+                              <label htmlFor="overview-room-tour" className={fieldLabel}>
+                                Tour ID
+                              </label>
                               <select
+                                id="overview-room-tour"
                                 value={inspectTourId}
                                 onChange={(e) => {
                                   setInspectTourId(e.target.value);
                                   setInspectFamily('');
                                 }}
-                                className="w-full bg-white border border-emerald-300 rounded-lg p-1.5 text-xs font-mono font-bold text-stone-900 mt-0.5 cursor-pointer"
+                                className={`${field} tabular-nums`}
                               >
-                                <option value="">-- Choose Tour ID --</option>
+                                <option value="">Choose a Tour ID</option>
                                 {distinctTourIds.map((t) => (
                                   <option key={t} value={t}>
                                     {t}
@@ -2323,14 +2399,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-bold text-stone-600 uppercase">2. Family:</label>
+                              <label htmlFor="overview-room-family" className={fieldLabel}>
+                                Family
+                              </label>
                               <select
+                                id="overview-room-family"
                                 value={inspectFamily}
                                 onChange={(e) => setInspectFamily(e.target.value)}
                                 disabled={!inspectTourId}
-                                className="w-full bg-white border border-emerald-300 rounded-lg p-1.5 text-xs font-mono font-bold text-stone-900 mt-0.5 cursor-pointer disabled:opacity-40"
+                                className={`${field} tabular-nums`}
                               >
-                                <option value="">-- Choose Family --</option>
+                                <option value="">Choose a family</option>
                                 {Array.from(
                                   new Set(
                                     reservations
@@ -2344,7 +2423,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   ).length;
                                   return (
                                     <option key={f} value={f}>
-                                      Family {f} ({count} Zaereen)
+                                      Family {f} ({count} zaereen)
                                     </option>
                                   );
                                 })}
@@ -2353,269 +2432,144 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
 
                           {inspectFamily && (
-                            <div className="flex items-center justify-between pt-1">
-                              <span className="text-[11px] text-emerald-950 font-bold">
-                                Family "{inspectFamily}" has {reservations.filter((r) => r.tourRefNo === inspectTourId && (r.family || '').trim() === inspectFamily.trim()).length} members
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                              <span className="text-[13px] text-stone-700 tabular-nums">
+                                Family {inspectFamily} has{' '}
+                                {reservations.filter((r) => r.tourRefNo === inspectTourId && (r.family || '').trim() === inspectFamily.trim()).length}{' '}
+                                members
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
                                   if (onBatchAllotFamily && inspectTourId && inspectFamily) {
-                                    onBatchAllotFamily(inspectTourId, inspectFamily, inspectedRoom.building, inspectedRoom.roomNumber);
+                                    onBatchAllotFamily(inspectTourId, inspectFamily, openRoom.building, openRoom.roomNumber);
                                     setInspectFamily('');
                                     setInspectedRoom(null);
                                   }
                                 }}
-                                className="px-3.5 py-1.5 bg-brand-700 hover:bg-brand-800 text-white font-black rounded-lg text-xs shadow-xs transition cursor-pointer"
+                                className={`${btn.primary} tabular-nums`}
                               >
-                                ⚡ Allot Room {inspectedRoom.roomNumber} to Entire Family
+                                Allot room {openRoom.roomNumber} to the family
                               </button>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          <p className="text-[11px] text-emerald-800">
-                            Select an unassigned zaer to allot into this vacant room.
-                          </p>
+                        <div className="mt-3">
                           {unallottedZaereen.length > 0 ? (
-                            <div className="flex items-center gap-2 pt-1">
-                              <select
-                                value={allotTargetZaerId}
-                                onChange={(e) => setAllotTargetZaerId(e.target.value)}
-                                className="flex-1 bg-white border border-emerald-300 rounded-lg px-2 py-1.5 text-xs text-stone-800 font-medium"
-                              >
-                                <option value="">Select unallotted Zaer...</option>
-                                {unallottedZaereen.map((z) => (
-                                  <option key={z.id} value={z.id}>
-                                    {z.applicantName} ({z.family} • {z.tourRefNo} • {z.arrivalDate} to {z.departureDate})
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                disabled={!allotTargetZaerId}
-                                onClick={() => {
-                                  if (allotTargetZaerId) {
-                                    onAllotRoom(allotTargetZaerId, inspectedRoom.building, inspectedRoom.roomNumber);
-                                    setAllotTargetZaerId('');
-                                  }
-                                }}
-                                className="px-3 py-1.5 rounded-lg bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white font-bold text-xs cursor-pointer"
-                              >
-                                Allot Room
-                              </button>
-                            </div>
+                            <>
+                              <label htmlFor="overview-room-zair" className={fieldLabel}>
+                                Zair without a room
+                              </label>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <select
+                                  id="overview-room-zair"
+                                  value={allotTargetZaerId}
+                                  onChange={(e) => setAllotTargetZaerId(e.target.value)}
+                                  className={`${field} sm:flex-1 sm:w-auto min-w-0`}
+                                >
+                                  <option value="">Choose a zair</option>
+                                  {unallottedZaereen.map((z) => (
+                                    <option key={z.id} value={z.id}>
+                                      {z.applicantName} · {z.family} · {z.tourRefNo} · {formatDay(z.arrivalDate)} → {formatDay(z.departureDate)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={!allotTargetZaerId}
+                                  onClick={() => {
+                                    if (allotTargetZaerId) {
+                                      onAllotRoom(allotTargetZaerId, openRoom.building, openRoom.roomNumber);
+                                      setAllotTargetZaerId('');
+                                    }
+                                  }}
+                                  className={btn.primary}
+                                >
+                                  Allot room
+                                </button>
+                              </div>
+                            </>
                           ) : (
-                            <div className="text-[11px] text-stone-500 italic">
-                              All zaereen currently have rooms allotted.
-                            </div>
+                            <p className="text-[13px] text-stone-600">Every zair already has a room.</p>
                           )}
                         </div>
                       )}
                     </div>
-                  );
-                })()}
-              </div>
+                  )}
 
-              {/* Room details & Allotment Duration explanation */}
-              <div className="space-y-2">
-                <div className="text-stone-500 font-semibold">Booking Duration Rule:</div>
-                <div className="p-2.5 rounded-lg bg-white border border-stone-200 text-[11px] text-stone-600 leading-relaxed">
-                  When a room is allotted, the entire duration between arrival and departure is reserved in this room.
-                  Rooms cannot be double-booked for overlapping date spans.
+                  <p className="text-[13px] leading-relaxed text-stone-500">
+                    An allotted room is reserved for the whole stay, from arrival to departure. A room cannot be double-booked for overlapping dates.
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => onNavigateTab('reservations')}
-                    className="inline-flex items-center gap-1.5 text-xs text-brand-700 font-bold hover:underline"
-                  >
-                    <span>View all Zaereen in Main Grid</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+                <div className={modalFooter}>
+                  <button type="button" onClick={() => onNavigateTab('reservations')} className={`${btn.ghost} mr-auto -ml-2`}>
+                    View all zaereen
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={() => setInspectedRoom(null)} className={btn.secondary}>
+                    Close
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-      )}
+          );
+        })()}
 
-      {/* Daily Arrivals & Departures Table for Selected Date */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Arrivals on Date */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200">
-            <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              <span>Arrivals on {selectedDate} ({arrivalsOnDate.length})</span>
-            </div>
-            <button
-              onClick={() => onOpenReceptionSlip?.('arrival_slip')}
-              className="text-[11px] text-brand-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <Printer className="w-3 h-3 text-brand-700" />
-              <span>Arrival Slip</span>
-            </button>
-          </div>
-
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            {arrivalsOnDate.length > 0 ? (
-              arrivalsOnDate.map((res) => (
-                <div
-                  key={res.id}
-                  className="flex items-center justify-between p-2 rounded-lg bg-stone-50 hover:bg-emerald-50/50 text-xs border border-stone-100"
-                >
-                  <div>
-                    <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
-                        <Clock className="w-2.5 h-2.5 text-indigo-600" />
-                        <span>{res.arrivalTime || '11:00 AM'}</span>
-                      </span>
-                      <span className="text-[10px] text-stone-500 font-mono">
-                        {res.family} • Tour {res.tourRefNo || res.tourId || '—'}
-                      </span>
-                      {res.officeName && (
-                        <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                          Office: {res.officeName}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-bold text-brand-700 text-xs">
-                      {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : <span className="text-amber-700">Unallotted</span>}
-                    </span>
-                    <div className="text-[10px] text-stone-500">{res.category}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 text-center text-xs text-stone-400 italic">
-                No arrivals scheduled on {selectedDate}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Departures on Date */}
-        <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200">
-            <div className="flex items-center gap-2 font-bold text-xs text-amber-800">
-              <span className="w-2 h-2 rounded-full bg-amber-600" />
-              <span>Departures on {selectedDate} ({departuresOnDate.length})</span>
-            </div>
-            <button
-              onClick={() => onOpenReceptionSlip?.('departure_list')}
-              className="text-[11px] text-amber-900 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <Printer className="w-3 h-3 text-amber-800" />
-              <span>Departure List</span>
-            </button>
-          </div>
-
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            {departuresOnDate.length > 0 ? (
-              departuresOnDate.map((res) => (
-                <div
-                  key={res.id}
-                  className="flex items-center justify-between p-2 rounded-lg bg-stone-50 hover:bg-amber-50/50 text-xs border border-stone-100"
-                >
-                  <div>
-                    <div className="font-semibold text-stone-900">{res.applicantName}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                        <Clock className="w-2.5 h-2.5 text-amber-600" />
-                        <span>{res.departureTime || '01:00 AM'}</span>
-                      </span>
-                      <span className="text-[10px] text-stone-500 font-mono">
-                        {res.family} • Tour {res.tourRefNo || res.tourId || '—'}
-                      </span>
-                      {res.officeName && (
-                        <span className="text-[10px] text-amber-800 font-semibold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                          Office: {res.officeName}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-bold text-stone-800 text-xs">
-                      {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : '—'}
-                    </span>
-                    <div className="text-[10px] text-emerald-700 font-medium">Ready for check-out</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 text-center text-xs text-stone-400 italic">
-                No departures scheduled on {selectedDate}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Delete Zair Confirmation Modal (Non-blocking In-App Modal) */}
+      {/* Delete zair confirmation */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                <Trash2 className="w-5 h-5" />
+        <div
+          className={modalScrim}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRecordToDelete(null);
+          }}
+        >
+          <div role="alertdialog" aria-modal="true" aria-labelledby="overview-delete-title" className={`${modalCard} max-w-md`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 id="overview-delete-title" className={modalTitle}>
+                  Delete zair record
+                </h3>
+                <p className="mt-1 text-[13px] text-stone-600">This permanently deletes the record below.</p>
               </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-stone-900">Delete Zair Record</h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Are you sure you want to permanently delete this zaer record?
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRecordToDelete(null)}
-                className="text-stone-400 hover:text-stone-600 p-1"
-              >
-                <X className="w-4 h-4" />
+              <button type="button" onClick={() => setRecordToDelete(null)} className={modalClose} aria-label="Close">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Zair summary card */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
-                  <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
+            <div className="px-5 sm:px-6 py-5 space-y-3 overflow-y-auto">
+              <div className={`${panel} px-4 py-3`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-stone-950">{recordToDelete.applicantName}</div>
+                    <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">ITS {recordToDelete.itsId}</div>
+                  </div>
+                  <span className="shrink-0 text-[13px] font-medium text-stone-700 tabular-nums">Family {recordToDelete.family}</span>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-stone-200 text-stone-700">
-                  Family {recordToDelete.family}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
-                <div>
-                  <span className="text-stone-400">Tour Ref:</span> {recordToDelete.tourRefNo}
-                </div>
-                <div>
-                  <span className="text-stone-400">Category:</span> {recordToDelete.category || 'Mumineen'}
-                </div>
-                <div className="col-span-2">
-                  <span className="text-stone-400">Stay:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
-                </div>
+                <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">
+                  <dt className="text-stone-500">Tour ID</dt>
+                  <dd className="text-stone-800 tabular-nums break-all">{recordToDelete.tourRefNo}</dd>
+                  <dt className="text-stone-500">Category</dt>
+                  <dd className="text-stone-800">{recordToDelete.category || 'Mumineen'}</dd>
+                  <dt className="text-stone-500">Stay</dt>
+                  <dd className="text-stone-800 tabular-nums">
+                    {formatDay(recordToDelete.arrivalDate)} → {formatDay(recordToDelete.departureDate)}
+                  </dd>
+                </dl>
               </div>
               {recordToDelete.roomNumber && (
-                <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
-                  ⚠️ <strong>Room Allocation Note:</strong> {recordToDelete.building} - Room {recordToDelete.roomNumber} will become vacant immediately upon deletion.
-                </div>
+                <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    {recordToDelete.building} room {recordToDelete.roomNumber} becomes vacant as soon as this record is deleted.
+                  </span>
+                </p>
               )}
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setRecordToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-semibold text-xs transition cursor-pointer"
-              >
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setRecordToDelete(null)} className={btn.secondary}>
                 Cancel
               </button>
               <button
@@ -2626,10 +2580,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     setRecordToDelete(null);
                   }
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                className={btnDanger}
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Yes, Delete Record</span>
+                <Trash2 className="w-4 h-4" />
+                Delete record
               </button>
             </div>
           </div>
@@ -2652,21 +2606,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
         initialScope={specialGuestInitialScope}
       />
 
-      {/* Toast Feedback Notification */}
+      {/* Toast */}
       {toastFeedback && (
-        <div className="fixed bottom-20 lg:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg border bg-brand-700 text-white border-brand-700">
-            <CheckCircle2 className="w-4 h-4 text-gold-200 shrink-0" />
-            <span>{toastFeedback}</span>
-            <button
-              type="button"
-              onClick={() => setToastFeedback(null)}
-              className="ml-2 text-stone-300 hover:text-white cursor-pointer"
-              title="Close"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        <div
+          role="status"
+          className="fixed bottom-20 lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-[70] flex items-start gap-2.5 rounded-xl bg-stone-900 px-4 py-3 text-sm leading-snug text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-300 shrink-0" />
+          <span className="min-w-0 flex-1">{toastFeedback}</span>
+          <button
+            type="button"
+            onClick={() => setToastFeedback(null)}
+            className="-my-1 -mr-1.5 w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-stone-300 hover:text-white hover:bg-white/10 cursor-pointer"
+            aria-label="Dismiss"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

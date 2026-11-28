@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ArrowUpRight,
   Search,
   CheckCircle2,
   AlertCircle,
@@ -26,7 +25,17 @@ import {
 } from '../services/storage';
 import { normalizeItsId } from '../utils/deduplication';
 import { parseBulkTourPaste } from '../utils/itsPasteParser';
-import { PageHeader, btn } from './ui';
+import {
+  PageHeader, btn, btnDanger, btnSm, card, chip, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle, panel,
+} from './ui';
+
+/** Shows a stored `2026-11-22…` date as `22 Nov`; anything else is shown as it was saved. */
+const day = (value?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+  if (!m) return value || '—';
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+};
+const tourLabel = (ref?: string) => (ref || '').replace(/^NKERP\/TOUR\//i, '');
 
 interface CategoryUpgradeViewProps {
   reservations: Reservation[];
@@ -527,12 +536,12 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
 
   const renderSortIndicator = (column: string) => {
     if (sortColumn !== column) {
-      return <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 inline ml-1 opacity-40 hover:opacity-100" />;
+      return <ArrowUpDown className="w-3.5 h-3.5 text-stone-400" />;
     }
     return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-brand-700 inline ml-1 font-bold" />
+      <ArrowUp className="w-3.5 h-3.5 text-brand-700" />
     ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-brand-700 inline ml-1 font-bold" />
+      <ArrowDown className="w-3.5 h-3.5 text-brand-700" />
     );
   };
 
@@ -544,25 +553,79 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
     setBToARecordToDelete(res);
   };
 
+  const canAdd = Boolean(onAddZaer || onToggleShiftToCategoryA || onBatchShiftToCategoryA);
+  const canRemove = Boolean(onDeleteReservation || onToggleShiftToCategoryA);
+  const emptyState = shiftRequests.length > 0 ? (
+    <p className="text-sm text-stone-600">No B→A shift matches the search or filters. Clear them to see all {shiftRequests.length}.</p>
+  ) : (
+    <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-sm">
+        <p className="font-medium text-stone-900">No B→A shifts yet.</p>
+        <p className="mt-0.5 text-stone-600">Zaereen shifted from category B to A appear here, with their payment and accounts slip.</p>
+      </div>
+      {canAdd && (
+        <button type="button" onClick={handleOpenShiftModal} className={`${btn.secondary} shrink-0`}>
+          <Plus className="w-4 h-4" />
+          Add B→A shift
+        </button>
+      )}
+    </div>
+  );
+  /** Money given shows as a state chip; pressing it switches Paid and Pending, as before. */
+  const moneyButton = (res: Reservation, extra = '') => {
+    const isPaid = res.moneyGiven === 'Yes';
+    return (
+      <button
+        type="button"
+        aria-pressed={isPaid}
+        onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
+        title={isPaid ? 'Money received. Press to mark as pending.' : 'Money pending. Press to mark as paid.'}
+        className={`${chip(isPaid ? 'ok' : 'wait')} !h-8 !px-2.5 !text-[13px] cursor-pointer transition ${
+          isPaid ? 'hover:bg-emerald-100 hover:ring-emerald-300' : 'hover:bg-amber-100 hover:ring-amber-300'
+        } ${extra}`}
+      >
+        {isPaid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+        {isPaid ? 'Paid' : 'Pending'}
+      </button>
+    );
+  };
+  const roomText = (res: Reservation) => `${res.building || ''} ${res.roomNumber || ''}`.trim();
+  const sortTh = (column: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => handleSort(column)}
+      className={`inline-flex items-center gap-1 -mx-1 px-1 h-7 rounded-md cursor-pointer hover:bg-stone-200/70 hover:text-stone-950 ${
+        sortColumn === column ? 'text-stone-950' : ''
+      }`}
+      title={`Sort by ${label.toLowerCase()}`}
+    >
+      {label}
+      {renderSortIndicator(column)}
+    </button>
+  );
+  const ariaSort = (column: string) =>
+    sortColumn === column ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined;
+  const th = 'px-3 py-2 text-left font-semibold whitespace-nowrap';
+  const modeTab = (mode: 'existing' | 'new') =>
+    `inline-flex items-center justify-center gap-1.5 h-9 max-md:h-10 px-3 rounded-md text-[13px] font-medium whitespace-nowrap cursor-pointer transition ${
+      modalMode === mode ? 'bg-white text-stone-950 ring-1 ring-stone-300' : 'text-stone-600 hover:text-stone-950'
+    }`;
+  const sectionTitle = 'text-[15px] font-semibold text-stone-950';
+  const required = <span className="text-rose-600" aria-hidden="true"> *</span>;
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title="B→A shifts"
         description="Shift zaereen from category B to A, mark payment received, and print accounts slips."
         meta={
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600 tabular-nums">
-            <span>
-              <span className="font-semibold text-stone-950">{totalShifts}</span> shifts
-            </span>
-            <span>·</span>
-            <span>
-              <span className="font-semibold text-emerald-700">{moneyGivenCount}</span> paid
-            </span>
-            <span>·</span>
-            <span>
-              <span className="font-semibold text-amber-700">{moneyPendingCount}</span> awaiting payment
-            </span>
-          </div>
+          <p className="text-sm text-stone-600 tabular-nums">
+            <span className="font-semibold text-stone-950">{totalShifts}</span> {totalShifts === 1 ? 'shift' : 'shifts'}
+            <span className="mx-2 text-stone-400">·</span>
+            <span className="font-semibold text-stone-950">{moneyGivenCount}</span> paid
+            <span className="mx-2 text-stone-400">·</span>
+            <span className={`font-semibold ${moneyPendingCount ? 'text-amber-700' : 'text-stone-950'}`}>{moneyPendingCount}</span> awaiting payment
+          </p>
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -572,19 +635,19 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                 onClick={() => onOpenBToASlipForIds(shiftRequests.map((r) => r.id))}
                 className={btn.secondary}
               >
-                <FileText className="w-4 h-4 text-brand-700" />
+                <FileText className="w-4 h-4" />
                 All B→A slips ({shiftRequests.length})
               </button>
             )}
             {onOpenAToBSlip && (
               <button type="button" onClick={onOpenAToBSlip} className={btn.secondary}>
-                <FileText className="w-4 h-4 text-amber-700" />
+                <FileText className="w-4 h-4" />
                 A→B slip
               </button>
             )}
-            {(onAddZaer || onToggleShiftToCategoryA || onBatchShiftToCategoryA) && (
+            {canAdd && (
               <button type="button" onClick={handleOpenShiftModal} className={btn.primary}>
-                <Plus className="w-4 h-4 text-gold-200" />
+                <Plus className="w-4 h-4" />
                 Add B→A shift
               </button>
             )}
@@ -592,396 +655,278 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
         }
       />
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white border border-stone-200 rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[240px]">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
+      {/* Shifts: search and filters in the card header, then the list */}
+      <section className={`${card} overflow-hidden`}>
+        <div className="flex flex-col gap-2.5 p-4 sm:px-5 md:flex-row md:items-center">
+          <label className="relative flex-1 min-w-0">
+            <span className="sr-only">Search B→A shifts</span>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by ITS ID, Applicant Name, Family, Tour Ref..."
+              placeholder="Search by ITS ID, name, family, Tour ID or office"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className={`${field} pl-9`}
             />
+          </label>
+          <div className="grid grid-cols-2 gap-2.5 md:flex">
+            <select
+              value={moneyFilter}
+              onChange={(e) => setMoneyFilter(e.target.value as 'ALL' | 'Yes' | 'No')}
+              aria-label="Filter by money given"
+              className={`${field} md:w-48`}
+            >
+              <option value="ALL">All payment states</option>
+              <option value="Yes">Money given: paid</option>
+              <option value="No">Money given: pending</option>
+            </select>
+            <select
+              value={hotelFilter}
+              onChange={(e) => setHotelFilter(e.target.value)}
+              aria-label="Filter by hotel"
+              className={`${field} md:w-40`}
+            >
+              <option value="ALL">All hotels</option>
+              {distinctBuildings.map((bldg) => (
+                <option key={bldg} value={bldg}>
+                  {bldg}
+                </option>
+              ))}
+            </select>
           </div>
-
-          <select
-            value={moneyFilter}
-            onChange={(e) => setMoneyFilter(e.target.value as 'ALL' | 'Yes' | 'No')}
-            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
-          >
-            <option value="ALL">All Payment States</option>
-            <option value="Yes">Money Given: Yes (Received)</option>
-            <option value="No">Money Given: No (Pending)</option>
-          </select>
-
-          <select
-            value={hotelFilter}
-            onChange={(e) => setHotelFilter(e.target.value)}
-            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
-          >
-            <option value="ALL">All Hotels</option>
-            {distinctBuildings.map((bldg) => (
-              <option key={bldg} value={bldg}>
-                {bldg} Hotel
-              </option>
-            ))}
-          </select>
         </div>
-      </div>
 
-      {/* Mobile Cards View (md:hidden) */}
-      <div className="md:hidden space-y-2.5">
-        {filteredAndSortedRequests.length > 0 ? (
-          filteredAndSortedRequests.map((res) => {
-            const isPaid = res.moneyGiven === 'Yes';
-            return (
-              <div key={res.id} className="bg-white border border-stone-200 rounded-2xl p-3.5 shadow-2xs space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-extrabold text-stone-950 truncate">{res.applicantName}</h3>
-                    <div className="text-xs font-mono text-stone-600 tabular-nums mt-0.5">
-                      ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
+        {/* Phone list */}
+        <div className="md:hidden border-t border-stone-200">
+          {filteredAndSortedRequests.length > 0 ? (
+            <ul className="divide-y divide-stone-200">
+              {filteredAndSortedRequests.map((res) => (
+                <li key={res.id} className="px-4 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-semibold leading-snug text-stone-950">{res.applicantName}</h3>
+                      <p className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                        ITS <span className="font-semibold text-stone-900">{res.itsId}</span> · {res.age} {res.gender === 'Female' ? 'F' : 'M'} · Family {res.family}
+                      </p>
                     </div>
+                    <p className="shrink-0 text-sm text-right tabular-nums">
+                      {res.roomNumber ? (
+                        <span className="font-semibold text-stone-950">{roomText(res)}</span>
+                      ) : (
+                        <>
+                          <span className="block text-stone-700">{res.building}</span>
+                          <span className="block text-[13px] text-amber-800">Room pending</span>
+                        </>
+                      )}
+                    </p>
                   </div>
-                  <span className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-brand-700 tabular-nums">
-                    {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : 'Pending'}
-                  </span>
-                </div>
-
-                <div className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs space-y-1">
-                  <div className="font-mono font-bold text-brand-700 break-all">
-                    Tour: {res.tourRefNo || '—'}
-                  </div>
-                  <div className="text-stone-700 font-semibold">Office: {res.officeName || '—'}</div>
-                  <div className="text-[11px] text-stone-600 tabular-nums">
-                    Stay: {res.arrivalDate?.slice(0, 10) || '—'} ➔ {res.departureDate?.slice(0, 10) || '—'}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
-                    className={`flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      isPaid
-                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                        : 'bg-amber-600 hover:bg-amber-700 text-white'
-                    }`}
-                  >
-                    {isPaid ? <CheckCircle2 className="w-4 h-4 text-gold-200" /> : <Clock className="w-4 h-4" />}
-                    <span>{isPaid ? 'Money: Yes' : 'Money: Pending'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onOpenAccountsSlip(res)}
-                    className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-stone-50 hover:bg-stone-200/80 text-brand-700 border border-brand-700/30 transition cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>Request Slip</span>
-                  </button>
-
-                  {(onDeleteReservation || onToggleShiftToCategoryA) && (
-                    <button
-                      type="button"
-                      onClick={() => handleInitiateDelete(res)}
-                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-stone-200 bg-stone-50 hover:bg-red-50 text-stone-500 hover:text-red-700 transition cursor-pointer"
-                      title="Delete or Revert B to A record"
-                    >
-                      <Trash2 className="w-4 h-4" />
+                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-[13px] leading-relaxed">
+                    <dt className="text-stone-500">Tour ID</dt>
+                    <dd className="font-medium text-stone-900 tabular-nums break-words">{tourLabel(res.tourRefNo) || '—'}</dd>
+                    <dt className="text-stone-500">Office</dt>
+                    <dd className="text-stone-800">{res.officeName || '—'}</dd>
+                    <dt className="text-stone-500">Stay</dt>
+                    <dd className="text-stone-800 tabular-nums">{day(res.arrivalDate)} → {day(res.departureDate)}{res.paxCount && res.paxCount > 1 ? ` · ${res.paxCount} pax` : ''}</dd>
+                  </dl>
+                  <div className="mt-3 flex items-center gap-2">
+                    {moneyButton(res, '!h-10 !px-3.5')}
+                    <button type="button" onClick={() => onOpenAccountsSlip(res)} className={`${btn.secondary} flex-1`}>
+                      <FileText className="w-4 h-4" />
+                      Request slip
                     </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center text-stone-500 text-sm">
-            No B→A shifts yet. Tap <strong>Add B→A shift</strong> to pick existing zaereen or add new ones.
-          </div>
-        )}
-      </div>
+                    {canRemove && (
+                      <button
+                        type="button"
+                        onClick={() => handleInitiateDelete(res)}
+                        className={`${btn.ghost} w-10 !px-0 shrink-0 hover:!text-rose-700 hover:!bg-rose-50`}
+                        title="Delete or revert this B→A record"
+                        aria-label={`Delete or revert the B→A record of ${res.applicantName}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="px-4 py-8">{emptyState}</div>
+          )}
+        </div>
 
-      {/* Requests Table (Desktop View) */}
-      <div className="hidden md:block bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop table */}
+        <div className="hidden md:block border-t border-stone-200 overflow-x-auto">
           <table className="w-full text-left text-sm border-collapse">
-            <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-xs tracking-wider font-medium select-none">
+            <thead className="bg-stone-50 text-xs font-semibold text-stone-600 select-none">
               <tr>
-                <th
-                  onClick={() => handleSort('itsId')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[115px]"
-                >
-                  <div className="flex items-center">
-                    <span>ITS ID</span>
-                    {renderSortIndicator('itsId')}
-                  </div>
+                <th className={`${th} pl-5`} aria-sort={ariaSort('itsId')}>{sortTh('itsId', 'ITS ID')}</th>
+                <th className={th} aria-sort={ariaSort('applicantName') || ariaSort('family')}>
+                  <span className="inline-flex items-center gap-3">
+                    {sortTh('applicantName', 'Applicant name')}
+                    {sortTh('family', 'Family')}
+                  </span>
                 </th>
-
-                <th
-                  onClick={() => handleSort('applicantName')}
-                  className="py-3.5 px-3.5 cursor-pointer hover:bg-stone-100 transition min-w-[185px]"
-                >
-                  <div className="flex items-center">
-                    <span>Applicant Name</span>
-                    {renderSortIndicator('applicantName')}
-                  </div>
+                <th className={th} aria-sort={ariaSort('tourRefNo')}>
+                  {sortTh('tourRefNo', 'Tour ID')} <span className="font-normal text-stone-500">and office</span>
                 </th>
-
-                <th className="py-3.5 px-2 text-center min-w-[65px]">Age / Sex</th>
-
-                <th
-                  onClick={() => handleSort('family')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[85px]"
-                >
-                  <div className="flex items-center">
-                    <span>Family</span>
-                    {renderSortIndicator('family')}
-                  </div>
-                </th>
-
-                <th
-                  onClick={() => handleSort('tourRefNo')}
-                  className="py-3.5 px-3.5 cursor-pointer hover:bg-stone-100 transition min-w-[200px] max-w-[290px]"
-                >
-                  <div className="flex items-center">
-                    <span>Tour Reference No.</span>
-                    {renderSortIndicator('tourRefNo')}
-                  </div>
-                </th>
-
-                <th className="py-3.5 px-3.5 min-w-[165px]">Office Name</th>
-                <th className="py-3.5 px-3 min-w-[120px]">Stay Dates</th>
-                <th
-                  onClick={() => handleSort('building')}
-                  className="py-3.5 px-3 cursor-pointer hover:bg-stone-100 transition min-w-[135px]"
-                >
-                  <div className="flex items-center">
-                    <span>Hotel &amp; Room</span>
-                    {renderSortIndicator('building')}
-                  </div>
-                </th>
-
-                <th
-                  onClick={() => handleSort('moneyGiven')}
-                  className="py-3.5 px-3 text-center bg-stone-100 cursor-pointer hover:bg-stone-200/70 transition min-w-[140px]"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>Money Given</span>
-                    {renderSortIndicator('moneyGiven')}
-                  </div>
-                </th>
-
-                <th className="py-3.5 px-3 text-center min-w-[130px]">Accounts Slip</th>
-
-                {(onDeleteReservation || onToggleShiftToCategoryA) && (
-                  <th className="py-3.5 px-2 text-center w-16">Remove</th>
-                )}
+                <th className={th}>Stay</th>
+                <th className={th} aria-sort={ariaSort('building')}>{sortTh('building', 'Hotel & room')}</th>
+                <th className={th} aria-sort={ariaSort('moneyGiven')}>{sortTh('moneyGiven', 'Money given')}</th>
+                <th className={th}>Accounts slip</th>
+                {canRemove && <th className="w-12 pr-3"><span className="sr-only">Remove</span></th>}
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-stone-100 text-stone-900 text-sm">
+            <tbody className="divide-y divide-stone-200 text-stone-900">
               {filteredAndSortedRequests.length > 0 ? (
-                filteredAndSortedRequests.map((res) => {
-                  const isPaid = res.moneyGiven === 'Yes';
-                  return (
-                    <tr key={res.id} className="hover:bg-stone-50 transition">
-                      <td className="py-3 px-3 font-mono font-bold text-stone-950 tabular-nums">
-                        {res.itsId}
-                      </td>
+                filteredAndSortedRequests.map((res) => (
+                  <tr key={res.id} className="hover:bg-stone-50 transition align-top">
+                    <td className="py-3 pl-5 pr-3 font-bold text-stone-950 tabular-nums whitespace-nowrap">{res.itsId}</td>
 
-                      <td className="py-3 px-3.5 whitespace-normal break-words font-bold text-stone-950">
-                        <div>{res.applicantName}</div>
-                        {res.jamaat && <div className="text-xs text-stone-500 font-normal">{res.jamaat}</div>}
-                      </td>
+                    <td className="py-3 px-3 min-w-[11rem]">
+                      <div className="font-semibold leading-snug text-stone-950 break-words">{res.applicantName}</div>
+                      <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                        {res.age} {res.gender === 'Female' ? 'F' : 'M'} · Family {res.family}
+                        {res.jamaat ? ` · ${res.jamaat}` : ''}
+                      </div>
+                    </td>
 
-                      <td className="py-3 px-2 text-center text-stone-700 font-semibold text-xs tabular-nums">
-                        {res.age} / {res.gender === 'Female' ? 'F' : 'M'}
-                      </td>
+                    <td className="py-3 px-3 min-w-[9rem]">
+                      <div className="font-semibold text-stone-950 tabular-nums break-words" title={res.tourRefNo}>{tourLabel(res.tourRefNo)}</div>
+                      <div className="mt-0.5 text-[13px] leading-snug text-stone-600">{res.officeName}</div>
+                    </td>
 
-                      <td className="py-3 px-3 font-mono font-extrabold text-emerald-900 tabular-nums">
-                        {res.family}
-                      </td>
+                    <td className="py-3 px-3 text-stone-800 tabular-nums whitespace-nowrap">
+                      {day(res.arrivalDate)} → {day(res.departureDate)}
+                    </td>
 
-                      <td className="py-3 px-3.5 whitespace-normal break-words break-all font-mono font-bold text-stone-950 min-w-[200px] max-w-[290px] leading-relaxed">
-                        {res.tourRefNo}
-                      </td>
-
-                      <td className="py-3 px-3.5 whitespace-normal break-words text-stone-700 text-xs font-medium min-w-[165px]">
-                        {res.officeName}
-                      </td>
-
-                      <td className="py-3 px-3 text-stone-800 text-xs font-medium tabular-nums">
-                        <div>{res.arrivalDate}</div>
-                        <div className="text-[11px] text-stone-500">to {res.departureDate}</div>
-                      </td>
-
-                      <td className="py-3 px-3">
-                        <span className="font-bold text-brand-700 text-xs tabular-nums">
-                          {res.building} {res.roomNumber ? `Rm ${res.roomNumber}` : '(Room Pending)'}
-                        </span>
-                        {res.paxCount && res.paxCount > 1 && (
-                          <div className="text-[11px] text-amber-800 font-semibold mt-0.5 tabular-nums">
-                            {res.paxCount} Pax
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-3 text-center bg-stone-50/60">
-                        <button
-                          type="button"
-                          onClick={() => onToggleMoneyGiven(res.id, isPaid ? 'No' : 'Yes')}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer whitespace-nowrap ${
-                            isPaid
-                              ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                              : 'bg-amber-600 hover:bg-amber-700 text-white'
-                          }`}
-                        >
-                          {isPaid ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-gold-200" />
-                              <span>Yes (Received)</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>No (Pending)</span>
-                            </>
-                          )}
-                        </button>
-                      </td>
-
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAccountsSlip(res)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-stone-50 hover:bg-stone-200/80 text-brand-700 border border-brand-700/30 transition shadow-2xs cursor-pointer whitespace-nowrap"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Request Slip</span>
-                        </button>
-                      </td>
-
-                      {(onDeleteReservation || onToggleShiftToCategoryA) && (
-                        <td className="py-3 px-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleInitiateDelete(res)}
-                            className="p-1.5 rounded hover:bg-red-50 text-stone-400 hover:text-red-700 transition cursor-pointer"
-                            title="Delete or Revert B to A record"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
+                    <td className="py-3 px-3 tabular-nums whitespace-nowrap">
+                      {res.roomNumber ? (
+                        <span className="font-semibold text-stone-950">{roomText(res)}</span>
+                      ) : (
+                        <>
+                          <span className="text-stone-800">{res.building}</span>
+                          <span className="block text-[13px] text-amber-800">Room pending</span>
+                        </>
                       )}
-                    </tr>
-                  );
-                })
+                      {res.paxCount && res.paxCount > 1 && (
+                        <div className="mt-0.5 text-[13px] text-stone-600">{res.paxCount} pax</div>
+                      )}
+                    </td>
+
+                    <td className="py-2 px-3">{moneyButton(res)}</td>
+
+                    <td className="py-2 px-3">
+                      <button type="button" onClick={() => onOpenAccountsSlip(res)} className={btnSm.secondary}>
+                        <FileText className="w-4 h-4" />
+                        Request slip
+                      </button>
+                    </td>
+
+                    {canRemove && (
+                      <td className="py-2 pr-3">
+                        <button
+                          type="button"
+                          onClick={() => handleInitiateDelete(res)}
+                          className={`${btnSm.ghost} w-8 !px-0 hover:!text-rose-700 hover:!bg-rose-50`}
+                          title="Delete or revert this B→A record"
+                          aria-label={`Delete or revert the B→A record of ${res.applicantName}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))
               ) : (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-stone-500 text-sm">
-                    No B→A shift requests yet. Click <strong>Add B→A shift</strong> above to pick existing zaereen or register new ones.
-                  </td>
+                  <td colSpan={8} className="px-5 py-8">{emptyState}</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      {/* Easy B -> A Shift Modal (Supports Picking Existing Zaereen OR Paste ITS OR Adding New) */}
+      {/* Add B→A shift: pick existing zaereen, paste ITS IDs, or add new */}
       {isShiftModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px]">
-          <div className="bg-stone-50 border border-stone-200 rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden flex flex-col max-h-[92vh]">
-            {/* Modal Header */}
-            <div className="bg-brand-700 text-white p-4 sm:p-5 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-800/80 rounded-xl">
-                  <ArrowUpRight className="w-5 h-5 text-gold-200" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base sm:text-lg">Add B ➔ A Shift</h3>
-                  <p className="text-xs text-gold-200/90 mt-0.5">
-                    Pick existing zaereen by search/ITS paste, or register new zaereen shifting from B to A
-                  </p>
-                </div>
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-label="Add B→A shift">
+          <div className={`${modalCard} max-w-3xl`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 className={modalTitle}>Add B→A shift</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-stone-600">
+                  Pick existing zaereen by search or ITS paste, or register new zaereen shifting from B to A.
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsShiftModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition cursor-pointer"
-              >
+              <button type="button" onClick={() => setIsShiftModalOpen(false)} className={`${modalClose} max-md:w-10 max-md:h-10`} aria-label="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Mode Switch Tabs */}
-            <div className="bg-white border-b border-stone-200 px-4 py-2.5 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setModalMode('existing');
-                }}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                  modalMode === 'existing'
-                    ? 'bg-brand-700 text-white shadow-2xs'
-                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Pick Existing Zaereen ({portalCandidates.length})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setModalMode('new');
-                }}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                  modalMode === 'new'
-                    ? 'bg-brand-700 text-white shadow-2xs'
-                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                }`}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add New Zaer / Paste ITS</span>
-              </button>
+            {/* Mode switch */}
+            <div className="px-5 sm:px-6 pt-4">
+              <div className="grid grid-cols-2 sm:inline-grid rounded-lg bg-stone-200/70 p-1 gap-1" role="group" aria-label="How to add">
+                <button
+                  type="button"
+                  aria-pressed={modalMode === 'existing'}
+                  onClick={() => {
+                    setFormError('');
+                    setModalMode('existing');
+                  }}
+                  className={modeTab('existing')}
+                >
+                  <Users className="w-4 h-4 max-sm:hidden" />
+                  <span>Pick existing zaereen ({portalCandidates.length})</span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={modalMode === 'new'}
+                  onClick={() => {
+                    setFormError('');
+                    setModalMode('new');
+                  }}
+                  className={modeTab('new')}
+                >
+                  <Plus className="w-4 h-4 max-sm:hidden" />
+                  <span>Add new zair / paste ITS</span>
+                </button>
+              </div>
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
               {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex items-center gap-2 font-semibold">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <div role="alert" className="rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 px-3.5 py-2.5 text-sm text-rose-700 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                   <span>{formError}</span>
                 </div>
               )}
 
               {modalMode === 'existing' ? (
-                <div className="space-y-3.5">
-                  {/* Search & Tour filter */}
-                  <div className="bg-white border border-stone-200 rounded-xl p-3 space-y-2.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                      <div className="sm:col-span-7 relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-stone-400" />
+                <>
+                  {/* Search, tour filter, quick ITS match */}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                      <label className="sm:col-span-7 relative">
+                        <span className="sr-only">Search zaereen</span>
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                         <input
                           type="text"
                           value={pickSearch}
                           onChange={(e) => setPickSearch(e.target.value)}
-                          placeholder="Search by Name, ITS ID, Tour ID, Family #..."
-                          className="w-full bg-stone-50 border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                          placeholder="Search by name, ITS ID, Tour ID or family"
+                          className={`${field} pl-9`}
                         />
-                      </div>
+                      </label>
                       <div className="sm:col-span-5">
                         <select
                           value={pickTourFilter}
                           onChange={(e) => setPickTourFilter(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800"
+                          aria-label="Filter by tour"
+                          className={field}
                         >
-                          <option value="ALL">All Tours ({portalCandidates.length})</option>
+                          <option value="ALL">All tours ({portalCandidates.length})</option>
                           {candidateTours.map((t) => (
                             <option key={t} value={t}>
                               {t}
@@ -991,42 +936,42 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Quick Paste ITS to Auto-Select */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 border-t border-stone-100">
-                      <div className="flex-1 flex items-center gap-2">
-                        <ClipboardPaste className="w-3.5 h-3.5 text-brand-700 shrink-0" />
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                      <label className="relative flex-1 min-w-0">
+                        <span className="sr-only">Paste ITS IDs to select matching zaereen</span>
+                        <ClipboardPaste className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
                         <input
                           type="text"
                           value={pickItsPaste}
                           onChange={(e) => setPickItsPaste(e.target.value)}
-                          placeholder="Quick match by ITS: paste ITS IDs separated by space/comma..."
-                          className="flex-1 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1 font-mono text-xs text-stone-900"
+                          placeholder="Quick match: paste ITS IDs separated by spaces or commas"
+                          className={`${field} pl-9 tabular-nums`}
                         />
-                      </div>
+                      </label>
                       <button
                         type="button"
                         onClick={handleMatchPastedItsInPortal}
                         disabled={!pickItsPaste.trim()}
-                        className="px-3 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 disabled:opacity-40 text-stone-900 font-bold cursor-pointer whitespace-nowrap"
+                        className={btn.secondary}
                       >
-                        Match &amp; Select
+                        Match and select
                       </button>
                     </div>
 
                     {pickPasteFeedback && (
-                      <div className="text-[11px] font-semibold text-brand-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                      <p role="status" className="rounded-lg bg-blue-50 ring-1 ring-inset ring-blue-200 px-3 py-2 text-[13px] text-blue-800">
                         {pickPasteFeedback}
-                      </div>
+                      </p>
                     )}
                   </div>
 
-                  {/* Candidate List */}
-                  <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 bg-stone-50 border-b border-stone-200">
-                      <span className="font-bold text-stone-800 tabular-nums">
-                        {pickSelectedIds.length} selected · {filteredCandidates.length} matching zaereen
+                  {/* Candidate list */}
+                  <div className="rounded-xl ring-1 ring-inset ring-stone-200 overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-3.5 pr-2 py-1.5 bg-stone-50 border-b border-stone-200">
+                      <span className="text-[13px] text-stone-700 tabular-nums">
+                        <span className="font-semibold text-stone-950">{pickSelectedIds.length} selected</span> · {filteredCandidates.length} matching zaereen
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() =>
@@ -1035,32 +980,28 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                             )
                           }
                           disabled={filteredCandidates.length === 0}
-                          className="text-xs font-bold text-brand-700 hover:underline disabled:opacity-40 cursor-pointer"
+                          className={`${btnSm.ghost} max-md:h-10 !text-brand-700`}
                         >
-                          Select All ({filteredCandidates.length})
+                          Select all ({filteredCandidates.length})
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setPickSelectedIds([])}
-                          className="text-xs font-semibold text-stone-500 hover:text-stone-800 cursor-pointer"
-                        >
+                        <button type="button" onClick={() => setPickSelectedIds([])} className={`${btnSm.ghost} max-md:h-10`}>
                           Clear
                         </button>
                       </div>
                     </div>
 
-                    <div className="max-h-56 overflow-y-auto divide-y divide-stone-100">
+                    <div className="max-h-60 overflow-y-auto divide-y divide-stone-200">
                       {filteredCandidates.length > 0 ? (
                         filteredCandidates.slice(0, 150).map((c) => {
                           const checked = pickSelectedIds.includes(c.id);
                           return (
                             <label
                               key={c.id}
-                              className={`flex items-center justify-between gap-2 px-3 py-2 cursor-pointer transition ${
-                                checked ? 'bg-emerald-50/70' : 'hover:bg-stone-50'
+                              className={`flex items-center justify-between gap-3 px-3.5 py-2 min-h-11 cursor-pointer transition ${
+                                checked ? 'bg-brand-50' : 'hover:bg-stone-50'
                               }`}
                             >
-                              <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex items-center gap-3 min-w-0">
                                 <input
                                   type="checkbox"
                                   checked={checked}
@@ -1069,203 +1010,191 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                                       prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
                                     )
                                   }
-                                  className="w-4 h-4 rounded accent-brand-700 shrink-0"
+                                  className="w-4 h-4 accent-brand-700 shrink-0"
                                 />
                                 <div className="min-w-0">
-                                  <div className="font-bold text-stone-900 truncate">{c.applicantName}</div>
-                                  <div className="text-[11px] text-stone-600 font-mono tabular-nums truncate">
-                                    ITS {c.itsId || '—'} · Fam #{c.family || '—'} · {c.tourRefNo || 'No Tour'}
+                                  <div className="text-sm font-medium text-stone-950 truncate">{c.applicantName}</div>
+                                  <div className="text-[13px] text-stone-600 tabular-nums truncate">
+                                    ITS {c.itsId || '—'} · Family {c.family || '—'} · {tourLabel(c.tourRefNo) || 'No tour'}
                                   </div>
                                 </div>
                               </div>
-                              <span className="text-[11px] font-semibold text-brand-700 shrink-0 tabular-nums">
-                                {c.roomNumber ? `${c.building} Rm ${c.roomNumber}` : 'Unallotted'}
+                              <span className={`text-[13px] shrink-0 tabular-nums ${c.roomNumber ? 'font-medium text-stone-900' : 'text-stone-500'}`}>
+                                {c.roomNumber ? `${c.building} ${c.roomNumber}` : 'Unallotted'}
                               </span>
                             </label>
                           );
                         })
                       ) : (
-                        <div className="py-8 text-center text-stone-500">
+                        <p className="px-4 py-8 text-center text-sm text-stone-600">
                           {portalCandidates.length === 0
-                            ? 'All portal zaereen are already in B→A. Use "Add New Zaer / Paste ITS" to register more.'
-                            : 'No zaereen match your search filter.'}
-                        </div>
+                            ? 'All portal zaereen are already in B→A. Use “Add new zair / paste ITS” to register more.'
+                            : 'No zaereen match your search or tour filter.'}
+                        </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Payment & Optional Room Assignment */}
-                  <div className="bg-white border border-stone-200 rounded-xl p-3 space-y-2.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block font-bold text-stone-700 mb-1">Money Given Status</label>
-                        <select
-                          value={pickMoneyGiven}
-                          onChange={(e) => setPickMoneyGiven(e.target.value as MoneyGivenStatus)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-semibold text-stone-900"
-                        >
-                          <option value="No">Pending (Collect at Accounts)</option>
-                          <option value="Yes">Yes (Money Already Received)</option>
-                        </select>
-                      </div>
+                  {/* Payment and optional room */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+                    <label className="block">
+                      <span className={fieldLabel}>Money given status</span>
+                      <select
+                        value={pickMoneyGiven}
+                        onChange={(e) => setPickMoneyGiven(e.target.value as MoneyGivenStatus)}
+                        className={field}
+                      >
+                        <option value="No">Pending (collect at accounts)</option>
+                        <option value="Yes">Yes (money already received)</option>
+                      </select>
+                    </label>
 
-                      <div>
-                        <label className="flex items-center gap-2 font-bold text-stone-700 mb-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={pickOverrideRoom}
-                            onChange={(e) => setPickOverrideRoom(e.target.checked)}
-                            className="w-4 h-4 accent-brand-700"
-                          />
-                          <span>Also assign/change Hotel &amp; Room</span>
-                        </label>
-                        {pickOverrideRoom ? (
-                          <div className="flex items-center gap-1.5">
-                            <select
-                              value={pickBuilding}
-                              onChange={(e) => {
-                                setPickBuilding(e.target.value);
-                                setPickRoomNumber('');
-                              }}
-                              className="bg-stone-50 border border-stone-300 rounded-lg px-2 py-1.5 font-bold text-brand-700"
-                            >
-                              {distinctBuildings.map((b) => (
-                                <option key={b} value={b}>
-                                  {b}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              value={pickRoomNumber}
-                              onChange={(e) => setPickRoomNumber(e.target.value)}
-                              className="flex-1 bg-stone-50 border border-stone-300 rounded-lg px-2 py-1.5 font-mono font-bold text-stone-900"
-                            >
-                              <option value="">-- Pick Room --</option>
-                              {vacantRoomsForPickOverride.map((rm) => (
-                                <option key={rm.id} value={rm.roomNumber}>
-                                  Rm {rm.roomNumber} ({getRoomBedCount(rm)} beds, cap {rm.capacity})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-stone-500 pt-1">
-                            Keeps each selected zair’s existing room allotment.
-                          </div>
-                        )}
-                      </div>
+                    <div>
+                      <label className="flex items-center gap-2 mb-1.5 text-[13px] font-medium text-stone-700 cursor-pointer min-h-5">
+                        <input
+                          type="checkbox"
+                          checked={pickOverrideRoom}
+                          onChange={(e) => setPickOverrideRoom(e.target.checked)}
+                          className="w-4 h-4 accent-brand-700"
+                        />
+                        <span>Also assign or change hotel and room</span>
+                      </label>
+                      {pickOverrideRoom ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={pickBuilding}
+                            onChange={(e) => {
+                              setPickBuilding(e.target.value);
+                              setPickRoomNumber('');
+                            }}
+                            aria-label="Hotel"
+                            className={`${field} !w-auto`}
+                          >
+                            {distinctBuildings.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={pickRoomNumber}
+                            onChange={(e) => setPickRoomNumber(e.target.value)}
+                            aria-label="Room"
+                            className={`${field} flex-1 min-w-0 tabular-nums`}
+                          >
+                            <option value="">Pick room</option>
+                            {vacantRoomsForPickOverride.map((rm) => (
+                              <option key={rm.id} value={rm.roomNumber}>
+                                Room {rm.roomNumber} ({getRoomBedCount(rm)} beds, cap {rm.capacity})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <p className="h-10 flex items-center text-[13px] text-stone-600">
+                          Keeps each selected zair’s existing room allotment.
+                        </p>
+                      )}
                     </div>
                   </div>
-                </div>
+                </>
               ) : (
-                <div className="space-y-3.5">
-                  <div className="bg-white border border-stone-200 rounded-xl p-3.5 space-y-3">
-                    <div className="text-xs font-bold text-brand-700 uppercase tracking-wider border-b border-stone-100 pb-1">
-                      1. Tour, Dates &amp; Room
-                    </div>
+                <>
+                  <div className="space-y-3.5">
+                    <h4 className={sectionTitle}>1. Tour, dates and room</h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">
-                          Tour ID <span className="text-red-500">*</span>
-                        </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
+                      <label className="block">
+                        <span className={fieldLabel}>Tour ID{required}</span>
                         <input
                           type="text"
                           list="b2a-tour-ids"
                           placeholder="e.g. NZ-2026-TOUR-44"
                           value={newTourId}
                           onChange={(e) => handleTourIdChange(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-brand-700"
+                          className={`${field} tabular-nums`}
                         />
                         <datalist id="b2a-tour-ids">
                           {existingTourIds.map((t) => (
                             <option key={t} value={t} />
                           ))}
                         </datalist>
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">Office Name</label>
+                      <label className="block">
+                        <span className={fieldLabel}>Office name</span>
                         <input
                           type="text"
                           value={newOfficeName}
                           onChange={(e) => setNewOfficeName(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-700"
+                          className={field}
                         />
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">
-                          Date of arrival <span className="text-red-500">*</span>
-                        </label>
+                      <label className="block">
+                        <span className={fieldLabel}>Date of arrival{required}</span>
                         <input
                           type="date"
                           value={newArrivalDate}
                           onChange={(e) => setNewArrivalDate(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium tabular-nums"
+                          className={`${field} tabular-nums`}
                         />
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">
-                          Date of departure <span className="text-red-500">*</span>
-                        </label>
+                      <label className="block">
+                        <span className={fieldLabel}>Date of departure{required}</span>
                         <input
                           type="date"
                           value={newDepartureDate}
                           onChange={(e) => setNewDepartureDate(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-medium tabular-nums"
+                          className={`${field} tabular-nums`}
                         />
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">Hotel / Building</label>
+                      <label className="block">
+                        <span className={fieldLabel}>Hotel / building</span>
                         <select
                           value={newBuilding}
                           onChange={(e) => {
                             setNewBuilding(e.target.value);
                             setNewRoomNumber('');
                           }}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-semibold"
+                          className={field}
                         >
                           {distinctBuildings.map((bldg) => (
                             <option key={bldg} value={bldg}>
-                              {bldg} Hotel
+                              {bldg}
                             </option>
                           ))}
                         </select>
-                      </div>
+                      </label>
 
-                      <div>
-                        <label className="block font-bold text-stone-800 mb-1">
-                          Room given in <span className="text-stone-400 font-normal">(Optional · {calculatedNights} Nights)</span>
-                        </label>
+                      <label className="block">
+                        <span className={fieldLabel}>
+                          Room given in <span className="font-normal text-stone-500">(optional · {calculatedNights} {calculatedNights === 1 ? 'night' : 'nights'})</span>
+                        </span>
                         <select
                           value={newRoomNumber}
                           onChange={(e) => setNewRoomNumber(e.target.value)}
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-stone-900 font-bold"
+                          className={`${field} tabular-nums`}
                         >
-                          <option value="">Room Pending (Allot Later)</option>
+                          <option value="">Room pending (allot later)</option>
                           {vacantRoomsForNewEntry.map((rm) => (
                             <option key={rm.id} value={rm.roomNumber}>
                               Room {rm.roomNumber} ({getRoomBedCount(rm)} beds, cap {rm.capacity})
                             </option>
                           ))}
                         </select>
-                      </div>
+                      </label>
                     </div>
                   </div>
 
-                  {/* Quick Paste Multiple ITS IDs OR Enter Single/Pax Count */}
-                  <div className="bg-white border border-stone-200 rounded-xl p-3.5 space-y-3">
-                    <div className="flex items-center justify-between border-b border-stone-100 pb-1">
-                      <span className="text-xs font-bold text-brand-700 uppercase tracking-wider">
-                        2. Paste Multiple ITS IDs (or Enter Single Details)
-                      </span>
+                  {/* Paste several ITS IDs, or enter one zair's details */}
+                  <div className="space-y-3.5 pt-5 border-t border-stone-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className={sectionTitle}>2. Paste multiple ITS IDs (or enter single details)</h4>
                       {parsedNewBulk && parsedNewBulk.entries.length > 0 && (
-                        <span className="font-bold text-emerald-700 tabular-nums">
-                          {parsedNewBulk.entries.length} ITS ready
-                        </span>
+                        <span className={chip('ok')}>{parsedNewBulk.entries.length} ITS ready</span>
                       )}
                     </div>
 
@@ -1273,84 +1202,79 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                       rows={3}
                       value={newItsBulkText}
                       onChange={(e) => setNewItsBulkText(e.target.value)}
-                      placeholder="Paste multiple ITS numbers (newlines, spaces, or commas) to add multiple B→A pax at once, OR leave blank to fill single details below..."
-                      className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 font-mono text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700"
+                      aria-label="ITS numbers to add"
+                      placeholder="Paste multiple ITS numbers (new lines, spaces or commas) to add several B→A pax at once, or leave blank to fill single details below."
+                      className={`${field} !h-auto py-2.5 leading-relaxed tabular-nums`}
                     />
 
                     {!newItsBulkText.trim() && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block font-semibold text-stone-700 mb-1">Number of pax</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-3.5">
+                        <label className="block">
+                          <span className={fieldLabel}>Number of pax</span>
                           <input
                             type="number"
                             min={1}
                             max={100}
                             value={newPaxCount}
                             onChange={(e) => setNewPaxCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-bold tabular-nums"
+                            className={`${field} tabular-nums`}
                           />
-                        </div>
+                        </label>
 
-                        <div className="sm:col-span-2">
-                          <label className="block font-semibold text-stone-700 mb-1">
-                            Applicant / Head of Pax Name
-                          </label>
+                        <label className="block sm:col-span-2">
+                          <span className={fieldLabel}>Applicant / head of pax name</span>
                           <input
                             type="text"
                             placeholder="e.g. Murtaza Bhai (optional)"
                             value={newApplicantName}
                             onChange={(e) => setNewApplicantName(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900"
+                            className={field}
                           />
-                        </div>
+                        </label>
 
-                        <div>
-                          <label className="block font-semibold text-stone-700 mb-1">ITS ID (Optional)</label>
+                        <label className="block">
+                          <span className={fieldLabel}>ITS ID <span className="font-normal text-stone-500">(optional)</span></span>
                           <input
                             type="text"
                             placeholder="30482910"
                             value={newItsId}
                             onChange={(e) => setNewItsId(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-mono"
+                            className={`${field} tabular-nums`}
                           />
-                        </div>
+                        </label>
 
-                        <div>
-                          <label className="block font-semibold text-stone-700 mb-1">Family #</label>
+                        <label className="block">
+                          <span className={fieldLabel}>Family</span>
                           <input
                             type="text"
                             placeholder="1"
                             value={newFamily}
                             onChange={(e) => setNewFamily(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-mono"
+                            className={`${field} tabular-nums`}
                           />
-                        </div>
+                        </label>
 
-                        <div>
-                          <label className="block font-semibold text-stone-700 mb-1">Money Given</label>
+                        <label className="block">
+                          <span className={fieldLabel}>Money given</span>
                           <select
                             value={newMoneyGiven}
                             onChange={(e) => setNewMoneyGiven(e.target.value as MoneyGivenStatus)}
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-1.5 text-stone-900 font-semibold"
+                            className={field}
                           >
                             <option value="No">Pending</option>
-                            <option value="Yes">Yes (Received)</option>
+                            <option value="Yes">Yes (received)</option>
                           </select>
-                        </div>
+                        </label>
                       </div>
                     )}
                   </div>
-                </div>
+                </>
               )}
             </div>
 
             {/* Footer */}
-            <div className="bg-white px-4 py-3 border-t border-stone-200 flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsShiftModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-stone-300 hover:bg-stone-100 text-stone-700 font-bold text-xs transition cursor-pointer"
-              >
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setIsShiftModalOpen(false)} className={`${btn.ghost} max-sm:order-last max-sm:w-full`}>
                 Cancel
               </button>
 
@@ -1360,7 +1284,7 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                     type="button"
                     disabled={pickSelectedIds.length === 0}
                     onClick={() => handleShiftSelectedExisting(false)}
-                    className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 disabled:opacity-40 text-stone-900 font-bold text-xs transition cursor-pointer"
+                    className={`${btn.secondary} max-sm:flex-1`}
                   >
                     Save B→A ({pickSelectedIds.length})
                   </button>
@@ -1368,28 +1292,20 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                     type="button"
                     disabled={pickSelectedIds.length === 0}
                     onClick={() => handleShiftSelectedExisting(true)}
-                    className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    className={`${btn.primary} max-sm:flex-1`}
                   >
-                    <FileText className="w-4 h-4 text-gold-200" />
-                    <span>Shift ({pickSelectedIds.length}) &amp; Open B→A Slip</span>
+                    <FileText className="w-4 h-4" />
+                    <span>Shift ({pickSelectedIds.length}) and open slip</span>
                   </button>
                 </>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitNewShiftZaer(false)}
-                    className="px-4 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-900 font-bold text-xs transition cursor-pointer"
-                  >
-                    Save Only
+                  <button type="button" onClick={() => handleSubmitNewShiftZaer(false)} className={`${btn.secondary} max-sm:flex-1`}>
+                    Save only
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmitNewShiftZaer(true)}
-                    className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4 text-gold-200" />
-                    <span>Save &amp; Open B→A Slip</span>
+                  <button type="button" onClick={() => handleSubmitNewShiftZaer(true)} className={`${btn.primary} max-sm:flex-1`}>
+                    <FileText className="w-4 h-4" />
+                    <span>Save and open B→A slip</span>
                   </button>
                 </>
               )}
@@ -1398,77 +1314,62 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
         </div>
       )}
 
-      {/* B to A Entry Deletion Modal */}
+      {/* Delete a B→A entry (admin) */}
       {bToARecordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
-                <AlertCircle className="w-6 h-6 text-amber-600" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[11px] font-bold text-purple-900 uppercase tracking-wide mb-0.5">
-                  B to A Registry Protected
-                </div>
-                <h3 className="text-base sm:text-lg font-bold text-stone-900">Delete B to A Shift Entry</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setBToARecordToDelete(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-label="Delete B→A shift entry">
+          <div className={`${modalCard} max-w-lg`}>
+            <div className={modalHeader}>
+              <h3 className={modalTitle}>Delete B→A shift entry?</h3>
+              <button type="button" onClick={() => setBToARecordToDelete(null)} className={`${modalClose} max-md:w-10 max-md:h-10`} aria-label="Close">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-2">
-              <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
-                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                <span>This entry is in B to A. Do you want to delete it?</span>
+            <div className="px-5 sm:px-6 py-5 space-y-4 overflow-y-auto">
+              <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 mt-1 shrink-0 text-amber-700" />
+                <div className="text-sm leading-relaxed text-amber-900">
+                  <p className="font-semibold">This entry is in B to A. Do you want to delete it?</p>
+                  <p className="mt-1 text-[13px]">
+                    When a pax is added in B to A, it should not be deleted until deleted by the admin. Deleting removes their B to A shift status and frees up room{' '}
+                    <span className="font-semibold tabular-nums">
+                      {bToARecordToDelete.building} {bToARecordToDelete.roomNumber || ''}
+                    </span>
+                    .
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-amber-900 leading-relaxed">
-                When a pax is added in B to A, it should not be deleted until deleted by the admin. Deleting removes their B to A shift status and frees up room{' '}
-                <strong>
-                  {bToARecordToDelete.building}{' '}
-                  {bToARecordToDelete.roomNumber ? `Rm ${bToARecordToDelete.roomNumber}` : ''}
-                </strong>
-                .
-              </p>
+
+              <dl className={`${panel} px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm`}>
+                <div className="col-span-2">
+                  <dt className="text-xs text-stone-600">Zair</dt>
+                  <dd className="mt-0.5 font-semibold text-stone-950">{bToARecordToDelete.applicantName}</dd>
+                  <dd className="text-[13px] text-stone-600 tabular-nums">ITS {bToARecordToDelete.itsId}</dd>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <dt className="text-xs text-stone-600">Tour ID</dt>
+                  <dd className="mt-0.5 text-stone-900 tabular-nums break-words">{tourLabel(bToARecordToDelete.tourRefNo) || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-stone-600">Room</dt>
+                  <dd className="mt-0.5 text-stone-900 tabular-nums">
+                    {bToARecordToDelete.building} {bToARecordToDelete.roomNumber || 'unassigned'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-stone-600">Payment</dt>
+                  <dd className="mt-1">
+                    <span className={chip(bToARecordToDelete.moneyGiven === 'Yes' ? 'ok' : 'wait')}>
+                      {bToARecordToDelete.moneyGiven === 'Yes' ? 'Paid' : 'Pending'}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
             </div>
 
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 text-xs space-y-2">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-bold text-stone-900 text-sm">{bToARecordToDelete.applicantName}</div>
-                  <div className="font-mono text-stone-500 text-[11px]">ITS ID: {bToARecordToDelete.itsId}</div>
-                </div>
-                <span className="font-mono text-xs font-bold text-brand-700">
-                  Tour: {bToARecordToDelete.tourRefNo}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-stone-600 text-[11px] pt-1">
-                <div>
-                  Room:{' '}
-                  <strong className="text-stone-900">
-                    {bToARecordToDelete.building} Rm {bToARecordToDelete.roomNumber || 'Unassigned'}
-                  </strong>
-                </div>
-                <div>
-                  Payment:{' '}
-                  <strong className="text-stone-900">
-                    {bToARecordToDelete.moneyGiven === 'Yes' ? 'Paid ✓' : 'Pending'}
-                  </strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setBToARecordToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-bold text-xs transition cursor-pointer"
-              >
-                No, Keep in B to A
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setBToARecordToDelete(null)} className={`${btn.secondary} max-sm:flex-1`}>
+                No, keep in B to A
               </button>
               <button
                 type="button"
@@ -1480,53 +1381,42 @@ export const CategoryUpgradeView: React.FC<CategoryUpgradeViewProps> = ({
                   }
                   setBToARecordToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                className={`${btnDanger} max-sm:flex-1`}
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Yes, Delete B to A Entry</span>
+                <Trash2 className="w-4 h-4" />
+                <span>Yes, delete B to A entry</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Blocked Modal for Non-Admin */}
+      {/* Deleting is blocked for the receptionist role */}
       {bToABlockedNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                <ShieldAlert className="w-5 h-5 text-red-600" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[11px] font-bold text-red-800 uppercase tracking-wide mb-0.5">
-                  Admin Only Permission
-                </div>
-                <h3 className="text-base font-bold text-stone-900">Deletion Blocked: B to A Record</h3>
-                <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                  When a pax is added in <strong>B to A</strong>, it{' '}
-                  <strong>should not be deleted until deleted by the admin</strong>.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setBToABlockedNotice(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-label="Deletion blocked">
+          <div className={`${modalCard} max-w-md`}>
+            <div className={modalHeader}>
+              <h3 className={`${modalTitle} flex items-center gap-2`}>
+                <ShieldAlert className="w-5 h-5 shrink-0 text-rose-600" />
+                Deletion blocked: B to A record
+              </h3>
+              <button type="button" onClick={() => setBToABlockedNotice(null)} className={`${modalClose} max-md:w-10 max-md:h-10`} aria-label="Close">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-              Please switch to <strong>Admin role</strong> using your Admin PIN to authorize deletion of B to A records.
+            <div className="px-5 sm:px-6 py-5 space-y-3 text-sm leading-relaxed text-stone-700">
+              <p>
+                Only an admin can delete this. When a pax is added in <span className="font-semibold text-stone-950">B to A</span>, it{' '}
+                <span className="font-semibold text-stone-950">should not be deleted until deleted by the admin</span>.
+              </p>
+              <p className={`${panel} px-3.5 py-2.5 text-[13px]`}>
+                Please switch to <span className="font-semibold text-stone-950">Admin role</span> using your Admin PIN to authorize deletion of B to A records.
+              </p>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setBToABlockedNotice(null)}
-                className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs transition cursor-pointer"
-              >
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setBToABlockedNotice(null)} className={btn.primary}>
                 Understood
               </button>
             </div>

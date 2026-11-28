@@ -1,35 +1,59 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Building2, 
-  DoorClosed, 
-  Search, 
-  Users, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  Sparkles, 
-  BedDouble, 
-  Bath, 
-  Filter,
-  ArrowRight,
-  ShieldCheck,
-  Calendar,
-  Clock,
-  ArrowRightLeft
-} from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Search, Users, CheckCircle2, AlertCircle, X, Sparkles, ArrowRight, ArrowRightLeft } from 'lucide-react';
 import { Room, Reservation } from '../types';
 import { familyGroups, groupOf } from '../utils/familyGroups';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
-import { 
-  getRoomMaxCapacity, 
+import {
   getRoomBedCount,
-  checkRoomAllotmentAvailability, 
+  checkRoomAllotmentAvailability,
   getRoomBookingsForDuration,
   isInfant,
   countEffectivePax,
-  normalizeBuildingName,
-  getDistinctBuildings
+  getDistinctBuildings,
 } from '../services/storage';
+import {
+  btn,
+  btnSm,
+  chip,
+  field,
+  fieldLabel,
+  modalScrim,
+  modalCard,
+  modalHeader,
+  modalTitle,
+  modalClose,
+  modalFooter,
+  type ChipTone,
+} from './ui';
+
+/* Display helpers. Stored values are never changed, only how they read on screen. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const showDate = (v?: string) => {
+  const raw = String(v || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!m) return raw || '—';
+  return `${parseInt(m[3], 10)} ${MONTHS[parseInt(m[2], 10) - 1] || m[2]}`;
+};
+const showTime = (v?: string) => {
+  const raw = String(v || '').trim();
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw);
+  if (!m) return raw;
+  const h = parseInt(m[1], 10);
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+};
+const sentence = (v: string) => {
+  const t = v.trim().toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
+const segWrap = 'flex items-center gap-1 p-1 rounded-lg bg-stone-100';
+const segBtn = (on: boolean) =>
+  `h-8 max-sm:h-10 px-3 rounded-md text-[13px] whitespace-nowrap cursor-pointer ${
+    on
+      ? 'bg-white text-brand-700 font-semibold ring-1 ring-inset ring-stone-300'
+      : 'font-medium text-stone-600 hover:text-stone-950'
+  }`;
 
 interface QuickRoomAllotModalProps {
   isOpen: boolean;
@@ -57,6 +81,13 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
   const [amenityFilter, setAmenityFilter] = useState<'ALL' | 'western' | 'indian' | 'double' | 'single'>('ALL');
   const [allotMode, setAllotMode] = useState<'single' | 'family'>('single');
+  // The room picked in the list. Nothing is allotted until the footer button is pressed.
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const targetId = targetReservation?.id;
+  useEffect(() => {
+    setSelectedRoomId(null);
+  }, [targetId]);
 
   // All buildings in inventory (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => {
@@ -270,28 +301,40 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
     onClose();
   };
 
-  // Auto-recommend best available room (excluding current room to avoid confusion)
+  // Pick a room in the list and bring it into view.
+  const pickRoom = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    requestAnimationFrame(() => {
+      const el = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-room-id]') || []).find(
+        (n) => n.dataset.roomId === roomId
+      );
+      el?.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  // Auto-recommend best available room (excluding current room to avoid confusion).
+  // It selects the room; staff confirm with the footer button like any other choice.
   const handleAutoRecommend = () => {
     if (!targetReservation) return;
 
     // 1. Check if room with existing family has capacity (exclude current room)
     const familyRoom = sortedRooms.find((r) => r.familyInRoom.length > 0 && r.canFit && !r.isBlocked && !r.isCurrent);
     if (familyRoom) {
-      handleSelectRoom(familyRoom.room.building, familyRoom.room.roomNumber, false);
+      pickRoom(familyRoom.room.id);
       return;
     }
 
     // 2. Find best available vacant room with capacity (exclude current room)
     const bestVacant = sortedRooms.find((r) => r.canFit && !r.isBlocked && r.currentOccupancy === 0 && !r.isCurrent);
     if (bestVacant) {
-      handleSelectRoom(bestVacant.room.building, bestVacant.room.roomNumber, false);
+      pickRoom(bestVacant.room.id);
       return;
     }
 
     // 3. Find any partially filled room with buffer/slots (exclude current room)
     const anyAvailable = sortedRooms.find((r) => r.canFit && !r.isBlocked && !r.isCurrent);
     if (anyAvailable) {
-      handleSelectRoom(anyAvailable.room.building, anyAvailable.room.roomNumber, false);
+      pickRoom(anyAvailable.room.id);
       return;
     }
 
@@ -300,477 +343,520 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
 
   if (!isOpen || !targetReservation) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-stone-800">
-        
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-700 to-brand-800 text-white p-4 sm:p-5 flex items-start justify-between gap-3 flex-shrink-0">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <DoorClosed className="w-5 h-5 text-gold-200" />
-              <h2 className="text-base sm:text-lg font-bold font-serif tracking-wide">
-                Quick Room Allotment
-              </h2>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gold-200/20 text-gold-200 border border-gold-200/40 font-semibold">
-                Capacity + Buffer Enabled
-              </span>
-            </div>
-            
-            {/* Zaer Info Bar */}
-            <div className="mt-2 text-xs text-stone-200 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <div>
-                <span className="text-stone-400">Applicant: </span>
-                <strong className="text-white">{targetReservation.applicantName}</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">ITS: </span>
-                <span className="font-mono text-gold-200 font-bold">{targetReservation.itsId}</span>
-              </div>
-              <div>
-                <span className="text-stone-400">Family: </span>
-                <strong className="text-white">{familyName}</strong> ({familyMembers.length} member{familyMembers.length > 1 ? 's' : ''})
-                {targetGroup?.note && <span className="text-stone-300"> · {targetGroup.note}</span>}
-              </div>
-              <div>
-                <span className="text-stone-400">Tour: </span>
-                <strong className="font-mono text-gold-200">{targetReservation.tourRefNo || targetReservation.tourId || '—'}</strong>
-                {targetReservation.officeName && (
-                  <span className="text-stone-200"> · {targetReservation.officeName}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 flex-wrap">
-                <Calendar className="w-3.5 h-3.5 text-gold-200" />
-                <span className="font-semibold text-white">Arr: {arrivalDate}</span>
-                {targetReservation.arrivalTime && (
-                  <span className="inline-flex items-center gap-1 bg-brand-700 text-white px-1.5 py-0.2 rounded text-[10px] font-bold border border-gold-400/40">
-                    <Clock className="w-2.5 h-2.5" />
-                    {targetReservation.arrivalTime}
-                  </span>
-                )}
-                <span className="text-stone-400 mx-1">➔</span>
-                <span className="font-semibold text-white">Dep: {departureDate}</span>
-                {targetReservation.departureTime && (
-                  <span className="inline-flex items-center gap-1 bg-brand-700 text-white px-1.5 py-0.2 rounded text-[10px] font-bold border border-gold-400/40">
-                    <Clock className="w-2.5 h-2.5" />
-                    {targetReservation.departureTime}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
+  type RoomItem = (typeof evaluatedRooms)[number];
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {onOpenSwitchRoomModal && targetReservation.roomNumber && (
-              <button
-                type="button"
-                onClick={() =>
-                  onOpenSwitchRoomModal({
-                    reservations: [targetReservation],
-                    initialScope: isFamily ? 'group' : 'single',
-                  })
-                }
-                className="min-h-[40px] px-3 py-1.5 rounded-xl bg-gold-200 text-brand-700 font-extrabold text-xs flex items-center gap-1.5 shadow-sm hover:bg-white transition cursor-pointer"
-                title="Switch or swap room with another room"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>Switch Room</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+  // One state per room, in plain words. Tone follows the colour table: ok fits, wait look first, bad conflict.
+  const roomState = (item: RoomItem): { tone: ChipTone; label: string } => {
+    if (item.isCurrent) return { tone: 'neutral', label: 'Current room' };
+    if (item.isBlocked) return { tone: 'bad', label: 'Blocked' };
+    if (item.hasTimingConflict && item.isSevereConflict) return { tone: 'bad', label: 'Turnover conflict' };
+    if (item.currentOccupancy + requestedPax > item.maxCap) return { tone: 'bad', label: item.isFull ? 'Full' : 'Over capacity' };
+    if (!item.canFit) return { tone: 'bad', label: 'Does not fit' };
+    if (item.hasTimingConflict) return { tone: 'wait', label: 'Same-day turnover' };
+    if (item.familyInRoom.length > 0) return { tone: 'ok', label: 'Family here' };
+    if (item.currentOccupancy > 0) return { tone: 'wait', label: 'Shared room' };
+    if (item.currentOccupancy + requestedPax > item.baseCap) return { tone: 'wait', label: 'Uses buffer bed' };
+    return { tone: 'ok', label: 'Fits' };
+  };
+
+  const selected = selectedRoomId ? evaluatedRooms.find((r) => r.room.id === selectedRoomId) || null : null;
+  const selectedUsable = selected && !selected.isCurrent && !selected.isBlocked ? selected : null;
+  // Same rule as before: a room that does not fit is allotted with the force flag, so the notice still appears.
+  const selectedNeedsForce = !!selectedUsable && !selectedUsable.canFit;
+  const selectedOverCapacity = !!selectedUsable && selectedUsable.currentOccupancy + requestedPax > selectedUsable.maxCap;
+  const familyMode = allotMode === 'family' && isFamily;
+  const tourLabel = targetReservation.tourRefNo || targetReservation.tourId || '—';
+  const shownMembers = familyMode ? familyMembers : [targetReservation];
+
+  const confirmLabel = !selectedUsable
+    ? 'Allot room'
+    : selectedNeedsForce && selectedUsable.hasTimingConflict
+    ? `Allot room ${selectedUsable.room.roomNumber} (same-day turnover)`
+    : selectedNeedsForce
+    ? `Force allot room ${selectedUsable.room.roomNumber}`
+    : familyMode
+    ? `Allot family to room ${selectedUsable.room.roomNumber}`
+    : `Allot room ${selectedUsable.room.roomNumber}`;
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setHotelFilter('ALL');
+    setFloorFilter('ALL');
+    setAmenityFilter('ALL');
+  };
+
+  return (
+    <div className={modalScrim.replace('z-50', 'z-[100]')}>
+      <div
+        className={`${modalCard} max-w-5xl lg:h-[min(92dvh,860px)]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-allot-title"
+      >
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="quick-allot-title" className={modalTitle}>
+              Allot a room
+            </h2>
+            <p className="mt-1 text-sm text-stone-600">
+              Choose a room for the stay, then confirm. Nothing is allotted until you do.
+            </p>
           </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Toolbar & Filters */}
-        <div className="p-3 sm:p-4 border-b border-stone-200 bg-stone-100 space-y-3 flex-shrink-0">
-          
-          {/* Top row: Allotment Scope (Single vs Entire Family) & Auto-Recommend */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {isFamily ? (
-              <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl text-xs font-bold">
+        <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex">
+          {/* Who is being placed */}
+          <aside className="lg:w-[304px] lg:shrink-0 lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-stone-200 px-5 sm:px-6 lg:pr-5 py-5 space-y-5">
+            <section>
+              <h3 className={groupTitle}>{familyMode ? 'Family being placed' : 'Zair being placed'}</h3>
+              <ul className="mt-3 space-y-1.5">
+                {shownMembers.slice(0, 8).map((m) => (
+                  <li key={m.id} className="text-sm leading-snug">
+                    <span className="font-semibold text-stone-950">{m.applicantName}</span>
+                    {isInfant(m) && <span className="text-xs text-stone-500"> · infant, no bed</span>}
+                    {!familyMode && m.itsId && (
+                      <span className="block text-xs text-stone-500 tabular-nums">ITS {m.itsId}</span>
+                    )}
+                  </li>
+                ))}
+                {shownMembers.length > 8 && (
+                  <li className="text-xs text-stone-500">and {shownMembers.length - 8} more</li>
+                )}
+              </ul>
+
+              <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-[13px]">
+                <dt className="text-stone-500">Family</dt>
+                <dd className="text-stone-900">
+                  <span className="font-medium">{familyName || '—'}</span>
+                  <span className="text-stone-600">
+                    {' '}
+                    · {familyMembers.length} member{familyMembers.length > 1 ? 's' : ''}
+                  </span>
+                  {targetGroup?.note && <span className="block text-xs text-stone-500">{targetGroup.note}</span>}
+                </dd>
+                <dt className="text-stone-500">Tour</dt>
+                <dd className="text-stone-900 break-words">
+                  <span className="font-medium tabular-nums">{tourLabel}</span>
+                  {targetReservation.officeName && (
+                    <span className="block text-xs text-stone-500">{targetReservation.officeName}</span>
+                  )}
+                </dd>
+                <dt className="text-stone-500">Stay</dt>
+                <dd className="text-stone-900 tabular-nums">
+                  <span className="font-medium">
+                    {showDate(arrivalDate)}
+                    <ArrowRight className="inline w-3.5 h-3.5 mx-1 -mt-0.5 text-stone-500" aria-label="to" />
+                    {showDate(departureDate)}
+                  </span>
+                  {(targetReservation.arrivalTime || targetReservation.departureTime) && (
+                    <span className="block text-xs text-stone-500">
+                      {[
+                        targetReservation.arrivalTime && `arrives ${showTime(targetReservation.arrivalTime)}`,
+                        targetReservation.departureTime && `leaves ${showTime(targetReservation.departureTime)}`,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  )}
+                </dd>
+                <dt className="text-stone-500">Beds</dt>
+                <dd className="text-stone-900">
+                  <span className="font-semibold tabular-nums">{requestedPax}</span> needed
+                  {requestedPax === 0 && <span className="text-stone-500"> (infant shares a bed)</span>}
+                </dd>
+                {targetReservation.roomNumber && (
+                  <>
+                    <dt className="text-stone-500">Now in</dt>
+                    <dd className="text-stone-900 font-medium tabular-nums">
+                      {targetReservation.building} {targetReservation.roomNumber}
+                    </dd>
+                  </>
+                )}
+              </dl>
+
+              {onOpenSwitchRoomModal && targetReservation.roomNumber && (
                 <button
                   type="button"
-                  onClick={() => setAllotMode('single')}
-                  className={`px-3 py-1.5 rounded-lg transition ${
-                    allotMode === 'single'
-                      ? 'bg-brand-700 text-white shadow-xs'
-                      : 'text-stone-700 hover:text-stone-900'
-                  }`}
+                  onClick={() =>
+                    onOpenSwitchRoomModal({
+                      reservations: [targetReservation],
+                      initialScope: isFamily ? 'group' : 'single',
+                    })
+                  }
+                  className={`${btnSm.secondary} max-sm:h-10 mt-3`}
+                  title="Switch or swap room with another room"
                 >
-                  Allot Single (1 Pax)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAllotMode('family')}
-                  className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition ${
-                    allotMode === 'family'
-                      ? 'bg-brand-700 text-white shadow-xs'
-                      : 'text-stone-700 hover:text-stone-900'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Allot Entire Family {familyName} ({familyMembers.length} Pax)</span>
-                </button>
-              </div>
-            ) : (
-              <span className="text-xs text-stone-600 font-medium">
-                Single Zaer Allotment (1 Pax)
-              </span>
-            )}
-
-            <button
-              type="button"
-              onClick={handleAutoRecommend}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-700 to-brand-700 hover:from-emerald-800 hover:to-brand-800 text-white shadow-sm transition"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-gold-200" />
-              <span>⚡ Auto-Recommend Best Room</span>
-            </button>
-          </div>
-
-          {/* Search and Hotel Tabs */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-            {/* Search Box */}
-            <div className="sm:col-span-5 relative">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Room # (e.g. 101, 203) or floor..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-700"
-                autoFocus
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-stone-400 hover:text-stone-600"
-                >
-                  <X className="w-3.5 h-3.5" />
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Switch room
                 </button>
               )}
-            </div>
+            </section>
 
-            {/* Hotel Filter Tabs */}
-            <div className="sm:col-span-5 flex items-center bg-stone-200/70 p-0.5 rounded-xl text-xs font-semibold overflow-x-auto gap-0.5">
-              <button
-                type="button"
-                onClick={() => setHotelFilter('ALL')}
-                className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
-                  hotelFilter === 'ALL' ? 'bg-white text-brand-700 shadow-xs font-bold' : 'text-stone-600'
-                }`}
-              >
-                All ({rooms.length})
-              </button>
-              {distinctBuildings.map((bldg) => {
-                const bCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
-                return (
+            {isFamily && (
+              <section>
+                <h3 className={fieldLabel}>Allot for</h3>
+                <div className={`${segWrap} w-full`} role="group" aria-label="Allot for">
                   <button
-                    key={bldg}
                     type="button"
-                    onClick={() => setHotelFilter(bldg)}
-                    className={`px-2.5 py-1 text-center rounded-lg transition whitespace-nowrap ${
-                      hotelFilter.toLowerCase() === bldg.toLowerCase()
-                        ? 'bg-white text-brand-700 shadow-xs font-bold'
-                        : 'text-stone-600'
-                    }`}
+                    onClick={() => setAllotMode('single')}
+                    aria-pressed={allotMode === 'single'}
+                    className={`${segBtn(allotMode === 'single')} flex-1`}
                   >
-                    {bldg} ({bCount})
+                    This zair only
                   </button>
-                );
-              })}
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllotMode('family')}
+                    aria-pressed={allotMode === 'family'}
+                    className={`${segBtn(allotMode === 'family')} flex-1 inline-flex items-center justify-center gap-1.5`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Whole family ({familyMembers.length})
+                  </button>
+                </div>
+              </section>
+            )}
+          </aside>
 
-            {/* Floor selector */}
-            <div className="sm:col-span-3">
-              <select
-                value={floorFilter}
-                onChange={(e) => setFloorFilter(e.target.value)}
-                className="w-full py-1.5 px-2.5 text-xs bg-white border border-stone-300 rounded-xl text-stone-700 font-medium"
-              >
-                {floorOptions.map((fl) => (
-                  <option key={fl} value={fl}>
-                    {fl === 'ALL' ? 'All Floors' : fl}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Quick amenity filters */}
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-stone-500 font-semibold mr-1">Filter by:</span>
-            {[
-              { id: 'ALL', label: 'All Specs' },
-              { id: 'western', label: 'Western Toilet' },
-              { id: 'indian', label: 'Indian Toilet' },
-              { id: 'double', label: 'Double Bed' },
-              { id: 'single', label: 'Single Beds' },
-            ].map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                onClick={() => setAmenityFilter(chip.id as any)}
-                className={`px-2 py-0.5 rounded-full border transition font-medium ${
-                  amenityFilter === chip.id
-                    ? 'bg-brand-700 text-white border-brand-700 font-bold'
-                    : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-                }`}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Room Grid / Cards */}
-        <div className="p-4 overflow-y-auto flex-1 min-h-[300px]">
-          {sortedRooms.length === 0 ? (
-            <div className="py-12 text-center text-stone-500 space-y-2">
-              <DoorClosed className="w-10 h-10 mx-auto text-stone-300" />
-              <p className="text-sm font-semibold">No rooms match the selected filters.</p>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setHotelFilter('ALL');
-                  setFloorFilter('ALL');
-                  setAmenityFilter('ALL');
-                }}
-                className="text-xs text-brand-700 underline font-bold"
-              >
-                Reset filters
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {sortedRooms.map(
-                ({
-                  room,
-                  baseCap,
-                  bufCap,
-                  maxCap,
-                  currentOccupancy,
-                  remainingSlots,
-                  occupants,
-                  familyInRoom,
-                  isCurrent,
-                  canFit,
-                  isFull,
-                  isBlocked,
-                  hasTimingConflict,
-                  isSevereConflict,
-                  canForceAllocate,
-                  timingDiffHours,
-                  conflictReason,
-                }) => {
-                  return (
-                    <div
-                      key={room.id}
-                      className={`relative rounded-xl border p-3.5 transition flex flex-col justify-between ${
-                        isCurrent
-                          ? 'bg-emerald-50/90 border-emerald-500 shadow-md ring-2 ring-emerald-400'
-                          : isBlocked
-                          ? 'bg-stone-100 border-stone-300 opacity-60'
-                          : canFit
-                          ? 'bg-white hover:bg-stone-50 border-stone-200 hover:border-brand-700/60 shadow-xs'
-                          : 'bg-stone-50 border-stone-200 opacity-75'
-                      }`}
+          {/* Rooms */}
+          <div className="lg:flex-1 lg:min-w-0 lg:flex lg:flex-col">
+            <div className="px-5 sm:px-6 lg:pl-5 pt-4 pb-3 space-y-2 lg:border-b border-stone-200">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search room number or floor"
+                    aria-label="Search rooms"
+                    className={`${field} pl-9 pr-10`}
+                    autoFocus
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                      className="absolute right-0 top-0 w-10 h-10 flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 cursor-pointer"
                     >
-                      {/* Top Room Header */}
-                      <div>
-                        <div className="flex items-start justify-between gap-1 mb-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-serif font-extrabold text-base text-brand-700">
-                              Room {room.roomNumber}
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <select
+                  value={amenityFilter}
+                  onChange={(e) => setAmenityFilter(e.target.value as typeof amenityFilter)}
+                  aria-label="Bed or toilet type"
+                  className={`${field} sm:w-44`}
+                >
+                  <option value="ALL">Any bed or toilet</option>
+                  <option value="western">Western toilet</option>
+                  <option value="indian">Indian toilet</option>
+                  <option value="double">Double bed</option>
+                  <option value="single">Single beds</option>
+                </select>
+                <button type="button" onClick={handleAutoRecommend} className={`${btn.secondary} shrink-0`}>
+                  <Sparkles className="w-4 h-4" />
+                  Auto-recommend
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div
+                  className={`${segWrap} flex-1 min-w-0 overflow-x-auto app-scroll-x`}
+                  role="group"
+                  aria-label="Building"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHotelFilter('ALL');
+                      setFloorFilter('ALL');
+                    }}
+                    aria-pressed={hotelFilter === 'ALL'}
+                    className={segBtn(hotelFilter === 'ALL')}
+                  >
+                    All <span className="tabular-nums font-normal text-stone-500">{rooms.length}</span>
+                  </button>
+                  {distinctBuildings.map((bldg) => {
+                    const bCount = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
+                    const on = hotelFilter.toLowerCase() === bldg.toLowerCase();
+                    return (
+                      <button
+                        key={bldg}
+                        type="button"
+                        onClick={() => {
+                          setHotelFilter(bldg);
+                          setFloorFilter('ALL');
+                        }}
+                        aria-pressed={on}
+                        className={segBtn(on)}
+                      >
+                        {bldg} <span className="tabular-nums font-normal text-stone-500">{bCount}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <select
+                  value={floorFilter}
+                  onChange={(e) => setFloorFilter(e.target.value)}
+                  aria-label="Floor"
+                  className={`${field} sm:w-36 shrink-0`}
+                >
+                  {floorOptions.map((fl) => (
+                    <option key={fl} value={fl}>
+                      {fl === 'ALL' ? 'All floors' : fl}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div ref={listRef} className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto px-5 sm:px-6 lg:pl-5 py-3 min-h-[300px]">
+              {sortedRooms.length === 0 ? (
+                <div className="py-14 text-center">
+                  <p className="text-sm font-semibold text-stone-900">No rooms match these filters</p>
+                  <p className="mt-1 text-[13px] text-stone-600">Clear the search or choose another building or floor.</p>
+                  <button type="button" onClick={resetFilters} className={`${btn.secondary} mt-4`}>
+                    Reset filters
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {sortedRooms.map((item) => {
+                    const {
+                      room,
+                      baseCap,
+                      bufCap,
+                      maxCap,
+                      currentOccupancy,
+                      remainingSlots,
+                      occupants,
+                      familyInRoom,
+                      isCurrent,
+                      isBlocked,
+                      hasTimingConflict,
+                      isSevereConflict,
+                      timingDiffHours,
+                      conflictReason,
+                    } = item;
+                    const state = roomState(item);
+                    const isSelected = selectedRoomId === room.id && !isCurrent && !isBlocked;
+                    const overCapacity = currentOccupancy + requestedPax > maxCap && !isCurrent;
+                    const details = (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex items-baseline gap-2">
+                            <span className="font-display text-[22px] leading-none font-semibold text-stone-950 tabular-nums">
+                              {room.roomNumber}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 font-bold text-stone-600">
-                              {room.building}
+                            <span className="text-[13px] text-stone-600 truncate">
+                              {room.building} · {room.floorLabel || `Floor ${room.floor}`}
                             </span>
                           </div>
-
-                          {/* Occupancy Badge */}
-                          {isBlocked ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-800">
-                              Blocked
-                            </span>
-                          ) : isFull ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">
-                              FULL ({currentOccupancy}/{maxCap})
-                            </span>
-                          ) : currentOccupancy > 0 ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
-                              {currentOccupancy}/{maxCap} Pax ({remainingSlots} left)
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                              Vacant (0/{maxCap})
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Floor & Capacity Spec */}
-                        <div className="text-[11px] text-stone-600 flex items-center gap-2 mb-2 font-medium">
-                          <span>{room.floorLabel || `Floor ${room.floor}`}</span>
-                          <span>•</span>
-                          <span className="text-stone-800 font-bold">
-                            Pax: {baseCap}{bufCap > 0 ? ` + ${bufCap} Buffer` : ''} (Max {maxCap})
+                          <span className={`${chip(state.tone)} shrink-0`}>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                            {state.label}
                           </span>
                         </div>
 
-                        {/* Room Amenities */}
-                        <div className="flex flex-wrap gap-1 text-[9px] mb-2">
-                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200 truncate">
-                            🚽 {room.toiletType || 'Standard'}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 truncate">
-                            🛏️ {getRoomBedCount(room)} × {room.bedType || 'Single Beds'}
+                        <div className="mt-2 text-[13px] text-stone-800">
+                          Sleeps {baseCap}
+                          {bufCap > 0 ? ` + ${bufCap} buffer` : ''}
+                          <span className="text-stone-500">
+                            {' '}
+                            ·{' '}
+                            {isBlocked
+                              ? 'not in use'
+                              : currentOccupancy === 0
+                              ? 'empty'
+                              : `${currentOccupancy} of ${maxCap} taken, ${remainingSlots} free`}
                           </span>
                         </div>
+                        <div className="mt-0.5 text-xs text-stone-500">
+                          {getRoomBedCount(room)} × {sentence(room.bedType || 'Single Beds')} ·{' '}
+                          {sentence(room.toiletType || 'Standard')} toilet
+                        </div>
 
-                        {/* Highlight if Family Members are already here */}
                         {familyInRoom.length > 0 && (
-                          <div className="mb-2 p-1.5 rounded-lg bg-emerald-100/80 border border-emerald-300 text-[10px] text-emerald-950 font-bold flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                          <div className="mt-2 flex items-start gap-1.5 text-xs font-medium text-emerald-800">
+                            <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                             <span>
-                              Family {familyName} here: {familyInRoom.map((m) => m.applicantName.split(' ')[0]).join(', ')}
+                              Family {familyName} is here: {familyInRoom.map((m) => m.applicantName.split(' ')[0]).join(', ')}
                             </span>
                           </div>
                         )}
 
-                        {/* Same-day Turnover Timing Warning Banner */}
+                        {occupants.length > 0 && (
+                          <div
+                            className="mt-1.5 text-xs text-stone-600 truncate"
+                            title={occupants.map((o) => `${o.applicantName} (${o.family})`).join(' · ')}
+                          >
+                            <span className="text-stone-500">In the room ({occupants.length}): </span>
+                            {occupants.map((o) => `${o.applicantName} (${o.family})`).join(' · ')}
+                          </div>
+                        )}
+
                         {hasTimingConflict && (
                           <div
-                            className={`mb-2 p-2 rounded-lg text-[10px] flex items-start gap-1.5 leading-snug ${
-                              isSevereConflict
-                                ? 'bg-rose-50 text-rose-900 border border-rose-300 font-bold'
-                                : 'bg-amber-50 text-amber-900 border border-amber-300 font-medium'
+                            className={`mt-1.5 flex items-start gap-1.5 text-xs ${
+                              isSevereConflict ? 'text-rose-700' : 'text-amber-800'
                             }`}
+                            title={conflictReason}
                           >
-                            <AlertCircle
-                              className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
-                                isSevereConflict ? 'text-rose-600' : 'text-amber-600'
-                              }`}
-                            />
-                            <div>
-                              <div className="font-bold">
-                                {isSevereConflict
-                                  ? `⛔ Critical Conflict: Dep > Arr by ${timingDiffHours}h (>15h)`
-                                  : `⚠️ Turnover Warning: Dep > Arr by ${timingDiffHours}h`}
-                              </div>
-                              <div className="text-[9px] text-stone-600 mt-0.5">{conflictReason}</div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Capacity Exceeded Banner */}
-                        {currentOccupancy + requestedPax > maxCap && !isCurrent && (
-                          <div className="mb-2 p-2 rounded-lg text-[10px] flex items-start gap-1.5 leading-snug bg-rose-50 text-rose-900 border border-rose-300 font-bold">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-600" />
-                            <div>
-                              <div className="font-bold">⚠️ Room Not Vacant / Pax Limit Notice ({currentOccupancy + requestedPax}/{maxCap} Pax)</div>
-                              <div className="text-[9px] text-stone-600 mt-0.5">
-                                Room is currently occupied or exceeds max capacity. Force allocation is allowed upon acknowledging the notice.
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Current Roommates preview */}
-                        {occupants.length > 0 && (
-                          <div className="mb-2 text-[10px] text-stone-600 bg-stone-50 p-1.5 rounded border border-stone-200">
-                            <span className="font-semibold text-stone-700 block">Current Occupants ({occupants.length}):</span>
-                            <div className="truncate text-stone-500">
-                              {occupants.map((o) => `${o.applicantName} (${o.family})`).join(' • ')}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action Button */}
-                      <div className="mt-2 pt-2 border-t border-stone-200/80">
-                        {isCurrent ? (
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              Current Room
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              {isSevereConflict
+                                ? `Turnover conflict: departure is ${timingDiffHours}h after arrival (over 15h)`
+                                : `Same-day turnover: departure is ${timingDiffHours}h after arrival`}
                             </span>
+                          </div>
+                        )}
+
+                        {overCapacity && (
+                          <div className="mt-1.5 flex items-start gap-1.5 text-xs text-rose-700">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              Not vacant or over the limit: would hold {currentOccupancy + requestedPax} of {maxCap}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+
+                    if (isCurrent) {
+                      return (
+                        <div
+                          key={room.id}
+                          data-room-id={room.id}
+                          className="rounded-xl bg-stone-50 ring-1 ring-inset ring-stone-300 p-3.5"
+                        >
+                          {details}
+                          <div className="mt-2.5 pt-2.5 border-t border-stone-200 flex items-center justify-between gap-2">
+                            <span className="text-xs text-stone-600">This is where the zair is now.</span>
                             <button
                               type="button"
                               onClick={() => {
                                 onAllotRoom(targetReservation.id, targetReservation.building || 'Saifee', '');
                                 onClose();
                               }}
-                              className="text-[10px] text-red-600 hover:text-red-800 font-bold underline cursor-pointer"
+                              className={`${btnSm.danger} max-sm:h-10`}
                             >
                               Unallot
                             </button>
                           </div>
-                        ) : isBlocked ? (
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-stone-200 text-stone-500 cursor-not-allowed text-center"
-                          >
-                            Room Blocked
-                          </button>
-                        ) : hasTimingConflict && !canFit ? (
-                          <button
-                            type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber, true)}
-                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                            title={conflictReason}
-                          >
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
-                            <span>Same-Day Turnover ({timingDiffHours !== undefined ? `${timingDiffHours}h diff` : 'Notice'}) ➔ Allot</span>
-                          </button>
-                        ) : !canFit ? (
-                          <button
-                            type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber, true)}
-                            className="w-full py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                            title={conflictReason}
-                          >
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-200" />
-                            <span>Force Allot ({currentOccupancy}/${maxCap} Pax • Not Vacant)</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleSelectRoom(room.building, room.roomNumber, false)}
-                            className="w-full py-1.5 rounded-lg text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <span>Allot Room {room.roomNumber}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-gold-200" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={room.id}
+                        type="button"
+                        data-room-id={room.id}
+                        disabled={isBlocked}
+                        aria-pressed={isSelected}
+                        onClick={() => setSelectedRoomId(room.id)}
+                        title={isBlocked ? 'Room blocked' : conflictReason || undefined}
+                        className={`flex flex-col justify-start items-stretch w-full text-left rounded-xl p-3.5 ring-inset ${
+                          isBlocked
+                            ? 'bg-stone-50 ring-1 ring-stone-200 opacity-60 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-brand-50 ring-2 ring-brand-500 cursor-pointer'
+                            : 'bg-white ring-1 ring-stone-200 hover:ring-stone-400 hover:bg-stone-50 cursor-pointer'
+                        }`}
+                      >
+                        {details}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-          )}
-        </div>
-
-        {/* Footer info */}
-        <div className="p-3 bg-stone-50 border-t border-stone-200 flex items-center justify-between text-xs text-stone-500 flex-shrink-0">
-          <div>
-            Showing <strong className="text-stone-700">{sortedRooms.length}</strong> rooms • Saifee (70) & Burhani (44)
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl border border-stone-300 text-stone-700 font-bold hover:bg-stone-200 transition"
-          >
-            Cancel
-          </button>
         </div>
 
+        {/* What the code will ask about this room, in plain words, before it is allotted */}
+        {selectedUsable && (selectedUsable.hasTimingConflict || selectedOverCapacity) && (
+          <div className="shrink-0 border-t border-stone-200 px-5 sm:px-6 py-3 space-y-2 max-h-[30dvh] overflow-y-auto">
+            {selectedUsable.hasTimingConflict && (
+              <div
+                role="alert"
+                className={`flex items-start gap-2.5 rounded-xl px-4 py-3 ring-1 ring-inset ${
+                  selectedUsable.isSevereConflict
+                    ? 'bg-rose-50 ring-rose-200 text-rose-800'
+                    : 'bg-amber-50 ring-amber-200 text-amber-800'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="min-w-0 text-[13px] leading-relaxed">
+                  <p className="font-semibold">
+                    {selectedUsable.isSevereConflict
+                      ? `Turnover conflict in room ${selectedUsable.room.roomNumber}: departure is ${selectedUsable.timingDiffHours}h after arrival (over 15h)`
+                      : `Same-day turnover in room ${selectedUsable.room.roomNumber}: departure is ${selectedUsable.timingDiffHours}h after arrival`}
+                  </p>
+                  {selectedUsable.conflictReason && <p className="mt-0.5">{selectedUsable.conflictReason}</p>}
+                </div>
+              </div>
+            )}
+            {selectedOverCapacity && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-xl px-4 py-3 ring-1 ring-inset bg-rose-50 ring-rose-200 text-rose-800"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="min-w-0 text-[13px] leading-relaxed">
+                  <p className="font-semibold">
+                    Room {selectedUsable.room.roomNumber} is not vacant or would go over its limit (
+                    {selectedUsable.currentOccupancy + requestedPax} of {selectedUsable.maxCap})
+                  </p>
+                  <p className="mt-0.5">
+                    The room is occupied or this would exceed its maximum. You can still force allot it; you will be
+                    asked to confirm the notice.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className={`${modalFooter} sm:justify-between`}>
+          <p className="max-sm:w-full text-[13px] text-stone-600 tabular-nums">
+            {selectedUsable ? (
+              <>
+                Selected:{' '}
+                <span className="font-semibold text-stone-950">
+                  {selectedUsable.room.building} {selectedUsable.room.roomNumber}
+                </span>{' '}
+                for {familyMode ? `${familyMembers.length} zaereen` : '1 zair'}
+              </>
+            ) : (
+              <>
+                {sortedRooms.length} of {rooms.length} rooms shown. Choose one to allot.
+              </>
+            )}
+          </p>
+          <div className="flex items-center gap-2 ml-auto">
+            <button type="button" onClick={onClose} className={btn.ghost}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!selectedUsable}
+              onClick={() => {
+                if (!selectedUsable) return;
+                handleSelectRoom(selectedUsable.room.building, selectedUsable.room.roomNumber, selectedNeedsForce);
+              }}
+              className={btn.primary}
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

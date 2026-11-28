@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyRound, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
+import { btn, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
 
 /** Asks once for the sync access key (NKERP_SYNC_ACCESS_KEY; only when one is set), then remembers it on this device. */
 export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
@@ -28,41 +29,45 @@ export const SyncAccessKeyModal: React.FC<{ sync: NkerpSyncState }> = ({ sync })
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 backdrop-blur-[2px] p-4" role="dialog" aria-modal="true"
-      aria-labelledby="sync-key-title">
-      <form onSubmit={submit} className="w-full max-w-sm bg-stone-50 rounded-2xl border border-stone-200 shadow-2xl overflow-hidden">
-        <div className="bg-brand-700 px-4 py-3 flex items-center justify-between">
-          <div id="sync-key-title" className="flex items-center gap-2 text-gold-200 font-bold text-sm">
-            <KeyRound className="w-4 h-4" /> Sync to NKERP access
+    <div className={modalScrim} style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-labelledby="sync-key-title">
+      <form onSubmit={submit} className={`${modalCard} max-w-sm`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="sync-key-title" className={modalTitle}>Sync to NKERP access</h2>
+            <p className="mt-1 text-sm leading-relaxed text-stone-600">
+              Enter the sync access key to run the NKERP sync from this device.
+            </p>
           </div>
-          <button type="button" onClick={sync.closeKeyPrompt} className="text-emerald-100 hover:text-white cursor-pointer" aria-label="Close">
-            <X className="w-4 h-4" />
+          <button type="button" onClick={sync.closeKeyPrompt} className={modalClose} aria-label="Close">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4 space-y-3">
-          <p className="text-xs text-stone-700 leading-relaxed">
-            Enter the sync access key to run the NKERP sync from this device.{' '}
-            It is remembered on this device until you sign it out from the Sync tab.
-          </p>
+        <div className="px-5 sm:px-6 py-5">
+          <label htmlFor="sync-key-input" className={fieldLabel}>Access key</label>
           <input
+            id="sync-key-input"
             ref={input}
             type="password"
             autoComplete="current-password"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-700/40"
+            aria-invalid={sync.keyError ? true : undefined}
+            aria-describedby="sync-key-help"
+            className={sync.keyError ? field.replace('border-stone-300', 'border-rose-500') : field}
             placeholder="Access key"
-            aria-label="Access key"
           />
-          {sync.keyError && <p className="text-xs font-semibold text-rose-700">{sync.keyError}</p>}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={sync.closeKeyPrompt}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-200 cursor-pointer">Cancel</button>
-            <button type="submit" disabled={!value.trim() || checking}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">
-              {checking ? 'Checking…' : 'Continue'}
-            </button>
+          <div id="sync-key-help">
+            {sync.keyError && <p role="alert" className="mt-1.5 text-[13px] font-medium text-rose-700">{sync.keyError}</p>}
+            <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">
+              It is remembered on this device until you sign it out from the Sync tab.
+            </p>
           </div>
+        </div>
+        <div className={modalFooter}>
+          <button type="button" onClick={sync.closeKeyPrompt} className={btn.secondary}>Cancel</button>
+          <button type="submit" disabled={!value.trim() || checking} className={btn.primary}>
+            {checking ? 'Checking…' : 'Continue'}
+          </button>
         </div>
       </form>
     </div>

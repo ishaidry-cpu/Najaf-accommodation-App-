@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, BedDouble, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, Lock,
+  AlertTriangle, ArrowRight, BedDouble, Check, CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, Lock,
   LogOut, MessageSquare, Minus, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, Split, Star, Trash2, Users, X,
 } from 'lucide-react';
 import type { Reservation, Room, UserRole } from '../types';
@@ -9,7 +9,7 @@ import {
   baghdadToday, collectUnits, DEFAULT_PLANNER_OPTIONS, LEFT_EMPTY, learnPatterns, memberIds, nightlyLoad, planAllocation,
   planEmptyBeds, planSummary, refreshPlan, revalidatePlan, roomKey, roomOptionsFor, roomTier, shiftedOut, splitIntoMembers, STARRED_BUILDING,
 } from '../services/allocationPlanner';
-import { btn, PageHeader } from './ui';
+import { btn, btnSm, card, chip, field, fieldLabel, PageHeader, panel, SectionHeader } from './ui';
 import { RoomDraftsPanel } from './RoomDraftsPanel';
 import type { DraftTour } from '../services/roomDrafts';
 import { describeRoomCapacity } from '../services/storage';
@@ -302,13 +302,13 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
   const overflowNights = nightly.filter((d) => d.waiting > 0 && d.saved + d.planned + d.waiting > d.beds);
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-6 pb-28">
       <PageHeader
-        title={<span className="inline-flex items-center gap-2.5"><Sparkles className="w-6 h-6 text-gold-600" />AI Planner</span>}
+        title="AI Planner"
         description="Plans rooms for zaereen who don't have one yet, using patterns learned from your current and past allocations. Review the plan, change anything, then allocate everything in one go."
         actions={plan && (
           <>
-            <button type="button" className={changes ? btn.primary : btn.secondary} onClick={() => generate(true)} disabled={busy}
+            <button type="button" className={btn.secondary} onClick={() => generate(true)} disabled={busy}
               title="Keep your changes, re-fit everyone else around them and fill the space that is free">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}Refresh plan
             </button>
@@ -320,62 +320,72 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
       />
 
       {/* Scope */}
-      <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs p-4 space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-          <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
-            <label className="block">
-              <span className="block text-xs font-medium text-stone-500 mb-1">Arrivals from</span>
-              <input type="date" value={options.fromDate} min={today} onChange={(e) => e.target.value && setOpt('fromDate', e.target.value)}
-                className="h-9 w-full rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-800" />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-medium text-stone-500 mb-1">to</span>
-              <input type="date" value={options.toDate} min={options.fromDate} onChange={(e) => e.target.value && setOpt('toDate', e.target.value)}
-                className="h-9 w-full rounded-lg border border-stone-200 bg-white px-2.5 text-sm text-stone-800" />
-            </label>
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="block text-xs font-medium text-stone-500 mb-1">Buildings</span>
-            <div className="flex flex-wrap gap-1.5">
-              {buildings.map((b) => {
-                const on = !options.buildings.length || options.buildings.includes(b);
-                return (
-                  <button key={b} type="button" aria-pressed={on}
-                    onClick={() => {
-                      const current = options.buildings.length ? options.buildings : buildings;
-                      const next = on ? current.filter((x) => x !== b) : [...current, b];
-                      setOpt('buildings', next.length === buildings.length ? [] : next);
-                    }}
-                    className={`h-9 px-3 rounded-lg text-[13px] font-medium ring-1 ring-inset transition cursor-pointer ${on ? 'bg-brand-50 text-brand-800 ring-brand-100' : 'bg-white text-stone-400 ring-stone-200 line-through'}`}>
-                    {b}
-                  </button>
-                );
-              })}
+      <section className={card} aria-label="What to plan">
+        <div className="p-4 sm:p-5 space-y-4">
+          <div className="grid gap-x-6 gap-y-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block min-w-0">
+                <span className={fieldLabel}>Arrivals from</span>
+                <input type="date" value={options.fromDate} min={today} onChange={(e) => e.target.value && setOpt('fromDate', e.target.value)}
+                  className={`${field} tabular-nums`} />
+              </label>
+              <label className="block min-w-0">
+                <span className={fieldLabel}>Arrivals to</span>
+                <input type="date" value={options.toDate} min={options.fromDate} onChange={(e) => e.target.value && setOpt('toDate', e.target.value)}
+                  className={`${field} tabular-nums`} />
+              </label>
+            </div>
+            <div className="min-w-0">
+              <span className={fieldLabel} id="planner-buildings">Buildings</span>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="planner-buildings">
+                {buildings.map((b) => {
+                  const on = !options.buildings.length || options.buildings.includes(b);
+                  return (
+                    <button key={b} type="button" aria-pressed={on}
+                      onClick={() => {
+                        const current = options.buildings.length ? options.buildings : buildings;
+                        const next = on ? current.filter((x) => x !== b) : [...current, b];
+                        setOpt('buildings', next.length === buildings.length ? [] : next);
+                      }}
+                      className={`inline-flex items-center gap-2 h-10 pl-2.5 pr-3.5 rounded-lg text-sm font-medium ring-1 ring-inset transition cursor-pointer ${on ? 'bg-brand-50 text-brand-800 ring-brand-200' : 'bg-white text-stone-500 ring-stone-300 hover:bg-stone-50'}`}>
+                      <span className={`w-4 h-4 rounded flex items-center justify-center ${on ? 'bg-brand-700 text-white' : 'ring-1 ring-inset ring-stone-300 bg-white'}`}>
+                        {on && <Check className="w-3 h-3" strokeWidth={3} />}
+                      </span>
+                      {b}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-          <button type="button" className={`${btn.primary} h-10 px-4`} onClick={() => generate(false)} disabled={busy || !waitingUnits.length}>
+          <fieldset className="min-w-0">
+            <legend className={fieldLabel}>Options</legend>
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-x-6 text-sm text-stone-800">
+              {([
+                ['allowBuffer', 'Use buffer beds'],
+                ['keepTourTogether', 'Keep each tour in one building'],
+                ['followOfficeHabits', 'Follow learned habits'],
+                ['includeArrived', 'Include zaereen already arrived'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="inline-flex items-center gap-2 min-h-10 sm:min-h-8 cursor-pointer select-none">
+                  <input type="checkbox" checked={options[key]} onChange={(e) => setOpt(key, e.target.checked)} className="w-4 h-4 accent-brand-700" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-3.5 border-t border-stone-200 bg-stone-50 rounded-b-2xl">
+          <p className="text-sm text-stone-700 tabular-nums">
+            {waitingUnits.length
+              ? <><span className="font-semibold text-stone-950">{plural(waitingPeople, 'zair', 'zaereen')}</span> in {plural(waitingTours, 'tour')} need a room for arrivals {shortDate(options.fromDate)} – {shortDate(options.toDate)}.</>
+              : <>Nobody arriving {shortDate(options.fromDate)} – {shortDate(options.toDate)} is waiting for a room.</>}
+          </p>
+          <button type="button" className={`${plan ? btn.secondary : btn.primary} shrink-0`} onClick={() => generate(false)} disabled={busy || !waitingUnits.length}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {plan ? 'Plan again from scratch' : 'Generate plan'}
           </button>
         </div>
-        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-stone-700">
-          {([
-            ['allowBuffer', 'Use buffer beds'],
-            ['keepTourTogether', 'Keep each tour in one building'],
-            ['followOfficeHabits', 'Follow learned habits'],
-            ['includeArrived', 'Include zaereen already arrived'],
-          ] as const).map(([key, label]) => (
-            <label key={key} className="inline-flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={options[key]} onChange={(e) => setOpt(key, e.target.checked)} className="w-4 h-4 accent-brand-700" />
-              {label}
-            </label>
-          ))}
-        </div>
-        <p className="text-xs text-stone-500">
-          {waitingUnits.length
-            ? <>{plural(waitingPeople, 'zair', 'zaereen')} in {plural(waitingTours, 'tour')} need a room for arrivals {shortDate(options.fromDate)} – {shortDate(options.toDate)}.</>
-            : <>Nobody arriving {shortDate(options.fromDate)} – {shortDate(options.toDate)} is waiting for a room.</>}
-        </p>
       </section>
 
       <RoomDraftsPanel reservations={reservations} canApply={isAdmin} onApply={onApplyPlan} onEdit={editDrafts} />
@@ -389,17 +399,18 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
         }} />
 
       {/* What it learned */}
-      <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs overflow-hidden">
+      <section className={`${card} overflow-hidden`}>
         <button type="button" onClick={() => setShowLearned((v) => !v)} aria-expanded={showLearned}
-          className="w-full flex items-center gap-2.5 px-4 py-3 text-left cursor-pointer hover:bg-stone-50">
-          <Brain className="w-4 h-4 text-brand-700" />
-          <span className="text-sm font-semibold text-stone-900">What the planner learned</span>
-          <span className="text-xs text-stone-500">from {plural(patterns.allocatedStays, 'allocated stay')} in {plural(patterns.tours, 'tour')}</span>
-          {showLearned ? <ChevronDown className="w-4 h-4 ml-auto text-stone-400" /> : <ChevronRight className="w-4 h-4 ml-auto text-stone-400" />}
+          className="w-full flex items-start gap-2 px-4 sm:px-5 py-4 text-left cursor-pointer hover:bg-stone-50">
+          {showLearned ? <ChevronDown className="w-4 h-4 mt-1 shrink-0 text-stone-500" /> : <ChevronRight className="w-4 h-4 mt-1 shrink-0 text-stone-500" />}
+          <span className="min-w-0">
+            <span className="block text-base font-semibold leading-snug text-stone-950">What the planner learned</span>
+            <span className="block mt-0.5 text-[13px] text-stone-600 tabular-nums">From {plural(patterns.allocatedStays, 'allocated stay')} in {plural(patterns.tours, 'tour')}</span>
+          </span>
         </button>
         {showLearned && (
-          <div className="px-4 pb-4 grid gap-4 md:grid-cols-2 text-[13px] text-stone-700">
-            <ul className="space-y-1.5">
+          <div className="border-t border-stone-200 p-4 sm:p-5 grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <ul className="space-y-3 text-sm leading-relaxed text-stone-700 max-w-[68ch]">
               <Learned>Only one family (F-1, F-2 …) shares a room. Putting different families together is your call: pick a room marked "Share with" in the room list.</Learned>
               <Learned>Families stay together in one room ({patterns.familiesTogetherPct}% of families). Bigger families are split by gender, with children staying with the women.</Learned>
               <Learned>Starred zaereen always stay in {STARRED_BUILDING} and are placed first. Their remarks decide the exact room, so check them.</Learned>
@@ -408,27 +419,28 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
               <Learned>Everyone in these hotels is Category A. Zaereen already shifted A→B are in external hotels and are left out. Anyone who doesn't fit is the one to shift A→B.</Learned>
               <Learned>Same-day turnovers where the last guests leave after the new guests arrive are avoided.</Learned>
             </ul>
-            <div className="space-y-3">
+            <div className="space-y-5 min-w-0">
               {patterns.sizeHabits.length > 0 && (
                 <div>
-                  <div className="text-xs font-medium text-stone-500 mb-1">Room by family size</div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <h3 className="text-[13px] font-semibold text-stone-700 pb-1.5">Room by family size</h3>
+                  <ul className="border-t border-stone-200 divide-y divide-stone-200 text-[13px] text-stone-800 tabular-nums">
                     {patterns.sizeHabits.map((h) => (
-                      <span key={h.size} className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-xs">
-                        <Users className="w-3 h-3 text-stone-500" />{h.size} → {h.capacity}-bed {h.building} <span className="text-stone-400">{h.pct}%</span>
-                      </span>
+                      <li key={h.size} className="flex items-center justify-between gap-3 py-1.5">
+                        <span className="inline-flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-stone-500" />{h.size} → {h.capacity}-bed {h.building}</span>
+                        <span className="text-stone-500">{h.pct}%</span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
               {patterns.officeTop.length > 0 && (
                 <div>
-                  <div className="text-xs font-medium text-stone-500 mb-1">Office habits</div>
-                  <ul className="space-y-0.5 text-xs">
+                  <h3 className="text-[13px] font-semibold text-stone-700 pb-1.5">Office habits</h3>
+                  <ul className="border-t border-stone-200 divide-y divide-stone-200 text-[13px] text-stone-800">
                     {patterns.officeTop.slice(0, 8).map((o) => (
-                      <li key={o.office} className="flex justify-between gap-3">
+                      <li key={o.office} className="flex justify-between gap-3 py-1.5">
                         <span className="truncate">{o.office}</span>
-                        <span className="shrink-0 text-stone-500">{o.bucket.replace('|', ' · ')} rooms <span className="text-stone-400">{o.pct}%</span></span>
+                        <span className="shrink-0 text-stone-600 tabular-nums">{o.bucket.replace('|', ' · ')} rooms <span className="text-stone-500">{o.pct}%</span></span>
                       </li>
                     ))}
                   </ul>
@@ -440,54 +452,65 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
       </section>
 
       {result && (
-        <section role="status" className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <section role="status" className="rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 sm:px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
-          <div className="flex-1 text-sm text-emerald-900">
+          <div className="flex-1 text-sm leading-relaxed text-emerald-900">
             <span className="font-semibold">Allocated {plural(result.applied, 'zair', 'zaereen')}.</span>{' '}
             {result.skipped > 0 && <>{plural(result.skipped, 'zair', 'zaereen')} already had a room and kept it. </>}
-            The rooms are saved in the app. To book them on the portal, run <span className="font-medium">Sync to NKERP</span>.
+            The rooms are saved in the app. To book them on the portal, run <span className="font-semibold">Sync to NKERP</span>.
           </div>
-          <button type="button" className={btn.primary} onClick={onOpenSync}>Open NKERP sync<ArrowRight className="w-4 h-4" /></button>
+          <button type="button" className={`${btn.primary} shrink-0`} onClick={onOpenSync}>Open NKERP sync<ArrowRight className="w-4 h-4" /></button>
         </section>
       )}
 
       {!plan && !result && (
-        <section className="rounded-2xl bg-white border border-dashed border-stone-300 p-8 text-center">
-          <Sparkles className="w-8 h-8 mx-auto text-gold-600" />
-          <h2 className="mt-3 text-base font-semibold text-stone-900">No plan yet</h2>
-          <p className="mt-1 text-sm text-stone-500 max-w-md mx-auto">
-            Choose the arrival dates and press <span className="font-medium text-stone-700">Generate plan</span>. Nothing is saved until you allocate.
-          </p>
+        <section className={`${card} px-4 sm:px-5 py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-stone-950">No plan yet</h2>
+            <p className="mt-1 text-sm leading-relaxed text-stone-600 max-w-[68ch]">
+              The proposed room for every family will appear here, tour by tour. Choose the arrival dates and press <span className="font-medium text-stone-800">Generate plan</span>. Nothing is saved until you allocate.
+            </p>
+          </div>
+          <button type="button" className={`${btn.secondary} shrink-0`} onClick={() => generate(false)} disabled={busy || !waitingUnits.length}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Generate plan
+          </button>
         </section>
       )}
 
       {plan && summary && (
         <>
+          <SectionHeader className="pt-2"
+            title={<span className="tabular-nums">Plan for arrivals {shortDate(plan.options.fromDate)} – {shortDate(plan.options.toDate)}</span>}
+            description="Check each tour, change any room, then allocate. Nothing is saved until you allocate." />
+
           {/* Summary */}
-          <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-            <Stat label="Zaereen planned" value={`${summary.placed}/${summary.zaereen}`} />
-            <Stat label="Rooms used" value={summary.rooms} />
-            <Stat label="Empty beds" value={emptyBeds} />
-            <Stat label="Tours" value={summary.tours} />
-            <Stat label="No room: shift A→B" value={summary.unplaced} tone={summary.unplaced ? 'rose' : undefined} />
-            <Stat label="Need a look" value={summary.warnings} tone={summary.warnings ? 'amber' : undefined} />
-            <Stat label="Starred to review" value={summary.starred} tone={summary.starred ? 'gold' : undefined} />
+          <section className={`${card} overflow-hidden`} aria-label="Plan summary">
+            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-px bg-stone-200">
+              <Stat label="Zaereen planned" value={`${summary.placed}/${summary.zaereen}`} />
+              <Stat label="Rooms used" value={summary.rooms} />
+              <Stat label="Empty beds" value={emptyBeds} />
+              <Stat label="Tours" value={summary.tours} />
+              <Stat label="No room: shift A→B" value={summary.unplaced} tone={summary.unplaced ? 'rose' : undefined} />
+              <Stat label="Need a look" value={summary.warnings} tone={summary.warnings ? 'amber' : undefined} />
+              <Stat label="Starred to review" value={summary.starred} tone={summary.starred ? 'gold' : undefined} className="col-span-2 xl:col-span-1" />
+            </div>
           </section>
 
           {plan.approvalNeeded && plan.approvalNeeded.length > 0 && (
-            <section className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-2">
-              <p className="text-sm text-amber-950 flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />
+            <section className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 sm:px-5 py-4 space-y-3">
+              <p className="text-sm leading-relaxed text-amber-900 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 mt-1 shrink-0 text-amber-700" />
                 <span>
                   Some zaereen still have no room. {APPROVAL_BUILDING} {APPROVAL_ROOMS.join(', ')} are kept unallocated by default and are used only after approval.
+                  {!isAdmin && <span className="block text-[13px] text-amber-800">Only an administrator can approve reserved rooms.</span>}
                 </span>
               </p>
-              <div className="flex flex-wrap gap-2 pl-6">
+              <div className="flex flex-wrap gap-2 pl-[26px]">
                 {plan.approvalNeeded.map((a) => (
-                  <button key={`${a.building}-${a.roomNumber}`} type="button" className={`${btn.secondary} h-8 px-2.5 text-xs`} disabled={busy || !isAdmin}
+                  <button key={`${a.building}-${a.roomNumber}`} type="button" className={`${btnSm.secondary} max-md:h-10`} disabled={busy || !isAdmin}
                     onClick={() => approveRoom(a.building, a.roomNumber, a.people)}
                     title={isAdmin ? 'Asks for your approval, then re-plans with this room' : 'Only an administrator can approve reserved rooms'}>
-                    <ShieldCheck className="w-3.5 h-3.5" />Approve {a.building} {a.roomNumber}
+                    <ShieldCheck className="w-4 h-4" />Approve {a.building} {a.roomNumber}
                   </button>
                 ))}
               </div>
@@ -496,23 +519,25 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
 
           {/* Nightly load */}
           {nightly.length > 0 && (
-            <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs p-4">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
-                <h2 className="text-sm font-semibold text-stone-900 flex items-center gap-2"><BedDouble className="w-4 h-4 text-stone-500" />Beds per night</h2>
+            <section className={`${card} p-4 sm:p-5`}>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 mb-4">
+                <h2 className="text-base font-semibold text-stone-950">Beds per night</h2>
                 <Legend cls="bg-stone-300" label="Already allocated" />
                 <Legend cls="bg-brand-600" label="This plan" />
                 <Legend cls="bg-rose-400" label="Still without a room" />
-                <span className="text-xs text-stone-500 ml-auto">Line: {nightly[0].beds} beds (without buffer)</span>
+                <span className="text-[13px] text-stone-600 sm:ml-auto tabular-nums inline-flex items-center gap-1.5">
+                  <span className="w-4 border-t border-dashed border-stone-500" />{nightly[0].beds} beds (without buffer)
+                </span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto pb-1">
                 <div className="flex items-end gap-1 h-28 min-w-max relative">
                   {nightly.map((d) => {
                     const total = d.saved + d.planned + d.waiting;
                     const h = (n: number) => `${(n / peak) * 100}%`;
                     return (
-                      <div key={d.date} className="w-7 h-full flex flex-col justify-end relative"
+                      <div key={d.date} className="w-8 h-full flex flex-col justify-end relative"
                         title={`${shortDate(d.date)}: ${d.saved} allocated + ${d.planned} planned${d.waiting ? ` + ${d.waiting} without a room` : ''} = ${total} of ${d.beds} beds`}>
-                        <div className="absolute left-0 right-0 border-t border-dashed border-stone-400" style={{ bottom: h(d.beds) }} />
+                        <div className="absolute left-0 right-0 border-t border-dashed border-stone-500" style={{ bottom: h(d.beds) }} />
                         {d.waiting > 0 && <div className="bg-rose-400 rounded-t-sm" style={{ height: h(d.waiting) }} />}
                         {d.planned > 0 && <div className={`bg-brand-600 ${d.waiting ? '' : 'rounded-t-sm'}`} style={{ height: h(d.planned) }} />}
                         {d.saved > 0 && <div className={`bg-stone-300 ${d.planned || d.waiting ? '' : 'rounded-t-sm'}`} style={{ height: h(d.saved) }} />}
@@ -520,47 +545,50 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                     );
                   })}
                 </div>
-                <div className="flex gap-1 min-w-max mt-1">
+                <div className="flex gap-1 min-w-max mt-1.5">
                   {nightly.map((d) => (
-                    <div key={d.date} className="w-7 text-center text-[10px] leading-tight text-stone-500 tabular-nums whitespace-pre-line">{shortDate(d.date).replace(' ', '\n')}</div>
+                    <div key={d.date} className="w-8 text-center text-xs leading-tight text-stone-600 tabular-nums whitespace-pre-line">{shortDate(d.date).replace(' ', '\n')}</div>
                   ))}
                 </div>
               </div>
               {overflowNights.length > 0 && (
-                <p className="mt-3 text-xs text-rose-700 flex items-start gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  Not enough beds on {overflowNights.map((d) => shortDate(d.date)).join(', ')}. Up to {Math.max(...overflowNights.map((d) => d.saved + d.planned + d.waiting - d.beds))} more beds are needed. Zaereen who don't fit need to shift A→B to an external hotel.
+                <p className="mt-4 text-[13px] leading-relaxed text-rose-700 flex items-start gap-2 max-w-[90ch]">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>Not enough beds on {overflowNights.map((d) => shortDate(d.date)).join(', ')}. Up to {Math.max(...overflowNights.map((d) => d.saved + d.planned + d.waiting - d.beds))} more beds are needed. Zaereen who don't fit need to shift A→B to an external hotel.</span>
                 </p>
               )}
             </section>
           )}
 
           {changes > 0 && (
-            <section className="rounded-2xl bg-brand-50 border border-brand-100 px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Info className="w-4 h-4 text-brand-700 shrink-0" />
-              <p className="flex-1 text-sm text-brand-800">
-                You made {plural(changes, 'change')}. <b>Refresh plan</b> keeps them and re-fits everyone else around them, filling any space they freed.
+            <section className="rounded-xl bg-blue-50 ring-1 ring-inset ring-blue-200 px-4 sm:px-5 py-3.5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Info className="w-4 h-4 text-blue-700 shrink-0 max-sm:hidden" />
+              <p className="flex-1 text-sm leading-relaxed text-blue-900">
+                You made {plural(changes, 'change')}. <span className="font-semibold">Refresh plan</span> keeps them and re-fits everyone else around them, filling any space they freed.
               </p>
-              <button type="button" className={btn.primary} onClick={() => generate(true)} disabled={busy}>
+              <button type="button" className={`${btn.primary} shrink-0`} onClick={() => generate(true)} disabled={busy}>
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}Refresh plan
               </button>
             </section>
           )}
 
           {/* Filters */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <label className="relative flex-1 min-w-0">
+              <span className="sr-only">Search the plan</span>
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tour, office, name or ITS"
-                className="h-9 w-full rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm" />
-            </div>
-            <div className="flex gap-1.5">
-              {([['all', 'All tours'], ['attention', 'Needs a look'], ['starred', 'Starred']] as const).map(([key, label]) => (
-                <button key={key} type="button" onClick={() => setFilter(key)} aria-pressed={filter === key}
-                  className={`h-9 px-3 rounded-lg text-[13px] font-medium ring-1 ring-inset cursor-pointer transition ${filter === key ? 'bg-stone-900 text-white ring-stone-900' : 'bg-white text-stone-700 ring-stone-200 hover:bg-stone-50'}`}>
-                  {label}
-                </button>
-              ))}
+                className={`${field} pl-9`} />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-lg bg-stone-200/70 p-1" role="group" aria-label="Show tours">
+                {([['all', 'All tours'], ['attention', 'Needs a look'], ['starred', 'Starred']] as const).map(([key, label]) => (
+                  <button key={key} type="button" onClick={() => setFilter(key)} aria-pressed={filter === key}
+                    className={`h-8 max-md:h-10 px-3 rounded-md text-[13px] font-medium cursor-pointer transition whitespace-nowrap ${filter === key ? 'bg-white text-stone-950 ring-1 ring-stone-300' : 'text-stone-600 hover:text-stone-950'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <button type="button" className={btn.ghost}
                 onClick={() => setExpanded((e) => (e.size >= tours.length ? new Set() : new Set(tours.map((t) => t.ref))))}>
                 {expanded.size >= tours.length && tours.length ? 'Collapse all' : 'Expand all'}
@@ -569,37 +597,42 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
           </div>
 
           {/* Tours */}
-          <div className="space-y-2">
-            {tours.length === 0 && <p className="text-sm text-stone-500 py-6 text-center">No tours match.</p>}
+          <div className="space-y-3">
+            {tours.length === 0 && (
+              <p className={`${card} px-5 py-6 text-sm text-stone-600`}>No tours match. Clear the search or choose All tours to see the whole plan.</p>
+            )}
             {tours.map((t) => {
               const open = expanded.has(t.ref);
               const on = !excluded.has(t.ref);
               return (
-                <section key={t.ref} className={`rounded-2xl bg-white border shadow-2xs overflow-hidden ${on ? 'border-stone-200' : 'border-stone-200 opacity-60'}`}>
-                  <div className="flex items-start gap-3 px-3 sm:px-4 py-3">
-                    <input type="checkbox" checked={on} onChange={() => toggleTour(t.ref)} aria-label={`Include tour ${tourLabel(t.ref)} when allocating`}
-                      className="mt-1 w-4 h-4 accent-brand-700 cursor-pointer" />
+                <section key={t.ref} className={`rounded-2xl border border-stone-200 shadow-xs overflow-hidden ${on ? 'bg-white' : 'bg-stone-50'}`}>
+                  <div className="flex items-start gap-1 px-2 sm:px-3 py-2">
+                    <label className="flex h-10 w-9 shrink-0 items-center justify-center cursor-pointer">
+                      <input type="checkbox" checked={on} onChange={() => toggleTour(t.ref)} aria-label={`Include tour ${tourLabel(t.ref)} when allocating`}
+                        className="w-4 h-4 accent-brand-700 cursor-pointer" />
+                    </label>
                     <button type="button" onClick={() => setExpanded((e) => { const n = new Set(e); if (n.has(t.ref)) n.delete(t.ref); else n.add(t.ref); return n; })}
-                      aria-expanded={open} className="flex-1 min-w-0 text-left cursor-pointer">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {open ? <ChevronDown className="w-4 h-4 text-stone-400" /> : <ChevronRight className="w-4 h-4 text-stone-400" />}
-                        <span className="font-semibold text-stone-900 tabular-nums">{tourLabel(t.ref)}</span>
-                        <span className="text-sm text-stone-600 truncate max-w-[16rem]">{t.first.officeName}</span>
-                        {t.without > 0 && <Chip tone="rose">{t.without} without room</Chip>}
-                        {t.warned > 0 && <Chip tone="amber">{plural(t.warned, 'warning')}</Chip>}
-                        {t.starred > 0 && <Chip tone="gold"><Star className="w-3 h-3 fill-current" />{t.starred}</Chip>}
-                        {!t.without && !t.warned && <Chip tone="emerald"><Check className="w-3 h-3" />Ready</Chip>}
+                      aria-expanded={open} className="flex-1 min-w-0 text-left cursor-pointer rounded-lg py-2 pr-2">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                        {open ? <ChevronDown className="w-4 h-4 shrink-0 text-stone-500" /> : <ChevronRight className="w-4 h-4 shrink-0 text-stone-500" />}
+                        <span className="text-[15px] font-semibold text-stone-950 tabular-nums">{tourLabel(t.ref)}</span>
+                        <span className="text-sm text-stone-700 truncate max-w-[18rem]">{t.first.officeName}</span>
+                        {t.without > 0 && <span className={chip('bad')}>{t.without} without room</span>}
+                        {t.warned > 0 && <span className={chip('wait')}>{plural(t.warned, 'warning')}</span>}
+                        {t.starred > 0 && <span className={chip('gold')}><Star className="w-3 h-3 fill-current" />{t.starred} starred</span>}
+                        {!t.without && !t.warned && <span className={chip('ok')}><Check className="w-3 h-3" />Ready</span>}
+                        {!on && <span className={chip('neutral')}>Left out</span>}
                       </div>
-                      <div className="mt-1 pl-6 text-xs text-stone-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                      <div className="mt-1.5 pl-[26px] text-[13px] text-stone-600 flex flex-wrap gap-x-4 gap-y-0.5 tabular-nums">
                         <span>{t.first.groupLeadName}</span>
-                        <span className="tabular-nums">{shortDate(t.first.arrivalDate)} → {shortDate(t.first.departureDate)}</span>
+                        <span>{shortDate(t.first.arrivalDate)} → {shortDate(t.first.departureDate)}</span>
                         <span>{plural(t.people, 'zair', 'zaereen')} · {plural(t.rooms, 'room')}</span>
-                        {Object.entries(t.byBuilding).map(([b, n]) => <span key={b} className="text-stone-600">{b} {n}</span>)}
+                        {Object.keys(t.byBuilding).length > 0 && <span>{Object.entries(t.byBuilding).map(([b, n]) => `${b} ${n}`).join(' · ')}</span>}
                       </div>
                     </button>
                   </div>
                   {open && (
-                    <div className="border-t border-stone-100 divide-y divide-stone-100">
+                    <div className="border-t border-stone-200 divide-y divide-stone-200">
                       {t.units.map((u) => (
                         <UnitRow key={u.key} unit={u} plan={plan} room={plan.assignments[u.key] ? roomByKey.get(roomKey(plan.assignments[u.key]!.building, plan.assignments[u.key]!.roomNumber)) : undefined}
                           picking={picking === u.key}
@@ -618,31 +651,32 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
           </div>
 
           {/* Allocate bar */}
-          <div className="fixed bottom-[60px] lg:bottom-0 left-0 lg:left-[var(--rail-w)] right-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur-md">
-            <div className="mx-auto max-w-[1680px] px-3 sm:px-4 lg:px-6 py-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex-1 text-sm text-stone-700">
+          <div className="fixed bottom-[60px] lg:bottom-0 left-0 lg:left-[var(--rail-w)] right-0 z-30 border-t border-stone-200 bg-white">
+            <div className="mx-auto max-w-[1720px] px-3 sm:px-5 lg:px-8 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
+              <div className="flex-1 text-sm leading-snug text-stone-700 tabular-nums">
                 {confirming ? (
                   <span>
-                    Allocate <b>{plural(included.people, 'zair', 'zaereen')}</b> to <b>{plural(included.rooms, 'room')}</b>?
+                    Allocate <span className="font-semibold text-stone-950">{plural(included.people, 'zair', 'zaereen')}</span> to <span className="font-semibold text-stone-950">{plural(included.rooms, 'room')}</span>?
                     {included.warned > 0 && <span className="text-amber-700"> {plural(included.warned, 'family', 'families')} still {included.warned === 1 ? 'has a warning' : 'have warnings'}.</span>}
                     {' '}This saves the rooms in the app. Nothing is sent to NKERP yet.
                   </span>
                 ) : (
                   <span>
-                    <b>{plural(included.people, 'zair', 'zaereen')}</b> ready in {plural(tours.filter((t) => !excluded.has(t.ref)).length, 'tour')}
+                    <span className="font-semibold text-stone-950">{plural(included.people, 'zair', 'zaereen')}</span> ready to allocate to {plural(included.rooms, 'room')}
+                    <span className="text-stone-500"> · {plural(tours.filter((t) => !excluded.has(t.ref)).length, 'tour')}</span>
                     {excluded.size > 0 && <span className="text-stone-500"> · {excluded.size} unticked</span>}
-                    {!isAdmin && <span className="text-stone-500"> · Only an administrator can allocate</span>}
+                    {!isAdmin && <span className="text-stone-600"> · <Lock className="inline w-3.5 h-3.5 -mt-0.5" /> Only an administrator can allocate</span>}
                   </span>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 {confirming ? (
                   <>
-                    <button type="button" className={btn.secondary} onClick={() => setConfirming(false)}><X className="w-4 h-4" />Cancel</button>
-                    <button type="button" className={btn.primary} onClick={apply}><Check className="w-4 h-4" />Yes, allocate</button>
+                    <button type="button" className={`${btn.secondary} max-sm:flex-1`} onClick={() => setConfirming(false)}><X className="w-4 h-4" />Cancel</button>
+                    <button type="button" className={`${btn.primary} max-sm:flex-1`} onClick={apply}><Check className="w-4 h-4" />Yes, allocate</button>
                   </>
                 ) : (
-                  <button type="button" className={btn.primary} disabled={!isAdmin || !included.people} onClick={() => setConfirming(true)}>
+                  <button type="button" className={`${btn.primary} max-sm:flex-1`} disabled={!isAdmin || !included.people} onClick={() => setConfirming(true)}>
                     <BedDouble className="w-4 h-4" />Allocate {plural(included.people, 'zair', 'zaereen')}
                   </button>
                 )}
@@ -656,30 +690,24 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
 };
 
 const Learned: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <li className="flex gap-2"><Check className="w-3.5 h-3.5 mt-0.5 shrink-0 text-brand-600" /><span>{children}</span></li>
+  <li className="flex gap-2.5"><Check className="w-4 h-4 mt-1 shrink-0 text-brand-600" /><span className="min-w-0">{children}</span></li>
 );
 
 const Legend: React.FC<{ cls: string; label: string }> = ({ cls, label }) => (
-  <span className="inline-flex items-center gap-1.5 text-xs text-stone-600"><span className={`w-2.5 h-2.5 rounded-sm ${cls}`} />{label}</span>
+  <span className="inline-flex items-center gap-1.5 text-[13px] text-stone-600"><span className={`w-2.5 h-2.5 rounded-sm ${cls}`} />{label}</span>
 );
 
-const TONES = {
-  rose: 'bg-rose-50 text-rose-800 ring-rose-200',
-  amber: 'bg-amber-50 text-amber-900 ring-amber-200',
-  gold: 'bg-amber-50 text-amber-800 ring-amber-200',
-  emerald: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
-} as const;
+const STAT_TONES = { rose: 'text-rose-700', amber: 'text-amber-700', gold: 'text-gold-700' } as const;
 
-const Chip: React.FC<{ tone: keyof typeof TONES; children: React.ReactNode }> = ({ tone, children }) => (
-  <span className={`inline-flex items-center gap-1 h-5 px-1.5 rounded-md text-[11px] font-medium ring-1 ring-inset ${TONES[tone]}`}>{children}</span>
-);
-
-const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: keyof typeof TONES }> = ({ label, value, tone }) => (
-  <div className={`rounded-xl px-3 py-2.5 ring-1 ring-inset ${tone ? TONES[tone] : 'bg-white text-stone-900 ring-stone-200'}`}>
-    <div className="text-xl font-semibold tabular-nums leading-tight">{value}</div>
-    <div className="text-xs opacity-75">{label}</div>
+const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: keyof typeof STAT_TONES; className?: string }> = ({ label, value, tone, className = '' }) => (
+  <div className={`bg-white px-4 py-3 ${className}`}>
+    <div className={`type-display text-2xl leading-tight tabular-nums ${tone ? STAT_TONES[tone] : 'text-stone-950'}`}>{value}</div>
+    <div className="mt-0.5 text-[13px] leading-snug text-stone-600">{label}</div>
   </div>
 );
+
+/** A warning that may run to a sentence: the `wait` chip's colours, allowed to wrap. */
+const warnChip = 'inline-flex items-start gap-1.5 rounded-lg px-2 py-1 text-xs font-medium leading-snug ring-1 ring-inset bg-amber-50 text-amber-800 ring-amber-200';
 
 const UnitRow: React.FC<{
   unit: PlanUnit;
@@ -696,24 +724,25 @@ const UnitRow: React.FC<{
   const a = plan.assignments[unit.key];
   const why = plan.unplaced[unit.key];
   const [confirmShift, setConfirmShift] = useState(false);
+  const placed = Boolean(a && room);
   return (
-    <div className="px-3 sm:px-4 py-3 grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)] lg:items-start">
+    <div className="px-4 sm:px-5 py-4 grid gap-x-6 gap-y-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-xs text-stone-500">
-          <span className="font-medium text-stone-700">{unit.family}</span>
-          <span>{plural(unit.members.length, 'zair', 'zaereen')}{unit.pax !== unit.members.length ? ` · ${plural(unit.pax, 'bed')}` : ''}</span>
-          {unit.splitFrom && <span className="inline-flex items-center gap-1 text-stone-500"><Split className="w-3 h-3" />part of family</span>}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <span className="text-sm font-semibold text-stone-950">{unit.family}</span>
+          <span className="text-[13px] text-stone-600 tabular-nums">{plural(unit.members.length, 'zair', 'zaereen')}{unit.pax !== unit.members.length ? ` · ${plural(unit.pax, 'bed')}` : ''}</span>
+          {unit.splitFrom && <span className={chip('wait')}><Split className="w-3 h-3" />Part of family</span>}
         </div>
-        {unit.familyNote && <div className="text-xs text-stone-500">{unit.familyNote}</div>}
-        <ul className="mt-1 space-y-0.5">
+        {unit.familyNote && <div className="mt-0.5 text-[13px] text-stone-600">{unit.familyNote}</div>}
+        <ul className="mt-1.5 space-y-1">
           {unit.members.map((m) => (
-            <li key={m.id} className="text-[13px] text-stone-800 flex items-start gap-1.5">
-              {m.starred ? <Star className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-600 fill-gold-400" aria-label="Starred" /> : <span className="w-3.5 shrink-0" />}
+            <li key={m.id} className="text-sm leading-snug text-stone-900 flex items-start gap-1.5">
+              {m.starred ? <Star className="w-3.5 h-3.5 mt-[3px] shrink-0 text-gold-600 fill-gold-400" aria-label="Starred" /> : unit.starred ? <span className="w-3.5 shrink-0" /> : null}
               <span className="min-w-0">
-                <span className="truncate">{m.name}</span>{' '}
-                <span className="text-xs text-stone-500 tabular-nums">{m.gender?.[0] || ''}{m.age ? ` ${m.age}` : ''}{m.infant ? ' · infant' : ''}</span>
-                {m.remarks && <span className="block text-xs text-amber-800">{m.remarks}</span>}
-                {m.alsoIds?.length ? <span className="block text-xs text-stone-500">Listed {m.alsoIds.length + 1} times on this tour</span> : null}
+                <span>{m.name}</span>{' '}
+                <span className="text-[13px] text-stone-500 tabular-nums whitespace-nowrap">{m.gender?.[0] || ''}{m.age ? ` ${m.age}` : ''}{m.infant ? ' · infant' : ''}</span>
+                {m.remarks && <span className="block text-[13px] text-amber-800">{m.remarks}</span>}
+                {m.alsoIds?.length ? <span className="block text-[13px] text-stone-500">Listed {m.alsoIds.length + 1} times on this tour</span> : null}
               </span>
             </li>
           ))}
@@ -721,86 +750,91 @@ const UnitRow: React.FC<{
       </div>
 
       <div className="min-w-0">
-        {a && room ? (
-          <div className="flex items-start gap-2">
-            <div className="rounded-lg bg-stone-50 ring-1 ring-inset ring-stone-200 px-2.5 py-1.5 min-w-0">
-              <div className="text-sm font-semibold text-stone-900 flex items-center gap-1.5">
-                {a.locked && <Lock className="w-3 h-3 text-stone-500" aria-label="Chosen by you" />}
-                {room.building} {room.roomNumber}
-              </div>
-              <div className="text-xs text-stone-500">
-                {room.floorLabel || `Floor ${room.floor}`} · {describeRoomCapacity(room)} · {roomTier(room)}
-                {room.toiletType ? ` · ${room.toiletType.toLowerCase().includes('both') ? 'both toilets' : room.toiletType.toLowerCase()}` : ''}
-              </div>
-            </div>
+        <div className="text-xs font-medium text-stone-600 mb-1">Proposed room</div>
+        <button type="button" onClick={onPick} aria-expanded={picking} aria-haspopup="listbox"
+          title={picking ? 'Close the room list' : a ? 'Change room' : 'Choose room'}
+          className={`w-full h-10 rounded-lg border bg-white pl-3 pr-2.5 flex items-center justify-between gap-2 text-left cursor-pointer transition hover:border-stone-400 ${placed ? 'border-stone-300' : 'border-rose-300'}`}>
+          {placed ? (
+            <span className="min-w-0 truncate text-sm font-semibold text-stone-950 tabular-nums flex items-center gap-1.5">
+              {a!.locked && <Lock className="w-3.5 h-3.5 shrink-0 text-stone-500" aria-label="Chosen by you" />}
+              {room!.building} {room!.roomNumber}
+            </span>
+          ) : (
+            <span className="text-sm text-stone-500">Choose room</span>
+          )}
+          <ChevronDown className={`w-4 h-4 shrink-0 text-stone-500 transition-transform ${picking ? 'rotate-180' : ''}`} />
+        </button>
+        {placed ? (
+          <div className="mt-1.5 text-[13px] leading-snug text-stone-600">
+            {room!.floorLabel || `Floor ${room!.floor}`} · {describeRoomCapacity(room!)} · {roomTier(room!)}
+            {room!.toiletType ? ` · ${room!.toiletType.toLowerCase().includes('both') ? 'both toilets' : room!.toiletType.toLowerCase()}` : ''}
           </div>
         ) : (
-          <div className="text-sm text-rose-700 flex items-start gap-1.5">
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{why || 'No room yet'}{why !== LEFT_EMPTY && <span className="block text-xs text-rose-600">Shift A→B to an external hotel, or free a room and refresh.</span>}</span>
+          <div className="mt-2 flex items-start gap-2">
+            <span className={`${chip('bad')} shrink-0`}><AlertTriangle className="w-3 h-3" />No room</span>
+            <span className="text-[13px] leading-snug text-rose-700">{why || 'No room yet'}{why !== LEFT_EMPTY && <span className="block text-stone-600">Shift A→B to an external hotel, or free a room and refresh.</span>}</span>
           </div>
         )}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <button type="button" className={`${btn.secondary} h-8 px-2.5 text-xs`} onClick={onPick} aria-expanded={picking}>
-            {picking ? 'Close' : a ? 'Change room' : 'Choose room'}
-          </button>
-          {unit.members.length > 1 && (
-            <button type="button" className={`${btn.ghost} h-8 px-2.5 text-xs`} onClick={onSplit} title="Give each member their own row so they can be moved separately">
-              <Split className="w-3.5 h-3.5" />Split
-            </button>
-          )}
-          {!a && canShift && !unit.followRoom && (confirmShift ? (
-            <>
-              <button type="button" className={`${btn.primary} h-8 px-2.5 text-xs bg-rose-700 hover:bg-rose-800`} onClick={onShiftToB}>
-                <LogOut className="w-3.5 h-3.5" />Shift {plural(unit.members.length, 'zair', 'zaereen')} A→B
-              </button>
-              <button type="button" className={`${btn.ghost} h-8 px-2.5 text-xs`} onClick={() => setConfirmShift(false)}>Cancel</button>
-            </>
-          ) : (
-            <button type="button" className={`${btn.ghost} h-8 px-2.5 text-xs text-rose-700`} onClick={() => setConfirmShift(true)}
-              title="Move them to an external hotel. They are added to the A→B refund slip list.">
-              <LogOut className="w-3.5 h-3.5" />Shift A→B
-            </button>
-          ))}
-        </div>
         {picking && (
-          <div className="mt-2 max-h-64 overflow-y-auto rounded-lg ring-1 ring-stone-200 bg-white divide-y divide-stone-100">
-            <button type="button" onClick={() => onChoose(null)} className="w-full text-left px-2.5 py-2 text-xs text-stone-600 hover:bg-stone-50 cursor-pointer">
+          <div role="listbox" aria-label={`Rooms for ${unit.family}`} className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-stone-300 bg-white divide-y divide-stone-200">
+            <button type="button" role="option" aria-selected={!a} onClick={() => onChoose(null)} className="w-full text-left px-3 min-h-10 text-[13px] text-stone-700 hover:bg-stone-50 cursor-pointer">
               Leave without a room
             </button>
             {options.map((o, i) => (
               <React.Fragment key={o.room.id}>
               {o.kind !== 'free' && (i === 0 || options[i - 1].kind !== o.kind) && (
-                <div className="px-2.5 py-1.5 text-[11px] font-medium text-stone-500 bg-stone-50">
+                <div className="px-3 py-2 text-xs font-semibold text-stone-600 bg-stone-50">
                   {o.kind === 'share' ? 'Share with another family of this tour · your call' : 'Full or unsuitable · choosing one adds a warning'}
                 </div>
               )}
-              <button type="button" onClick={() => onChoose(o.room, o.needsApproval)} disabled={o.blocked}
+              <button type="button" role="option" aria-selected={Boolean(a && a.building === o.room.building && a.roomNumber === o.room.roomNumber)}
+                onClick={() => onChoose(o.room, o.needsApproval)} disabled={o.blocked}
                 title={o.blocked ? `Not allowed: ${o.note}` : o.needsApproval ? 'Kept unallocated by default: choosing it asks for your approval' : undefined}
-                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs ${o.blocked ? 'cursor-not-allowed text-stone-300 line-through decoration-stone-300' : `hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-400' : 'text-stone-800'}`}`}>
-                <span className="font-medium">{o.room.building} {o.room.roomNumber}
-                  <span className="font-normal text-stone-500"> · {o.room.floorLabel || `Fl ${o.room.floor}`} · {describeRoomCapacity(o.room)} · {roomTier(o.room)}</span>
+                className={`w-full flex flex-col justify-center gap-0.5 px-3 py-2 min-h-10 text-left text-[13px] leading-snug ${o.blocked ? 'cursor-not-allowed text-stone-400' : `hover:bg-stone-50 cursor-pointer ${o.kind === 'unsuitable' ? 'text-stone-500' : 'text-stone-900'}`}`}>
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className={`font-semibold tabular-nums whitespace-nowrap ${o.blocked ? 'line-through decoration-stone-400' : ''}`}>{o.room.building} {o.room.roomNumber}</span>
+                  <span className={`text-right ${o.blocked ? 'text-stone-400' : o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-blue-700' : 'text-amber-700'}`}>{o.note}</span>
                 </span>
-                <span className={`text-right ${o.blocked ? 'text-stone-400 no-underline' : o.kind === 'free' ? 'text-emerald-700' : o.kind === 'share' ? 'text-brand-700' : 'text-amber-700'}`}>{o.note}</span>
+                <span className={`text-xs ${o.blocked ? 'text-stone-400' : 'text-stone-600'}`}>{o.room.floorLabel || `Fl ${o.room.floor}`} · {describeRoomCapacity(o.room)} · {roomTier(o.room)}</span>
               </button>
               </React.Fragment>
             ))}
           </div>
         )}
+        <div className="mt-2 flex flex-wrap gap-1.5 empty:hidden">
+          {unit.members.length > 1 && (
+            <button type="button" className={`${btnSm.secondary} max-md:h-10`} onClick={onSplit} title="Give each member their own row so they can be moved separately">
+              <Split className="w-4 h-4" />Split
+            </button>
+          )}
+          {!a && canShift && !unit.followRoom && (confirmShift ? (
+            <>
+              <button type="button" className={`${btnSm.primary} max-md:h-10 !bg-rose-600 hover:!bg-rose-700`} onClick={onShiftToB}>
+                <LogOut className="w-4 h-4" />Shift {plural(unit.members.length, 'zair', 'zaereen')} A→B
+              </button>
+              <button type="button" className={`${btnSm.ghost} max-md:h-10`} onClick={() => setConfirmShift(false)}>Cancel</button>
+            </>
+          ) : (
+            <button type="button" className={`${btnSm.danger} max-md:h-10`} onClick={() => setConfirmShift(true)}
+              title="Move them to an external hotel. They are added to the A→B refund slip list.">
+              <LogOut className="w-4 h-4" />Shift A→B
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="min-w-0 text-xs">
-        {a && a.reasons.length > 0 && (
-          <ul className="space-y-0.5 text-stone-600">
-            {a.reasons.slice(0, 4).map((r) => <li key={r} className="flex gap-1.5"><Info className="w-3 h-3 mt-0.5 shrink-0 text-stone-400" />{r}</li>)}
-          </ul>
-        )}
+      <div className="min-w-0 space-y-2">
         {a && a.warnings.length > 0 && (
-          <ul className="mt-1 space-y-0.5 text-amber-800">
-            {a.warnings.map((w) => <li key={w} className="flex gap-1.5"><AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />{w}</li>)}
+          <ul className="flex flex-wrap gap-1.5">
+            {a.warnings.map((w) => <li key={w} className={warnChip}><AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />{w}</li>)}
           </ul>
         )}
-        {unit.starred && <p className="mt-1 text-amber-800">Starred: always {STARRED_BUILDING}. The remarks decide the exact room.</p>}
+        {a && a.reasons.length > 0 && (
+          <ul className="space-y-1 text-[13px] leading-snug text-stone-600">
+            {a.reasons.slice(0, 4).map((r) => <li key={r} className="flex gap-1.5"><Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-stone-400" />{r}</li>)}
+          </ul>
+        )}
+        {unit.starred && <p className="text-[13px] leading-snug text-stone-700 flex gap-1.5"><Star className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gold-600 fill-gold-400" />Starred: always {STARRED_BUILDING}. The remarks decide the exact room.</p>}
       </div>
     </div>
   );
@@ -864,92 +898,107 @@ const RulesPanel: React.FC<{
     void save({ ...rules, genderRooms: { ...rules.genderRooms, [key]: n } }, `Saifee rooms kept for ${key}: ${n}.`);
   };
 
+  const subject = 'font-semibold text-stone-950';
+  const stepBtn = 'w-9 h-9 max-md:w-10 max-md:h-10 flex items-center justify-center text-stone-700 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent cursor-pointer';
+
   return (
-    <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs overflow-hidden">
+    <section className={`${card} overflow-hidden`}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-left cursor-pointer hover:bg-stone-50">
-        <ShieldCheck className="w-4 h-4 text-brand-700" />
-        <span className="text-sm font-semibold text-stone-900">Allocation rules & instructions</span>
-        <span className="text-xs text-stone-500">{plural(rules.instructions.length, 'instruction')} from you · applied automatically</span>
-        {open ? <ChevronDown className="w-4 h-4 ml-auto text-stone-400" /> : <ChevronRight className="w-4 h-4 ml-auto text-stone-400" />}
+        className="w-full flex items-start gap-2 px-4 sm:px-5 py-4 text-left cursor-pointer hover:bg-stone-50">
+        {open ? <ChevronDown className="w-4 h-4 mt-1 shrink-0 text-stone-500" /> : <ChevronRight className="w-4 h-4 mt-1 shrink-0 text-stone-500" />}
+        <span className="min-w-0">
+          <span className="block text-base font-semibold leading-snug text-stone-950">Allocation rules & instructions</span>
+          <span className="block mt-0.5 text-[13px] text-stone-600">{plural(rules.instructions.length, 'instruction')} from you · applied automatically</span>
+        </span>
       </button>
       {open && (
-        <div className="px-4 pb-4 grid gap-4 lg:grid-cols-2">
-          <ul className="space-y-2 text-[13px] text-stone-700">
+        <div className="border-t border-stone-200 p-4 sm:p-5 grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <ul className="space-y-4 text-sm leading-relaxed text-stone-700 max-w-[68ch]">
             <Learned>
-              <b>KUN HR</b>: the big group (20–22 pax) gets {KUN_HR_BUILDING} {KUN_HR_GROUP_ROOMS.join(', ')}; the small group (5 pax) gets {KUN_HR_BUILDING} {KUN_HR_SMALL_ROOMS.join(', ')}.
+              <span className={subject}>KUN HR</span>: the big group (20–22 pax) gets {KUN_HR_BUILDING} {KUN_HR_GROUP_ROOMS.join(', ')}; the small group (5 pax) gets {KUN_HR_BUILDING} {KUN_HR_SMALL_ROOMS.join(', ')}.
               No other office is ever given these rooms.
             </Learned>
             <Learned>
-              <b>{APPROVAL_BUILDING} {APPROVAL_ROOMS.join(', ')}</b> stay unallocated. They are used only after you approve it in a prompt.
+              <span className={subject}>{APPROVAL_BUILDING} {APPROVAL_ROOMS.join(', ')}</span> stay unallocated. They are used only after you approve it in a prompt.
             </Learned>
-            <li className="flex gap-2">
-              <Check className="w-3.5 h-3.5 mt-0.5 shrink-0 text-brand-600" />
-              <div className="space-y-1.5 min-w-0">
-                <span><b>Saifee single-gender rooms</b> for single zaereen or one-gender family members. Different tours and families of the same gender may share; gents and ladies never mix.
+            <li className="flex gap-2.5">
+              <Check className="w-4 h-4 mt-1 shrink-0 text-brand-600" />
+              <div className="min-w-0">
+                <span><span className={subject}>Saifee single-gender rooms</span> for single zaereen or one-gender family members. Different tours and families of the same gender may share; gents and ladies never mix.
                   When they are full, gents go to Mohammedi{hasBuilding('Mohammedi') ? '' : ' (no Mohammedi rooms in the inventory yet)'} and ladies to Badri.</span>
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                <div className="mt-3 space-y-2">
                   {(['gents', 'ladies'] as const).map((key) => (
-                    <span key={key} className="inline-flex items-center gap-1.5 text-xs">
-                      <span className="font-medium capitalize w-12">{key}</span>
-                      <button type="button" className="w-6 h-6 rounded-md ring-1 ring-stone-200 flex items-center justify-center hover:bg-stone-50 disabled:opacity-40 cursor-pointer"
-                        aria-label={`Fewer rooms for ${key}`} disabled={!isAdmin || saving || rules.genderRooms[key] === 0} onClick={() => setCount(key, -1)}><Minus className="w-3 h-3" /></button>
-                      <span className="w-4 text-center tabular-nums font-semibold">{rules.genderRooms[key]}</span>
-                      <button type="button" className="w-6 h-6 rounded-md ring-1 ring-stone-200 flex items-center justify-center hover:bg-stone-50 disabled:opacity-40 cursor-pointer"
-                        aria-label={`More rooms for ${key}`} disabled={!isAdmin || saving} onClick={() => setCount(key, 1)}><Plus className="w-3 h-3" /></button>
-                      <span className="text-stone-500">Saifee {list(key === 'gents' ? reserved.M : reserved.F)}</span>
-                    </span>
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="w-12 shrink-0 text-[13px] font-medium capitalize text-stone-800">{key}</span>
+                      <span className="inline-flex items-center shrink-0 rounded-lg bg-white ring-1 ring-inset ring-stone-300 overflow-hidden">
+                        <button type="button" className={stepBtn}
+                          aria-label={`Fewer rooms for ${key}`} disabled={!isAdmin || saving || rules.genderRooms[key] === 0} onClick={() => setCount(key, -1)}><Minus className="w-4 h-4" /></button>
+                        <span className="w-8 text-center text-sm font-semibold tabular-nums text-stone-950">{rules.genderRooms[key]}</span>
+                        <button type="button" className={stepBtn}
+                          aria-label={`More rooms for ${key}`} disabled={!isAdmin || saving} onClick={() => setCount(key, 1)}><Plus className="w-4 h-4" /></button>
+                      </span>
+                      <span className="min-w-0 text-[13px] leading-snug text-stone-600 tabular-nums">Saifee {list(key === 'gents' ? reserved.M : reserved.F)}</span>
+                    </div>
                   ))}
                 </div>
               </div>
             </li>
             <Learned>
-              <b>Amatullah Aai Saheba Trust</b>: {AMATULLAH_VENUES.join(' → ')}, each filled to the last bed (buffer included) before the next.
+              <span className={subject}>Amatullah Aai Saheba Trust</span>: {AMATULLAH_VENUES.join(' → ')}, each filled to the last bed (buffer included) before the next.
               Grouped by surname, not family number; different surnames share only to fill a room, gents with gents and ladies with ladies.
             </Learned>
-            <Learned>Families stay together in one room; a family is split only as a last resort, keeping gents and ladies apart and within room capacity.</Learned>
+            <Learned><span className={subject}>Families stay together</span> in one room; a family is split only as a last resort, keeping gents and ladies apart and within room capacity.</Learned>
           </ul>
 
-          <div className="rounded-xl ring-1 ring-stone-200 bg-stone-50/60 flex flex-col min-w-0">
-            <div className="px-3 py-2 border-b border-stone-200 flex items-center gap-2 text-xs font-medium text-stone-600">
-              <MessageSquare className="w-3.5 h-3.5" />Tell the planner
+          <div className={`${panel} flex flex-col min-w-0 overflow-hidden lg:self-start`}>
+            <div className="px-4 h-12 shrink-0 border-b border-stone-200 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-stone-500" />
+              <h3 className="text-[15px] font-semibold text-stone-950">Tell the planner</h3>
               {chat.length > 0 && (
-                <button type="button" className="ml-auto text-stone-400 hover:text-stone-700 cursor-pointer" onClick={() => setChat([])}>Clear chat</button>
+                <button type="button" className={`${btnSm.ghost} ml-auto -mr-1.5`} onClick={() => setChat([])}>Clear chat</button>
               )}
             </div>
             {rules.instructions.length > 0 && (
-              <ul className="px-3 pt-2 flex flex-wrap gap-1.5" aria-label="Active instructions">
-                {rules.instructions.map((i) => (
-                  <li key={i.id} className="inline-flex items-center gap-1 max-w-full rounded-md bg-white ring-1 ring-inset ring-brand-100 px-2 py-1 text-xs text-brand-900" title={`You said: "${i.text}"`}>
-                    <span className="truncate">{i.summary}</span>
-                    {isAdmin && (
-                      <button type="button" className="shrink-0 text-stone-400 hover:text-rose-700 cursor-pointer" aria-label={`Remove instruction: ${i.summary}`} onClick={() => remove(i.id)} disabled={saving}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="px-4 pt-3">
+                <p className="text-xs font-semibold text-stone-600 mb-1.5">Active instructions</p>
+                <ul className="space-y-1.5" aria-label="Active instructions">
+                  {rules.instructions.map((i) => (
+                    <li key={i.id} className="flex items-center gap-2 rounded-lg bg-white ring-1 ring-inset ring-stone-200 pl-3 pr-1 min-h-9 text-[13px] leading-snug text-stone-800" title={`You said: "${i.text}"`}>
+                      <span className="min-w-0 flex-1 py-1.5">{i.summary}</span>
+                      {isAdmin && (
+                        <button type="button" className="shrink-0 w-8 h-8 max-md:w-10 max-md:h-10 rounded-md flex items-center justify-center text-stone-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer disabled:opacity-50" aria-label={`Remove instruction: ${i.summary}`} onClick={() => remove(i.id)} disabled={saving}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-            <div className="px-3 py-2 space-y-1.5 max-h-44 overflow-y-auto text-xs" aria-live="polite">
+            <div className="flex-1 px-4 py-3 space-y-2 min-h-28 max-h-60 overflow-y-auto text-[13px] leading-relaxed" aria-live="polite">
               {chat.length === 0 ? (
-                <p className="text-stone-500">
+                <p className="text-stone-600">
                   Type an instruction, for example: {INSTRUCTION_EXAMPLES.slice(0, 4).map((e) => `"${e}"`).join(', ')}. Instructions are saved for everyone and the plan is refreshed with them.
                 </p>
               ) : chat.map((line, idx) => (
                 <div key={idx} className={`flex ${line.from === 'you' ? 'justify-end' : 'justify-start'}`}>
-                  <span className={`max-w-[90%] rounded-lg px-2.5 py-1.5 ${line.from === 'you' ? 'bg-brand-700 text-white' : line.ok === false ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-200' : 'bg-white text-stone-800 ring-1 ring-stone-200'}`}>
+                  <span className={`max-w-[88%] rounded-xl px-3 py-1.5 ${line.from === 'you' ? 'bg-brand-700 text-white' : line.ok === false ? 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200' : 'bg-white text-stone-800 ring-1 ring-inset ring-stone-200'}`}>
                     {line.text}
                   </span>
                 </div>
               ))}
             </div>
-            <form className="mt-auto flex gap-2 p-2 border-t border-stone-200" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+            {!isAdmin && (
+              <p className="px-4 pb-2 text-[13px] text-stone-600 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 shrink-0 text-stone-500" />Only an administrator can give or remove instructions.
+              </p>
+            )}
+            <form className="flex gap-2 p-3 border-t border-stone-200" onSubmit={(e) => { e.preventDefault(); void send(); }}>
               <input value={text} onChange={(e) => setText(e.target.value)} disabled={!isAdmin}
                 placeholder={isAdmin ? 'e.g. Don\'t allocate Saifee 101 and 102' : 'Only an administrator can give instructions'}
                 aria-label="Instruction for the planner"
-                className="h-9 flex-1 min-w-0 rounded-lg border border-stone-200 bg-white px-3 text-sm" />
-              <button type="submit" className={`${btn.primary} h-9 px-3`} disabled={!isAdmin || !text.trim() || saving}>
+                className={`${field} flex-1 min-w-0`} />
+              <button type="submit" className={btn.primary} disabled={!isAdmin || !text.trim() || saving}>
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Send
               </button>
             </form>

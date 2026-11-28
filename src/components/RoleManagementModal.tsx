@@ -1,21 +1,7 @@
 import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  Eye, 
-  Lock, 
-  Unlock, 
-  KeyRound, 
-  CheckCircle2, 
-  AlertCircle, 
-  X,
-  UserCheck,
-  Printer,
-  FileSpreadsheet,
-  Trash2,
-  Edit3,
-  LogIn
-} from 'lucide-react';
+import { CheckCircle2, Eye, KeyRound, ShieldCheck, X } from 'lucide-react';
 import { UserRole } from '../types';
+import { btn, btnSm, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
@@ -24,6 +10,8 @@ interface RoleManagementModalProps {
   adminPin: string;
   onSaveRoleSettings: (newRole: UserRole, newPin: string) => void;
 }
+
+const fieldBad = field.replace('border-stone-300', 'border-rose-500');
 
 export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   isOpen,
@@ -37,6 +25,8 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   const [newPin, setNewPin] = useState(adminPin);
   const [isChangingPin, setIsChangingPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Which field the error belongs to, so it can sit right under it.
+  const [errorAt, setErrorAt] = useState<'pin' | 'newPin' | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
 
   if (!isOpen) return null;
@@ -44,12 +34,14 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   const handleApplyRole = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setErrorAt(null);
     setSuccessMsg('');
 
     // If currently in receptionist mode and trying to switch to admin, require PIN
     if (currentRole === 'receptionist' && selectedRole === 'admin') {
       if (pinInput.trim() !== adminPin.trim()) {
         setErrorMsg('Incorrect Admin PIN. Please enter the valid Admin PIN to unlock full edit rights.');
+        setErrorAt('pin');
         return;
       }
     }
@@ -58,6 +50,7 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
     if (isChangingPin) {
       if (!newPin || newPin.trim().length < 4) {
         setErrorMsg('Admin PIN must be at least 4 digits or characters.');
+        setErrorAt('newPin');
         return;
       }
     }
@@ -69,178 +62,118 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
     }, 900);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden text-stone-800">
-        
-        {/* Header */}
-        <div className="bg-gradient-to-r from-brand-700 to-brand-800 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-white/10 text-gold-200">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold font-serif">
-                Access Rights & Role Management
-              </h2>
-              <p className="text-xs text-stone-300">
-                Configure View-Only for Receptionist & Editable Rights for Admin
-              </p>
-            </div>
-          </div>
+  const showPin = currentRole === 'receptionist' && selectedRole === 'admin';
+  const showNewPin = currentRole === 'admin' && isChangingPin;
+  const pinError = errorMsg && errorAt === 'pin' && showPin;
+  const newPinError = errorMsg && errorAt === 'newPin' && showNewPin;
+  const looseError = errorMsg && !pinError && !newPinError;
 
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition"
-          >
+  const roles: { role: UserRole; icon: React.ElementType; name: string; summary: string; detail: string }[] = [
+    {
+      role: 'admin',
+      icon: ShieldCheck,
+      name: 'Admin',
+      summary: 'Can edit',
+      detail: 'Full control: allot and unallot rooms, edit and delete zair records, shift B to A, upload Excel, and configure the sync.',
+    },
+    {
+      role: 'receptionist',
+      icon: Eye,
+      name: 'Receptionist',
+      summary: 'View only',
+      detail: 'Safe desk mode: view the zaereen list, search rooms, inspect occupancy, and view and print Reception daily slips and Housekeeping slips. Cannot edit, allot or delete.',
+    },
+  ];
+
+  return (
+    <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
+      <form onSubmit={handleApplyRole} className={`${modalCard} max-w-lg`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="role-modal-title" className={modalTitle}>Access rights</h2>
+            <p className="mt-1 text-sm text-stone-600">Choose who is using this device. Receptionist is view only; Admin can edit.</p>
+          </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleApplyRole} className="p-5 space-y-4">
-          
-          {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
+        <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto">
+          <fieldset>
+            <legend className={fieldLabel}>Working as</legend>
+            <div className="space-y-2">
+              {roles.map(({ role, icon: Icon, name, summary, detail }) => {
+                const on = selectedRole === role;
+                return (
+                  <label key={role}
+                    className={`flex items-start gap-3 rounded-xl px-3.5 py-3 cursor-pointer transition ring-inset ${
+                      on ? 'bg-brand-50 ring-2 ring-brand-600' : 'bg-white ring-1 ring-stone-300 hover:ring-stone-400'}`}>
+                    <input
+                      type="radio"
+                      name="roleOption"
+                      checked={on}
+                      onChange={() => setSelectedRole(role)}
+                      className="mt-1 w-4 h-4 accent-brand-700"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <Icon className={`w-4 h-4 ${on ? 'text-brand-700' : 'text-stone-500'}`} />
+                        <span className="text-[15px] font-semibold text-stone-950">{name}</span>
+                        <span className="text-[13px] text-stone-600">{summary}</span>
+                        {currentRole === role && <span className="text-[13px] text-stone-500">· current</span>}
+                      </span>
+                      <span className="mt-1 block text-[13px] leading-relaxed text-stone-600">{detail}</span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
-          )}
+          </fieldset>
 
-          {successMsg && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs flex items-center gap-2 font-bold">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {/* Role Cards */}
-          <div className="space-y-3">
-            <span className="text-xs font-bold text-stone-700 block">
-              Select Active Working Mode:
-            </span>
-
-            {/* Admin (Myself) Card */}
-            <div
-              onClick={() => setSelectedRole('admin')}
-              className={`p-3.5 rounded-xl border-2 transition cursor-pointer flex items-start gap-3 ${
-                selectedRole === 'admin'
-                  ? 'border-brand-700 bg-emerald-50/80 shadow-xs'
-                  : 'border-stone-200 bg-white hover:border-stone-300'
-              }`}
-            >
+          {/* PIN check when switching from Receptionist to Admin */}
+          {showPin && (
+            <div>
+              <label htmlFor="role-admin-pin" className={fieldLabel}>Admin PIN</label>
               <input
-                type="radio"
-                name="roleOption"
-                checked={selectedRole === 'admin'}
-                onChange={() => setSelectedRole('admin')}
-                className="mt-1 text-brand-700 focus:ring-brand-700"
-              />
-              <div className="space-y-1 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-brand-700 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                    Admin / Myself (Full Editable Rights)
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
-                    Full Access
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-600">
-                  Full control: Allot rooms, unallot, edit zaer records, delete zaer records, shift B to A, upload Excel, and configure sync.
-                </p>
-                <div className="flex flex-wrap gap-2 text-[10px] text-emerald-900 font-semibold pt-1">
-                  <span className="flex items-center gap-0.5"><Edit3 className="w-3 h-3" /> Edit</span>
-                  <span className="flex items-center gap-0.5"><Trash2 className="w-3 h-3" /> Delete</span>
-                  <span className="flex items-center gap-0.5"><FileSpreadsheet className="w-3 h-3" /> Upload</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Receptionist Card */}
-            <div
-              onClick={() => setSelectedRole('receptionist')}
-              className={`p-3.5 rounded-xl border-2 transition cursor-pointer flex items-start gap-3 ${
-                selectedRole === 'receptionist'
-                  ? 'border-brand-700 bg-amber-50/80 shadow-xs'
-                  : 'border-stone-200 bg-white hover:border-stone-300'
-              }`}
-            >
-              <input
-                type="radio"
-                name="roleOption"
-                checked={selectedRole === 'receptionist'}
-                onChange={() => setSelectedRole('receptionist')}
-                className="mt-1 text-brand-700 focus:ring-brand-700"
-              />
-              <div className="space-y-1 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
-                    <Eye className="w-4 h-4 text-amber-700" />
-                    Receptionist (View-Only Rights)
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
-                    View Only
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-600">
-                  Safe desk mode: View zaereen list, search rooms, inspect occupancy, view & print Reception Daily Slips and Housekeeping Slips. Cannot edit, allot, or delete.
-                </p>
-                <div className="flex flex-wrap gap-2 text-[10px] text-amber-900 font-semibold pt-1">
-                  <span className="flex items-center gap-0.5"><Eye className="w-3 h-3" /> Read Only</span>
-                  <span className="flex items-center gap-0.5"><Printer className="w-3 h-3" /> Print Slips</span>
-                  <span className="flex items-center gap-0.5 text-stone-500">🔒 Editing Locked</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* PIN Verification when switching from Receptionist to Admin */}
-          {currentRole === 'receptionist' && selectedRole === 'admin' && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 space-y-2">
-              <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5 text-amber-800" />
-                Enter Admin PIN to Unlock Edit Rights:
-              </label>
-              <input
+                id="role-admin-pin"
                 type="password"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
                 placeholder="Enter 4-digit PIN (Default: 1234)"
-                className="w-full px-3 py-1.5 text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-700"
+                aria-invalid={pinError ? true : undefined}
+                className={pinError ? fieldBad : field}
                 autoFocus
               />
-              <p className="text-[10px] text-amber-800">
-                Default PIN is <strong>1234</strong>. This prevents unauthorized editing by desk staff.
+              {pinError && <p role="alert" className="mt-1.5 text-[13px] font-medium text-rose-700">{errorMsg}</p>}
+              <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">
+                Default PIN is <strong className="font-semibold text-stone-700">1234</strong>. This prevents unauthorized editing by desk staff.
               </p>
             </div>
           )}
 
-          {/* Admin PIN Settings Accordion */}
+          {/* Admin PIN settings */}
           {currentRole === 'admin' && (
-            <div className="pt-2 border-t border-stone-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setIsChangingPin(!isChangingPin)}
-                className="text-brand-700 font-bold underline hover:text-brand-800 flex items-center gap-1 cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>{isChangingPin ? 'Hide PIN Settings' : 'Change Admin Security PIN'}</span>
+            <div className="border-t border-stone-200 pt-4">
+              <button type="button" onClick={() => setIsChangingPin(!isChangingPin)} aria-expanded={isChangingPin}
+                className={`${btnSm.secondary} max-sm:h-10 max-sm:px-3.5`}>
+                <KeyRound className="w-3.5 h-3.5 text-stone-500" />
+                {isChangingPin ? 'Hide PIN settings' : 'Change admin security PIN'}
               </button>
 
               {isChangingPin && (
-                <div className="mt-2.5 p-3 rounded-xl bg-white border border-stone-300 space-y-2">
-                  <label className="block text-[11px] font-bold text-stone-700">
-                    New Admin Security PIN:
-                  </label>
+                <div className="mt-4">
+                  <label htmlFor="role-new-pin" className={fieldLabel}>New admin security PIN</label>
                   <input
+                    id="role-new-pin"
                     type="text"
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
                     placeholder="Enter new 4+ digit PIN"
-                    className="w-full px-3 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-lg font-mono font-bold"
+                    aria-invalid={newPinError ? true : undefined}
+                    className={`${newPinError ? fieldBad : field} tabular-nums`}
                   />
-                  <p className="text-[10px] text-stone-500">
+                  {newPinError && <p role="alert" className="mt-1.5 text-[13px] font-medium text-rose-700">{errorMsg}</p>}
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">
                     Keep this PIN secure. You will need it whenever switching back from Receptionist mode.
                   </p>
                 </div>
@@ -248,25 +181,21 @@ export const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-200 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white shadow-sm transition"
-            >
-              Apply Rights
-            </button>
-          </div>
-        </form>
+          {looseError && <p role="alert" className="text-[13px] font-medium text-rose-700">{errorMsg}</p>}
 
-      </div>
+          {successMsg && (
+            <p role="status" className="flex items-start gap-2 rounded-xl bg-emerald-50 px-3.5 py-3 text-[13px] font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+              <span>{successMsg}</span>
+            </p>
+          )}
+        </div>
+
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.secondary}>Cancel</button>
+          <button type="submit" className={btn.primary}>Apply rights</button>
+        </div>
+      </form>
     </div>
   );
 };

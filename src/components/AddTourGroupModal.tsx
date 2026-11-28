@@ -1,24 +1,45 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import {
-  X,
-  Users,
-  Plus,
-  Trash2,
-  Calendar,
-  AlertCircle,
-  CheckCircle2,
-  Copy,
-  UserPlus,
-  Hash,
-  Briefcase,
-  ClipboardPaste,
-  Wand2,
-  Building2,
-} from 'lucide-react';
+import { X, Users, Plus, Trash2, AlertCircle, CheckCircle2, Copy, UserPlus, ClipboardPaste, Wand2 } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus } from '../types';
 import { normalizeItsId } from '../utils/deduplication';
 import { getVacantRoomsForDuration, normalizeBuildingName, normalizeRoomNumber, getDistinctBuildings } from '../services/storage';
 import { parseBulkTourPaste, cleanClipboardText, normalizeGender } from '../utils/itsPasteParser';
+import {
+  btn,
+  btnSm,
+  field,
+  fieldSm,
+  fieldLabel,
+  panel,
+  modalScrim,
+  modalCard,
+  modalHeader,
+  modalTitle,
+  modalClose,
+  modalFooter,
+} from './ui';
+
+/* Shared form pieces for this dialog. */
+const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
+const helpText = 'mt-1.5 text-xs text-stone-500';
+const errorText = 'mt-1.5 text-xs text-rose-700';
+const segWrap = 'inline-flex items-center gap-1 p-1 rounded-lg bg-stone-100';
+const segBtn = (on: boolean) =>
+  `h-8 max-sm:h-10 px-3 rounded-md text-[13px] whitespace-nowrap cursor-pointer ${
+    on
+      ? 'bg-white text-brand-700 font-semibold ring-1 ring-inset ring-stone-300'
+      : 'font-medium text-stone-600 hover:text-stone-950'
+  }`;
+/** A field inside the members table (40px tall on phones, where each member is a stacked block). */
+const cell = `${fieldSm} w-full max-md:h-10`;
+const cellLabel = 'md:hidden block mb-1 text-xs font-medium text-stone-600';
+const iconBtn =
+  'w-9 h-9 max-md:w-10 max-md:h-10 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 cursor-pointer';
+const Required = () => (
+  <span className="text-rose-600" aria-hidden="true">
+    {' '}*
+  </span>
+);
 
 export interface TourIndividualRow {
   id: string;
@@ -236,7 +257,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
     if (parsed.entries.length === 0) {
       setErrorMsg(
-        'No valid ITS numbers found in pasted text. Paste 7–9 digit ITS numbers (one per line, space, or comma-separated) or Excel rows.'
+        'No ITS numbers found in the pasted text. Paste 7 to 9 digit ITS numbers (one per line, or separated by spaces or commas) or spreadsheet rows.'
       );
       return false;
     }
@@ -305,14 +326,14 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
       if (newRows.length === 0) {
         setPasteNotice(
-          `All ${parsed.entries.length} pasted ITS IDs are already in the list above.`
+          `All ${parsed.entries.length} pasted ITS numbers are already in the list.`
         );
         return prev;
       }
 
       const skippedTotal = parsed.duplicatesSkipped + skippedAlreadyInList;
       setPasteNotice(
-        `Added ${newRows.length} Zaereen${
+        `Added ${newRows.length} zaereen${
           parsed.autoMatchedCount > 0 ? ` (${parsed.autoMatchedCount} auto-filled from saved records)` : ''
         }${skippedTotal > 0 ? ` · ${skippedTotal} duplicate ITS skipped` : ''}.`
       );
@@ -462,8 +483,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
     );
     setPasteNotice(
       batchRoomNumber
-        ? `Applied ${defaultBuilding} Room ${batchRoomNumber} to all ${rows.length} rows.`
-        : `Set hotel to ${defaultBuilding} for all ${rows.length} rows.`
+        ? `Applied ${defaultBuilding} room ${batchRoomNumber} to all ${rows.length} rows.`
+        : `Set the building to ${defaultBuilding} for all ${rows.length} rows.`
     );
   };
 
@@ -471,7 +492,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const handleSetAllSameFamily = () => {
     const targetFam = pasteSameFamilyId.trim() || rows[0]?.family || '101';
     setRows((prev) => prev.map((r) => ({ ...r, family: targetFam })));
-    setPasteNotice(`Grouped all ${rows.length} rows into Family #${targetFam}.`);
+    setPasteNotice(`Grouped all ${rows.length} rows into family ${targetFam}.`);
   };
 
   // Metrics summary
@@ -497,7 +518,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
       if (!its) return;
 
       if (seenIts.has(its)) {
-        batchErrors[r.id] = `Duplicate in row #${seenIts.get(its)}`;
+        batchErrors[r.id] = `Same ITS as row ${seenIts.get(its)}`;
         return;
       }
       seenIts.set(its, idx + 1);
@@ -509,7 +530,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
             (other.tourRefNo || other.tourId || '').trim().toLowerCase() === currentTourNorm
         );
         if (sameTourMatch) {
-          sameTourConflicts[r.id] = `Already in Tour ${sameTourMatch.tourRefNo}`;
+          sameTourConflicts[r.id] = `Already in tour ${sameTourMatch.tourRefNo}`;
         }
       }
     });
@@ -546,30 +567,30 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
     const cleanTour = tourRefNo.trim();
     if (!cleanTour) {
-      setErrorMsg('Please enter a Tour ID / Reference Number.');
+      setErrorMsg('Enter a Tour ID.');
       return;
     }
 
     if (!arrivalDate || !departureDate) {
-      setErrorMsg('Arrival and Departure dates are required.');
+      setErrorMsg('Arrival and departure dates are both needed.');
       return;
     }
 
     if (departureDate < arrivalDate) {
-      setErrorMsg('Departure date cannot be earlier than Arrival date.');
+      setErrorMsg('The departure date cannot be before the arrival date.');
       return;
     }
 
     // Filter out untouched blank trailing rows if at least 1 real row exists
     const nonBlankRows = rows.filter((r) => !isBlankRow(r));
     if (nonBlankRows.length === 0) {
-      setErrorMsg('Paste ITS IDs or enter at least one Zair to save this tour.');
+      setErrorMsg('Paste ITS numbers or enter at least one zair to save this tour.');
       return;
     }
 
     if (rowChecks.duplicateRowCount > 0) {
       setErrorMsg(
-        `There are ${rowChecks.duplicateRowCount} duplicate ITS entries in the list. Click "Remove Duplicates" above or fix them before saving.`
+        `There are ${rowChecks.duplicateRowCount} duplicate ITS entries in the list. Press "Remove duplicates" or fix them before saving.`
       );
       return;
     }
@@ -584,13 +605,13 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
       const name = r.applicantName.trim() || (its ? `Zaer ITS ${its}` : '');
 
       if (!name) {
-        setErrorMsg(`Row #${i + 1}: Enter either an ITS ID or Applicant Name.`);
+        setErrorMsg(`Row ${i + 1}: enter an ITS or a name.`);
         return;
       }
 
       if (rowChecks.sameTourConflicts[r.id]) {
         setErrorMsg(
-          `Row #${i + 1}: ITS ${its} is already present in Tour "${cleanTour}". Remove or edit it before saving.`
+          `Row ${i + 1}: ITS ${its} is already in tour ${cleanTour}. Remove or edit it before saving.`
         );
         return;
       }
@@ -650,218 +671,202 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const activeDefaultVacantRooms = getVacantRoomsForBuilding(defaultBuilding);
   const readyCount = rows.filter((r) => !isBlankRow(r)).length;
 
+  // After a failed save, point at the fields that caused it.
+  const tourMissing = !!errorMsg && !tourRefNo.trim();
+  const datesWrong = !!errorMsg && !!arrivalDate && !!departureDate && departureDate < arrivalDate;
+  const hasProblems = !!errorMsg || rowChecks.duplicateRowCount > 0 || rowChecks.sameTourConflictCount > 0;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh]">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-stone-400 hover:text-stone-700 p-1.5 rounded-lg hover:bg-stone-200/60 transition cursor-pointer"
-          aria-label="Close modal"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Modal Header */}
-        <div className="pb-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-brand-700 text-white shadow-2xs">
-              <Users className="w-5 h-5" />
-            </span>
-            <div>
-              <h3 className="text-base font-bold text-brand-700">
-                Add Tour Group — Bulk ITS Paste &amp; Quick Setup
-              </h3>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Enter Tour ID and dates once, then paste all ITS numbers (or Excel rows) to add the whole group together.
-              </p>
-            </div>
+    <div className={modalScrim}>
+      <div className={`${modalCard} max-w-6xl`} role="dialog" aria-modal="true" aria-labelledby="add-tour-title">
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h3 id="add-tour-title" className={modalTitle}>
+              Add tour group
+            </h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Enter the Tour ID and dates once, then paste everyone’s ITS numbers or add them row by row.
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsPasteOpen((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 ${
-              isPasteOpen
-                ? 'bg-brand-700 text-white border-brand-700'
-                : 'bg-white hover:bg-stone-100 text-brand-700 border-brand-700/30'
-            }`}
-          >
-            <ClipboardPaste className="w-3.5 h-3.5" />
-            <span>{isPasteOpen ? 'Hide Bulk Paste' : 'Paste All ITS IDs'}</span>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Scrollable Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pt-4 pr-1">
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs flex items-center gap-2 font-semibold">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {/* 1. Shared Tour & Schedule Header */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
-                <Briefcase className="w-4 h-4 text-brand-700" />
-                <span>1. Tour Details &amp; Stay Dates</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-stone-600 tabular-nums">
-                <span>
-                  Duration: <strong className="text-brand-700">{calculatedNights} Nights</strong>
-                </span>
-                <span>·</span>
-                <span>
-                  Vacant:{' '}
-                  {distinctBuildings.map((bldg, idx) => (
-                    <span key={bldg} className="font-semibold text-stone-800">
-                      {getVacantRoomsForBuilding(bldg).length} {bldg}
-                      {idx < distinctBuildings.length - 1 ? ' · ' : ''}
-                    </span>
-                  ))}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              {/* Tour ID */}
-              <div>
-                <label className="block font-bold text-stone-700 mb-1 flex items-center justify-between">
-                  <span>Tour ID / Ref No. *</span>
-                  {existingTourIds.length > 0 && (
-                    <span className="text-[10px] text-stone-400 font-normal">
-                      {existingTourIds.length} in portal
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  required
-                  list="existing-tour-ids-list"
-                  placeholder="Enter new or pick existing Tour ID"
-                  value={tourRefNo}
-                  onChange={(e) => handleSelectTour(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-700/40"
-                />
-                <datalist id="existing-tour-ids-list">
-                  {existingTourIds.map((t) => (
-                    <option key={t} value={t} />
-                  ))}
-                </datalist>
-              </div>
-
-              {/* Office Name */}
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Office Name *</label>
-                <input
-                  type="text"
-                  required
-                  list="existing-offices-list"
-                  placeholder="e.g. Fayz E Husayni Trust Mumbai"
-                  value={officeName}
-                  onChange={(e) => setOfficeName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-2 focus:ring-brand-700/40"
-                />
-                <datalist id="existing-offices-list">
-                  {existingOffices.map((o) => (
-                    <option key={o} value={o} />
-                  ))}
-                </datalist>
-              </div>
-
-              {/* Shared Arrival Date & Time */}
-              <div>
-                <label className="block font-bold text-emerald-900 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Arrival Date &amp; Time *</span>
-                </label>
-                <div className="flex items-center gap-1.5">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-8">
+            {/* 1. Tour details */}
+            <section>
+              <h4 className={groupTitle}>1. Tour details</h4>
+              <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="col-span-2">
+                  <label htmlFor="tg-tour" className={fieldLabel}>
+                    Tour ID
+                    <Required />
+                  </label>
                   <input
+                    id="tg-tour"
+                    type="text"
+                    required
+                    list="existing-tour-ids-list"
+                    placeholder="New Tour ID, or pick one already in the list"
+                    value={tourRefNo}
+                    onChange={(e) => handleSelectTour(e.target.value)}
+                    aria-invalid={tourMissing}
+                    className={`${field} tabular-nums${tourMissing ? ' border-rose-400' : ''}`}
+                  />
+                  <datalist id="existing-tour-ids-list">
+                    {existingTourIds.map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                  {tourMissing ? (
+                    <p className={errorText}>Enter a Tour ID.</p>
+                  ) : (
+                    existingTourIds.length > 0 && (
+                      <p className={helpText}>
+                        {existingTourIds.length} tours in the list. Choosing one fills in its office and dates.
+                      </p>
+                    )
+                  )}
+                </div>
+
+                <div className="col-span-2">
+                  <label htmlFor="tg-office" className={fieldLabel}>
+                    Office
+                    <Required />
+                  </label>
+                  <input
+                    id="tg-office"
+                    type="text"
+                    required
+                    list="existing-offices-list"
+                    placeholder="Fayz E Husayni Trust Mumbai"
+                    value={officeName}
+                    onChange={(e) => setOfficeName(e.target.value)}
+                    className={field}
+                  />
+                  <datalist id="existing-offices-list">
+                    {existingOffices.map((o) => (
+                      <option key={o} value={o} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label htmlFor="tg-arr-date" className={fieldLabel}>
+                    Arrival date
+                    <Required />
+                  </label>
+                  <input
+                    id="tg-arr-date"
                     type="date"
                     required
                     value={arrivalDate}
                     onChange={(e) => setArrivalDate(e.target.value)}
-                    className="w-full bg-stone-50 border border-emerald-300 rounded-lg px-2 py-1.5 font-bold text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer tabular-nums"
+                    className={`${field} tabular-nums cursor-pointer`}
                   />
+                </div>
+                <div>
+                  <label htmlFor="tg-arr-time" className={fieldLabel}>
+                    Arrival time
+                  </label>
                   <input
+                    id="tg-arr-time"
                     type="text"
                     placeholder="11:00 AM"
                     value={arrivalTime}
                     onChange={(e) => setArrivalTime(e.target.value)}
-                    className="w-24 bg-stone-50 border border-emerald-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-emerald-950 focus:outline-none tabular-nums"
+                    className={`${field} tabular-nums`}
                   />
                 </div>
-              </div>
-
-              {/* Shared Departure Date & Time */}
-              <div>
-                <label className="block font-bold text-amber-900 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Departure Date &amp; Time *</span>
-                </label>
-                <div className="flex items-center gap-1.5">
+                <div>
+                  <label htmlFor="tg-dep-date" className={fieldLabel}>
+                    Departure date
+                    <Required />
+                  </label>
                   <input
+                    id="tg-dep-date"
                     type="date"
                     required
                     value={departureDate}
                     onChange={(e) => setDepartureDate(e.target.value)}
-                    className="w-full bg-stone-50 border border-amber-300 rounded-lg px-2 py-1.5 font-bold text-amber-950 focus:outline-none focus:ring-1 focus:ring-amber-700 cursor-pointer tabular-nums"
+                    aria-invalid={datesWrong}
+                    className={`${field} tabular-nums cursor-pointer${datesWrong ? ' border-rose-400' : ''}`}
                   />
+                  {datesWrong && <p className={errorText}>Cannot be before the arrival date.</p>}
+                </div>
+                <div>
+                  <label htmlFor="tg-dep-time" className={fieldLabel}>
+                    Departure time
+                  </label>
                   <input
+                    id="tg-dep-time"
                     type="text"
                     placeholder="01:00 AM"
                     value={departureTime}
                     onChange={(e) => setDepartureTime(e.target.value)}
-                    className="w-24 bg-stone-50 border border-amber-300 rounded-lg px-1.5 py-1.5 text-center font-mono text-[11px] font-bold text-amber-950 focus:outline-none tabular-nums"
+                    className={`${field} tabular-nums`}
                   />
                 </div>
-              </div>
 
-              {/* Group Lead Name */}
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Group Lead (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Mulla Shabbir"
-                  value={groupLeadName}
-                  onChange={(e) => setGroupLeadName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                />
-              </div>
-
-              {/* Default Category */}
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Default Category</label>
-                <select
-                  value={defaultCategory}
-                  onChange={(e) => setDefaultCategory(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-stone-900 focus:outline-none"
-                >
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
+                <p className="col-span-full -mt-1.5 text-xs text-stone-500 tabular-nums">
+                  <span className="font-medium text-stone-700">
+                    {calculatedNights} night{calculatedNights === 1 ? '' : 's'}
+                  </span>
+                  . Vacant for these dates:{' '}
+                  {distinctBuildings.map((bldg, idx) => (
+                    <span key={bldg}>
+                      <span className="font-medium text-stone-700">{getVacantRoomsForBuilding(bldg).length}</span> {bldg}
+                      {idx < distinctBuildings.length - 1 ? ' · ' : ''}
+                    </span>
                   ))}
-                </select>
-              </div>
+                  .
+                </p>
 
-              {/* Default Building + Batch Room Apply */}
-              <div className="sm:col-span-2">
-                <label className="block font-semibold text-stone-700 mb-1 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-brand-700" />
-                  <span>Quick Assign Hotel &amp; Room to All Rows</span>
-                </label>
-                <div className="flex items-center gap-1.5">
+                <div className="col-span-2">
+                  <label htmlFor="tg-lead" className={fieldLabel}>
+                    Group lead <span className="font-normal text-stone-500">(optional)</span>
+                  </label>
+                  <input
+                    id="tg-lead"
+                    type="text"
+                    placeholder="Mulla Shabbir"
+                    value={groupLeadName}
+                    onChange={(e) => setGroupLeadName(e.target.value)}
+                    className={field}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label htmlFor="tg-category" className={fieldLabel}>
+                    Default category
+                  </label>
                   <select
+                    id="tg-category"
+                    value={defaultCategory}
+                    onChange={(e) => setDefaultCategory(e.target.value)}
+                    className={field}
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-span-2 lg:col-span-1">
+                  <label htmlFor="tg-building" className={fieldLabel}>
+                    Default building
+                  </label>
+                  <select
+                    id="tg-building"
                     value={defaultBuilding}
                     onChange={(e) => {
                       setDefaultBuilding(e.target.value);
                       setBatchRoomNumber('');
                     }}
-                    className="bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-bold text-brand-700 focus:outline-none cursor-pointer"
+                    className={field}
                   >
                     {distinctBuildings.map((bldg) => (
                       <option key={bldg} value={bldg}>
@@ -869,449 +874,527 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={batchRoomNumber}
-                    onChange={(e) => setBatchRoomNumber(e.target.value)}
-                    className="flex-1 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-stone-800 focus:outline-none cursor-pointer"
-                  >
-                    <option value="">Allot rooms later (Unallotted)</option>
-                    {activeDefaultVacantRooms.map((rm) => (
-                      <option key={rm.id} value={rm.roomNumber}>
-                        Rm {rm.roomNumber} (Cap {rm.capacity})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleApplyBatchHotelRoom}
-                    className="px-3 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-900 font-bold transition cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Apply to List
-                  </button>
                 </div>
+                <div className="col-span-2 lg:col-span-3">
+                  <label htmlFor="tg-room" className={fieldLabel}>
+                    Room for everyone <span className="font-normal text-stone-500">(optional)</span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      id="tg-room"
+                      value={batchRoomNumber}
+                      onChange={(e) => setBatchRoomNumber(e.target.value)}
+                      className={`${field} tabular-nums sm:flex-1`}
+                    >
+                      <option value="">Allot rooms later (unallotted)</option>
+                      {activeDefaultVacantRooms.map((rm) => (
+                        <option key={rm.id} value={rm.roomNumber}>
+                          Room {rm.roomNumber} (sleeps {rm.capacity})
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={handleApplyBatchHotelRoom} className={`${btn.secondary} shrink-0`}>
+                      Apply to all rows
+                    </button>
+                  </div>
+                </div>
+                <p className="col-span-full -mt-1.5 text-xs text-stone-500">
+                  New rows start in the default building. “Apply to all rows” sets that building on every row, and the
+                  room too if one is chosen.
+                </p>
               </div>
-            </div>
-          </div>
+            </section>
 
-          {/* 2. Stable Bulk ITS Paste Box */}
-          {isPasteOpen && (
-            <div className="bg-white border border-emerald-300 rounded-xl p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
-                    <ClipboardPaste className="w-4 h-4 text-brand-700" />
-                    <span>Bulk Paste All ITS IDs or Excel Rows</span>
-                  </div>
-                  <p className="text-[11px] text-stone-600 mt-0.5">
-                    Paste any number of ITS IDs (new lines, spaces, commas, WhatsApp lists) or copy-paste columns directly from Excel/Sheets. Names auto-fill from saved records when known.
-                  </p>
-                </div>
+            {/* 2. Members */}
+            <section>
+              <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 pb-2 border-b border-stone-200">
+                <h4 className="text-[15px] font-semibold text-stone-950">
+                  2. Members <span className="font-normal text-stone-500 tabular-nums">({rows.length})</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setIsPasteOpen((v) => !v)}
+                  aria-expanded={isPasteOpen}
+                  aria-controls="tg-paste-block"
+                  className={`${btnSm.secondary} max-sm:h-10`}
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                  {isPasteOpen ? 'Hide paste box' : 'Paste ITS numbers'}
+                </button>
+              </div>
 
-                {/* Family Grouping Selector for Pasted ITS */}
-                <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                  <span className="text-stone-500 font-semibold">Family IDs:</span>
-                  <div className="inline-flex bg-stone-100 p-0.5 rounded-lg border border-stone-200">
-                    <button
-                      type="button"
-                      onClick={() => setPasteFamilyMode('separate')}
-                      className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'separate' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
-                      }`}
-                    >
-                      Separate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPasteFamilyMode('same')}
-                      className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'same' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
-                      }`}
-                    >
-                      Same Family
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPasteFamilyMode('pasted')}
-                      className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap ${
-                        pasteFamilyMode === 'pasted' ? 'bg-white text-brand-700 shadow-2xs' : 'text-stone-600'
-                      }`}
-                    >
-                      From Sheet
-                    </button>
-                  </div>
-                  {pasteFamilyMode === 'same' && (
-                    <input
-                      type="text"
-                      value={pasteSameFamilyId}
-                      onChange={(e) => setPasteSameFamilyId(e.target.value)}
-                      placeholder="101"
-                      className="w-16 bg-stone-50 border border-stone-300 rounded-lg px-2 py-1 font-mono font-bold text-xs text-stone-900"
-                      title="Family ID assigned to all pasted rows"
+              {/* Paste from a list or a spreadsheet */}
+              {isPasteOpen && (
+                <div id="tg-paste-block" className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-4">
+                  <div className="lg:col-span-2">
+                    <label htmlFor="tg-paste" className={fieldLabel}>
+                      Paste ITS numbers or spreadsheet rows
+                    </label>
+                    <textarea
+                      id="tg-paste"
+                      rows={6}
+                      value={pasteRawText}
+                      onChange={(e) => setPasteRawText(e.target.value)}
+                      placeholder={'30318214\n20491822, 40581920\n30318214\tMulla Shabbir Bhai\t48\tM\t101'}
+                      className="block w-full min-h-[132px] rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm leading-relaxed text-stone-900 tabular-nums placeholder:text-stone-400 resize-y"
                     />
-                  )}
+                    <div className="mt-1.5">
+                      <p className="min-h-[18px] text-xs text-stone-600 tabular-nums" aria-live="polite">
+                        {pasteRawText.trim() ? (
+                          <>
+                            Found <span className="font-semibold text-stone-950">{parsedPastePreview.entries.length}</span> ITS
+                            {parsedPastePreview.autoMatchedCount > 0 && (
+                              <span className="text-emerald-700">
+                                {' '}
+                                · {parsedPastePreview.autoMatchedCount} matched from records
+                              </span>
+                            )}
+                            {parsedPastePreview.duplicatesSkipped > 0 && (
+                              <span className="text-amber-800">
+                                {' '}
+                                · {parsedPastePreview.duplicatesSkipped} duplicate skipped
+                              </span>
+                            )}
+                            {parsedPastePreview.invalidTokens.length > 0 && (
+                              <span className="text-rose-700">
+                                {' '}
+                                · {parsedPastePreview.invalidTokens.length} non-ITS number(s) ignored
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-stone-500">
+                            You can also paste several ITS lines straight into any ITS box in the table below.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    <p className={`${fieldLabel} mt-4`} id="tg-famid-label">
+                      Family IDs for pasted rows
+                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className={segWrap} role="group" aria-labelledby="tg-famid-label">
+                            <button
+                              type="button"
+                              onClick={() => setPasteFamilyMode('separate')}
+                              aria-pressed={pasteFamilyMode === 'separate'}
+                              className={segBtn(pasteFamilyMode === 'separate')}
+                            >
+                              Separate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPasteFamilyMode('same')}
+                              aria-pressed={pasteFamilyMode === 'same'}
+                              className={segBtn(pasteFamilyMode === 'same')}
+                            >
+                              Same family
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPasteFamilyMode('pasted')}
+                              aria-pressed={pasteFamilyMode === 'pasted'}
+                              className={segBtn(pasteFamilyMode === 'pasted')}
+                            >
+                              From sheet
+                            </button>
+                          </div>
+                          {pasteFamilyMode === 'same' && (
+                            <input
+                              type="text"
+                              value={pasteSameFamilyId}
+                              onChange={(e) => setPasteSameFamilyId(e.target.value)}
+                              placeholder="101"
+                              aria-label="Family ID for all pasted rows"
+                              title="Family ID assigned to all pasted rows"
+                              className={`${field} w-20 tabular-nums`}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-auto">
+                        {pasteRawText && (
+                          <button type="button" onClick={() => setPasteRawText('')} className={btn.ghost}>
+                            Clear box
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={parsedPastePreview.entries.length === 0}
+                          onClick={handleApplyBulkPaste}
+                          className={btn.primary}
+                        >
+                          <Wand2 className="w-4 h-4" />
+                          Add {parsedPastePreview.entries.length || ''} to list
+                        </button>
+                      </div>
+                    </div>
+                    <p className={helpText}>
+                      {pasteFamilyMode === 'separate'
+                        ? 'Each pasted zair gets the next family number.'
+                        : pasteFamilyMode === 'same'
+                        ? 'Everyone pasted goes into this one family.'
+                        : 'Uses the family column from the sheet. Rows without one get the next number.'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className={`${panel} px-4 py-3`}>
+                      <p className="text-[13px] font-semibold text-stone-900">What you can paste</p>
+                      <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                        ITS numbers, one per line or separated by spaces or commas. Or rows copied from a spreadsheet,
+                        with columns like these:
+                      </p>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full text-left text-xs tabular-nums">
+                          <thead className="text-stone-500">
+                            <tr>
+                              <th className="pr-3 py-1 font-medium">ITS</th>
+                              <th className="pr-3 py-1 font-medium">Name</th>
+                              <th className="pr-3 py-1 font-medium">Age</th>
+                              <th className="pr-3 py-1 font-medium">Gender</th>
+                              <th className="py-1 font-medium">Family</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-stone-800">
+                            <tr className="border-t border-stone-200">
+                              <td className="pr-3 py-1">30318214</td>
+                              <td className="pr-3 py-1 whitespace-nowrap">Mulla Shabbir Bhai</td>
+                              <td className="pr-3 py-1">48</td>
+                              <td className="pr-3 py-1">M</td>
+                              <td className="py-1">101</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                        Keep the header row and Building, Room, Category, Jamaat and HOF columns are read too. Names fill
+                        in from saved records when the ITS is known.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <textarea
-                rows={4}
-                value={pasteRawText}
-                onChange={(e) => setPasteRawText(e.target.value)}
-                placeholder={'Paste ITS numbers or Excel rows here, for example:\n30318214\n20491822, 40581920\n30318214\tMulla Shabbir Bhai\t48\tM\t101'}
-                className="w-full bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 font-mono text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700/40 resize-y"
-              />
-
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex flex-wrap items-center gap-3 text-stone-600 tabular-nums">
-                  {pasteRawText.trim() ? (
-                    <>
-                      <span>
-                        Detected <strong className="text-brand-700">{parsedPastePreview.entries.length}</strong> ITS
-                      </span>
-                      {parsedPastePreview.autoMatchedCount > 0 && (
-                        <span>
-                          · <strong className="text-emerald-700">{parsedPastePreview.autoMatchedCount}</strong> matched from records
-                        </span>
-                      )}
-                      {parsedPastePreview.duplicatesSkipped > 0 && (
-                        <span>
-                          · <strong className="text-amber-700">{parsedPastePreview.duplicatesSkipped}</strong> duplicate skipped
-                        </span>
-                      )}
-                      {parsedPastePreview.invalidTokens.length > 0 && (
-                        <span className="text-rose-700">
-                          · {parsedPastePreview.invalidTokens.length} non-ITS number(s) ignored
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-stone-500">
-                      Tip: You can also paste multiple ITS lines straight into any ITS box in the table below.
-                    </span>
-                  )}
+              {pasteNotice && (
+                <div
+                  role="status"
+                  className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 pl-4 pr-1.5 py-1 text-[13px] text-emerald-800"
+                >
+                  <span className="flex items-center gap-2 py-1.5">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{pasteNotice}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPasteNotice(null)}
+                    aria-label="Dismiss"
+                    className="w-8 h-8 max-sm:w-10 max-sm:h-10 shrink-0 rounded-lg flex items-center justify-center hover:bg-emerald-100 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
+              )}
 
-                <div className="flex items-center gap-2">
-                  {pasteRawText && (
-                    <button
-                      type="button"
-                      onClick={() => setPasteRawText('')}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:bg-stone-100 cursor-pointer"
-                    >
-                      Clear Box
+              {/* Members table */}
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <p className="text-[13px] text-stone-600 tabular-nums">
+                  <span className="font-semibold text-stone-950">{readyCount}</span> ready ·{' '}
+                  <span className="font-semibold text-stone-950">{uniqueFamiliesCount}</span>{' '}
+                  {uniqueFamiliesCount === 1 ? 'family' : 'families'} ·{' '}
+                  <span className="font-semibold text-stone-950">{allottedCount}</span> with rooms
+                  {rowChecks.duplicateRowCount > 0 && (
+                    <span className="font-medium text-rose-700"> · {rowChecks.duplicateRowCount} duplicate ITS</span>
+                  )}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {rowChecks.duplicateRowCount > 0 && (
+                    <button type="button" onClick={handleRemoveDuplicateRows} className={`${btnSm.danger} max-sm:h-10`}>
+                      <Trash2 className="w-4 h-4" />
+                      Remove duplicates ({rowChecks.duplicateRowCount})
                     </button>
                   )}
                   <button
                     type="button"
-                    disabled={parsedPastePreview.entries.length === 0}
-                    onClick={handleApplyBulkPaste}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white shadow-2xs transition cursor-pointer whitespace-nowrap"
+                    onClick={handleSetAllSameFamily}
+                    className={`${btnSm.secondary} max-sm:h-10`}
+                    title="Put everyone in this list under one Family ID"
                   >
-                    <Wand2 className="w-3.5 h-3.5 text-gold-200" />
-                    <span>Add {parsedPastePreview.entries.length || ''} Pasted ITS to List</span>
+                    <Users className="w-4 h-4" />
+                    Group all as one family
                   </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {pasteNotice && (
-            <div className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs font-semibold flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>{pasteNotice}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setPasteNotice(null)}
-                className="text-emerald-700 hover:text-emerald-950 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+              <div className="mt-2 rounded-xl ring-1 ring-inset ring-stone-200 overflow-x-auto md:max-h-[min(52dvh,480px)] md:overflow-y-auto">
+                <table className="w-full md:min-w-[940px] text-left text-[13px] border-collapse max-md:block">
+                  <thead className="max-md:hidden bg-stone-50 text-xs font-semibold text-stone-600 sticky top-0 z-10 [&_th]:bg-stone-50 [&_th]:shadow-[inset_0_-1px_0_var(--color-stone-200)]">
+                    <tr>
+                      <th scope="col" className="py-2.5 pl-3 pr-2 w-10 font-semibold text-right">
+                        #
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[8%] font-semibold">
+                        Family
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[12%] font-semibold">
+                        ITS
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 font-semibold">
+                        Name
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[72px] font-semibold">
+                        Age
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[104px] font-semibold">
+                        Gender
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[22%] font-semibold">
+                        Building and room
+                      </th>
+                      <th scope="col" className="py-2.5 px-2 w-[11%] font-semibold">
+                        Category
+                      </th>
+                      <th scope="col" className="py-2.5 pl-2 pr-3 w-[88px] font-semibold">
+                        <span className="sr-only">Row actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="max-md:block divide-y divide-stone-200">
+                    {rows.map((row, idx) => {
+                      const batchErr = rowChecks.batchErrors[row.id];
+                      const tourConflict = rowChecks.sameTourConflicts[row.id];
+                      const activeVacantRooms = getVacantRoomsForBuilding(row.building);
+                      const n = idx + 1;
 
-          {/* 3. Individuals List */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-3">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700">
-                  <Hash className="w-4 h-4 text-brand-700" />
-                  <span>2. Tour Members ({rows.length})</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600 mt-1 tabular-nums">
-                  <span><strong className="text-stone-900">{readyCount}</strong> ready</span>
-                  <span>·</span>
-                  <span><strong className="text-stone-900">{uniqueFamiliesCount}</strong> families</span>
-                  <span>·</span>
-                  <span><strong className="text-stone-900">{allottedCount}</strong> with rooms</span>
-                  {rowChecks.duplicateRowCount > 0 && (
-                    <>
-                      <span>·</span>
-                      <span className="text-rose-700 font-bold">
-                        {rowChecks.duplicateRowCount} duplicate ITS
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`max-md:grid max-md:grid-cols-6 max-md:gap-x-2 max-md:gap-y-2.5 max-md:px-3 max-md:py-3 align-top ${
+                            batchErr || tourConflict ? 'bg-rose-50/70' : 'bg-white'
+                          }`}
+                        >
+                          <td className="max-md:order-1 max-md:col-span-3 max-md:flex max-md:items-center md:py-2 md:pl-3 md:pr-2 md:pt-[17px] md:text-right text-stone-500 tabular-nums">
+                            <span className="md:hidden text-[13px] font-semibold text-stone-900">Zair {n}</span>
+                            <span className="max-md:hidden">{n}</span>
+                          </td>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {rowChecks.duplicateRowCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveDuplicateRows}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 transition cursor-pointer whitespace-nowrap"
-                  >
-                    Remove Duplicates ({rowChecks.duplicateRowCount})
-                  </button>
-                )}
+                          <td className="max-md:order-3 max-md:col-span-2 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Family</span>
+                            <input
+                              type="text"
+                              placeholder="101"
+                              aria-label={`Family, row ${n}`}
+                              value={row.family}
+                              onChange={(e) => handleUpdateRow(row.id, 'family', e.target.value)}
+                              className={`${cell} tabular-nums`}
+                            />
+                          </td>
 
-                <button
-                  type="button"
-                  onClick={handleSetAllSameFamily}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300 transition cursor-pointer whitespace-nowrap"
-                  title="Put everyone in this list under one Family ID"
-                >
-                  Group Same Family
-                </button>
+                          <td className="max-md:order-3 max-md:col-span-4 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>ITS</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="30318214"
+                              aria-label={`ITS, row ${n}`}
+                              aria-invalid={!!(batchErr || tourConflict)}
+                              value={row.itsId}
+                              onChange={(e) => handleUpdateRow(row.id, 'itsId', e.target.value)}
+                              onPaste={(e) => handleRowItsPaste(e, idx, row.id)}
+                              className={`${cell} tabular-nums${batchErr || tourConflict ? ' border-rose-400' : ''}`}
+                              title="Enter an 8-digit ITS, or paste several ITS numbers here"
+                            />
+                            {(batchErr || tourConflict) && (
+                              <div className="mt-1 text-xs leading-tight text-rose-700">{batchErr || tourConflict}</div>
+                            )}
+                            {!batchErr && !tourConflict && row.matchedFromHistory && (
+                              <div className="mt-1 text-xs leading-tight text-emerald-700">Matched from records</div>
+                            )}
+                          </td>
 
-                <button
-                  type="button"
-                  onClick={() => handleAddIndividual(false)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
-                >
-                  <Plus className="w-3.5 h-3.5 text-gold-200" />
-                  <span>New Family Zaer</span>
-                </button>
+                          <td className="max-md:order-3 max-md:col-span-6 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Name</span>
+                            <input
+                              type="text"
+                              placeholder={row.itsId ? 'Optional, fills in if known' : 'Full name'}
+                              aria-label={`Name, row ${n}`}
+                              value={row.applicantName}
+                              onChange={(e) => handleUpdateRow(row.id, 'applicantName', e.target.value)}
+                              className={cell}
+                            />
+                          </td>
 
-                <button
-                  type="button"
-                  onClick={() => handleAddIndividual(true)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 transition cursor-pointer whitespace-nowrap"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Same Family</span>
-                </button>
+                          <td className="max-md:order-3 max-md:col-span-2 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Age</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="120"
+                              aria-label={`Age, row ${n}`}
+                              value={row.age}
+                              onChange={(e) => handleUpdateRow(row.id, 'age', e.target.value)}
+                              className={`${cell} tabular-nums`}
+                            />
+                          </td>
 
-                <button
-                  type="button"
-                  onClick={() => handleAddMultiple(5)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300 transition cursor-pointer whitespace-nowrap"
-                >
-                  +5 Rows
-                </button>
-              </div>
-            </div>
-
-            {/* Table of Individuals */}
-            <div className="overflow-x-auto border border-stone-200 rounded-xl max-h-[340px] overflow-y-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[10px] font-medium sticky top-0 z-10">
-                  <tr>
-                    <th className="py-2.5 px-2 w-8 text-center">#</th>
-                    <th className="py-2.5 px-2 w-[10%]">Family *</th>
-                    <th className="py-2.5 px-2 w-[15%]">ITS ID (Paste OK)</th>
-                    <th className="py-2.5 px-2 w-[23%]">Name (Auto-fills if known)</th>
-                    <th className="py-2.5 px-2 w-[7%] text-center">Age</th>
-                    <th className="py-2.5 px-2 w-[9%] text-center">Sex</th>
-                    <th className="py-2.5 px-2 w-[17%]">Hotel &amp; Room</th>
-                    <th className="py-2.5 px-2 w-[11%]">Category</th>
-                    <th className="py-2.5 px-2 w-16 text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-200">
-                  {rows.map((row, idx) => {
-                    const batchErr = rowChecks.batchErrors[row.id];
-                    const tourConflict = rowChecks.sameTourConflicts[row.id];
-                    const activeVacantRooms = getVacantRoomsForBuilding(row.building);
-
-                    return (
-                      <tr
-                        key={row.id}
-                        className={`transition ${
-                          batchErr || tourConflict
-                            ? 'bg-rose-50/70'
-                            : idx % 2 === 0
-                            ? 'bg-white'
-                            : 'bg-stone-50/50'
-                        }`}
-                      >
-                        <td className="py-2 px-2 text-center font-mono text-stone-400 font-bold tabular-nums">
-                          {idx + 1}
-                        </td>
-
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            placeholder="101"
-                            value={row.family}
-                            onChange={(e) => handleUpdateRow(row.id, 'family', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-mono font-bold text-stone-900 text-xs focus:ring-1 focus:ring-brand-700 tabular-nums"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            placeholder="30318214"
-                            value={row.itsId}
-                            onChange={(e) => handleUpdateRow(row.id, 'itsId', e.target.value)}
-                            onPaste={(e) => handleRowItsPaste(e, idx, row.id)}
-                            className={`w-full bg-white border rounded px-2 py-1 font-mono text-xs focus:ring-1 focus:ring-brand-700 tabular-nums ${
-                              batchErr || tourConflict
-                                ? 'border-rose-400 text-rose-900 font-bold'
-                                : row.matchedFromHistory
-                                ? 'border-emerald-400 text-emerald-950 font-bold'
-                                : 'border-stone-300 text-stone-900'
-                            }`}
-                            title="Enter 8-digit ITS or paste multiple ITS IDs here"
-                          />
-                          {(batchErr || tourConflict) && (
-                            <div className="text-[10px] text-rose-700 font-semibold leading-tight mt-0.5">
-                              {batchErr || tourConflict}
-                            </div>
-                          )}
-                          {!batchErr && !tourConflict && row.matchedFromHistory && (
-                            <div className="text-[10px] text-emerald-700 font-medium leading-tight mt-0.5">
-                              Matched from history
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-2 px-2">
-                          <input
-                            type="text"
-                            placeholder={row.itsId ? 'Optional (or auto-filled)' : 'Full Name *'}
-                            value={row.applicantName}
-                            onChange={(e) => handleUpdateRow(row.id, 'applicantName', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-2 py-1 font-semibold text-stone-900 text-xs focus:ring-1 focus:ring-brand-700"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="120"
-                            value={row.age}
-                            onChange={(e) => handleUpdateRow(row.id, 'age', e.target.value)}
-                            className="w-12 text-center bg-white border border-stone-300 rounded px-1 py-1 font-mono text-xs focus:ring-1 focus:ring-brand-700 tabular-nums"
-                          />
-                        </td>
-
-                        <td className="py-2 px-2 text-center">
-                          <select
-                            value={row.gender}
-                            onChange={(e) => handleUpdateRow(row.id, 'gender', e.target.value)}
-                            className="bg-white border border-stone-300 rounded px-1.5 py-1 text-xs font-medium focus:ring-1 focus:ring-brand-700"
-                          >
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                          </select>
-                        </td>
-
-                        <td className="py-2 px-2">
-                          <div className="flex items-center gap-1">
+                          <td className="max-md:order-3 max-md:col-span-4 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Gender</span>
                             <select
-                              value={row.building}
-                              onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value)}
-                              className="bg-white border border-stone-300 rounded px-1.5 py-1 text-[11px] font-bold text-brand-700 focus:ring-1 focus:ring-brand-700 cursor-pointer"
+                              aria-label={`Gender, row ${n}`}
+                              value={row.gender}
+                              onChange={(e) => handleUpdateRow(row.id, 'gender', e.target.value)}
+                              className={cell}
                             >
-                              {distinctBuildings.map((bldg) => (
-                                <option key={bldg} value={bldg}>
-                                  {bldg}
+                              <option value="Male">Male</option>
+                              <option value="Female">Female</option>
+                            </select>
+                          </td>
+
+                          <td className="max-md:order-3 max-md:col-span-6 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Building and room</span>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                aria-label={`Building, row ${n}`}
+                                value={row.building}
+                                onChange={(e) => handleUpdateRow(row.id, 'building', e.target.value)}
+                                className={`${cell} flex-1 min-w-0`}
+                              >
+                                {distinctBuildings.map((bldg) => (
+                                  <option key={bldg} value={bldg}>
+                                    {bldg}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <select
+                                aria-label={`Room, row ${n}`}
+                                value={row.roomNumber}
+                                onChange={(e) => handleUpdateRow(row.id, 'roomNumber', e.target.value)}
+                                className={`${cell} flex-1 min-w-0 tabular-nums ${
+                                  row.roomNumber ? 'font-semibold text-stone-950' : 'text-stone-500'
+                                }`}
+                              >
+                                <option value="">Unallotted</option>
+                                {activeVacantRooms.map((rm) => (
+                                  <option key={rm.id} value={rm.roomNumber}>
+                                    Room {rm.roomNumber} ({rm.capacity})
+                                  </option>
+                                ))}
+                                {row.roomNumber && !activeVacantRooms.some((r) => r.roomNumber === row.roomNumber) && (
+                                  <option value={row.roomNumber}>Room {row.roomNumber}</option>
+                                )}
+                              </select>
+                            </div>
+                          </td>
+
+                          <td className="max-md:order-3 max-md:col-span-6 max-md:block md:py-2 md:px-2">
+                            <span className={cellLabel}>Category</span>
+                            <select
+                              aria-label={`Category, row ${n}`}
+                              value={row.category}
+                              onChange={(e) => handleUpdateRow(row.id, 'category', e.target.value)}
+                              className={cell}
+                            >
+                              {categories.map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
                                 </option>
                               ))}
                             </select>
+                          </td>
 
-                            <select
-                              value={row.roomNumber}
-                              onChange={(e) => handleUpdateRow(row.id, 'roomNumber', e.target.value)}
-                              className={`flex-1 bg-white border rounded px-1.5 py-1 text-xs font-mono font-bold tabular-nums ${
-                                row.roomNumber
-                                  ? 'border-emerald-400 text-emerald-950 bg-emerald-50/50'
-                                  : 'border-stone-300 text-stone-500'
-                              }`}
-                            >
-                              <option value="">Unallotted</option>
-                              {activeVacantRooms.map((rm) => (
-                                <option key={rm.id} value={rm.roomNumber}>
-                                  Rm {rm.roomNumber} ({rm.capacity})
-                                </option>
-                              ))}
-                              {row.roomNumber && !activeVacantRooms.some((r) => r.roomNumber === row.roomNumber) && (
-                                <option value={row.roomNumber}>Rm {row.roomNumber}</option>
-                              )}
-                            </select>
-                          </div>
-                        </td>
+                          <td className="max-md:order-2 max-md:col-span-3 max-md:block md:py-2 md:pl-2 md:pr-3">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateRow(row)}
+                                className={iconBtn}
+                                aria-label={`Add another member to the family of row ${n}`}
+                                title="Add another member to the same family"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRow(row.id)}
+                                className={`${iconBtn} hover:text-rose-700 hover:bg-rose-50`}
+                                aria-label={`Remove row ${n}`}
+                                title="Remove row"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                        <td className="py-2 px-2">
-                          <select
-                            value={row.category}
-                            onChange={(e) => handleUpdateRow(row.id, 'category', e.target.value)}
-                            className="w-full bg-white border border-stone-300 rounded px-1.5 py-1 text-xs text-stone-800"
-                          >
-                            {categories.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="py-2 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateRow(row)}
-                              className="p-1 text-stone-400 hover:text-brand-700 hover:bg-stone-200/60 rounded transition cursor-pointer"
-                              title="Add another member to same Family ID"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(row.id)}
-                              className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                              title="Remove row"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => handleAddIndividual(false)} className={`${btnSm.secondary} max-sm:h-10`}>
+                  <Plus className="w-4 h-4" />
+                  New family zair
+                </button>
+                <button type="button" onClick={() => handleAddIndividual(true)} className={`${btnSm.secondary} max-sm:h-10`}>
+                  <UserPlus className="w-4 h-4" />
+                  Same family
+                </button>
+                <button type="button" onClick={() => handleAddMultiple(5)} className={`${btnSm.ghost} max-sm:h-10`}>
+                  <Plus className="w-4 h-4" />5 rows
+                </button>
+              </div>
+            </section>
           </div>
 
-          {/* Modal Footer Controls */}
-          <div className="pt-3 border-t border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="text-xs text-stone-600 tabular-nums">
-              Ready to save <strong className="text-brand-700">{readyCount} Zaereen</strong> across{' '}
-              <strong className="text-stone-900">{uniqueFamiliesCount} Families</strong> for Tour{' '}
-              <strong className="font-mono text-stone-900">{tourRefNo.trim() || '—'}</strong>.
+          {/* Problems that stop the save, gathered in one place */}
+          {hasProblems && (
+            <div
+              role="alert"
+              className="shrink-0 flex items-start gap-2.5 px-5 sm:px-6 py-3 border-t border-rose-200 bg-rose-50 text-[13px] text-rose-800 max-h-[26dvh] overflow-y-auto"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+              <ul className="min-w-0 flex-1 space-y-1">
+                {errorMsg && <li className="font-medium">{errorMsg}</li>}
+                {rowChecks.duplicateRowCount > 0 && (
+                  <li>
+                    {rowChecks.duplicateRowCount} duplicate ITS in the list. Remove {rowChecks.duplicateRowCount === 1 ? 'it' : 'them'} or
+                    fix {rowChecks.duplicateRowCount === 1 ? 'it' : 'them'} before saving.
+                  </li>
+                )}
+                {rowChecks.sameTourConflictCount > 0 && (
+                  <li>
+                    {rowChecks.sameTourConflictCount} ITS already in tour {tourRefNo.trim()}. Remove or edit{' '}
+                    {rowChecks.sameTourConflictCount === 1 ? 'that row' : 'those rows'} before saving.
+                  </li>
+                )}
+              </ul>
             </div>
+          )}
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-200/60 border border-stone-300 transition cursor-pointer"
-              >
+          <div className={`${modalFooter} sm:justify-between`}>
+            <p className="max-sm:w-full text-[13px] text-stone-600 tabular-nums">
+              <span className="font-semibold text-stone-950">{readyCount} zaereen</span> in{' '}
+              <span className="font-semibold text-stone-950">
+                {uniqueFamiliesCount} {uniqueFamiliesCount === 1 ? 'family' : 'families'}
+              </span>{' '}
+              for tour <span className="font-semibold text-stone-950">{tourRefNo.trim() || '—'}</span>
+            </p>
+            <div className="flex items-center gap-2 ml-auto">
+              <button type="button" onClick={onClose} className={btn.ghost}>
                 Cancel
               </button>
-
               <button
                 type="submit"
                 disabled={readyCount === 0 || rowChecks.duplicateRowCount > 0}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white shadow-sm transition cursor-pointer whitespace-nowrap"
+                className={btn.primary}
               >
-                <CheckCircle2 className="w-4 h-4 text-gold-200" />
-                <span>Save Tour Group ({readyCount} Zaereen)</span>
+                <CheckCircle2 className="w-4 h-4" />
+                Save tour group ({readyCount})
               </button>
             </div>
           </div>

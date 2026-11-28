@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { User } from 'lucide-react';
 
 /** ITS → photo version, from /api/photos. Only zaereen with an NKERP photo are listed. */
 export type PhotoIndex = Record<string, string>;
@@ -19,27 +20,32 @@ interface ZairPhotoProps {
   size?: number;
 }
 
+/** Without a photo the row should stay compact: a small quiet avatar, never a photo-sized empty box. */
+const PLACEHOLDER_SIZE = 40;
+
 /** A zair's NKERP photo, shown at NKERP's list size so it can be recognised without opening anything. */
 export const ZairPhoto: React.FC<ZairPhotoProps> = ({ photos, itsId, name, size = 96 }) => {
   const src = photoUrl(photos, itsId);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  const box = { width: size, height: size };
 
   if (!src || failed) {
+    const small = Math.min(size, PLACEHOLDER_SIZE);
     return (
       <div
-        style={box}
-        className="shrink-0 flex items-center justify-center border border-dashed border-stone-300 bg-stone-50 text-stone-400 text-[10px] font-semibold text-center leading-tight"
+        role="img"
+        aria-label="No photo"
+        style={{ width: small, height: small }}
+        className="shrink-0 flex items-center justify-center rounded-full bg-stone-100 text-stone-400"
         title={`No NKERP photo for ITS ${photoIts(itsId)}`}
       >
-        No photo
+        <User className="w-5 h-5" aria-hidden="true" />
       </div>
     );
   }
 
   return (
-    <div style={box} className="shrink-0 border border-[#ccc] bg-stone-100 overflow-hidden">
+    <div style={{ width: size, height: size }} className="shrink-0 border border-stone-300 bg-stone-100 overflow-hidden">
       <img
         src={src}
         alt={`Photo of ${name}`}

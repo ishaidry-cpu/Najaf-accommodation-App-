@@ -17,6 +17,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Reservation, MoneyGivenStatus } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
+import { btn, btnSm, chip, field, fieldLabel, modalHeader, modalTitle, modalClose } from './ui';
 import { saveOrDownloadPdf } from '../services/pdfExport';
 import { recordSlip } from '../services/api';
 
@@ -973,23 +974,62 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
     saveOrDownloadPdf(doc, fileName);
   };
 
+  /* ---- On-screen chrome helpers (nothing here reaches the printed slip) ---- */
+  const segWrap = 'flex items-center gap-0.5 p-0.5 rounded-lg bg-stone-100 ring-1 ring-inset ring-stone-200';
+  const segBtn = (selected: boolean) =>
+    `flex-1 inline-flex items-center justify-center gap-1.5 h-10 sm:h-8 px-3 rounded-md text-[13px] whitespace-nowrap cursor-pointer transition ${
+      selected ? 'bg-white text-stone-950 font-semibold shadow-xs ring-1 ring-stone-300' : 'text-stone-600 font-medium hover:text-stone-950'
+    }`;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
+    <div className="accounts-slip-modal-backdrop fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/50 animate-in fade-in duration-150">
       {/* Print Specific CSS */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
           body * {
             visibility: hidden;
           }
           #accounts-slip-print-area, #accounts-slip-print-area * {
             visibility: visible;
           }
+          /* The app-wide print rules hide everything under #root except the reception slip dialog.
+             Let this dialog through and flatten its frame so only the slip paper reaches the page. */
+          body > #root > div > .accounts-slip-modal-backdrop.accounts-slip-modal-backdrop {
+            display: block !important;
+            position: static !important;
+            inset: auto !important;
+            width: 100% !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent !important;
+          }
+          .accounts-slip-modal-card,
+          .accounts-slip-body,
+          .accounts-slip-preview,
+          .accounts-slip-desk {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+          }
           #accounts-slip-print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
+            position: static;
             width: 100%;
             margin: 0;
             padding: 15px;
@@ -1007,97 +1047,73 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
         }}
       />
 
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-5xl w-full p-3.5 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[95vh] overflow-hidden">
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="print-hidden absolute top-3.5 right-3.5 min-w-[40px] min-h-[40px] flex items-center justify-center text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-200/60 transition cursor-pointer z-10"
-          aria-label="Close receipt modal"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Modal Top Header (Hidden in Print) */}
-        <div className="print-hidden flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-stone-200 gap-2.5">
-          <div className="pr-10 sm:pr-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <FaizHusainiLogo size="sm" showSubtitle={false} />
-              <h3 className="text-sm sm:text-base font-bold text-brand-700">
-                {isAToB
-                  ? 'Category A ➔ B Refund Receipt (Full Pax Roster)'
-                  : 'Category B ➔ A Shift & Accounts Payment Slip'}
-              </h3>
-            </div>
-            <p className="text-xs text-stone-600 mt-0.5 tabular-nums">
-              {isAToB
-                ? 'Select zaereen shifting from Category A to B · Includes Name, ITS ID & Age for Accounts refund verification.'
-                : 'Tour Reference: '}
-              {!isAToB && (
-                <span className="font-mono font-bold text-stone-900">
-                  {selectedTourFilter !== 'ALL' ? selectedTourFilter : tourIdVal || 'Individual Allotment'}
-                </span>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="accounts-slip-title"
+        className="accounts-slip-modal-card bg-white rounded-t-2xl sm:rounded-2xl max-w-6xl w-full h-[96dvh] sm:h-[94vh] shadow-2xl relative text-stone-800 flex flex-col max-lg:overflow-y-auto lg:overflow-hidden animate-in zoom-in-95 duration-200"
+      >
+        {/* Title bar (hidden in print). On phones it stays put while the rest scrolls. */}
+        <div className={`print-hidden ${modalHeader} shrink-0 bg-white rounded-t-2xl max-lg:sticky max-lg:top-0 max-lg:z-20`}>
+          <div className="min-w-0">
+            <h3 id="accounts-slip-title" className={modalTitle}>
+              {isAToB ? 'A→B refund receipt' : 'B→A shift slip for Accounts'}
+            </h3>
+            <p className="mt-1 text-[13px] text-stone-600 tabular-nums">
+              {isAToB ? (
+                'Choose the zaereen shifting from Category A to B. The receipt lists name, ITS and age for the Accounts refund check.'
+              ) : (
+                <>
+                  Tour reference:{' '}
+                  <span className="font-semibold text-stone-900 break-all">
+                    {selectedTourFilter !== 'ALL' ? selectedTourFilter : tourIdVal || 'Individual Allotment'}
+                  </span>
+                </>
               )}
             </p>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap sm:mr-10">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-stone-800 hover:bg-stone-900 text-white shadow-xs transition cursor-pointer whitespace-nowrap"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>{isAToB ? 'Print Refund Receipt' : 'Print Slip'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadPdfSlip}
-              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-xs transition cursor-pointer whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isAToB ? 'Download Refund PDF' : 'Download Slip PDF'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`${modalClose} max-sm:w-10 max-sm:h-10`}
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Direction Switcher, Tour Selector & Pax Checklist (Hidden in Print) */}
-        <div className="print-hidden bg-stone-100/80 p-3 rounded-xl border border-stone-200 mt-3 space-y-2.5">
-          {/* Row 1: Shift Direction Toggle + Tour Picker + Slip Scope */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-            {/* Direction Toggle: B -> A vs A -> B */}
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-stone-300 text-xs font-bold shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setDirection('B_TO_A')}
-                className={`flex-1 sm:flex-initial min-h-[36px] flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                  direction === 'B_TO_A'
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950'
-                }`}
-              >
-                <ArrowUpRight className="w-3.5 h-3.5 text-gold-200" />
-                <span>B ➔ A (Collect)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDirection('A_TO_B')}
-                className={`flex-1 sm:flex-initial min-h-[36px] flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                  direction === 'A_TO_B'
-                    ? 'bg-amber-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950'
-                }`}
-              >
-                <ArrowDownLeft className="w-3.5 h-3.5 text-amber-200" />
-                <span>A ➔ B (Refund Receipt)</span>
-              </button>
-            </div>
+        <div className="accounts-slip-body flex-1 lg:min-h-0 flex flex-col lg:flex-row">
+          {/* Left: who and what goes on the slip (hidden in print) */}
+          <div className="print-hidden lg:w-[400px] lg:shrink-0 lg:min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-stone-200">
+            <div className="px-4 sm:px-5 pt-4 pb-3 space-y-3.5">
+              {/* Direction: B -> A vs A -> B */}
+              <div role="group" aria-label="Shift direction" className={segWrap}>
+                <button
+                  type="button"
+                  aria-pressed={direction === 'B_TO_A'}
+                  onClick={() => setDirection('B_TO_A')}
+                  className={segBtn(direction === 'B_TO_A')}
+                >
+                  <ArrowUpRight className="w-4 h-4 text-stone-500" />
+                  <span>B→A (collect)</span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={direction === 'A_TO_B'}
+                  onClick={() => setDirection('A_TO_B')}
+                  className={segBtn(direction === 'A_TO_B')}
+                >
+                  <ArrowDownLeft className="w-4 h-4 text-stone-500" />
+                  <span>A→B (refund receipt)</span>
+                </button>
+              </div>
 
-            {/* Tour ID Filter + View Mode */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-stone-300 text-xs">
-                <span className="font-semibold text-stone-500 whitespace-nowrap">Tour ID:</span>
+              <div>
+                <label htmlFor="accounts-slip-tour" className={fieldLabel}>
+                  Tour ID
+                </label>
                 <select
+                  id="accounts-slip-tour"
                   value={selectedTourFilter}
                   onChange={(e) => {
                     const nextTour = e.target.value;
@@ -1112,9 +1128,9 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                       setSlipMode('tour');
                     }
                   }}
-                  className="bg-transparent font-mono font-bold text-brand-700 focus:outline-none max-w-[200px] truncate cursor-pointer"
+                  className={`${field} tabular-nums truncate cursor-pointer`}
                 >
-                  <option value="ALL">All Tours ({allReservations.length} pax)</option>
+                  <option value="ALL">All tours ({allReservations.length} pax)</option>
                   {distinctTourOptions.map((opt) => (
                     <option key={opt.tourId} value={opt.tourId}>
                       {opt.tourId} ({opt.count} pax)
@@ -1123,253 +1139,270 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                 </select>
               </div>
 
-              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-stone-300 text-xs font-bold shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setSlipMode('tour')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                    slipMode === 'tour' ? 'bg-brand-700 text-white' : 'text-stone-700 hover:text-stone-900'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5 text-gold-200" />
-                  <span>Selected List ({selectedReservations.length})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSlipMode('single')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                    slipMode === 'single' ? 'bg-brand-700 text-white' : 'text-stone-700 hover:text-stone-900'
-                  }`}
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-gold-200" />
-                  <span>Single Pax</span>
-                </button>
+              <div>
+                <span id="accounts-slip-scope-label" className={fieldLabel}>
+                  Slip covers
+                </span>
+                <div role="group" aria-labelledby="accounts-slip-scope-label" className={segWrap}>
+                  <button
+                    type="button"
+                    aria-pressed={slipMode === 'tour'}
+                    onClick={() => setSlipMode('tour')}
+                    className={segBtn(slipMode === 'tour')}
+                  >
+                    <Layers className="w-4 h-4 text-stone-500" />
+                    <span>
+                      Selected list <span className="tabular-nums font-normal text-stone-500">({selectedReservations.length})</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={slipMode === 'single'}
+                    onClick={() => setSlipMode('single')}
+                    className={segBtn(slipMode === 'single')}
+                  >
+                    <UserCheck className="w-4 h-4 text-stone-500" />
+                    <span>Single pax</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="accounts-slip-amount" className={fieldLabel}>
+                  {isAToB ? 'Refund amount' : 'Amount note'}
+                </label>
+                <input
+                  id="accounts-slip-amount"
+                  type="text"
+                  placeholder={
+                    isAToB
+                      ? 'Accounts refund amount (leave blank for Accounts to write)'
+                      : 'Amount note (leave blank for Accounts to fill)'
+                  }
+                  value={accountsAmountNote}
+                  onChange={(e) => setAccountsAmountNote(e.target.value)}
+                  className={field}
+                />
               </div>
             </div>
-          </div>
 
-          {/* Row 2: Search Pax + Quick Select Buttons + Optional Accounts Note */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-            <div className="md:col-span-5 relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-stone-400" />
-              <input
-                type="text"
-                placeholder="Search pax by Name, ITS ID, Age, Family, Room..."
-                value={searchMemberQuery}
-                onChange={(e) => setSearchMemberQuery(e.target.value)}
-                className="w-full bg-white border border-stone-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-brand-700"
-              />
-            </div>
-
-            <div className="md:col-span-4 relative">
-              <input
-                type="text"
-                placeholder={
-                  isAToB
-                    ? 'Accounts refund amount (leave blank for Accounts to write)'
-                    : 'Amount note (leave blank for Accounts to fill)'
-                }
-                value={accountsAmountNote}
-                onChange={(e) => setAccountsAmountNote(e.target.value)}
-                className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-600"
-              />
-            </div>
-
-            <div className="md:col-span-3 flex items-center justify-end gap-1.5 flex-wrap">
-              {isAToB && savedAToBPax.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSelectSavedAToBPax}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-700 hover:bg-amber-800 text-white transition cursor-pointer whitespace-nowrap"
-                  title="Select all pax already marked as shifted A to B"
-                >
-                  Saved A➔B ({savedAToBPax.length})
-                </button>
-              )}
-              {!isAToB && savedBToAPax.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSelectSavedBToAPax}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
-                  title="Select all pax already marked as B to A"
-                >
-                  Saved B➔A ({savedBToAPax.length})
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSelectAllFiltered}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white transition cursor-pointer whitespace-nowrap"
-              >
-                Select All ({filteredPoolMembers.length})
-              </button>
-              {anchorReservation?.family && (
-                <button
-                  type="button"
-                  onClick={handleSelectSameFamily}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 transition cursor-pointer whitespace-nowrap"
-                >
-                  Fam #{anchorReservation.family}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleClearSelection}
-                className="px-2 py-1.5 rounded-lg text-xs font-semibold text-stone-500 hover:text-stone-800 transition cursor-pointer"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {/* Pax Selection List Box (Includes Name, ITS ID, Age, Family, Room) */}
-          <div className="bg-white rounded-xl border border-stone-200 p-2.5 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1.5 border-b border-stone-100">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-stone-800">
-                  {isAToB
-                    ? 'Select Pax Shifting from Category A ➔ B (Name, ITS & Age shown):'
-                    : 'Choose Pax Shifting from Category B ➔ A:'}
-                </span>
-                <span className="text-[11px] font-bold text-brand-700 tabular-nums">
-                  {selectedMemberIds.length} of {filteredPoolMembers.length} Selected
+            {/* Pax selection: name, ITS, age, family, room */}
+            <div className="border-t border-stone-200 px-4 sm:px-5 pt-3.5 pb-2 space-y-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <h4 className="text-[15px] font-semibold text-stone-950">
+                  {isAToB ? 'Pax shifting A→B' : 'Pax shifting B→A'}
+                </h4>
+                <span className="text-[13px] text-stone-600 tabular-nums whitespace-nowrap">
+                  {selectedMemberIds.length} of {filteredPoolMembers.length} selected
                 </span>
               </div>
 
-              {/* Action Buttons to Record Shift in Portal */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-stone-400 pointer-events-none" />
+                <input
+                  type="text"
+                  aria-label="Search pax"
+                  placeholder="Search name, ITS, age, family or room"
+                  value={searchMemberQuery}
+                  onChange={(e) => setSearchMemberQuery(e.target.value)}
+                  className={`${field} pl-9`}
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button type="button" onClick={handleSelectAllFiltered} className={`${btnSm.secondary} max-sm:h-10`}>
+                  Select all ({filteredPoolMembers.length})
+                </button>
+                {isAToB && savedAToBPax.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectSavedAToBPax}
+                    className={`${btnSm.secondary} max-sm:h-10`}
+                    title="Select all pax already marked as shifted A to B"
+                  >
+                    Saved A→B ({savedAToBPax.length})
+                  </button>
+                )}
+                {!isAToB && savedBToAPax.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectSavedBToAPax}
+                    className={`${btnSm.secondary} max-sm:h-10`}
+                    title="Select all pax already marked as B to A"
+                  >
+                    Saved B→A ({savedBToAPax.length})
+                  </button>
+                )}
+                {anchorReservation?.family && (
+                  <button type="button" onClick={handleSelectSameFamily} className={`${btnSm.secondary} max-sm:h-10`}>
+                    Family #{anchorReservation.family}
+                  </button>
+                )}
+                <button type="button" onClick={handleClearSelection} className={`${btnSm.ghost} max-sm:h-10`}>
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Checklist of pax */}
+            <div className="lg:flex-1 lg:min-h-0 max-lg:max-h-80 overflow-y-auto px-2 sm:px-3 pb-2">
+              {filteredPoolMembers.length > 0 ? (
+                <ul className="divide-y divide-stone-100">
+                  {filteredPoolMembers.map((member) => {
+                    const isSelected = selectedMemberIds.includes(member.id);
+                    const isSettled = isAToB ? member.refundGiven === 'Yes' : member.moneyGiven === 'Yes';
+
+                    return (
+                      <li
+                        key={member.id}
+                        className={`flex items-center gap-2 pl-2 pr-1 rounded-lg transition-colors ${
+                          isSelected ? 'bg-brand-50' : 'hover:bg-stone-50'
+                        }`}
+                      >
+                        <label className="flex items-center gap-3 py-2 min-h-11 cursor-pointer flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleMember(member.id)}
+                            className="w-4 h-4 rounded shrink-0 cursor-pointer"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-semibold text-stone-950 leading-snug">
+                              {member.applicantName}
+                            </span>
+                            <span className="block text-xs text-stone-600 tabular-nums leading-snug">
+                              ITS {member.itsId || '—'} · {member.age || '—'}y {member.gender === 'Female' ? 'F' : 'M'} · Fam #
+                              {member.family || '—'} ·{' '}
+                              {member.roomNumber ? `Rm ${member.roomNumber} (${member.building})` : 'Room pending'}
+                            </span>
+                          </span>
+                        </label>
+
+                        <div className="flex items-center shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveSingleZaerId(member.id);
+                              if (slipMode === 'single') setSlipMode('single');
+                            }}
+                            className={`${btnSm.ghost} max-sm:h-10 px-2`}
+                            title="Preview single pax slip"
+                          >
+                            Focus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isAToB && onToggleRefundGiven
+                                ? onToggleRefundGiven(member.id, isSettled ? 'No' : 'Yes')
+                                : onToggleMoneyGiven(member.id, isSettled ? 'No' : 'Yes')
+                            }
+                            aria-pressed={isSettled}
+                            title={
+                              isAToB
+                                ? isSettled
+                                  ? 'Refunded. Click to mark refund pending'
+                                  : 'Refund pending. Click to mark refunded'
+                                : isSettled
+                                ? 'Paid. Click to mark pending'
+                                : 'Pending. Click to mark paid'
+                            }
+                            className="inline-flex items-center h-10 sm:h-8 px-1 rounded-lg cursor-pointer hover:bg-stone-100"
+                          >
+                            <span className={chip(isSettled ? 'ok' : 'wait')}>
+                              {isAToB ? (isSettled ? 'Refunded' : 'Refund pending') : isSettled ? 'Paid' : 'Pending'}
+                            </span>
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="py-8 px-3 text-center text-[13px] text-stone-500">
+                  No zaereen match this search. Clear the search or choose another Tour ID.
+                </div>
+              )}
+            </div>
+
+            {/* Record the shift in the portal */}
+            <div className="shrink-0 border-t border-stone-200 bg-stone-50 px-4 sm:px-5 py-3 space-y-2.5">
+              {actionFeedback && (
+                <div
+                  role="status"
+                  className="rounded-lg bg-emerald-50 ring-1 ring-inset ring-emerald-200 pl-3 pr-1 py-1 text-[13px] font-medium text-emerald-900 flex items-center justify-between gap-2"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>{actionFeedback}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActionFeedback(null)}
+                    aria-label="Dismiss"
+                    className="w-8 h-8 max-sm:w-10 max-sm:h-10 shrink-0 rounded-lg flex items-center justify-center text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => handleApplyShiftAction(true)}
                   disabled={selectedMemberIds.length === 0}
-                  className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold disabled:opacity-50 text-white shadow-2xs transition cursor-pointer whitespace-nowrap ${
-                    isAToB ? 'bg-amber-700 hover:bg-amber-800' : 'bg-emerald-700 hover:bg-emerald-800'
-                  }`}
+                  className={`${btnSm.primary} max-sm:h-10 max-sm:flex-1`}
                 >
-                  <CheckCircle2 className="w-3 h-3" />
+                  <CheckCircle2 className="w-4 h-4" />
                   <span>
                     {isAToB
-                      ? `Shift A ➔ B (${selectedMemberIds.length}) & Mark Refunded`
-                      : `Shift B ➔ A (${selectedMemberIds.length}) & Mark Paid`}
+                      ? `Shift A→B (${selectedMemberIds.length}) and mark refunded`
+                      : `Shift B→A (${selectedMemberIds.length}) and mark paid`}
                   </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleApplyShiftAction(false)}
                   disabled={selectedMemberIds.length === 0}
-                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 disabled:opacity-50 transition cursor-pointer whitespace-nowrap"
+                  className={`${btnSm.secondary} max-sm:h-10`}
                 >
-                  {isAToB ? 'Shift A ➔ B (Refund Pending)' : 'Shift as Pending'}
+                  {isAToB ? 'Shift A→B, refund pending' : 'Shift as pending'}
                 </button>
               </div>
-            </div>
-
-            {actionFeedback && (
-              <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-semibold flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                  <span>{actionFeedback}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActionFeedback(null)}
-                  className="text-emerald-700 hover:text-emerald-950 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Checklist of Pax with Name, ITS, Age */}
-            <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-stone-100 pr-1">
-              {filteredPoolMembers.length > 0 ? (
-                filteredPoolMembers.map((member) => {
-                  const isSelected = selectedMemberIds.includes(member.id);
-                  const isSettled = isAToB
-                    ? member.refundGiven === 'Yes'
-                    : member.moneyGiven === 'Yes';
-
-                  return (
-                    <div
-                      key={member.id}
-                      className={`flex items-center justify-between gap-2 p-1.5 rounded-lg transition text-xs ${
-                        isSelected ? 'bg-emerald-50/70' : 'hover:bg-stone-50'
-                      }`}
-                    >
-                      <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleMember(member.id)}
-                          className="rounded text-brand-700 focus:ring-brand-700 w-4 h-4 shrink-0"
-                        />
-                        <div className="flex items-center gap-x-2.5 gap-y-0.5 flex-wrap min-w-0">
-                          <span className="font-bold text-stone-900">{member.applicantName}</span>
-                          <span className="font-mono text-stone-700 text-[11px] tabular-nums">
-                            ITS: {member.itsId || '—'}
-                          </span>
-                          <span className="font-mono text-stone-700 text-[11px] tabular-nums">
-                            Age: {member.age || '—'}y ({member.gender === 'Female' ? 'F' : 'M'})
-                          </span>
-                          <span className="font-mono text-stone-500 text-[11px] tabular-nums">
-                            Fam #{member.family || '—'}
-                          </span>
-                          <span className="text-[11px] text-stone-600 tabular-nums">
-                            {member.roomNumber ? `Rm ${member.roomNumber} (${member.building})` : 'Room Pending'}
-                          </span>
-                        </div>
-                      </label>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveSingleZaerId(member.id);
-                            if (slipMode === 'single') setSlipMode('single');
-                          }}
-                          className="text-[10px] px-2 py-0.5 rounded font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 cursor-pointer"
-                          title="Preview single pax slip"
-                        >
-                          Focus
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            isAToB && onToggleRefundGiven
-                              ? onToggleRefundGiven(member.id, isSettled ? 'No' : 'Yes')
-                              : onToggleMoneyGiven(member.id, isSettled ? 'No' : 'Yes')
-                          }
-                          className={`text-[10px] px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                            isSettled
-                              ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-950 border border-amber-300'
-                          }`}
-                        >
-                          {isAToB
-                            ? isSettled
-                              ? 'Refunded ✓'
-                              : 'Refund Pending'
-                            : isSettled
-                            ? 'Paid ✓'
-                            : 'Pending ✗'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="py-4 text-center text-xs text-stone-400">
-                  No zaereen match your search filter.
-                </div>
-              )}
             </div>
           </div>
-        </div>
 
+          {/* Right: the slip itself, with the output actions above it */}
+          <div className="accounts-slip-preview flex-1 min-w-0 lg:min-h-0 flex flex-col">
+            <div className="print-hidden shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-stone-200">
+              <div className="min-w-0 text-[13px] text-stone-600">
+                <span className="font-semibold text-stone-900">Slip preview</span>
+                <span className="max-sm:hidden tabular-nums">
+                  {' '}
+                  ·{' '}
+                  {isAToB
+                    ? `${tourSlipGroups.length} tour ${tourSlipGroups.length === 1 ? 'slip' : 'slips'}, 2 pages each`
+                    : `${effectiveSlipPaxList.length} pax`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={handlePrint} className={btn.secondary}>
+                  <Printer className="w-4 h-4" />
+                  <span>{isAToB ? 'Print receipt' : 'Print slip'}</span>
+                </button>
+                <button type="button" onClick={handleDownloadPdfSlip} className={btn.primary}>
+                  <Download className="w-4 h-4" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* The desk: a neutral well with the paper on it. Print CSS flattens the desk and prints the paper alone. */}
+            <div className="accounts-slip-desk bg-stone-100 p-3 sm:p-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto sm:max-lg:rounded-b-2xl lg:rounded-br-2xl">
         {/* Printable Receipt / Slip Paper View */}
         <div
           id="accounts-slip-print-area"
-          className="flex-1 overflow-y-auto mt-3 space-y-5"
+          className="space-y-5"
         >
           {isAToB ? (
             <>
@@ -1379,32 +1412,29 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   className={`space-y-4 ${groupIdx > 0 ? 'a2b-page-break pt-2' : ''}`}
                 >
                   {/* Tour Slip Header Bar (Hidden on print) */}
-                  <div className="print-hidden flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded bg-amber-800 text-amber-50 font-extrabold">
+                  <div className="print-hidden flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-1 text-[13px] text-stone-600">
+                    <div className="min-w-0 tabular-nums">
+                      <span className="font-semibold text-stone-950">
                         Slip {groupIdx + 1} of {tourSlipGroups.length}
-                      </span>
-                      <span className="font-mono font-bold text-brand-700">{group.tourId}</span>
-                      <span className="text-stone-600">
-                        · {group.officeName} · <strong>{group.paxCount} Pax</strong> ·{' '}
-                        <strong>{group.nights} Nights</strong>
-                      </span>
+                      </span>{' '}
+                      · <span className="font-semibold text-stone-900 break-all">{group.tourId}</span> · {group.officeName} ·{' '}
+                      {group.paxCount} pax · {group.nights} nights
                     </div>
                     <button
                       type="button"
                       onClick={() => generateAToBPdfForGroups([group])}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs shadow-2xs transition cursor-pointer"
+                      className={`${btnSm.secondary} max-sm:h-10`}
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download Tour Slip PDF</span>
+                      <Download className="w-4 h-4 text-stone-500" />
+                      <span>Download this tour's PDF</span>
                     </button>
                   </div>
 
                   {/* PAGE 1: FRONT PAGE (Same structure as B to A slip) */}
                   <div className="p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs text-xs space-y-4">
-                    <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
-                      <span>Page 1 · Front Page (Summary &amp; Accounts)</span>
-                      <span className="font-mono text-brand-700">{group.tourId}</span>
+                    <div className="print-hidden flex items-center justify-between gap-3 text-xs font-medium text-stone-500 border-b border-stone-100 pb-1.5">
+                      <span>Page 1 · Front page (summary and Accounts)</span>
+                      <span className="tabular-nums">{group.tourId}</span>
                     </div>
 
                     {/* Official Header */}
@@ -1550,9 +1580,9 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
                   {/* PAGE 2: SECOND PAGE — NAMES OF ALL PAX SENT TO A TO B FOR THIS TOUR ID */}
                   <div className="a2b-page-break p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs text-xs space-y-4">
-                    <div className="print-hidden flex items-center justify-between text-[11px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-100 pb-1.5">
-                      <span>Page 2 · Names of All Pax Sent to A to B</span>
-                      <span className="font-mono text-brand-700">{group.tourId}</span>
+                    <div className="print-hidden flex items-center justify-between gap-3 text-xs font-medium text-stone-500 border-b border-stone-100 pb-1.5">
+                      <span>Page 2 · Names of all pax sent to A to B</span>
+                      <span className="tabular-nums">{group.tourId}</span>
                     </div>
 
                     {/* Page 2 Header */}
@@ -1780,6 +1810,9 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
               </div>
             </div>
           )}
+        </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

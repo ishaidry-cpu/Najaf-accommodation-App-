@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CheckCircle2, DoorClosed, Plus, Sparkles, X } from 'lucide-react';
+import { CheckCircle2, DoorClosed, Plus, X } from 'lucide-react';
 import { Room } from '../types';
 import {
   deduplicateRooms,
@@ -15,8 +15,11 @@ import {
   RoomSpecFields,
   applyRoomSpec,
   floorLabelFor,
+  segBtn,
+  segTrack,
   validateRoomSpec,
 } from './RoomSpecFields';
+import { btn, chip, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle, panel } from './ui';
 
 interface AddBuildingAndRoomsModalProps {
   isOpen: boolean;
@@ -31,8 +34,7 @@ const MAX_BATCH = 100;
 const roomId = (building: string, roomNumber: string) =>
   `rm-${building.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roomNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-const inputClass =
-  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-brand-700';
+const radioLabel = 'inline-flex items-center gap-2 min-h-10 sm:min-h-8 text-sm text-stone-800 cursor-pointer';
 
 export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> = ({
   isOpen,
@@ -177,7 +179,7 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
   const saveLabel =
     preview.length === 0
       ? creatingBrandNewBuilding
-        ? 'Create building & rooms'
+        ? 'Create building and rooms'
         : 'Save rooms'
       : creatingBrandNewBuilding
       ? `Create ${activeBuilding} (${additions} room${additions === 1 ? '' : 's'})`
@@ -188,41 +190,28 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
       : `Add ${additions} room${additions === 1 ? '' : 's'}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-rooms-title"
-        className="bg-stone-50 border border-stone-200 rounded-t-3xl sm:rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[94vh] overflow-hidden text-stone-800"
-      >
-        <div className="bg-brand-700 text-white p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-gold-200" />
-              <h2 id="add-rooms-title" className="text-base sm:text-lg font-bold font-serif tracking-wide">
-                {isNewBuilding ? 'Add new building & rooms' : 'Add building or rooms'}
-              </h2>
-            </div>
-            <p className="text-xs text-stone-200 mt-1 max-w-xl">
-              New buildings and rooms appear across the app straight away: allotment, switching, timeline, and planner.
+    <div className={modalScrim}>
+      <div role="dialog" aria-modal="true" aria-labelledby="add-rooms-title" className={`${modalCard} max-w-3xl`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="add-rooms-title" className={modalTitle}>
+              {isNewBuilding ? 'Add new building and rooms' : 'Add building or rooms'}
+            </h2>
+            <p className="mt-1 text-[13px] text-stone-600 max-w-xl">
+              New buildings and rooms appear across the app straight away: allotment, switching, timeline and planner.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-          >
+          <button type="button" onClick={onClose} aria-label="Close" className={modalClose}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+        <div className="px-5 sm:px-6 py-5 overflow-y-auto flex-1 min-h-0 space-y-6 text-sm text-stone-800">
           {/* Building + mode */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-3">
+          <section className="space-y-4">
             <div>
-              <span className="block font-bold text-stone-800 mb-2">Building</span>
-              <div className="flex items-center gap-2 flex-wrap">
+              <span className={fieldLabel}>Building</span>
+              <div className={`${segTrack} flex-wrap max-w-full`}>
                 {distinctBuildings.map((b) => {
                   const selected = !isNewBuilding && building === b;
                   return (
@@ -235,13 +224,9 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         setBuilding(b);
                         setError(null);
                       }}
-                      className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer ${
-                        selected
-                          ? 'bg-brand-700 text-white border-brand-700'
-                          : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
-                      }`}
+                      className={segBtn(selected)}
                     >
-                      {b} <span className="font-normal opacity-75 tabular-nums">({buildingCount(b)})</span>
+                      {b} <span className="font-normal text-stone-500 tabular-nums">{buildingCount(b)}</span>
                     </button>
                   );
                 })}
@@ -257,21 +242,17 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                     }
                     setError(null);
                   }}
-                  className={`min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-xl font-bold border transition cursor-pointer inline-flex items-center gap-1.5 ${
-                    isNewBuilding
-                      ? 'bg-brand-700 text-white border-brand-700'
-                      : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                  }`}
+                  className={segBtn(isNewBuilding)}
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4" />
                   New building
                 </button>
               </div>
 
               {isNewBuilding && (
-                <div className="mt-3 p-3 rounded-xl bg-stone-50 border border-gold-400/50 space-y-1.5">
+                <div className="mt-4">
                   <label className="block max-w-md">
-                    <span className="block text-stone-700 font-bold mb-1">New building name *</span>
+                    <span className={fieldLabel}>New building name *</span>
                     <input
                       type="text"
                       autoFocus
@@ -281,19 +262,19 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
                         setNewBuildingName(e.target.value);
                         setError(null);
                       }}
-                      className={inputClass}
+                      className={field}
                     />
                   </label>
                   {existingBuildingMatch ? (
-                    <p className="text-[11px] font-semibold text-amber-800">
+                    <p className="mt-1.5 text-[13px] text-amber-800">
                       "{existingBuildingMatch}" already exists ({buildingCount(existingBuildingMatch)} rooms). New rooms will be added to {existingBuildingMatch}.
                     </p>
                   ) : hasValidBuildingName ? (
-                    <p className="text-[11px] font-semibold text-brand-700">
+                    <p className="mt-1.5 text-[13px] text-emerald-800">
                       Ready to create building "{activeBuilding}" with the rooms configured below.
                     </p>
                   ) : (
-                    <p className="text-[11px] text-stone-500">
+                    <p className="mt-1.5 text-[13px] text-stone-500">
                       Enter a building name above, then choose its starting room numbers below.
                     </p>
                   )}
@@ -302,17 +283,15 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
             </div>
 
             <div>
-              <span className="block font-bold text-stone-800 mb-2">How many rooms?</span>
-              <div className="inline-flex items-center bg-stone-100 p-0.5 rounded-lg font-semibold">
+              <span className={fieldLabel}>How many rooms?</span>
+              <div className={`${segTrack} max-w-full`}>
                 {(['single', 'batch'] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
                     aria-pressed={mode === m}
                     onClick={() => { setMode(m); setError(null); }}
-                    className={`min-h-[36px] sm:min-h-0 px-3 py-1 rounded-md transition cursor-pointer ${
-                      mode === m ? 'bg-brand-700 text-white shadow-2xs' : 'text-stone-700 hover:text-stone-900'
-                    }`}
+                    className={segBtn(mode === m)}
                   >
                     {m === 'single' ? 'One room' : 'Several rooms, same setup'}
                   </button>
@@ -322,69 +301,74 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
 
             {mode === 'single' ? (
               <label className="block max-w-xs">
-                <span className="block text-stone-600 font-semibold mb-1">Room number *</span>
+                <span className={fieldLabel}>Room number *</span>
                 <input
                   type="text"
                   autoFocus={!isNewBuilding}
                   placeholder="e.g. 501, G4, M102"
                   value={singleRoomNumber}
                   onChange={(e) => { setSingleRoomNumber(e.target.value); setError(null); }}
-                  className={inputClass}
+                  className={field}
                 />
               </label>
             ) : (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <label className="flex items-center gap-1.5 font-semibold cursor-pointer">
-                    <input type="radio" name="batchMethod" checked={batchMethod === 'range'} onChange={() => setBatchMethod('range')} />
-                    Number range
-                  </label>
-                  <label className="flex items-center gap-1.5 font-semibold cursor-pointer">
-                    <input type="radio" name="batchMethod" checked={batchMethod === 'list'} onChange={() => setBatchMethod('list')} />
-                    List of numbers
-                  </label>
+              <div className="space-y-4">
+                <div>
+                  <span className={fieldLabel}>Room numbers</span>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <label className={radioLabel}>
+                      <input type="radio" name="batchMethod" checked={batchMethod === 'range'} onChange={() => setBatchMethod('range')} />
+                      Number range
+                    </label>
+                    <label className={radioLabel}>
+                      <input type="radio" name="batchMethod" checked={batchMethod === 'list'} onChange={() => setBatchMethod('list')} />
+                      List of numbers
+                    </label>
+                  </div>
                 </div>
                 {batchMethod === 'range' ? (
-                  <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <div className="grid grid-cols-2 gap-4 max-w-sm">
                     <label className="block">
-                      <span className="block text-stone-600 font-semibold mb-1">From</span>
-                      <input type="number" inputMode="numeric" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className={inputClass} />
+                      <span className={fieldLabel}>From</span>
+                      <input type="number" inputMode="numeric" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className={`${field} tabular-nums`} />
                     </label>
                     <label className="block">
-                      <span className="block text-stone-600 font-semibold mb-1">To</span>
-                      <input type="number" inputMode="numeric" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className={inputClass} />
+                      <span className={fieldLabel}>To</span>
+                      <input type="number" inputMode="numeric" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className={`${field} tabular-nums`} />
                     </label>
                   </div>
                 ) : (
                   <label className="block">
-                    <span className="block text-stone-600 font-semibold mb-1">Room numbers, separated by commas or spaces</span>
+                    <span className={fieldLabel}>Room numbers, separated by commas or spaces</span>
                     <textarea
                       rows={2}
                       value={roomListInput}
                       onChange={(e) => setRoomListInput(e.target.value)}
                       placeholder="101, 102, 103, G1"
-                      className={inputClass}
+                      className={`${field} h-auto! py-2`}
                     />
                   </label>
                 )}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="font-semibold text-stone-600">Floor:</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="floorMode" checked={batchFloorMode === 'auto'} onChange={() => setBatchFloorMode('auto')} />
-                    From room number (501 → Floor 5)
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="floorMode" checked={batchFloorMode === 'fixed'} onChange={() => setBatchFloorMode('fixed')} />
-                    Same floor for all
-                  </label>
+                <div>
+                  <span className={fieldLabel}>Floor</span>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <label className={radioLabel}>
+                      <input type="radio" name="floorMode" checked={batchFloorMode === 'auto'} onChange={() => setBatchFloorMode('auto')} />
+                      From room number (501 → Floor 5)
+                    </label>
+                    <label className={radioLabel}>
+                      <input type="radio" name="floorMode" checked={batchFloorMode === 'fixed'} onChange={() => setBatchFloorMode('fixed')} />
+                      Same floor for all
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
           {/* Room setup */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 space-y-3">
-            <h3 className="font-bold text-brand-700 uppercase tracking-wider pb-1 border-b border-stone-100">
+          <section className="pt-5 border-t border-stone-200">
+            <h3 className="mb-4 text-[15px] font-semibold text-stone-950">
               {mode === 'single' ? 'Room setup' : 'Setup for every room'}
             </h3>
             <RoomSpecFields
@@ -392,65 +376,58 @@ export const AddBuildingAndRoomsModal: React.FC<AddBuildingAndRoomsModalProps> =
               onChange={(next) => { setSpec(next); setError(null); }}
               showFloor={mode === 'single' || batchFloorMode === 'fixed'}
             />
-          </div>
+          </section>
 
           {/* Preview */}
-          <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-2">
-            <div className="flex items-center justify-between gap-2 font-bold text-stone-800">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                Preview {hasValidBuildingName ? `— ${activeBuilding}` : ''}
-              </span>
-              <span className="text-brand-700 bg-emerald-100 px-2.5 py-0.5 rounded-full tabular-nums">
+          <section className={`${panel} p-4 space-y-3`}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h3 className="text-[15px] font-semibold text-stone-950">
+                Preview{hasValidBuildingName ? `: ${activeBuilding}` : ''}
+              </h3>
+              <span className="text-[13px] text-stone-600 tabular-nums">
                 {additions} new{updates ? ` · ${updates} existing` : ''}
               </span>
             </div>
             {preview.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-white rounded-lg border border-stone-200">
+              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
                 {preview.map(({ room, isUpdate }) => (
                   <span
                     key={room.id}
                     title={isUpdate ? 'Already in the inventory: saving replaces its details' : 'New room'}
-                    className={`px-2 py-0.5 rounded border text-[11px] font-semibold flex items-center gap-1 ${
-                      isUpdate ? 'bg-amber-50 border-amber-300 text-amber-950' : 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                    }`}
+                    className={chip(isUpdate ? 'wait' : 'ok')}
                   >
-                    <DoorClosed className="w-3 h-3" />
-                    {room.building} {room.roomNumber} · {room.floorLabel} · {room.beds} beds · sleeps {room.capacity}
+                    <DoorClosed className="w-3.5 h-3.5" />
+                    {room.roomNumber} · {room.floorLabel} · {room.beds} beds · sleeps {room.capacity}
                     {room.buffer ? `+${room.buffer}` : ''}
-                    {isUpdate && <span className="font-bold"> · exists</span>}
+                    {isUpdate && <span className="font-semibold"> · exists</span>}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-stone-400 italic text-center py-2">
+              <p className="text-[13px] text-stone-500">
                 {hasValidBuildingName ? 'Enter a room number to see it here.' : 'Enter a building name to preview rooms.'}
               </p>
             )}
             {invalidNumbers.length > 0 && (
-              <p className="text-red-700 font-semibold">Not valid room numbers: {invalidNumbers.join(', ')}</p>
+              <p className="text-[13px] font-medium text-rose-700">Not valid room numbers: {invalidNumbers.join(', ')}</p>
             )}
             {mode === 'batch' && batchMethod === 'range' && roomNumbers.length === MAX_BATCH && (
-              <p className="text-stone-500">Up to {MAX_BATCH} rooms are added at a time.</p>
+              <p className="text-[13px] text-stone-500">Up to {MAX_BATCH} rooms are added at a time.</p>
             )}
-          </div>
+          </section>
 
-          {error && <p role="alert" className="text-xs font-semibold text-red-700">{error}</p>}
+          {error && <p role="alert" className="text-[13px] font-medium text-rose-700">{error}</p>}
         </div>
 
-        <div className="px-4 sm:px-6 py-3 border-t border-stone-200 bg-white flex items-center justify-end gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 transition cursor-pointer"
-          >
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.secondary}>
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={preview.length === 0 || !hasValidBuildingName}
-            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white transition flex items-center gap-1.5 cursor-pointer"
+            className={btn.primary}
           >
             <CheckCircle2 className="w-4 h-4" />
             {saveLabel}

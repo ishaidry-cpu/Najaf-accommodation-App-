@@ -1,27 +1,26 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  Calendar, 
-  Clock, 
-  Building2, 
-  CheckCircle2, 
-  AlertCircle, 
-  Trash2, 
-  ChevronDown, 
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Search,
+  Plus,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Trash2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   User,
-  Users, 
+  Users,
   ArrowUpRight,
-  Printer, 
-  FileSpreadsheet, 
-  Upload, 
-  Download, 
-  CheckSquare, 
-  Square, 
+  ArrowRight,
+  FileSpreadsheet,
+  Upload,
+  Download,
+  CheckSquare,
+  Square,
   FileText,
-  Copy,
-  RefreshCw,
   Info,
   Check,
   X,
@@ -29,8 +28,6 @@ import {
   ArrowUp,
   ArrowDown,
   Sparkles,
-  MapPin,
-  Tag,
   LayoutGrid,
   ShieldAlert,
   Star,
@@ -39,14 +36,30 @@ import {
 } from 'lucide-react';
 import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole, type TravelLeg } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
-import { PageHeader, Dropdown, MenuItem, MenuDivider, btn } from './ui';
+import {
+  PageHeader,
+  Dropdown,
+  MenuItem,
+  MenuDivider,
+  btn,
+  btnSm,
+  btnDanger,
+  chip,
+  card,
+  panel,
+  field,
+  fieldLabel,
+  modalScrim,
+  modalCard,
+  modalHeader,
+  modalTitle,
+  modalClose,
+  modalFooter,
+} from './ui';
 import { SwitchRoomTarget } from './SwitchRoomModal';
-import { 
-  isRoomBookedForDuration, 
+import {
   getVacantRoomsForDuration,
   checkRoomAllotmentAvailability,
-  isInfant,
-  countEffectivePax,
   normalizeBuildingName,
   getDistinctBuildings,
   getRoomBedCount,
@@ -54,7 +67,7 @@ import {
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
 import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
-import { ZairPhoto, type PhotoIndex } from './ZairPhoto';
+import { ZairPhoto, photoUrl, type PhotoIndex } from './ZairPhoto';
 import { oneRowPerIts } from '../utils/deduplication';
 import { HiddenStaysModal } from './HiddenStaysModal';
 
@@ -70,11 +83,155 @@ const describeOtherStays = (others: Reservation[]) => others.map((o) =>
   `${stayDay(o.arrivalDate)} – ${stayDay(o.departureDate)}${o.roomNumber ? ` · ${o.building} ${o.roomNumber}` : o.building ? ` · ${o.building}` : ' · no room'}${o.tourRefNo ? ` · ${String(o.tourRefNo).replace(/^NKERP\/TOUR\//i, '')}` : ''}`).join('\n');
 
 const OtherStays: React.FC<{ others?: Reservation[] }> = ({ others }) => others?.length ? (
-  <span className="shrink-0 px-1 rounded text-[9px] font-bold bg-stone-100 text-stone-600 ring-1 ring-inset ring-stone-200 cursor-help"
+  <span className={`${chip('neutral')} shrink-0 cursor-help tabular-nums`}
     title={`Same ITS, ${others.length === 1 ? 'one more record' : `${others.length} more records`} (shown as one row):\n${describeOtherStays(others)}`}>
     +{others.length} stay{others.length > 1 ? 's' : ''}
   </span>
 ) : null;
+
+/** "24 Nov 2026" for display only; stored values and input values stay as they are. */
+const longDay = (v?: string) => {
+  const d = String(v || '').slice(0, 10);
+  const date = new Date(d + 'T00:00:00Z');
+  return !d || Number.isNaN(date.getTime())
+    ? d || '—'
+    : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+/** "2026/1333": the part of a tour ID that tells tours apart. */
+const shortTour = (v?: string) => String(v || '').replace(/^NKERP\/TOUR\//i, '');
+const fmtCount = (v: number) => v.toLocaleString('en-US');
+const fieldName = (f: 'arrivalDate' | 'departureDate' | 'arrivalTime' | 'departureTime') =>
+  f === 'arrivalDate' ? 'Arrival date' : f === 'departureDate' ? 'Departure date' : f === 'arrivalTime' ? 'Arrival time' : 'Departure time';
+
+/* Table pieces. Every inline control is 32px tall with a quiet border that firms up on hover and focus. */
+const cellBox =
+  'block h-8 min-w-0 rounded-md border border-transparent bg-transparent truncate hover:border-stone-300 hover:bg-white focus:border-brand-500 focus:bg-white';
+const cellInput = `${cellBox} w-full px-1.5 text-[13px]`;
+const cellSelect =
+  'block h-8 rounded-md border border-stone-200 bg-white pl-1.5 pr-0 text-[13px] hover:border-stone-400 focus:border-brand-500 cursor-pointer';
+const dateInput = `${cellBox} w-full flex-1 px-1 text-[13px] text-stone-900 tabular-nums cursor-pointer [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60`;
+const timeInput = `${cellBox} w-[82px] shrink-0 px-1 text-[13px] text-stone-700 tabular-nums`;
+const thCell = 'sticky top-0 border-b border-stone-200 bg-stone-50 p-0 text-xs font-semibold text-stone-600 whitespace-nowrap';
+const tdCell = 'border-b border-stone-200 px-1.5 py-1.5 align-top';
+const iconGhost = 'inline-flex shrink-0 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-900 cursor-pointer';
+const iconRing =
+  'inline-flex shrink-0 items-center justify-center rounded-lg bg-white text-stone-600 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 hover:text-stone-950 hover:ring-stone-400 cursor-pointer';
+const iconDanger = 'inline-flex shrink-0 items-center justify-center rounded-lg text-stone-500 hover:bg-rose-50 hover:text-rose-700 cursor-pointer';
+const needsRoomBtn =
+  'inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-amber-50 px-2 text-[13px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200 hover:bg-amber-100 hover:ring-amber-300 cursor-pointer whitespace-nowrap';
+const portalDone =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100 cursor-pointer whitespace-nowrap';
+const portalTodo =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium bg-white text-stone-700 ring-1 ring-inset ring-stone-300 hover:bg-stone-50 hover:ring-stone-400 cursor-pointer whitespace-nowrap';
+/** Toolbar fields: 40px on phones, 36px on a desk. */
+const filterField = `${field} md:h-9 md:px-2.5 md:text-[13px]`;
+
+/** True from the `md` breakpoint up, so only one of the two layouts (table or phone list) is ever built. */
+const useIsDesktop = () => {
+  const query = '(min-width: 768px)';
+  const [matches, setMatches] = useState(() =>
+    typeof window === 'undefined' || !window.matchMedia ? true : window.matchMedia(query).matches
+  );
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return matches;
+};
+
+/** Tour ID field. In "Fit to screen" it shows the short form until it is focused, then the full ID to edit. */
+const TourIdInput: React.FC<{ value: string; short: boolean; onChange: (value: string) => void; className: string }> = ({
+  value,
+  short,
+  onChange,
+  className,
+}) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      type="text"
+      value={short && !focused ? shortTour(value) : value}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Tour ID"
+      title={value}
+      className={className}
+    />
+  );
+};
+
+/** "Rows 1–50 of 1,179" with previous / next. The full form adds rows per page, first / last and the page number. */
+const Pager: React.FC<{
+  page: number;
+  pageCount: number;
+  from: number;
+  to: number;
+  total: number;
+  pageSize: number;
+  onPage: (page: number) => void;
+  onPageSize?: (size: number) => void;
+  compact?: boolean;
+}> = ({ page, pageCount, from, to, total, pageSize, onPage, onPageSize, compact }) => {
+  const nav = `${iconRing} h-8 w-8 max-md:h-10 max-md:w-10 disabled:opacity-40 disabled:cursor-not-allowed`;
+  const atStart = page <= 0;
+  const atEnd = page >= pageCount - 1;
+  return (
+    <nav aria-label="Pages of the zaereen list" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[13px] text-stone-600">
+      {!compact && onPageSize && (
+        <label className="flex items-center gap-2">
+          <span>Rows per page</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="h-8 max-md:h-10 rounded-lg border border-stone-300 bg-white pl-2 pr-1 text-[13px] text-stone-900 tabular-nums"
+          >
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+            <option value={0}>All</option>
+          </select>
+        </label>
+      )}
+      <span className="tabular-nums" aria-live="polite">
+        {total === 0 ? (
+          'No rows'
+        ) : (
+          <>
+            Rows <strong className="font-semibold text-stone-900">{fmtCount(from)}–{fmtCount(to)}</strong> of {fmtCount(total)}
+          </>
+        )}
+      </span>
+      <div className="flex items-center gap-1">
+        {!compact && (
+          <button type="button" className={nav} disabled={atStart} onClick={() => onPage(0)} title="First page" aria-label="First page">
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
+        )}
+        <button type="button" className={nav} disabled={atStart} onClick={() => onPage(page - 1)} title="Previous page" aria-label="Previous page">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        {!compact && (
+          <span className="px-1.5 tabular-nums">
+            Page {fmtCount(page + 1)} of {fmtCount(pageCount)}
+          </span>
+        )}
+        <button type="button" className={nav} disabled={atEnd} onClick={() => onPage(page + 1)} title="Next page" aria-label="Next page">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+        {!compact && (
+          <button type="button" className={nav} disabled={atEnd} onClick={() => onPage(pageCount - 1)} title="Last page" aria-label="Last page">
+            <ChevronsRight className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </nav>
+  );
+};
 
 interface ReservationsViewProps {
   reservations: Reservation[];
@@ -115,29 +272,32 @@ const STANDARD_TIMES = [
   '10:00 PM', '11:00 PM', '01:00 AM', '02:00 AM', '03:00 AM', '04:00 AM'
 ];
 
-function TravelDetails({ legs, date, direction }: {
+/** Travel note under a date: "SBVN from KARBALA, arrival 11:00". Plain secondary text, one or two lines. */
+function TravelDetails({ legs, date, direction, flush }: {
   legs?: TravelLeg[];
   date: string;
   direction: 'arrival' | 'departure';
+  /** No side padding (the phone list, where it sits under plain text rather than under an input). */
+  flush?: boolean;
 }) {
-  const visible = legs?.filter(leg => leg.serviceDate === date.slice(0, 10));
+  const visible = legs?.filter(leg => leg.serviceDate === String(date || '').slice(0, 10));
   if (!visible?.length) return null;
   const incoming = direction === 'arrival';
   return (
-    <ul className="mt-1 space-y-1 text-[11px] leading-tight text-stone-700">
+    <ul className={`mt-0.5 space-y-0.5 text-xs leading-snug text-stone-600 ${flush ? '' : 'px-1.5'}`}>
       {visible.map(leg => {
         const kind = leg.kind === 'subvenue' ? 'SBVN' : leg.kind === 'flight' ? 'Flight' : leg.kind === 'land' ? 'Land' : '';
         const route = leg.location && `${incoming ? 'from' : 'to'} ${leg.location}`;
         const time = leg.localTime?.slice(11, 16);
         const eventDate = leg.localTime?.slice(0, 10);
-        const event = leg.kind === 'flight' ? (incoming ? 'Lands' : 'Takes off') : (incoming ? 'Arrival' : 'Departure');
+        const event = leg.kind === 'flight' ? (incoming ? 'lands' : 'takes off') : (incoming ? 'arrival' : 'departure');
         return (
-          <li key={JSON.stringify(leg)} className="rounded border border-emerald-100 bg-emerald-50/60 px-1.5 py-1">
-            <div className="break-words font-semibold text-emerald-950">{[kind, leg.flightCode, route].filter(Boolean).join(' ')}</div>
+          <li key={JSON.stringify(leg)} className="break-words">
+            <span className="text-stone-700">{[kind, leg.flightCode, route].filter(Boolean).join(' ')}</span>
             {time && (
-              <div title="Baghdad time" className="tabular-nums">
-                {event} {eventDate !== leg.serviceDate && `${eventDate} `}{time}
-              </div>
+              <span title="Baghdad time" className="tabular-nums">
+                , {event} {eventDate !== leg.serviceDate && `${stayDay(eventDate)} `}{time}
+              </span>
             )}
           </li>
         );
@@ -271,7 +431,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   const [buildingFilter, setBuildingFilter] = useState('ALL');
   const [portalUploadFilter, setPortalUploadFilter] = useState('ALL');
   const [arrivalDateFilter, setArrivalDateFilter] = useState('ALL');
-  const [mobileVisibleCount, setMobileVisibleCount] = useState(40);
+
+  // Only one layout is built at a time: the table from the md breakpoint up, the block list on phones.
+  const isDesktop = useIsDesktop();
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const listTopRef = useRef<HTMLDivElement>(null);
+  // The name column sticks to the left edge once the table is scrolled sideways past it.
+  const [nameStuck, setNameStuck] = useState(false);
 
   // Distinct Arrival Dates for filtering and 1-click PDF download
   const distinctArrivalDates = useMemo(() => {
@@ -486,12 +652,29 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // Everyone counts once, however many records NKERP has for their ITS.
   const totalZaereen = useMemo(() => oneRowPerIts(reservations, baghdadDay()).rows.length, [reservations]);
 
-  // Fast memoized available rooms lookup by date duration and building:
-  // Evaluates rooms where capacity is NOT reached, executing in <2ms for entire view!
+  // Paging. Only the rows of the current page are rendered; sorting, filtering, selection, bulk actions and
+  // exports all keep working on the whole filtered list (filteredAndSortedReservations).
+  const [pageSize, setPageSize] = useState<number>(50); // 0 = all rows on one page
+  const [page, setPage] = useState(0);
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, categoryFilter, buildingFilter, portalUploadFilter, arrivalDateFilter, sortColumn, sortDirection, pageSize]);
+  const totalRows = filteredAndSortedReservations.length;
+  const rowsPerPage = pageSize > 0 ? pageSize : Math.max(totalRows, 1);
+  const pageCount = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * rowsPerPage;
+  const pageRows = useMemo(
+    () => filteredAndSortedReservations.slice(pageStart, pageStart + rowsPerPage),
+    [filteredAndSortedReservations, pageStart, rowsPerPage]
+  );
+
+  // Memoized available rooms lookup by date duration and building, for the rows on screen:
+  // the rooms where capacity is not reached.
   const availableRoomsCache = useMemo(() => {
     const cache = new Map<string, Room[]>();
     const datePairs = new Set<string>();
-    filteredAndSortedReservations.forEach((r) => {
+    pageRows.forEach((r) => {
       if (r.arrivalDate && r.departureDate) {
         const b = (normalizeBuildingName(r.building) || 'Saifee').toLowerCase();
         const arr = r.arrivalDate.slice(0, 10);
@@ -524,7 +707,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     });
 
     return cache;
-  }, [filteredAndSortedReservations, rooms, reservations]);
+  }, [pageRows, rooms, reservations]);
 
   // Selection helpers
   const handleToggleSelectRow = (id: string) => {
@@ -586,7 +769,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       });
       if (protectedIds.length > 0) {
         setToastMessage({
-          text: `Action Blocked: ${protectedIds.length} B to A record(s) can only be deleted by an Admin.`,
+          text: `Blocked: ${protectedIds.length} B to A record${protectedIds.length > 1 ? 's' : ''} can only be deleted by an admin.`,
           type: 'info',
         });
         ids = ids.filter((id) => !protectedIds.includes(id));
@@ -620,7 +803,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     }
     setIsPurgeExpiredModalOpen(false);
     setToastMessage({
-      text: `Permanently deleted ${ids.length} expired record${ids.length > 1 ? 's' : ''} (>48 hours past departure).`,
+      text: `Deleted ${ids.length} record${ids.length > 1 ? 's' : ''} of zaereen who left more than 48 hours ago.`,
       type: 'success',
     });
   };
@@ -775,7 +958,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // Confirm: Apply new date/time to all zaereen of the same Tour ID
   const handleConfirmApplyToAllTour = () => {
     if (!pendingTourDateChange) return;
-    const { field, newValue, tourId, allTourZaereen, reservation } = pendingTourDateChange;
+    const { field, newValue, tourId, allTourZaereen } = pendingTourDateChange;
 
     const updatedTourMembers = allTourZaereen.map((r) => {
       const updated: Reservation = {
@@ -824,17 +1007,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       updatedTourMembers.forEach((r) => onUpdateReservation(r));
     }
 
-    const fieldLabel =
-      field === 'arrivalDate'
-        ? 'Arrival Date'
-        : field === 'departureDate'
-        ? 'Departure Date'
-        : field === 'arrivalTime'
-        ? 'Arrival Time'
-        : 'Departure Time';
-
     setToastMessage({
-      text: `✓ Updated ${fieldLabel} to "${newValue}" for all ${updatedTourMembers.length} zaereen in Tour ${tourId}.`,
+      text: `Updated ${fieldName(field).toLowerCase()} to ${field.includes('Date') ? longDay(newValue) : newValue} for all ${updatedTourMembers.length} zaereen in tour ${shortTour(tourId)}.`,
       type: 'success',
     });
 
@@ -848,17 +1022,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
 
     applySingleFieldChange(reservation.id, field, newValue);
 
-    const fieldLabel =
-      field === 'arrivalDate'
-        ? 'Arrival Date'
-        : field === 'departureDate'
-        ? 'Departure Date'
-        : field === 'arrivalTime'
-        ? 'Arrival Time'
-        : 'Departure Time';
-
     setToastMessage({
-      text: `Updated ${fieldLabel} to "${newValue}" for ${reservation.applicantName} only.`,
+      text: `Updated ${fieldName(field).toLowerCase()} to ${field.includes('Date') ? longDay(newValue) : newValue} for ${reservation.applicantName} only.`,
       type: 'info',
     });
 
@@ -870,44 +1035,47 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     setPendingTourDateChange(null);
   };
 
-  // Render sort header icon
-  const renderSortIndicator = (column: string) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="w-3.5 h-3.5 text-emerald-200/50 inline ml-1 opacity-40 hover:opacity-100" />;
-    }
-    return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3.5 h-3.5 text-gold-200 inline ml-1 font-bold" />
-    ) : (
-      <ArrowDown className="w-3.5 h-3.5 text-gold-200 inline ml-1 font-bold" />
+  // Sortable column header: the whole header cell is a button.
+  const renderSortTh = (column: string, label: string, extra = '') => {
+    const active = sortColumn === column;
+    return (
+      <th
+        scope="col"
+        aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`${thCell} ${extra || 'z-10'}`}
+      >
+        <button
+          type="button"
+          onClick={() => handleSort(column)}
+          title={`Sort by ${label}`}
+          className={`group/sort flex h-10 w-full items-center gap-0.5 px-3 text-left cursor-pointer hover:text-stone-950 ${
+            active ? 'text-stone-950' : ''
+          }`}
+        >
+          <span className="truncate">{label}</span>
+          {active ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="w-3 h-3 shrink-0 text-brand-600" />
+            ) : (
+              <ArrowDown className="w-3 h-3 shrink-0 text-brand-600" />
+            )
+          ) : (
+            <ArrowUpDown className="hidden w-3 h-3 shrink-0 text-stone-400 group-hover/sort:block group-focus-visible/sort:block" />
+          )}
+        </button>
+      </th>
     );
   };
 
-  // Helper to render category at the end
-  const renderCategoryBadge = (res: Reservation) => {
+  // Category: plain editable text for ordinary categories, a chip only when it carries state (B to A, A to B).
+  const renderCategoryCell = (res: Reservation) => {
     const rawCat = (res.category || '').trim();
-    const isMumineen = !rawCat || rawCat.toLowerCase() === 'mumineen';
-
-    // Category badge class for non-mumineen categories
     const lower = rawCat.toLowerCase();
-    let catBadgeClass = 'bg-rose-100 text-rose-950 border-rose-300';
-    if (lower === 'muntasbeen') {
-      catBadgeClass = 'bg-purple-100 text-purple-950 border-purple-400 font-black';
-    } else if (lower === 'qasreali') {
-      catBadgeClass = 'bg-amber-100 text-amber-950 border-amber-400 font-black ring-1 ring-amber-300';
-    } else if (lower === 'baitezainy') {
-      catBadgeClass = 'bg-cyan-100 text-cyan-950 border-cyan-400 font-black';
-    } else if (lower.includes('nizaam') || lower.includes('category a')) {
-      catBadgeClass = 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black';
-    }
-
-    // Reusable hidden select for changing category on click/hover
-    const categorySelect = (
-      <select
-        value={res.category}
-        onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
-        className="opacity-0 group-hover:opacity-100 absolute inset-0 text-xs rounded border border-stone-300 bg-white cursor-pointer transition font-bold z-10"
-        title="Click to change category"
-      >
+    const isDefault = !rawCat || lower === 'mumineen';
+    const isShift = lower.includes('b to a') || lower.includes('a to b');
+    const options = (
+      <>
+        {!res.category && <option value="">—</option>}
         {categories.map((c) => (
           <option key={c} value={c}>
             {c}
@@ -916,32 +1084,117 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         {!categories.includes(res.category) && res.category && (
           <option value={res.category}>{res.category}</option>
         )}
-      </select>
+      </>
     );
 
-    // Default Mumineen -> show clean dash (no need to show Mumineen)
-    if (isMumineen) {
+    if (isShift) {
       return (
-        <div className="flex items-center justify-center relative group min-w-[50px]" title="Category: Mumineen (Default)">
-          <span className="text-stone-300 font-mono text-xs select-none">—</span>
-          {categorySelect}
+        <div
+          className="relative flex h-8 items-center px-1.5 rounded-md focus-within:outline-2 focus-within:outline-brand-500"
+          title="Category: click to change"
+        >
+          <span className={chip('special')}>
+            {rawCat}
+            <ChevronDown className="w-3 h-3" />
+          </span>
+          <select
+            value={res.category || ''}
+            onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
+            aria-label="Category"
+            className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
+          >
+            {options}
+          </select>
         </div>
       );
     }
 
-    // Other than Mumineen -> show Category badge
     return (
-      <div className="relative group inline-block">
-        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black border shadow-2xs uppercase tracking-wide ${catBadgeClass}`}>
-          {rawCat}
-        </span>
-        {categorySelect}
-      </div>
+      <select
+        value={res.category || ''}
+        onChange={(e) => handleFieldChange(res.id, 'category', e.target.value)}
+        aria-label="Category"
+        title={isDefault ? 'Category: Mumineen (default). Click to change' : 'Category: click to change'}
+        className={`${cellBox} w-full pl-1.5 pr-0 text-[13px] cursor-pointer ${
+          isDefault ? 'text-stone-500' : 'font-medium text-stone-900'
+        }`}
+      >
+        {options}
+      </select>
     );
   };
 
+  const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    categoryFilter !== 'ALL' ||
+    buildingFilter !== 'ALL' ||
+    portalUploadFilter !== 'ALL' ||
+    arrivalDateFilter !== 'ALL';
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setCategoryFilter('ALL');
+    setBuildingFilter('ALL');
+    setPortalUploadFilter('ALL');
+    setArrivalDateFilter('ALL');
+  };
+
+  const goToPage = (next: number) => {
+    setPage(Math.max(0, Math.min(next, pageCount - 1)));
+    tableScrollRef.current?.scrollTo({ top: 0 });
+    if (!isDesktop) listTopRef.current?.scrollIntoView({ block: 'start' });
+  };
+
+  const pagerProps = {
+    page: currentPage,
+    pageCount,
+    from: totalRows === 0 ? 0 : pageStart + 1,
+    to: pageStart + pageRows.length,
+    total: totalRows,
+    pageSize,
+    onPage: goToPage,
+  };
+
+  // Selection covers every filtered row, so say when part of it is on another page.
+  const selectedOnPage = pageRows.reduce((count, r) => count + (selectedIds.has(r.id) ? 1 : 0), 0);
+  const selectedElsewhere = selectedIds.size - selectedOnPage;
+
+  // Column widths in px. "Fit to screen" squeezes the text columns; "Wide" gives every column room.
+  const pageHasPhoto = pageRows.some((r) => Boolean(photoUrl(photos, r.itsId)));
+  const columnWidths = fitColumnsToScreen
+    ? [56, pageHasPhoto ? 108 : 60, 88, 196, 60, 78, 96, 96, 98, 224, 80, 92, 192, 192, 100, 80, 72]
+    : [64, pageHasPhoto ? 108 : 60, 112, 250, 64, 84, 200, 190, 124, 232, 84, 190, 204, 204, 150, 96, 80];
+  const tableMinWidth = columnWidths.reduce((sum, w) => sum + w, 0);
+  const nameColumnLeft = columnWidths[0] + columnWidths[1] + columnWidths[2];
+
+  const emptyState = (
+    <div className="mx-auto max-w-md px-4 py-12 text-center">
+      <div className="text-[15px] font-semibold text-stone-900">
+        {reservations.length === 0 ? 'No zaereen on the list yet' : 'No zaereen match these filters'}
+      </div>
+      <p className="mt-1 text-sm text-stone-600">
+        {reservations.length === 0
+          ? 'Upload the Excel sheet or add a zair, and they will appear here.'
+          : 'Change the search or the filters to see more of the list.'}
+      </p>
+      <div className="mt-4 flex justify-center">
+        {reservations.length === 0 ? (
+          <button type="button" onClick={onOpenUploadExcel} className={btn.secondary}>
+            <Upload className="w-4 h-4 text-stone-500" />
+            Upload Excel
+          </button>
+        ) : (
+          <button type="button" onClick={clearFilters} className={btn.secondary}>
+            <X className="w-4 h-4 text-stone-500" />
+            Clear filters
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Page header */}
       <PageHeader
         title="Zaereen"
@@ -974,7 +1227,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     </MenuItem>
                   )}
                   {onOpenAToBSlip && (
-                    <MenuItem icon={FileText} onClick={() => { close(); onOpenAToBSlip(null); }} hint="Per-Tour 2-page A→B accounts slip">
+                    <MenuItem icon={FileText} onClick={() => { close(); onOpenAToBSlip(null); }} hint="Two-page A→B accounts slip for each tour">
                       A→B slip
                     </MenuItem>
                   )}
@@ -1012,43 +1265,40 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               </button>
             )}
             <button type="button" onClick={onOpenAddZaer || handleAddNewRow} className={btn.primary}>
-              <Plus className="w-4 h-4 text-gold-200" />
+              <Plus className="w-4 h-4" />
               Add zair
             </button>
           </>
         }
       />
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white border border-stone-200 rounded-xl p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
-          {/* Search Box */}
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="w-4 h-4 absolute left-3 top-3 sm:top-2.5 text-stone-400" />
-            <input
-              type="text"
-              placeholder="Search ITS, Name, Family, Office, Tour ID..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setMobileVisibleCount(40);
-              }}
-              className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg pl-9 pr-3 py-2 sm:py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-emerald-700"
-            />
+      {/* Toolbar: find and filter on the first line, view and bulk portal actions on the second */}
+      <div className={`${card} p-4`}>
+        <div className="grid grid-cols-2 gap-3 md:flex md:flex-wrap md:items-end">
+          <div className="col-span-2 md:flex-1 md:min-w-[220px]">
+            <label htmlFor="zaereen-search" className={fieldLabel}>Search</label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input
+                id="zaereen-search"
+                type="text"
+                placeholder="ITS, name, family, office, tour ID or room"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={`${filterField} pl-9 md:pl-9`}
+              />
+            </div>
           </div>
 
-          {/* Pilgrim Category Filter */}
-          <div className="flex items-center gap-1">
-            <span className="text-stone-500 font-semibold hidden sm:inline">Category:</span>
+          <div className="md:w-[150px]">
+            <label htmlFor="zaereen-filter-category" className={fieldLabel}>Category</label>
             <select
+              id="zaereen-filter-category"
               value={categoryFilter}
-              onChange={(e) => {
-                setCategoryFilter(e.target.value);
-                setMobileVisibleCount(40);
-              }}
-              className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className={filterField}
             >
-              <option value="ALL">All Categories ({categories.length})</option>
+              <option value="ALL">All categories ({categories.length})</option>
               {categories.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
@@ -1057,62 +1307,61 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             </select>
           </div>
 
-          {/* Hotel Filter */}
-          <select
-            value={buildingFilter}
-            onChange={(e) => {
-              setBuildingFilter(e.target.value);
-              setMobileVisibleCount(40);
-            }}
-            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800 cursor-pointer"
-          >
-            <option value="ALL">All Hotels</option>
-            {distinctBuildings.map((bldg) => (
-              <option key={bldg} value={bldg}>{bldg} Hotel</option>
-            ))}
-            <option value="Unallotted">Unallotted Rooms</option>
-          </select>
-
-          {/* Portal Upload Filter */}
-          <select
-            value={portalUploadFilter}
-            onChange={(e) => {
-              setPortalUploadFilter(e.target.value);
-              setMobileVisibleCount(40);
-            }}
-            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
-          >
-            <option value="ALL">Portal: All</option>
-            <option value="Uploaded">Uploaded ✓</option>
-            <option value="Pending">Pending ✗</option>
-          </select>
-
-          {/* Arrival Date Filter (Prompt: "I want the downloaded pdf of the date of arrival I have chosen") */}
-          <div className="flex items-center gap-1">
-            <span className="text-stone-500 font-semibold flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-brand-700" />
-              <span className="hidden sm:inline">Arrival:</span>
-            </span>
+          <div className="md:w-[150px]">
+            <label htmlFor="zaereen-filter-hotel" className={fieldLabel}>Hotel</label>
             <select
-              value={arrivalDateFilter}
-              onChange={(e) => {
-                setArrivalDateFilter(e.target.value);
-                setMobileVisibleCount(40);
-              }}
-              className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-stone-800"
+              id="zaereen-filter-hotel"
+              value={buildingFilter}
+              onChange={(e) => setBuildingFilter(e.target.value)}
+              className={filterField}
             >
-              <option value="ALL">All Arrival Dates</option>
+              <option value="ALL">All hotels</option>
+              {distinctBuildings.map((bldg) => (
+                <option key={bldg} value={bldg}>{bldg} Hotel</option>
+              ))}
+              <option value="Unallotted">Unallotted (no room)</option>
+            </select>
+          </div>
+
+          <div className="md:w-[130px]">
+            <label htmlFor="zaereen-filter-portal" className={fieldLabel}>Portal</label>
+            <select
+              id="zaereen-filter-portal"
+              value={portalUploadFilter}
+              onChange={(e) => setPortalUploadFilter(e.target.value)}
+              className={filterField}
+            >
+              <option value="ALL">All</option>
+              <option value="Uploaded">Uploaded</option>
+              <option value="Pending">Pending</option>
+            </select>
+          </div>
+
+          <div className="md:w-[190px]">
+            <label htmlFor="zaereen-filter-arrival" className={fieldLabel}>Arrival date</label>
+            <select
+              id="zaereen-filter-arrival"
+              value={arrivalDateFilter}
+              onChange={(e) => setArrivalDateFilter(e.target.value)}
+              className={filterField}
+            >
+              <option value="ALL">All arrival dates</option>
               {distinctArrivalDates.map(({ date, count }) => (
                 <option key={date} value={date}>
-                  {date} ({count} Zaereen)
+                  {longDay(date)} ({count})
                 </option>
               ))}
             </select>
           </div>
+        </div>
 
-          {/* 1-Click Download PDF for chosen arrival date with Hotel Bifurcation options */}
-          {arrivalDateFilter !== 'ALL' && (
-            <div className="flex items-center rounded-lg bg-brand-700 p-0.5 border border-gold-400 shadow-xs">
+        {/* One-click PDF for the chosen arrival date, joined or per hotel */}
+        {arrivalDateFilter !== 'ALL' && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-stone-50 px-3 py-2">
+            <span className="text-[13px] text-stone-700">
+              PDF of arrivals on <span className="font-semibold text-stone-950">{longDay(arrivalDateFilter)}</span>
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -1123,17 +1372,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     includeSignatures: true,
                   });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer"
-                title={`Download official PDF for arrival date ${arrivalDateFilter} (${buildingFilter === 'ALL' ? 'Joined Bifurcated Both Hotels' : `${buildingFilter} Hotel`})`}
+                className={`${btnSm.secondary} max-md:h-10`}
+                title={`Download the official PDF for arrival date ${arrivalDateFilter} (${buildingFilter === 'ALL' ? 'both hotels, joined' : `${buildingFilter} Hotel`})`}
               >
-                <Download className="w-3.5 h-3.5 text-gold-200" />
-                <span>
-                  {buildingFilter === 'ALL'
-                    ? `Download PDF (${arrivalDateFilter})`
-                    : `Download ${buildingFilter} PDF (${arrivalDateFilter})`}
-                </span>
+                <Download className="w-4 h-4 text-stone-500" />
+                {buildingFilter === 'ALL' ? 'Download PDF' : `Download ${buildingFilter} PDF`}
               </button>
-              <div className="h-3.5 w-px bg-gold-400/40 my-auto" />
               <button
                 type="button"
                 onClick={() => {
@@ -1144,10 +1388,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     includeSignatures: true,
                   });
                 }}
-                className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded transition cursor-pointer"
-                title={`Download separate Saifee Hotel PDF for arrival date ${arrivalDateFilter}`}
+                className={`${btnSm.ghost} max-md:h-10`}
+                title={`Download a separate Saifee Hotel PDF for arrival date ${arrivalDateFilter}`}
               >
-                Saifee
+                Saifee only
               </button>
               <button
                 type="button"
@@ -1159,148 +1403,172 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     includeSignatures: true,
                   });
                 }}
-                className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded transition cursor-pointer"
-                title={`Download separate Burhani Hotel PDF for arrival date ${arrivalDateFilter}`}
+                className={`${btnSm.ghost} max-md:h-10`}
+                title={`Download a separate Burhani Hotel PDF for arrival date ${arrivalDateFilter}`}
               >
-                Burhani
+                Burhani only
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Fit to Screen Toggle & Bulk Portal Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setFitColumnsToScreen((p) => !p)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer shadow-2xs ${
-              fitColumnsToScreen
-                ? 'bg-stone-100 text-stone-900 border-stone-200'
-                : 'bg-white hover:bg-stone-50 text-stone-700 border-stone-300'
-            }`}
-            title="Fit all columns on screen, or scroll sideways for wider columns"
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>{fitColumnsToScreen ? 'Fit to screen' : 'Wide columns'}</span>
-          </button>
-
-          <div className="h-4 w-px bg-stone-300" />
-
-          <span className="text-stone-500 text-xs">Bulk Portal:</span>
-          <button
-            onClick={() => handleBulkMarkPortal(true)}
-            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-xs font-bold cursor-pointer"
-            title="Mark all filtered zaereen as Uploaded on Main Portal"
-          >
-            Tick All Filtered
-          </button>
-          <button
-            onClick={() => handleBulkMarkPortal(false)}
-            className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded text-xs cursor-pointer"
-          >
-            Untick All
-          </button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 1-CLICK BATCH FAMILY ALLOTMENT QUICK BAR                                  */}
-      {/* "in family member I should be able to allottment on tour id and whole it  */}
-      {/* family number in one go and if needed it should be editable"              */}
-      {/* ========================================================================= */}
-      <div className="bg-white ring-1 ring-stone-200 rounded-2xl p-4 shadow-xs space-y-2">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0">
-              <Users className="w-4 h-4" />
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-stone-950">
-                Allot a whole family
-              </div>
-              <p className="text-[13px] text-stone-500 mt-0.5">
-                Pick a tour and family to give everyone one room. You can still change each person later.
-              </p>
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-stone-200 pt-3">
+          {/* Column width (the table is not shown on phones) */}
+          <div className="hidden md:flex items-center gap-2">
+            <span className="text-[13px] font-medium text-stone-700">Columns</span>
+            <div
+              className="inline-flex h-8 items-center rounded-lg bg-stone-100 p-0.5"
+              title="Fit all columns on screen, or scroll sideways for wider columns"
+            >
+              <button
+                type="button"
+                aria-pressed={fitColumnsToScreen}
+                onClick={() => setFitColumnsToScreen(true)}
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium cursor-pointer ${
+                  fitColumnsToScreen ? 'bg-white text-stone-950 shadow-xs' : 'text-stone-600 hover:text-stone-950'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Fit to screen
+              </button>
+              <button
+                type="button"
+                aria-pressed={!fitColumnsToScreen}
+                onClick={() => setFitColumnsToScreen(false)}
+                className={`inline-flex h-7 items-center rounded-md px-2.5 text-[13px] font-medium cursor-pointer ${
+                  !fitColumnsToScreen ? 'bg-white text-stone-950 shadow-xs' : 'text-stone-600 hover:text-stone-950'
+                }`}
+              >
+                Wide columns
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Tour ID select */}
-            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-emerald-300 shadow-2xs">
-              <span className="text-stone-500 font-semibold text-[11px]">Tour ID:</span>
-              <select
-                value={batchTourId}
-                onChange={(e) => {
-                  setBatchTourId(e.target.value);
-                  setBatchFamily('');
-                  setBatchRoomNumber('');
-                }}
-                className="bg-transparent font-mono font-bold text-stone-900 focus:outline-none cursor-pointer max-w-[170px] truncate"
-              >
-                <option value="">-- All Tour IDs --</option>
-                {distinctTourIds.map((tid) => (
-                  <option key={tid} value={tid}>
-                    {tid}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Bulk portal: always the whole filtered list, not just the page on screen */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px] font-medium text-stone-700">
+              Bulk portal <span className="font-normal text-stone-500">({fmtCount(totalRows)} filtered)</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => handleBulkMarkPortal(true)}
+              className={`${btnSm.secondary} max-md:h-10`}
+              title="Mark all filtered zaereen as uploaded on the main portal"
+            >
+              <CheckSquare className="w-4 h-4 text-stone-500" />
+              Tick all filtered
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBulkMarkPortal(false)}
+              className={`${btnSm.ghost} max-md:h-10`}
+              title="Mark all filtered zaereen as pending"
+            >
+              Untick all
+            </button>
+          </div>
 
-            {/* Family select */}
-            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-emerald-300 shadow-2xs">
-              <span className="text-stone-500 font-semibold text-[11px]">Family:</span>
-              <select
-                value={batchFamily}
-                onChange={(e) => {
-                  setBatchFamily(e.target.value);
-                  setBatchRoomNumber('');
-                }}
-                className="bg-transparent font-mono font-bold text-emerald-950 focus:outline-none cursor-pointer max-w-[170px]"
-              >
-                <option value="">-- Select Family --</option>
-                {familiesInBatchTour.map((fam) => {
-                  const cnt = reservations.filter(
-                    (r) => (r.family || '').trim().toLowerCase() === fam.trim().toLowerCase() && (!batchTourId || r.tourRefNo === batchTourId)
-                  ).length;
-                  return (
-                    <option key={fam} value={fam}>
-                      {fam} ({cnt} members)
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
+          {hasActiveFilters && (
+            <button type="button" onClick={clearFilters} className={`${btnSm.ghost} max-md:h-10 md:ml-auto`}>
+              <X className="w-4 h-4" />
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
 
-            {/* Hotel select */}
+      {/* Allot a whole family: tour, family, building, vacant room, go */}
+      <div className={`${card} p-4`}>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-[15px] font-semibold text-stone-950">Allot a whole family</h2>
+          <p className="text-[13px] text-stone-600">
+            Pick a tour and family, then a vacant room, to give every member the same room.
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:flex lg:items-end">
+          <div className="col-span-2 lg:w-[150px] lg:shrink-0">
+            <label htmlFor="family-allot-tour" className={fieldLabel}>Tour ID</label>
             <select
+              id="family-allot-tour"
+              value={batchTourId}
+              onChange={(e) => {
+                setBatchTourId(e.target.value);
+                setBatchFamily('');
+                setBatchRoomNumber('');
+              }}
+              className={`${filterField} tabular-nums`}
+            >
+              <option value="">All tours</option>
+              {distinctTourIds.map((tid) => (
+                <option key={tid} value={tid}>
+                  {shortTour(tid)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="lg:w-[164px] lg:shrink-0">
+            <label htmlFor="family-allot-family" className={fieldLabel}>Family</label>
+            <select
+              id="family-allot-family"
+              value={batchFamily}
+              onChange={(e) => {
+                setBatchFamily(e.target.value);
+                setBatchRoomNumber('');
+              }}
+              className={`${filterField} tabular-nums`}
+            >
+              <option value="">Choose a family</option>
+              {familiesInBatchTour.map((fam) => {
+                const cnt = reservations.filter(
+                  (r) => (r.family || '').trim().toLowerCase() === fam.trim().toLowerCase() && (!batchTourId || r.tourRefNo === batchTourId)
+                ).length;
+                return (
+                  <option key={fam} value={fam}>
+                    {fam} ({cnt} members)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="lg:w-[116px] lg:shrink-0">
+            <label htmlFor="family-allot-building" className={fieldLabel}>Building</label>
+            <select
+              id="family-allot-building"
               value={batchBuilding}
               onChange={(e) => {
                 setBatchBuilding(e.target.value);
                 setBatchRoomNumber('');
               }}
-              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-brand-700 shadow-2xs cursor-pointer"
+              className={filterField}
             >
               {distinctBuildings.map((bldg) => (
                 <option key={bldg} value={bldg}>{bldg}</option>
               ))}
             </select>
+          </div>
 
-            {/* Room select */}
+          <div className="col-span-2 lg:min-w-0 lg:flex-1">
+            <label htmlFor="family-allot-room" className={fieldLabel}>Vacant room</label>
             <select
+              id="family-allot-room"
               value={batchRoomNumber}
               onChange={(e) => setBatchRoomNumber(e.target.value)}
               disabled={!batchFamily}
-              className="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs font-bold text-stone-900 shadow-2xs cursor-pointer disabled:opacity-40"
+              className={`${filterField} tabular-nums`}
             >
-              <option value="">-- Select Vacant Room --</option>
+              <option value="">{batchFamily ? 'Choose a vacant room' : 'Choose a family first'}</option>
               {vacantRoomsForFamily.map((rm) => (
                 <option key={rm.id} value={rm.roomNumber}>
-                  Room {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • {getRoomBedCount(rm)} beds • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} Buf` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single Beds'})
+                  Room {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • {getRoomBedCount(rm)} beds • Pax {rm.capacity}{rm.buffer ? ` +${rm.buffer} buffer` : ''} • {rm.toiletType || 'Standard'} • {rm.bedType || 'Single beds'})
                 </option>
               ))}
             </select>
+          </div>
 
-            {/* Allot in One Go button */}
+          <div className="col-span-2 flex items-center gap-2 lg:shrink-0">
             <button
               type="button"
               disabled={!batchFamily || !batchRoomNumber}
@@ -1310,12 +1578,12 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   setBatchRoomNumber('');
                 }
               }}
-              className="px-3.5 py-1.5 bg-brand-700 hover:bg-brand-800 disabled:opacity-40 text-white font-extrabold rounded-lg text-xs shadow-xs transition cursor-pointer"
+              className={`${btn.primary} md:h-9 max-lg:flex-1`}
             >
-              Allot All ({selectedFamilyMembers.length}) Members
+              <Users className="w-4 h-4" />
+              Allot all ({selectedFamilyMembers.length}) members
             </button>
 
-            {/* Clear Allotment */}
             {batchFamily && (
               <button
                 type="button"
@@ -1324,66 +1592,60 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                     onBatchAllotFamily(batchTourId, batchFamily, batchBuilding, '');
                   }
                 }}
-                className="px-2.5 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-xs font-semibold transition"
-                title="Clear room allotment for this family"
+                className={`${btnSm.danger} max-md:h-10 md:h-9`}
+                title="Clear the room allotment for this family"
               >
-                Clear
+                Clear room
               </button>
             )}
           </div>
         </div>
 
-        {/* Selected Family Member Preview Chips */}
+        {/* The chosen family, so staff can see who is about to move */}
         {selectedFamilyMembers.length > 0 && (
-          <div className="pt-2 border-t border-emerald-200/80 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="font-extrabold text-brand-700 mr-1">
-              Family "{batchFamily}" ({selectedFamilyMembers.length} Zaereen):
-            </span>
-            {selectedFamilyMembers.map((m) => (
-              <span
-                key={m.id}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-stone-900 text-xs shadow-2xs"
-              >
-                <span className="font-bold text-stone-950">{m.applicantName}</span>
-                <span className="text-stone-400 font-mono text-[11px]">(ITS {m.itsId}, Age {m.age})</span>
-                {m.roomNumber ? (
-                  <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-950 font-black text-[11px]">
-                    Rm {m.roomNumber} ({m.building}) ✓
-                  </span>
-                ) : (
-                  <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-950 font-bold text-[11px]">
-                    Unallotted
-                  </span>
-                )}
-              </span>
-            ))}
+          <div className="mt-4 border-t border-stone-200 pt-3">
+            <div className="text-[13px] font-medium text-stone-700">
+              Family {batchFamily} · {selectedFamilyMembers.length} zaereen
+            </div>
+            <ul className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+              {selectedFamilyMembers.map((m) => (
+                <li key={m.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                  <span className="font-medium text-stone-900">{m.applicantName}</span>
+                  <span className="text-stone-500 tabular-nums">ITS {m.itsId}, age {m.age}</span>
+                  {m.roomNumber ? (
+                    <span className={chip('ok')}>{m.building} {m.roomNumber}</span>
+                  ) : (
+                    <span className={chip('wait')}>Needs room</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
 
-      {/* Floating / Sticky Batch Selection Action Bar */}
+      {/* Bulk actions for the selection (stays on screen while scrolling) */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-2 z-30 mb-3 bg-brand-700 text-white px-4 py-2.5 rounded-xl shadow-xl border border-gold-400/40 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 bg-brand-800 px-3 py-1 rounded-lg text-xs font-bold text-gold-200 border border-gold-400/30">
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>{selectedIds.size} Selected</span>
-            </span>
-            <span className="text-xs text-stone-200 hidden sm:inline">
-              Perform batch operations on selected zaereen records
-            </span>
+        <div className="sticky top-[68px] lg:top-3 z-30 rounded-xl border border-brand-300 bg-brand-50 px-4 py-2.5 shadow-xl animate-in slide-in-from-top-2 md:flex md:flex-wrap md:items-center md:justify-between md:gap-x-4 md:gap-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="font-semibold text-brand-800 tabular-nums">{fmtCount(selectedIds.size)} selected</span>
+            {selectedElsewhere > 0 && (
+              <span className="text-[13px] text-stone-600 tabular-nums">
+                {fmtCount(selectedElsewhere)} of them not on this page
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="app-scroll-x flex items-center gap-2 max-md:-mx-4 max-md:mt-2 max-md:overflow-x-auto max-md:px-4 md:flex-wrap">
             {onOpenBToASlip && (
               <button
                 type="button"
                 onClick={() => onOpenBToASlip(null, Array.from(selectedIds))}
-                className="px-2.5 py-1 bg-gold-400 hover:bg-gold-500 text-brand-800 rounded-lg text-xs font-extrabold flex items-center gap-1 transition cursor-pointer shadow-xs"
-                title="Shift selected zaereen to Category A (B to A) & generate Accounts Slip"
+                className={`${btnSm.secondary} max-md:h-10`}
+                title="Shift the selected zaereen to Category A (B to A) and make the accounts slip"
               >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>B→A Shift</span>
+                <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                B→A shift
               </button>
             )}
 
@@ -1391,49 +1653,45 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenAToBSlip(null, Array.from(selectedIds))}
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                title="Generate A to B slip for selected zaereen (grouped per Tour ID)"
+                className={`${btnSm.secondary} max-md:h-10`}
+                title="Make the A to B slip for the selected zaereen (grouped by tour ID)"
               >
-                <FileText className="w-3.5 h-3.5" />
-                <span>A→B Slip</span>
+                <FileText className="w-4 h-4 text-stone-500" />
+                A→B slip
               </button>
             )}
 
             <button
               type="button"
               onClick={() => handleBulkMarkSelectedPortal(true)}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-gold-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-              title="Mark selected zaereen as Uploaded to main portal"
+              className={`${btnSm.secondary} max-md:h-10`}
+              title="Mark the selected zaereen as uploaded to the main portal"
             >
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>Mark Uploaded</span>
+              <CheckSquare className="w-4 h-4 text-stone-500" />
+              Mark uploaded
             </button>
 
             <button
               type="button"
               onClick={() => handleBulkMarkSelectedPortal(false)}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-stone-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-              title="Mark selected zaereen as Pending"
+              className={`${btnSm.secondary} max-md:h-10`}
+              title="Mark the selected zaereen as pending"
             >
-              <Square className="w-3.5 h-3.5" />
-              <span>Mark Pending</span>
+              <Square className="w-4 h-4 text-stone-500" />
+              Mark pending
             </button>
 
             <button
               type="button"
               onClick={() => setIsBatchDeleteModalOpen(true)}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+              className={`${btnSm.danger} max-md:h-10`}
               title="Delete all selected zaereen records"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete Selected ({selectedIds.size})</span>
+              <Trash2 className="w-4 h-4" />
+              Delete selected ({selectedIds.size})
             </button>
 
-            <button
-              type="button"
-              onClick={handleClearSelection}
-              className="text-stone-300 hover:text-white px-2 py-1 text-xs transition cursor-pointer ml-1"
-            >
+            <button type="button" onClick={handleClearSelection} className={`${btnSm.ghost} max-md:h-10`}>
               Clear
             </button>
           </div>
@@ -1441,713 +1699,575 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MOBILE CARD LIST (FAST CHECK & ROOM SWITCHING ON PHONES)                  */}
+      {/* PHONE LIST: one block per zair                                            */}
       {/* ========================================================================= */}
-      <div className="md:hidden space-y-2.5">
-        <div className="flex items-center justify-between px-1 text-xs text-stone-600 font-semibold">
-          <span className="tabular-nums">
-            Showing {Math.min(mobileVisibleCount, filteredAndSortedReservations.length)} of {filteredAndSortedReservations.length} zaereen
-          </span>
-          <button
-            type="button"
-            onClick={handleToggleSelectAllVisible}
-            className="text-brand-700 font-bold px-2 py-1 rounded hover:bg-emerald-50 min-h-[44px] flex items-center cursor-pointer"
-          >
-            {isAllVisibleSelected ? 'Deselect All' : 'Select All'}
-          </button>
-        </div>
+      {!isDesktop && (
+        <div ref={listTopRef} className="space-y-3 scroll-mt-20">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <span className="text-[13px] text-stone-600 tabular-nums">
+              {totalRows === 0 ? (
+                'No zaereen'
+              ) : (
+                <>
+                  Rows <strong className="font-semibold text-stone-900">{fmtCount(pagerProps.from)}–{fmtCount(pagerProps.to)}</strong> of {fmtCount(totalRows)}
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={handleToggleSelectAllVisible}
+              disabled={totalRows === 0}
+              className={btn.ghost}
+              title="Selects every filtered zair, on every page"
+            >
+              {isAllVisibleSelected ? 'Deselect all' : `Select all ${fmtCount(totalRows)}`}
+            </button>
+          </div>
 
-        {filteredAndSortedReservations.length > 0 ? (
-          <>
-            {filteredAndSortedReservations.slice(0, mobileVisibleCount).map((res, idx) => {
-              const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
-              const isShiftedToA = !!res.shiftToCategoryA;
-              const isSelected = selectedIds.has(res.id);
-              const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
-              const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
+          {pageRows.length > 0 ? (
+            <>
+              {pageRows.map((res, idx) => {
+                const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
+                const isShiftedToA = !!res.shiftToCategoryA;
+                const isSelected = selectedIds.has(res.id);
+                const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
+                const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
 
-              return (
-                <div
-                  key={res.id}
-                  className={`bg-white border rounded-2xl p-3.5 shadow-2xs space-y-2.5 ${
-                    isSelected ? 'border-amber-400 bg-amber-50/40' : 'border-stone-200'
-                  }`}
-                >
-                  {/* Top row: Checkbox, Name, Star, Room Status */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 min-w-0">
-                      <label className="min-w-[44px] min-h-[44px] -ml-2 -mt-2 flex items-center justify-center cursor-pointer shrink-0">
+                return (
+                  <div
+                    key={res.id}
+                    className={`rounded-2xl border p-4 shadow-xs ${
+                      isSelected ? 'border-brand-400 bg-brand-50' : 'border-stone-200 bg-white'
+                    }`}
+                  >
+                    {/* Who: select, name, star */}
+                    <div className="flex items-start gap-1">
+                      <label className="-ml-3 -mt-2.5 flex h-11 w-11 shrink-0 items-center justify-center cursor-pointer">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelectRow(res.id)}
-                          className="w-4 h-4 rounded border-stone-300 accent-brand-700"
+                          aria-label={`Select ${res.applicantName}`}
+                          className="w-[18px] h-[18px] rounded border-stone-300 accent-brand-700"
                         />
                       </label>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[11px] font-mono text-stone-400 tabular-nums">#{idx + 1}</span>
-                          {res.isSpecialGuest ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSpecialGuestModal(res)}
-                              className="p-0.5 text-amber-500 cursor-pointer"
-                              title={`Special Guest: ${res.specialRemarks || 'Edit remarks'}`}
-                            >
-                              <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSpecialGuestModal(res)}
-                              className="p-0.5 text-stone-300 hover:text-amber-500 cursor-pointer"
-                              title="Mark as Star guest"
-                            >
-                              <Star className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <h3 className={`text-sm font-extrabold truncate ${res.isSpecialGuest ? 'text-amber-950' : 'text-stone-900'}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="min-w-0 truncate text-[15px] font-semibold leading-snug text-stone-950">
                             {res.applicantName}
                           </h3>
                           <OtherStays others={otherStays.get(res.id)} />
                         </div>
-                        <div className="text-xs text-stone-600 font-mono tabular-nums mt-0.5">
-                          ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Fam #{res.family}
+                        <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                          #{pageStart + idx + 1} · ITS {res.itsId} · {res.age}y {res.gender === 'Female' ? 'F' : 'M'} · Family {res.family}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="shrink-0 text-right">
-                      <span
-                        className={`inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border tabular-nums ${
-                          isAllotted
-                            ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
-                            : 'bg-amber-100 text-amber-950 border-amber-300'
-                        }`}
-                      >
-                        {isAllotted ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* NKERP photo + Tour ID + Office Name */}
-                  <div className="flex items-start gap-2.5">
-                  <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
-                  <div className="flex-1 min-w-0 bg-stone-50 rounded-xl px-3 py-2 border border-stone-200 text-xs space-y-1">
-                    <div className="font-mono font-bold text-brand-700 break-all">
-                      Tour: {res.tourRefNo || res.tourId || '—'}
-                    </div>
-                    <div className="text-stone-700 font-semibold">
-                      Office: {res.officeName || '—'}
-                    </div>
-                    <div className="text-[11px] text-stone-600 tabular-nums pt-0.5">
-                      Arr: <strong className="text-stone-900">{res.arrivalDate?.slice(0, 10) || '—'}</strong> ({res.arrivalTime || '11:00 AM'}) ➔ Dep:{' '}
-                      <strong className="text-stone-900">{res.departureDate?.slice(0, 10) || '—'}</strong> ({res.departureTime || '01:00 AM'})
-                    </div>
-                    {(res.arrivalTravel?.length || res.departureTravel?.length) ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
-                        <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
-                      </div>
-                    ) : null}
-                  </div>
-                  </div>
-
-                  {/* Category + Portal + Actions */}
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                    {!isReadOnly && isAllotted && onOpenSwitchRoomModal && (
                       <button
                         type="button"
-                        onClick={() => onOpenSwitchRoomModal({ reservations: [res], initialScope: 'single' })}
-                        className="flex-1 min-h-[44px] px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        onClick={() => handleOpenSpecialGuestModal(res)}
+                        className={`-mr-2.5 -mt-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg cursor-pointer ${
+                          res.isSpecialGuest ? 'text-gold-500' : 'text-stone-400'
+                        }`}
+                        title={res.isSpecialGuest ? `Special guest: ${res.specialRemarks || 'Edit remarks'}` : 'Mark as star guest'}
+                        aria-label={res.isSpecialGuest ? 'Edit star guest remarks' : 'Mark as star guest'}
                       >
-                        <ArrowRightLeft className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Switch Room</span>
+                        <Star className={`w-5 h-5 ${res.isSpecialGuest ? 'fill-gold-400' : ''}`} />
                       </button>
-                    )}
+                    </div>
 
-                    {!isReadOnly && onOpenQuickAllotModal && (
+                    {/* Room state */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {isAllotted ? (
+                        <span className={chip('ok')}>
+                          <Check className="w-3.5 h-3.5" />
+                          {res.building} {res.roomNumber}
+                        </span>
+                      ) : (
+                        <span className={chip('wait')}>Needs room</span>
+                      )}
+                      {isShiftedToA && <span className={chip('special')}>B→A</span>}
+                      {res.isUploadedToPortal && <span className={chip('neutral')}>On portal</span>}
+                    </div>
+
+                    {/* NKERP photo, tour, office, dates */}
+                    <div className="mt-3 flex items-start gap-3">
+                      <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
+                      <dl className="min-w-0 flex-1 space-y-1.5 text-[13px] leading-snug">
+                        <div className="flex gap-2">
+                          <dt className="w-[70px] shrink-0 text-stone-500">Tour</dt>
+                          <dd className="min-w-0 break-words font-medium text-stone-900 tabular-nums" title={res.tourRefNo || res.tourId || ''}>{shortTour(res.tourRefNo || res.tourId) || '—'}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="w-[70px] shrink-0 text-stone-500">Office</dt>
+                          <dd className="min-w-0 text-stone-800">{res.officeName || '—'}</dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="w-[70px] shrink-0 text-stone-500">Arrival</dt>
+                          <dd className="min-w-0 text-stone-800">
+                            <span className="font-medium text-stone-900 tabular-nums">
+                              {res.arrivalDate ? stayDay(res.arrivalDate) : '—'}, {res.arrivalTime || '11:00 AM'}
+                            </span>
+                            <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" flush />
+                          </dd>
+                        </div>
+                        <div className="flex gap-2">
+                          <dt className="w-[70px] shrink-0 text-stone-500">Departure</dt>
+                          <dd className="min-w-0 text-stone-800">
+                            <span className="font-medium text-stone-900 tabular-nums">
+                              {res.departureDate ? stayDay(res.departureDate) : '—'}, {res.departureTime || '01:00 AM'}
+                            </span>
+                            <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" flush />
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3">
+                      {!isReadOnly && onOpenQuickAllotModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenQuickAllotModal(res)}
+                          className={`${isAllotted ? btn.secondary : btn.primary} flex-1`}
+                        >
+                          <Sparkles className={`w-4 h-4 ${isAllotted ? 'text-stone-500' : ''}`} />
+                          {isAllotted ? 'Edit room' : 'Allot room'}
+                        </button>
+                      )}
+
+                      {!isReadOnly && isAllotted && onOpenSwitchRoomModal && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSwitchRoomModal({ reservations: [res], initialScope: 'single' })}
+                          className={`${btn.secondary} flex-1`}
+                        >
+                          <ArrowRightLeft className="w-4 h-4 text-stone-500" />
+                          Switch room
+                        </button>
+                      )}
+
+                      {!isReadOnly && sameFamilyCount > 1 && isAllotted && onBatchAllotFamily && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onBatchAllotFamily(String(res.tourRefNo || res.tourId || ''), String(res.family || ''), res.building || 'Saifee', res.roomNumber);
+                          }}
+                          className={btn.secondary}
+                          title={`Give ${res.building || 'Saifee'} room ${res.roomNumber} to all ${sameFamilyCount} members of family ${res.family}`}
+                        >
+                          <Users className="w-4 h-4 text-stone-500" />
+                          Family ({sameFamilyCount})
+                        </button>
+                      )}
+
                       <button
                         type="button"
-                        onClick={() => onOpenQuickAllotModal(res)}
-                        className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                          isAllotted
-                            ? 'bg-stone-100 text-stone-800 border border-stone-300'
-                            : 'bg-brand-700 text-white border border-brand-700'
-                        }`}
+                        onClick={() => handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)}
+                        aria-pressed={!!res.isUploadedToPortal}
+                        className={res.isUploadedToPortal ? `${portalDone} h-10 px-3.5 text-sm` : btn.secondary}
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{isAllotted ? 'Edit Room' : 'Allot Room'}</span>
+                        {res.isUploadedToPortal ? <Check className="w-4 h-4" /> : <Square className="w-4 h-4 text-stone-400" />}
+                        {res.isUploadedToPortal ? 'Portal done' : 'Tick portal'}
                       </button>
-                    )}
 
-                    {!isReadOnly && sameFamilyCount > 1 && isAllotted && onBatchAllotFamily && (
+                      {isShiftedToA && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAccountsSlip(res)}
+                          className={`${iconRing} h-10 w-10`}
+                          title="Accounts slip (B to A)"
+                          aria-label="Accounts slip (B to A)"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {!isShiftedToA && res.shiftDirection === 'A_TO_B' && onOpenAToBSlip && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAToBSlip(res, [res.id])}
+                          className={`${iconRing} h-10 w-10`}
+                          title="Accounts slip (A to B)"
+                          aria-label="Accounts slip (A to B)"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
-                          onBatchAllotFamily(String(res.tourRefNo || res.tourId || ''), String(res.family || ''), res.building || 'Saifee', res.roomNumber);
+                          if (isBToARecord(res) && userRole !== 'admin') {
+                            setBToABlockedRecord(res);
+                          } else {
+                            setRecordToDelete(res);
+                          }
                         }}
-                        className="min-h-[44px] px-3 py-2 rounded-xl bg-emerald-100 text-emerald-950 border border-emerald-400 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                        className={`${iconDanger} h-10 w-10 ring-1 ring-inset ring-stone-200`}
+                        title="Delete record"
+                        aria-label={`Delete record for ${res.applicantName}`}
                       >
-                        <Users className="w-3.5 h-3.5" />
-                        <span>Fam ({sameFamilyCount})</span>
+                        <Trash2 className="w-4 h-4" />
                       </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)}
-                      className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1 border cursor-pointer ${
-                        res.isUploadedToPortal
-                          ? 'bg-brand-700 text-white border-brand-700'
-                          : 'bg-white text-stone-600 border-stone-300'
-                      }`}
-                    >
-                      {res.isUploadedToPortal ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-                      <span>{res.isUploadedToPortal ? 'Portal ✓' : 'Portal'}</span>
-                    </button>
-
-                    {isShiftedToA && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenAccountsSlip(res)}
-                        className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center justify-center cursor-pointer"
-                        title="Accounts Slip (B to A)"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {!isShiftedToA && res.shiftDirection === 'A_TO_B' && onOpenAToBSlip && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenAToBSlip(res, [res.id])}
-                        className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 flex items-center justify-center cursor-pointer"
-                        title="Accounts Slip (A to B)"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isBToARecord(res) && userRole !== 'admin') {
-                          setBToABlockedRecord(res);
-                        } else {
-                          setRecordToDelete(res);
-                        }
-                      }}
-                      className="min-h-[44px] min-w-[44px] px-2.5 rounded-xl bg-stone-50 hover:bg-red-50 text-stone-500 hover:text-red-700 border border-stone-200 flex items-center justify-center cursor-pointer"
-                      title="Delete record"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            {filteredAndSortedReservations.length > mobileVisibleCount && (
-              <button
-                type="button"
-                onClick={() => setMobileVisibleCount((c) => c + 40)}
-                className="w-full min-h-[44px] py-3 rounded-xl bg-stone-50 hover:bg-stone-100 border border-gold-400 text-brand-700 font-extrabold text-xs shadow-2xs cursor-pointer"
-              >
-                Show 40 More ({filteredAndSortedReservations.length - mobileVisibleCount} remaining)
-              </button>
-            )}
-          </>
-        ) : (
-          <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center text-sm text-stone-500">
-            No zaereen found matching your filter criteria.
+              <div className="flex justify-center pt-1">
+                <Pager {...pagerProps} onPageSize={setPageSize} />
+              </div>
+            </>
+          ) : (
+            <div className={card}>{emptyState}</div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DESKTOP TABLE: scrolls inside its own frame, header and name stay put     */}
+      {/* ========================================================================= */}
+      {isDesktop && (
+        <div className={`${card} flex w-full flex-col overflow-hidden`}>
+          {/* Count and compact pager */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-stone-200 px-4 py-2">
+            <div className="text-[13px] text-stone-600 tabular-nums">
+              {hasActiveFilters ? (
+                <>
+                  <strong className="font-semibold text-stone-900">{fmtCount(totalRows)}</strong> of {fmtCount(totalZaereen)} zaereen match
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold text-stone-900">{fmtCount(totalRows)}</strong> zaereen
+                </>
+              )}
+            </div>
+            <Pager {...pagerProps} compact />
           </div>
-        )}
-      </div>
 
-      {/* ========================================================================= */}
-      {/* MAIN ZAEREEN GRID TABLE: DESKTOP FULL SCREEN TABLE                       */}
-      {/* ========================================================================= */}
-      <div className="hidden md:flex bg-white border border-stone-200 rounded-2xl shadow-sm overflow-hidden flex-col w-full">
-        <div className={`w-full ${fitColumnsToScreen ? 'overflow-x-auto lg:overflow-visible' : 'overflow-x-auto'}`}>
-          <table className={`w-full text-left text-xs border-collapse ${fitColumnsToScreen ? 'table-fixed' : 'min-w-[2110px]'}`}>
-            {/* Table Header with interactive sorting on all columns */}
-            <thead className="bg-stone-50 text-stone-600 border-b border-stone-200 uppercase text-[11px] tracking-wider font-medium select-none sticky top-0 z-10">
-              <tr>
-                <th className={`py-3 px-1 text-center ${fitColumnsToScreen ? 'w-[36px]' : 'w-14'}`}>
-                  <div className="flex items-center justify-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={isAllVisibleSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = isSomeVisibleSelected;
-                      }}
-                      onChange={handleToggleSelectAllVisible}
-                      className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-brand-700"
-                      title="Select / Deselect all visible zaereen"
-                    />
-                    <span>#</span>
-                  </div>
-                </th>
+          <div
+            ref={tableScrollRef}
+            onScroll={(e) => {
+              const stuck = e.currentTarget.scrollLeft > nameColumnLeft;
+              setNameStuck((prev) => (prev === stuck ? prev : stuck));
+            }}
+            className="w-full overflow-auto max-h-[max(22rem,calc(100dvh-9rem))]"
+          >
+            <table
+              className="w-full table-fixed border-separate border-spacing-0 text-left text-[13px] text-stone-800"
+              style={{ minWidth: tableMinWidth }}
+            >
+              <colgroup>
+                {columnWidths.map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+              </colgroup>
 
-                {/* NKERP photo */}
-                <th className="py-3 px-1.5 w-[110px]">PHOTO</th>
-
-                {/* 1. ITS ID */}
-                <th
-                  onClick={() => handleSort('itsId')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'
-                  }`}
-                  title="Click to sort by ITS ID"
-                >
-                  <div className="flex items-center">
-                    <span>ITS</span>
-                    {renderSortIndicator('itsId')}
-                  </div>
-                </th>
-
-                {/* 2. Applicant Name */}
-                <th
-                  onClick={() => handleSort('applicantName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'
-                  }`}
-                  title="Click to sort by Applicant Name"
-                >
-                  <div className="flex items-center">
-                    <span>NAME</span>
-                    {renderSortIndicator('applicantName')}
-                  </div>
-                </th>
-
-                {/* 3. Age */}
-                <th
-                  onClick={() => handleSort('age')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[42px]' : 'min-w-[65px]'
-                  }`}
-                  title="Click to sort by Age"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>AGE</span>
-                    {renderSortIndicator('age')}
-                  </div>
-                </th>
-
-                {/* 4. Family */}
-                <th
-                  onClick={() => handleSort('family')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[56px]' : 'min-w-[95px]'
-                  }`}
-                  title="Click to sort by Family"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>FAM</span>
-                    {renderSortIndicator('family')}
-                  </div>
-                </th>
-
-                {/* 5. Office Name */}
-                <th
-                  onClick={() => handleSort('officeName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[105px]' : 'min-w-[180px]'
-                  }`}
-                  title="Click to sort by Office Name"
-                >
-                  <div className="flex items-center">
-                    <span>OFFICE</span>
-                    {renderSortIndicator('officeName')}
-                  </div>
-                </th>
-
-                {/* 6. TOUR ID */}
-                <th
-                  onClick={() => handleSort('tourRefNo')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[120px]' : 'min-w-[190px] max-w-[260px]'
-                  }`}
-                  title="Click to sort by Tour ID"
-                >
-                  <div className="flex items-center">
-                    <span>TOUR ID</span>
-                    {renderSortIndicator('tourRefNo')}
-                  </div>
-                </th>
-
-                {/* 7. Building */}
-                <th
-                  onClick={() => handleSort('building')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'
-                  }`}
-                  title="Click to sort by Building (Saifee / Burhani)"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>BLDG</span>
-                    {renderSortIndicator('building')}
-                  </div>
-                </th>
-
-                {/* 8. Room Allottment */}
-                <th
-                  onClick={() => handleSort('roomNumber')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[115px]' : 'min-w-[170px]'
-                  }`}
-                  title="Click to sort by Room Number"
-                >
-                  <div className="flex items-center">
-                    <span>ROOM</span>
-                    {renderSortIndicator('roomNumber')}
-                  </div>
-                </th>
-
-                {/* 9. Gender */}
-                <th
-                  onClick={() => handleSort('gender')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[48px]' : 'min-w-[80px]'
-                  }`}
-                  title="Click to sort by Gender"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>GEN</span>
-                    {renderSortIndicator('gender')}
-                  </div>
-                </th>
-
-                {/* 10. Group Lead */}
-                <th
-                  onClick={() => handleSort('groupLeadName')}
-                  className={`py-3 px-1.5 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[100px]' : 'min-w-[170px]'
-                  }`}
-                  title="Click to sort by Group Lead"
-                >
-                  <div className="flex items-center">
-                    <span>LEAD</span>
-                    {renderSortIndicator('groupLeadName')}
-                  </div>
-                </th>
-
-                {/* 11. Arrival Date */}
-                <th
-                  onClick={() => handleSort('arrivalDate')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
-                  }`}
-                  title="Click to sort by Arrival Date"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>ARRIVAL</span>
-                    {renderSortIndicator('arrivalDate')}
-                  </div>
-                </th>
-
-                {/* 12. Departure Date */}
-                <th
-                  onClick={() => handleSort('departureDate')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'
-                  }`}
-                  title="Click to sort by Departure Date"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>DEPARTURE</span>
-                    {renderSortIndicator('departureDate')}
-                  </div>
-                </th>
-
-                {/* 13. Category Sort (KEPT AT THE END!) */}
-                <th
-                  onClick={() => handleSort('category')}
-                  className={`py-3 px-1 text-center cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[115px]' : 'min-w-[150px]'
-                  }`}
-                  title="Click to sort by Category"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>CATEGORY</span>
-                    {renderSortIndicator('category')}
-                  </div>
-                </th>
-
-                {/* 14. Main Portal Tick Button Sort */}
-                <th
-                  onClick={() => handleSort('portal')}
-                  className={`py-3 px-1 text-center bg-stone-100 cursor-pointer hover:bg-stone-100 transition ${
-                    fitColumnsToScreen ? 'w-[80px]' : 'min-w-[135px]'
-                  }`}
-                  title="Click to sort by Main Portal upload status"
-                >
-                  <div className="flex items-center justify-center">
-                    <span>PORTAL</span>
-                    {renderSortIndicator('portal')}
-                  </div>
-                </th>
-
-                <th className={`py-3 px-1 text-center ${fitColumnsToScreen ? 'w-[40px]' : 'w-12'}`}>ACT</th>
-              </tr>
-            </thead>
-
-            {/* Table Body with optimized rendering */}
-            <tbody className="divide-y divide-stone-100 text-stone-900 text-xs">
-              {filteredAndSortedReservations.length > 0 ? (
-                filteredAndSortedReservations.map((res, index) => {
-                  const isShiftedToA = !!res.shiftToCategoryA;
-                  const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
-
-                  // Effective Pax (infants under 3 do not consume room capacity)
-                  const resEffectivePax = isInfant(res) ? 0 : (res.pax || res.paxCount || 1);
-
-                  // Precomputed O(1) family member count
-                  const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
-                  const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
-
-                  // Available rooms lookup: Instant, memoized, showing all rooms where capacity is not reached!
-                  const chosenBldg = normalizeBuildingName(res.building) || 'Saifee';
-                  const bldgNorm = chosenBldg.toLowerCase();
-                  const hotelRooms = rooms.filter((rm) => normalizeBuildingName(rm.building).toLowerCase() === bldgNorm);
-                  const dateCacheKey = `${bldgNorm}___${(res.arrivalDate || '').slice(0, 10)}___${(res.departureDate || '').slice(0, 10)}`;
-                  const cachedAvailable = availableRoomsCache.get(dateCacheKey);
-                  const availableRoomsForRes = cachedAvailable || hotelRooms.filter((rm) => rm.status !== 'blocked');
-                  const availableRoomSet = new Set(availableRoomsForRes.map((rm) => rm.roomNumber));
-
-                  const isSelected = selectedIds.has(res.id);
-
-                  return (
-                    <tr
-                      key={res.id}
-                      className={`hover:bg-stone-50 transition ${
-                        isSelected ? 'bg-amber-100/40' : !isAllotted ? 'bg-amber-50/25' : ''
-                      }`}
+              <thead className="select-none">
+                <tr>
+                  <th scope="col" className={`${thCell} z-10`}>
+                    <label
+                      className="flex h-10 items-center gap-2 pl-3 cursor-pointer"
+                      title={`Select or deselect all ${fmtCount(totalRows)} filtered zaereen, on every page`}
                     >
-                      {/* Checkbox & Index */}
-                      <td className={`py-2 px-1 text-center text-stone-400 font-mono text-[11px] ${fitColumnsToScreen ? 'w-[36px]' : 'w-14'}`}>
-                        <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelectRow(res.id)}
-                            className="w-3.5 h-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-brand-700"
-                            title="Select record"
-                          />
-                          <span className="text-[10px] text-stone-400 font-normal">{index + 1}</span>
-                        </div>
-                      </td>
+                      <input
+                        type="checkbox"
+                        checked={isAllVisibleSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeVisibleSelected;
+                        }}
+                        onChange={handleToggleSelectAllVisible}
+                        aria-label="Select all filtered zaereen"
+                        className="w-4 h-4 rounded border-stone-300 cursor-pointer accent-brand-700"
+                      />
+                      <span>#</span>
+                    </label>
+                  </th>
+                  <th scope="col" className={`${thCell} z-10 h-10 px-3 text-left`}>Photo</th>
+                  {renderSortTh('itsId', 'ITS')}
+                  {renderSortTh('applicantName', 'Name', `left-0 z-20 ${nameStuck ? 'border-r' : ''}`)}
+                  {renderSortTh('age', 'Age')}
+                  {renderSortTh('family', 'Family')}
+                  {renderSortTh('officeName', 'Office')}
+                  {renderSortTh('tourRefNo', 'Tour ID')}
+                  {renderSortTh('building', 'Building')}
+                  {renderSortTh('roomNumber', 'Room')}
+                  {renderSortTh('gender', 'Gender')}
+                  {renderSortTh('groupLeadName', 'Lead')}
+                  {renderSortTh('arrivalDate', 'Arrival')}
+                  {renderSortTh('departureDate', 'Departure')}
+                  {renderSortTh('category', 'Category')}
+                  {renderSortTh('portal', 'Portal')}
+                  <th scope="col" className={`${thCell} z-10`}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
 
-                      {/* NKERP photo */}
-                      <td className="py-2 px-1.5 w-[110px]">
-                        <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
-                      </td>
+              <tbody>
+                {pageRows.length > 0 ? (
+                  pageRows.map((res, index) => {
+                    const isShiftedToA = !!res.shiftToCategoryA;
+                    const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
 
-                      {/* 1. ITS ID */}
-                      <td className={`py-2 px-1.5 font-mono font-bold text-stone-950 ${fitColumnsToScreen ? 'w-[78px]' : 'min-w-[115px]'}`}>
-                        <input
-                          type="text"
-                          value={res.itsId}
-                          onChange={(e) => handleFieldChange(res.id, 'itsId', e.target.value)}
-                          className="w-full bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-mono font-bold text-stone-950 text-xs"
-                        />
-                      </td>
+                    // Precomputed O(1) family member count
+                    const famKey = res.family && res.tourRefNo ? `${res.tourRefNo}___${res.family.trim().toLowerCase()}` : '';
+                    const sameFamilyCount = famKey ? (familyCountMap.get(famKey) || 1) : 1;
 
-                      {/* 2. Applicant Name */}
-                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[130px]' : 'min-w-[200px]'}`}>
-                        <div className="flex items-center gap-1 group/name relative">
-                          {/* Star button on hover & persistent gold star badge when starred */}
-                          {res.isSpecialGuest ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSpecialGuestModal(res)}
-                              className="shrink-0 p-0.5 text-amber-500 hover:text-amber-600 rounded transition cursor-pointer hover:bg-amber-100/60"
-                              title={`Special Guest: ${res.specialRemarks || 'Click to edit special requirements'}`}
-                            >
-                              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500 drop-shadow-xs" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSpecialGuestModal(res)}
-                              className="opacity-0 group-hover/name:opacity-100 shrink-0 p-0.5 text-stone-300 hover:text-amber-500 rounded transition cursor-pointer hover:bg-stone-100"
-                              title="Add star badge & special lodging remarks"
-                            >
-                              <Star className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                    // Available rooms lookup: memoized, showing all rooms where capacity is not reached
+                    const chosenBldg = normalizeBuildingName(res.building) || 'Saifee';
+                    const bldgNorm = chosenBldg.toLowerCase();
+                    const hotelRooms = rooms.filter((rm) => normalizeBuildingName(rm.building).toLowerCase() === bldgNorm);
+                    const dateCacheKey = `${bldgNorm}___${(res.arrivalDate || '').slice(0, 10)}___${(res.departureDate || '').slice(0, 10)}`;
+                    const cachedAvailable = availableRoomsCache.get(dateCacheKey);
+                    const availableRoomsForRes = cachedAvailable || hotelRooms.filter((rm) => rm.status !== 'blocked');
+                    const availableRoomSet = new Set(availableRoomsForRes.map((rm) => rm.roomNumber));
+
+                    const isSelected = selectedIds.has(res.id);
+
+                    const roomSelect = (
+                      <select
+                        value={res.roomNumber || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__OPEN_ALLOT_MODAL__') {
+                            if (onOpenQuickAllotModal) onOpenQuickAllotModal(res);
+                            return;
+                          }
+                          const matchedRoom = hotelRooms.find(
+                            (rm) => String(rm.roomNumber).trim().toLowerCase() === String(val).trim().toLowerCase()
+                          );
+                          const targetBldg = matchedRoom
+                            ? (normalizeBuildingName(matchedRoom.building) || chosenBldg)
+                            : chosenBldg;
+                          if (onAllotRoom) {
+                            onAllotRoom(res.id, targetBldg, val);
+                          } else {
+                            handleFieldChange(res.id, 'roomNumber', val);
+                            if (targetBldg !== res.building) {
+                              handleFieldChange(res.id, 'building', targetBldg);
+                            }
+                          }
+                        }}
+                        aria-label={isAllotted ? `Room for ${res.applicantName}` : `Pick a room for ${res.applicantName}`}
+                        title={isAllotted ? `${chosenBldg} room ${res.roomNumber}. Pick another room to move.` : 'Pick a room straight from the list'}
+                        className={
+                          isAllotted
+                            ? `${cellSelect} min-w-0 flex-1 font-bold text-stone-950 tabular-nums`
+                            : `${cellSelect} w-[60px] shrink-0 text-stone-600`
+                        }
+                      >
+                        <option value="">{isAllotted ? 'No room' : 'Pick'}</option>
+                        {onOpenQuickAllotModal && (
+                          <option value="__OPEN_ALLOT_MODAL__">
+                            Open the allot window…
+                          </option>
+                        )}
+                        {res.roomNumber && (
+                          <option value={res.roomNumber}>
+                            {res.roomNumber}
+                          </option>
+                        )}
+                        {availableRoomsForRes.length > 0 && (
+                          <optgroup label="Available rooms (capacity not reached)">
+                            {availableRoomsForRes
+                              .filter((rm) => rm.roomNumber !== res.roomNumber)
+                              .map((rm) => (
+                                <option key={rm.id} value={rm.roomNumber}>
+                                  Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="All rooms (notice / force allot)">
+                          {hotelRooms
+                            .filter((rm) => rm.roomNumber !== res.roomNumber && !availableRoomSet.has(rm.roomNumber))
+                            .map((rm) => (
+                              <option key={rm.id} value={rm.roomNumber}>
+                                Rm {rm.roomNumber} ({rm.status === 'blocked' ? 'Blocked' : `Cap ${rm.capacity} Pax`})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                    );
+
+                    return (
+                      <tr key={res.id} className={`group ${isSelected ? 'bg-brand-50' : 'hover:bg-stone-50'}`}>
+                        {/* Checkbox and running number */}
+                        <td className={tdCell}>
+                          <label className="flex h-8 items-center gap-2 pl-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectRow(res.id)}
+                              aria-label={`Select ${res.applicantName}`}
+                              className="w-4 h-4 shrink-0 rounded border-stone-300 cursor-pointer accent-brand-700"
+                            />
+                            <span className="text-xs text-stone-500 tabular-nums">{pageStart + index + 1}</span>
+                          </label>
+                        </td>
+
+                        {/* NKERP photo */}
+                        <td className={tdCell}>
+                          <div className="flex justify-center">
+                            <ZairPhoto photos={photos} itsId={res.itsId} name={res.applicantName} />
+                          </div>
+                        </td>
+
+                        {/* 1. ITS ID */}
+                        <td className={tdCell}>
                           <input
                             type="text"
-                            value={res.applicantName}
-                            onChange={(e) => handleFieldChange(res.id, 'applicantName', e.target.value)}
-                            title={res.specialRemarks ? `${res.applicantName} (⭐ Requirement: ${res.specialRemarks})` : res.applicantName}
-                            className={`w-full bg-transparent font-bold text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate ${
-                              res.isSpecialGuest ? 'text-amber-950 font-black' : 'text-stone-950'
-                            }`}
+                            value={res.itsId}
+                            onChange={(e) => handleFieldChange(res.id, 'itsId', e.target.value)}
+                            aria-label="ITS"
+                            title={res.itsId}
+                            className={`${cellInput} font-medium text-stone-900 tabular-nums`}
                           />
-                          <OtherStays others={otherStays.get(res.id)} />
-                          {isShiftedToA && (
-                            <span 
-                              className="shrink-0 px-1 py-0.2 rounded text-[9px] font-extrabold bg-brand-700 text-white border border-gold-400/50 shadow-2xs"
-                              title="Shifted to Category A (Nizaam)"
-                            >
-                              A
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 3. Age */}
-                      <td className={`py-2 px-1 text-center text-stone-800 font-semibold ${fitColumnsToScreen ? 'w-[42px]' : 'min-w-[65px]'}`}>
-                        <input
-                          type="text"
-                          value={res.age}
-                          onChange={(e) => handleFieldChange(res.id, 'age', e.target.value)}
-                          className="w-full text-center bg-transparent border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none font-semibold text-xs"
-                        />
-                      </td>
-
-                      {/* 4. Family */}
-                      <td className={`py-2 px-1 text-center font-mono text-emerald-900 font-extrabold ${fitColumnsToScreen ? 'w-[56px]' : 'min-w-[95px]'}`}>
-                        <input
-                          type="text"
-                          value={res.family}
-                          onChange={(e) => handleFieldChange(res.id, 'family', e.target.value)}
-                          className="w-full text-center bg-transparent font-mono font-extrabold text-emerald-900 border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none text-xs"
-                        />
-                      </td>
-
-                      {/* 5. Office Name */}
-                      <td className={`py-2 px-1.5 text-stone-800 text-xs font-medium ${fitColumnsToScreen ? 'w-[105px]' : 'min-w-[180px]'}`}>
-                        <input
-                          type="text"
-                          value={res.officeName}
-                          onChange={(e) => handleFieldChange(res.id, 'officeName', e.target.value)}
-                          title={res.officeName}
-                          className="w-full bg-transparent text-stone-800 text-xs font-medium border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
-                        />
-                      </td>
-
-                      {/* 6. TOUR ID */}
-                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[120px]' : 'min-w-[190px] max-w-[260px]'}`}>
-                        <input
-                          type="text"
-                          value={res.tourRefNo}
-                          onChange={(e) => handleFieldChange(res.id, 'tourRefNo', e.target.value)}
-                          title={res.tourRefNo}
-                          className="w-full bg-transparent font-mono font-bold text-stone-950 text-xs border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
-                        />
-                      </td>
-
-                      {/* 7. Hotel / Building */}
-                      <td className={`py-2 px-1 text-center text-stone-900 font-bold ${fitColumnsToScreen ? 'w-[70px]' : 'min-w-[110px]'}`}>
-                        <select
-                          value={chosenBldg}
-                          onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
-                          className="bg-white border border-stone-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-brand-700 cursor-pointer shadow-2xs w-full"
+                        {/* 2. Name: stays in view while the table scrolls sideways */}
+                        <td
+                          className={`${tdCell} sticky left-0 z-[1] ${nameStuck ? 'border-r' : ''} ${
+                            isSelected ? 'bg-brand-50' : 'bg-white group-hover:bg-stone-50'
+                          }`}
                         >
-                          {distinctBuildings.map((bldg) => (
-                            <option key={bldg} value={bldg}>{bldg}</option>
-                          ))}
-                          {chosenBldg && !distinctBuildings.includes(chosenBldg) && (
-                            <option value={chosenBldg}>{chosenBldg}</option>
-                          )}
-                        </select>
-                      </td>
+                          <div className="group/name flex h-8 items-center gap-1">
+                            <input
+                              type="text"
+                              value={res.applicantName}
+                              onChange={(e) => handleFieldChange(res.id, 'applicantName', e.target.value)}
+                              aria-label="Name"
+                              title={res.specialRemarks ? `${res.applicantName} (star guest: ${res.specialRemarks})` : res.applicantName}
+                              className={`${cellBox} w-full px-1.5 text-sm font-semibold text-stone-950`}
+                            />
+                            <OtherStays others={otherStays.get(res.id)} />
+                            {isShiftedToA && (
+                              <span className={chip('brand')} title="Shifted to Category A (Nizaam)">
+                                A
+                              </span>
+                            )}
+                            {res.isSpecialGuest ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSpecialGuestModal(res)}
+                                className="inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-gold-500 hover:bg-gold-50 cursor-pointer"
+                                title={`Star guest: ${res.specialRemarks || 'Click to edit special requirements'}`}
+                                aria-label="Edit star guest remarks"
+                              >
+                                <Star className="w-4 h-4 fill-gold-400" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSpecialGuestModal(res)}
+                                className="inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-stone-400 opacity-0 hover:bg-stone-100 hover:text-gold-600 focus-visible:opacity-100 group-hover/name:opacity-100 cursor-pointer"
+                                title="Add a star and special lodging remarks"
+                                aria-label="Mark as star guest"
+                              >
+                                <Star className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* 8. Room Allotted */}
-                      <td className={`py-2 px-1.5 ${fitColumnsToScreen ? 'w-[115px]' : 'min-w-[170px]'}`}>
-                        <div className="flex flex-col gap-1">
-                          {isReadOnly ? (
-                            <div className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-[11px] font-bold text-stone-700 truncate">
-                              {res.roomNumber ? `${res.building} Rm ${res.roomNumber}` : 'Unallotted'}
-                            </div>
-                          ) : (
-                            <>
-                              {!isAllotted && onOpenQuickAllotModal && (
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenQuickAllotModal(res)}
-                                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded bg-brand-700 hover:bg-brand-800 text-white border border-brand-700 text-[10px] font-extrabold shadow-xs transition cursor-pointer"
-                                  title="Open Quick Room Allotment Modal with capacity, buffer, & auto-recommendation"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5 text-gold-200" />
-                                  <span>✨ Allot Room (Modal)</span>
-                                </button>
-                              )}
+                        {/* 3. Age */}
+                        <td className={tdCell}>
+                          <input
+                            type="text"
+                            value={res.age}
+                            onChange={(e) => handleFieldChange(res.id, 'age', e.target.value)}
+                            aria-label="Age"
+                            className={`${cellInput} text-stone-800 tabular-nums`}
+                          />
+                        </td>
 
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={res.roomNumber || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (val === '__OPEN_ALLOT_MODAL__') {
-                                      if (onOpenQuickAllotModal) onOpenQuickAllotModal(res);
-                                      return;
-                                    }
-                                    const matchedRoom = hotelRooms.find(
-                                      (rm) => String(rm.roomNumber).trim().toLowerCase() === String(val).trim().toLowerCase()
-                                    );
-                                    const targetBldg = matchedRoom
-                                      ? (normalizeBuildingName(matchedRoom.building) || chosenBldg)
-                                      : chosenBldg;
-                                    if (onAllotRoom) {
-                                      onAllotRoom(res.id, targetBldg, val);
-                                    } else {
-                                      handleFieldChange(res.id, 'roomNumber', val);
-                                      if (targetBldg !== res.building) {
-                                        handleFieldChange(res.id, 'building', targetBldg);
-                                      }
-                                    }
-                                  }}
-                                  className={`w-full flex-1 text-[11px] font-bold rounded px-1.5 py-0.5 border transition cursor-pointer shadow-2xs ${
-                                    isAllotted
-                                      ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
-                                      : 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
-                                  }`}
-                                >
-                                  <option value="">-- Allot Room --</option>
-                                  {onOpenQuickAllotModal && (
-                                    <option value="__OPEN_ALLOT_MODAL__">
-                                      ✨ Open Allot Modal...
-                                    </option>
-                                  )}
-                                  {res.roomNumber && (
-                                    <option value={res.roomNumber}>
-                                      Rm {res.roomNumber} ({chosenBldg}) ✓ Current
-                                    </option>
-                                  )}
-                                  {availableRoomsForRes.length > 0 && (
-                                    <optgroup label="Available Rooms (Capacity Not Reached)">
-                                      {availableRoomsForRes
-                                        .filter((rm) => rm.roomNumber !== res.roomNumber)
-                                        .map((rm) => (
-                                          <option key={rm.id} value={rm.roomNumber}>
-                                            Rm {rm.roomNumber} ({rm.floorLabel || `Fl ${rm.floor}`} • Cap {rm.capacity}{rm.buffer ? `+${rm.buffer}` : ''})
-                                          </option>
-                                        ))}
-                                    </optgroup>
-                                  )}
-                                  <optgroup label="All Rooms (Notice / Force Allot)">
-                                    {hotelRooms
-                                      .filter((rm) => rm.roomNumber !== res.roomNumber && !availableRoomSet.has(rm.roomNumber))
-                                      .map((rm) => (
-                                        <option key={rm.id} value={rm.roomNumber}>
-                                          Rm {rm.roomNumber} ({rm.status === 'blocked' ? 'Blocked' : `Cap ${rm.capacity} Pax`})
-                                        </option>
-                                      ))}
-                                  </optgroup>
-                                </select>
+                        {/* 4. Family */}
+                        <td className={tdCell}>
+                          <input
+                            type="text"
+                            value={res.family}
+                            onChange={(e) => handleFieldChange(res.id, 'family', e.target.value)}
+                            aria-label="Family"
+                            className={`${cellInput} text-stone-800 tabular-nums`}
+                          />
+                        </td>
+
+                        {/* 5. Office Name */}
+                        <td className={tdCell}>
+                          <input
+                            type="text"
+                            value={res.officeName}
+                            onChange={(e) => handleFieldChange(res.id, 'officeName', e.target.value)}
+                            aria-label="Office"
+                            title={res.officeName}
+                            className={`${cellInput} text-stone-700`}
+                          />
+                        </td>
+
+                        {/* 6. Tour ID: the short form reads at a glance, the full ID shows while editing */}
+                        <td className={tdCell}>
+                          <TourIdInput
+                            value={res.tourRefNo}
+                            short={fitColumnsToScreen}
+                            onChange={(v) => handleFieldChange(res.id, 'tourRefNo', v)}
+                            className={`${cellInput} text-stone-800 tabular-nums`}
+                          />
+                        </td>
+
+                        {/* 7. Hotel / Building */}
+                        <td className={tdCell}>
+                          <select
+                            value={chosenBldg}
+                            onChange={(e) => handleFieldChange(res.id, 'building', e.target.value)}
+                            aria-label="Building"
+                            className={`${cellSelect} w-full text-stone-800`}
+                          >
+                            {distinctBuildings.map((bldg) => (
+                              <option key={bldg} value={bldg}>{bldg}</option>
+                            ))}
+                            {chosenBldg && !distinctBuildings.includes(chosenBldg) && (
+                              <option value={chosenBldg}>{chosenBldg}</option>
+                            )}
+                          </select>
+                        </td>
+
+                        {/* 8. Room: a clear state first, then the ways to change it */}
+                        <td className={tdCell}>
+                          <div className="flex h-8 items-center gap-1">
+                            {isReadOnly ? (
+                              res.roomNumber ? (
+                                <span className="truncate px-1.5 font-bold text-stone-950 tabular-nums" title={`${res.building} room ${res.roomNumber}`}>
+                                  {res.building} {res.roomNumber}
+                                </span>
+                              ) : (
+                                <span className={`${chip('wait')} ml-1`}>Needs room</span>
+                              )
+                            ) : (
+                              <>
+                                {!isAllotted && onOpenQuickAllotModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenQuickAllotModal(res)}
+                                    className={needsRoomBtn}
+                                    title="Open the allot window with capacity, buffer and a recommended room"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">Needs room</span>
+                                  </button>
+                                )}
+
+                                {roomSelect}
 
                                 {isAllotted && onOpenSwitchRoomModal && (
                                   <button
                                     type="button"
                                     onClick={() => onOpenSwitchRoomModal({ reservations: [res], initialScope: 'single' })}
-                                    className="shrink-0 p-1 rounded bg-amber-50 hover:bg-amber-200 text-amber-900 border border-amber-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
-                                    title="Switch or swap room with another room"
+                                    className={`${iconRing} h-8 w-8`}
+                                    title="Switch or swap with another room"
+                                    aria-label="Switch room"
                                   >
-                                    <ArrowRightLeft className="w-3 h-3" />
+                                    <ArrowRightLeft className="w-4 h-4" />
                                   </button>
                                 )}
 
@@ -2155,78 +2275,77 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => onOpenQuickAllotModal(res)}
-                                    className="shrink-0 p-1 rounded bg-stone-100 hover:bg-brand-700 hover:text-white text-stone-700 border border-stone-300 text-[9px] font-bold shadow-2xs transition cursor-pointer"
-                                    title="Open Quick Room Allotment modal"
+                                    className={`${iconRing} h-8 w-8`}
+                                    title="Open the allot window"
+                                    aria-label="Open the allot window"
                                   >
-                                    <Sparkles className="w-3 h-3 text-amber-600" />
+                                    <Sparkles className="w-4 h-4" />
                                   </button>
                                 )}
-                              </div>
-                            </>
-                          )}
+                              </>
+                            )}
 
-                          {/* 1-Click Allot to Family button if family has multiple members */}
-                          {!isReadOnly && sameFamilyCount > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!res.roomNumber) {
-                                  alert(`Please select a room first in the dropdown, then click here to allot to all ${sameFamilyCount} members of Family ${res.family}.`);
-                                  return;
-                                }
-                                if (onBatchAllotFamily) {
-                                  const safeTour = String(res.tourRefNo || res.tourId || '');
-                                  const safeFam = String(res.family || '');
-                                  onBatchAllotFamily(safeTour, safeFam, chosenBldg, res.roomNumber);
-                                }
-                              }}
-                              className="flex items-center justify-center gap-0.5 px-1 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-400 text-[9px] font-extrabold shadow-2xs transition truncate"
-                              title={`Allot ${res.building || 'Saifee'} Room ${res.roomNumber || '...'} to all ${sameFamilyCount} members of Family ${res.family}`}
-                            >
-                              <Users className="w-2.5 h-2.5 text-emerald-800 shrink-0" />
-                              <span>Allot Fam ({sameFamilyCount})</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                            {/* Give this row's room to the whole family */}
+                            {!isReadOnly && sameFamilyCount > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!res.roomNumber) {
+                                    alert(`Please select a room first in the dropdown, then click here to allot to all ${sameFamilyCount} members of Family ${res.family}.`);
+                                    return;
+                                  }
+                                  if (onBatchAllotFamily) {
+                                    const safeTour = String(res.tourRefNo || res.tourId || '');
+                                    const safeFam = String(res.family || '');
+                                    onBatchAllotFamily(safeTour, safeFam, chosenBldg, res.roomNumber);
+                                  }
+                                }}
+                                className={`${iconRing} h-8 gap-1 px-1.5 text-xs font-medium tabular-nums`}
+                                title={`Allot ${res.building || 'Saifee'} room ${res.roomNumber || '...'} to all ${sameFamilyCount} members of family ${res.family}`}
+                                aria-label={`Allot this room to all ${sameFamilyCount} members of family ${res.family}`}
+                              >
+                                <Users className="w-4 h-4" />
+                                {sameFamilyCount}
+                              </button>
+                            )}
+                          </div>
+                        </td>
 
-                      {/* 9. Gender */}
-                      <td className={`py-2 px-1 text-center font-medium ${fitColumnsToScreen ? 'w-[48px]' : 'min-w-[80px]'}`}>
-                        <select
-                          value={res.gender}
-                          onChange={(e) => handleFieldChange(res.id, 'gender', e.target.value)}
-                          className="bg-transparent text-[11px] font-semibold text-stone-700 cursor-pointer"
-                        >
-                          <option value="Male">M</option>
-                          <option value="Female">F</option>
-                        </select>
-                      </td>
-
-                      {/* 10. Group Lead Name */}
-                      <td className={`py-2 px-1.5 text-stone-900 font-semibold ${fitColumnsToScreen ? 'w-[100px]' : 'min-w-[170px]'}`}>
-                        <input
-                          type="text"
-                          value={res.groupLeadName}
-                          onChange={(e) => handleFieldChange(res.id, 'groupLeadName', e.target.value)}
-                          title={res.groupLeadName}
-                          className="w-full bg-transparent text-stone-900 text-xs font-semibold border-b border-transparent hover:border-stone-300 focus:border-emerald-700 focus:outline-none truncate"
-                        />
-                      </td>
-
-                      {/* 11. Arrival Date & Time */}
-                      <td className={`py-2 px-1 text-center text-stone-900 font-medium ${fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'}`}>
-                        <input
-                          type="date"
-                          value={res.arrivalDate ? res.arrivalDate.slice(0, 10) : ''}
-                          onChange={(e) => handleFieldChange(res.id, 'arrivalDate', e.target.value)}
-                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none text-[11px] w-full"
-                        />
-                        <div className="flex items-center justify-center gap-1 mt-0.5">
-                          <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-stone-50 text-stone-700 font-semibold text-[9px] border border-stone-200"
-                            title="Exact Arrival Time (type or select)"
+                        {/* 9. Gender */}
+                        <td className={tdCell}>
+                          <select
+                            value={res.gender}
+                            onChange={(e) => handleFieldChange(res.id, 'gender', e.target.value)}
+                            aria-label="Gender"
+                            className={`${cellSelect} w-full text-stone-800`}
                           >
-                            <Clock className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                            <option value="Male">M</option>
+                            <option value="Female">F</option>
+                          </select>
+                        </td>
+
+                        {/* 10. Group Lead Name */}
+                        <td className={tdCell}>
+                          <input
+                            type="text"
+                            value={res.groupLeadName}
+                            onChange={(e) => handleFieldChange(res.id, 'groupLeadName', e.target.value)}
+                            aria-label="Group lead"
+                            title={res.groupLeadName}
+                            className={`${cellInput} text-stone-700`}
+                          />
+                        </td>
+
+                        {/* 11. Arrival: date and time on one line, travel note beneath */}
+                        <td className={tdCell}>
+                          <div className="flex items-center gap-0.5">
+                            <input
+                              type="date"
+                              value={res.arrivalDate ? res.arrivalDate.slice(0, 10) : ''}
+                              onChange={(e) => handleFieldChange(res.id, 'arrivalDate', e.target.value)}
+                              aria-label="Arrival date"
+                              className={dateInput}
+                            />
                             <input
                               type="text"
                               list="portal-standard-times"
@@ -2238,28 +2357,24 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   handleFieldChange(res.id, 'arrivalTime', formatted);
                                 }
                               }}
-                              className="bg-transparent text-stone-800 font-semibold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
-                              title="Exact Arrival Time"
+                              aria-label="Arrival time"
+                              title="Exact arrival time (type or pick)"
+                              className={timeInput}
                             />
-                          </span>
-                        </div>
-                        <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
-                      </td>
+                          </div>
+                          <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
+                        </td>
 
-                      {/* 12. Departure Date & Time */}
-                      <td className={`py-2 px-1 text-center text-stone-900 font-medium ${fitColumnsToScreen ? 'w-[88px]' : 'min-w-[130px]'}`}>
-                        <input
-                          type="date"
-                          value={res.departureDate ? res.departureDate.slice(0, 10) : ''}
-                          onChange={(e) => handleFieldChange(res.id, 'departureDate', e.target.value)}
-                          className="bg-transparent font-semibold text-stone-900 cursor-pointer focus:outline-none text-[11px] w-full"
-                        />
-                        <div className="flex items-center justify-center gap-1 mt-0.5">
-                          <span
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-stone-50 text-stone-700 font-semibold text-[9px] border border-stone-200"
-                            title="Exact Departure Time (type or select)"
-                          >
-                            <Clock className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                        {/* 12. Departure: same layout */}
+                        <td className={tdCell}>
+                          <div className="flex items-center gap-0.5">
+                            <input
+                              type="date"
+                              value={res.departureDate ? res.departureDate.slice(0, 10) : ''}
+                              onChange={(e) => handleFieldChange(res.id, 'departureDate', e.target.value)}
+                              aria-label="Departure date"
+                              className={dateInput}
+                            />
                             <input
                               type="text"
                               list="portal-standard-times"
@@ -2271,204 +2386,177 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                                   handleFieldChange(res.id, 'departureTime', formatted);
                                 }
                               }}
-                              className="bg-transparent text-stone-800 font-semibold text-[9px] w-[62px] text-center focus:outline-none focus:bg-white rounded px-0.5 cursor-pointer"
-                              title="Exact Departure Time"
+                              aria-label="Departure time"
+                              title="Exact departure time (type or pick)"
+                              className={timeInput}
                             />
-                          </span>
-                        </div>
-                        <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
-                      </td>
+                          </div>
+                          <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
+                        </td>
 
-                      {/* 13. Category */}
-                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[105px]' : 'min-w-[140px]'}`}>
-                        {renderCategoryBadge(res)}
-                      </td>
+                        {/* 13. Category */}
+                        <td className={tdCell}>{renderCategoryCell(res)}</td>
 
-                      {/* 14. Main Portal Upload Status */}
-                      <td className={`py-2 px-1 text-center bg-stone-50/60 ${fitColumnsToScreen ? 'w-[80px]' : 'min-w-[135px]'}`}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)
-                          }
-                          className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold transition shadow-2xs cursor-pointer ${
-                            res.isUploadedToPortal
-                              ? 'bg-brand-700 text-white border border-brand-700'
-                              : 'bg-white hover:bg-stone-100 text-stone-500 border border-stone-300'
-                          }`}
-                          title={res.isUploadedToPortal ? 'Uploaded to portal (Click to untick)' : 'Mark uploaded'}
-                        >
-                          {res.isUploadedToPortal ? (
-                            <>
-                              <CheckSquare className="w-3.5 h-3.5 text-gold-200" />
-                              <span>Done ✓</span>
-                            </>
-                          ) : (
-                            <>
-                              <Square className="w-3.5 h-3.5 text-stone-400" />
-                              <span>Tick</span>
-                            </>
-                          )}
-                        </button>
-                      </td>
-
-                      {/* Actions */}
-                      <td className={`py-2 px-1 text-center ${fitColumnsToScreen ? 'w-[40px]' : 'w-12'}`}>
-                        <div className="flex items-center justify-center gap-1">
-                          {isShiftedToA && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenAccountsSlip(res)}
-                              className="p-1 text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50 rounded transition cursor-pointer"
-                              title="Print Accounts Slip (B to A)"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {!isShiftedToA && res.shiftDirection === 'A_TO_B' && onOpenAToBSlip && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenAToBSlip(res, [res.id])}
-                              className="p-1 text-amber-700 hover:text-amber-950 hover:bg-amber-50 rounded transition cursor-pointer"
-                              title="Print Accounts Slip (A to B)"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                        {/* 14. Main portal upload status */}
+                        <td className={tdCell}>
                           <button
                             type="button"
-                            onClick={() => {
-                              if (isBToARecord(res) && userRole !== 'admin') {
-                                setBToABlockedRecord(res);
-                              } else {
-                                setRecordToDelete(res);
-                              }
-                            }}
-                            className={`p-1 rounded transition cursor-pointer ${
-                              isBToARecord(res)
-                                ? 'text-purple-600 hover:text-red-700 hover:bg-red-50'
-                                : 'text-stone-400 hover:text-red-600 hover:bg-red-50'
-                            }`}
-                            title={isBToARecord(res) ? `Delete B to A record: ${res.applicantName}` : `Delete record for ${res.applicantName}`}
+                            onClick={() =>
+                              handleFieldChange(res.id, 'isUploadedToPortal', !res.isUploadedToPortal)
+                            }
+                            aria-pressed={!!res.isUploadedToPortal}
+                            className={res.isUploadedToPortal ? `${portalDone} h-8 w-full px-2 text-[13px]` : `${portalTodo} h-8 w-full px-2 text-[13px]`}
+                            title={res.isUploadedToPortal ? 'Uploaded to the portal (click to untick)' : 'Mark as uploaded to the portal'}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {res.isUploadedToPortal ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 shrink-0" />
+                                Done
+                              </>
+                            ) : (
+                              <>
+                                <Square className="w-3.5 h-3.5 shrink-0 text-stone-400" />
+                                Tick
+                              </>
+                            )}
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={17} className="py-12 text-center text-stone-400 text-sm">
-                    No zaereen found matching your filter criteria. Click "Upload Excel" to import your sheet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <datalist id="portal-standard-times">
-            {STANDARD_TIMES.map((t) => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
-        </div>
+                        </td>
 
-        {/* Footer Summary Bar */}
-        <div className="bg-stone-50 border-t border-stone-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-stone-600 font-medium">
-          <div className="flex items-center gap-4">
-            <span>
-              Showing <strong className="text-stone-900">{filteredAndSortedReservations.length}</strong> of{' '}
-              <strong className="text-stone-900">{totalZaereen}</strong> zaereen
-            </span>
-            <span>•</span>
-            <span>
-              Allotted:{' '}
-              <strong className="text-emerald-900">
-                {reservations.filter((r) => r.roomNumber && r.roomNumber.trim() !== '').length}
-              </strong>
-            </span>
-            <span>•</span>
-            <span>
-              Unassigned:{' '}
-              <strong className="text-amber-800">
-                {reservations.filter((r) => !r.roomNumber || r.roomNumber.trim() === '').length}
-              </strong>
-            </span>
-            <span>•</span>
-            <span>
-              Uploaded to Portal:{' '}
-              <strong className="text-brand-700">
-                {reservations.filter((r) => r.isUploadedToPortal).length}
-              </strong>
-            </span>
+                        {/* Row actions */}
+                        <td className={tdCell}>
+                          <div className="flex h-8 items-center justify-end gap-0.5 pr-1">
+                            {isShiftedToA && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenAccountsSlip(res)}
+                                className={`${iconGhost} h-8 w-8`}
+                                title="Print accounts slip (B to A)"
+                                aria-label="Print accounts slip (B to A)"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            )}
+                            {!isShiftedToA && res.shiftDirection === 'A_TO_B' && onOpenAToBSlip && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenAToBSlip(res, [res.id])}
+                                className={`${iconGhost} h-8 w-8`}
+                                title="Print accounts slip (A to B)"
+                                aria-label="Print accounts slip (A to B)"
+                              >
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isBToARecord(res) && userRole !== 'admin') {
+                                  setBToABlockedRecord(res);
+                                } else {
+                                  setRecordToDelete(res);
+                                }
+                              }}
+                              className={`${iconDanger} h-8 w-8`}
+                              title={isBToARecord(res) ? `Delete B to A record: ${res.applicantName}` : `Delete record for ${res.applicantName}`}
+                              aria-label={`Delete record for ${res.applicantName}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={17}>
+                      <div className="sticky left-0" style={{ width: 'min(100%, 60rem)' }}>{emptyState}</div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <div className="text-[11px] text-stone-500">
-            Click any column header to sort ascending or descending.
+          {/* Totals and the full pager */}
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-stone-200 bg-stone-50 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-stone-600 tabular-nums">
+              <span>
+                Allotted{' '}
+                <strong className="font-semibold text-stone-900">
+                  {fmtCount(reservations.filter((r) => r.roomNumber && r.roomNumber.trim() !== '').length)}
+                </strong>
+              </span>
+              <span>
+                Needs room{' '}
+                <strong className="font-semibold text-amber-800">
+                  {fmtCount(reservations.filter((r) => !r.roomNumber || r.roomNumber.trim() === '').length)}
+                </strong>
+              </span>
+              <span>
+                Uploaded to portal{' '}
+                <strong className="font-semibold text-stone-900">
+                  {fmtCount(reservations.filter((r) => r.isUploadedToPortal).length)}
+                </strong>
+              </span>
+            </div>
+            <Pager {...pagerProps} onPageSize={setPageSize} />
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Non-Admin Blocked Modal for B to A Records */}
+      <datalist id="portal-standard-times">
+        {STANDARD_TIMES.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+
+      {/* Receptionist tried to delete a B to A record */}
       {bToABlockedRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-md w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                <ShieldAlert className="w-5 h-5 text-red-600" />
-              </div>
-              <div className="flex-1">
-                <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-900 border border-red-300 uppercase tracking-wide mb-1">
-                  ADMIN ONLY PERMISSION
-                </div>
-                <h3 className="text-base font-bold text-stone-900">
-                  Deletion Blocked: B to A Record
-                </h3>
-                <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                  When a pax is added in <strong>B to A</strong>, it <strong>should not be deleted at any cost until deleted by the admin</strong>.
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="b2a-blocked-title">
+          <div className={`${modalCard} max-w-md`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 id="b2a-blocked-title" className={modalTitle}>Only an admin can delete a B to A record</h3>
+                <p className="mt-1 text-sm text-stone-600">
+                  Once a zair is added in B to A, the record must not be deleted until an admin deletes it.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setBToABlockedRecord(null)}
-                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
+              <button type="button" onClick={() => setBToABlockedRecord(null)} className={modalClose} aria-label="Close">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs space-y-1">
-              <div>
-                <span className="text-stone-500">Applicant:</span>{' '}
-                <strong className="text-stone-900">{bToABlockedRecord.applicantName}</strong>
-              </div>
-              <div>
-                <span className="text-stone-500">Tour ID:</span>{' '}
-                <span className="font-mono font-bold text-brand-700">{bToABlockedRecord.tourRefNo}</span>
-              </div>
-              <div>
-                <span className="text-stone-500">Category:</span>{' '}
-                <span className="font-bold text-purple-900">Category B to A (Nizaam)</span>
-              </div>
-              <div>
-                <span className="text-stone-500">Room:</span>{' '}
-                <span className="font-semibold text-stone-800">
-                  {bToABlockedRecord.building} {bToABlockedRecord.roomNumber ? `Rm ${bToABlockedRecord.roomNumber}` : 'Unallotted'}
-                </span>
+            <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+              <dl className={`${panel} space-y-1.5 p-3.5 text-sm`}>
+                <div className="flex gap-3">
+                  <dt className="w-20 shrink-0 text-stone-500">Zair</dt>
+                  <dd className="min-w-0 font-semibold text-stone-950">{bToABlockedRecord.applicantName}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 shrink-0 text-stone-500">Tour ID</dt>
+                  <dd className="min-w-0 break-all text-stone-800 tabular-nums">{bToABlockedRecord.tourRefNo}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 shrink-0 text-stone-500">Category</dt>
+                  <dd className="min-w-0"><span className={chip('special')}>Category B to A (Nizaam)</span></dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-20 shrink-0 text-stone-500">Room</dt>
+                  <dd className="min-w-0 text-stone-800 tabular-nums">
+                    {bToABlockedRecord.building} {bToABlockedRecord.roomNumber ? bToABlockedRecord.roomNumber : 'Unallotted'}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
+                <ShieldAlert className="mt-0.5 w-4 h-4 shrink-0 text-amber-700" />
+                <span>Switch to the <strong className="font-semibold">Admin role</strong> with the admin PIN to delete B to A records.</span>
               </div>
             </div>
 
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-              Please switch to <strong>Admin role</strong> using your Admin PIN to authorize the deletion of B to A records.
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setBToABlockedRecord(null)}
-                className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs transition cursor-pointer"
-              >
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setBToABlockedRecord(null)} className={btn.primary}>
                 Understood
               </button>
             </div>
@@ -2476,86 +2564,74 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
       )}
 
-      {/* Single Delete Confirmation Modal */}
       {isHiddenStaysOpen && (
         <HiddenStaysModal onClose={() => setIsHiddenStaysOpen(false)} onRestored={(count) => onHiddenStaysRestored?.(count)} />
       )}
+
+      {/* Delete one record */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="delete-record-title">
+          <div className={`${modalCard} max-w-lg`}>
             {isBToARecord(recordToDelete) ? (
-              // B TO A REGISTRY DELETION CONFIRMATION
+              // B to A entry: asks the exact question staff were promised
               <>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-700">
-                    <AlertCircle className="w-6 h-6 text-amber-600" />
+                <div className={modalHeader}>
+                  <div className="min-w-0">
+                    <h3 id="delete-record-title" className={modalTitle}>Delete B to A entry</h3>
+                    <p className="mt-1.5"><span className={chip('special')}>B to A registry, protected</span></p>
                   </div>
-                  <div className="flex-1">
-                    <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-900 border border-purple-300 uppercase tracking-wide mb-1">
-                      B TO A REGISTRY PROTECTED
-                    </div>
-                    <h3 className="text-base sm:text-lg font-bold text-stone-900">
-                      B to A Entry Deletion Confirmation
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setRecordToDelete(null)}
-                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
+                  <button type="button" onClick={() => setRecordToDelete(null)} className={modalClose} aria-label="Close">
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* USER REQUIREMENT: EXACT QUESTION */}
-                <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2 shadow-xs">
-                  <div className="flex items-center gap-2 text-amber-950 font-black text-sm sm:text-base">
-                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                    <span>This entry is in B to A. Do you want to delete it?</span>
+                <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                  <div className="rounded-xl bg-amber-50 px-4 py-3.5">
+                    <div className="flex items-start gap-2.5 text-[15px] font-semibold text-amber-950">
+                      <AlertCircle className="mt-0.5 w-5 h-5 shrink-0 text-amber-600" />
+                      <span>This entry is in B to A. Do you want to delete it?</span>
+                    </div>
+                    <p className="mt-2 text-[13px] leading-relaxed text-amber-900">
+                      This zair was registered under <strong className="font-semibold">Category B to A</strong> and has an official accounts request slip. Deleting this entry removes it from the system for good, releases room <strong className="font-semibold">{recordToDelete.building} {recordToDelete.roomNumber ? recordToDelete.roomNumber : ''}</strong>, and removes the B to A accounts records.
+                    </p>
                   </div>
-                  <p className="text-xs text-amber-900 leading-relaxed font-medium">
-                    This zaer was registered under <strong>Category B to A</strong> and has an official Accounts Request Slip. Deleting this entry will permanently delete it from the system, release room <strong>{recordToDelete.building} {recordToDelete.roomNumber ? `Rm ${recordToDelete.roomNumber}` : ''}</strong>, and purge the B to A accounts records.
-                  </p>
+
+                  <div className={`${panel} p-3.5`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-semibold text-stone-950">{recordToDelete.applicantName}</div>
+                        <div className="text-[13px] text-stone-600 tabular-nums">ITS {recordToDelete.itsId}</div>
+                      </div>
+                      <span className={chip('special')}>B→A shifted</span>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                      <div>
+                        <dt className="text-stone-500">Tour ID</dt>
+                        <dd className="break-all text-stone-900 tabular-nums">{recordToDelete.tourRefNo}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Family</dt>
+                        <dd className="text-stone-900 tabular-nums">{recordToDelete.family}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Allotted room</dt>
+                        <dd className="text-stone-900 tabular-nums">{recordToDelete.building} {recordToDelete.roomNumber ? recordToDelete.roomNumber : 'Unallotted'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Accounts slip</dt>
+                        <dd className="break-all text-stone-900 tabular-nums">{recordToDelete.requestSlipNo || 'Active B to A slip'}</dd>
+                      </div>
+                      <div className="col-span-2">
+                        <dt className="text-stone-500">Stay</dt>
+                        <dd className="text-stone-900 tabular-nums">{longDay(recordToDelete.arrivalDate)} to {longDay(recordToDelete.departureDate)}</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
 
-                {/* Zair summary card */}
-                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
-                      <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                      B ➔ A Shifted
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
-                    <div>
-                      <span className="text-stone-400">Tour Ref:</span> <span className="font-mono font-bold text-brand-700">{recordToDelete.tourRefNo}</span>
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Family #:</span> <span className="font-bold">{recordToDelete.family}</span>
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Allotted Room:</span> <span className="font-bold text-emerald-800">{recordToDelete.building} {recordToDelete.roomNumber ? `Rm ${recordToDelete.roomNumber}` : 'Unallotted'}</span>
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Accounts Slip:</span> <span className="font-mono font-bold">{recordToDelete.requestSlipNo || 'Active B to A Slip'}</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-stone-400">Stay Duration:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Modal Actions */}
-                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-stone-100">
-                  <button
-                    type="button"
-                    onClick={() => setRecordToDelete(null)}
-                    className="px-4 py-2 rounded-xl border border-stone-300 text-stone-700 hover:bg-stone-100 font-bold text-xs transition cursor-pointer"
-                  >
-                    No, Keep in B to A
+                <div className={modalFooter}>
+                  <button type="button" onClick={() => setRecordToDelete(null)} className={btn.secondary}>
+                    No, keep in B to A
                   </button>
                   <button
                     type="button"
@@ -2570,85 +2646,80 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         setRecordToDelete(null);
                       }
                     }}
-                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                    className={btnDanger}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Yes, Delete B to A Entry</span>
+                    <Trash2 className="w-4 h-4" />
+                    Yes, delete B to A entry
                   </button>
                 </div>
               </>
             ) : (
-              // Standard Delete Confirmation
+              // Ordinary record
               <>
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                    <Trash2 className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-stone-900">Delete Zair Record</h3>
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      Are you sure you want to permanently delete this zaer record?
+                <div className={modalHeader}>
+                  <div className="min-w-0">
+                    <h3 id="delete-record-title" className={modalTitle}>Delete zair record</h3>
+                    <p className="mt-1 text-sm text-stone-600">
+                      Are you sure you want to permanently delete this zair record?
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setRecordToDelete(null)}
-                    className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
+                  <button type="button" onClick={() => setRecordToDelete(null)} className={modalClose} aria-label="Close">
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* Zair summary card */}
-                <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-bold text-stone-900 text-sm">{recordToDelete.applicantName}</div>
-                      <div className="font-mono text-stone-500 text-[11px]">ITS ID: {recordToDelete.itsId}</div>
+                <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                  <div className={`${panel} p-3.5`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-semibold text-stone-950">{recordToDelete.applicantName}</div>
+                        <div className="text-[13px] text-stone-600 tabular-nums">ITS {recordToDelete.itsId}</div>
+                      </div>
+                      <span className="shrink-0 text-[13px] text-stone-600 tabular-nums">Family {recordToDelete.family}</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-stone-200 text-stone-700">
-                      Family {recordToDelete.family}
-                    </span>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                      <div>
+                        <dt className="text-stone-500">Tour ID</dt>
+                        <dd className="break-all text-stone-900 tabular-nums">{recordToDelete.tourRefNo}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Category</dt>
+                        <dd className="text-stone-900">{recordToDelete.category || 'Mumineen'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Age and gender</dt>
+                        <dd className="text-stone-900 tabular-nums">{recordToDelete.age} yrs, {recordToDelete.gender}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-stone-500">Jamaat</dt>
+                        <dd className="text-stone-900">{recordToDelete.jamaat || '—'}</dd>
+                      </div>
+                      <div className="col-span-2">
+                        <dt className="text-stone-500">Stay</dt>
+                        <dd className="text-stone-900 tabular-nums">{longDay(recordToDelete.arrivalDate)} to {longDay(recordToDelete.departureDate)}</dd>
+                      </div>
+                    </dl>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-stone-600">
-                    <div>
-                      <span className="text-stone-400">Tour Ref:</span> {recordToDelete.tourRefNo}
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Category:</span> {recordToDelete.category || 'Mumineen'}
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Age / Gender:</span> {recordToDelete.age} yrs • {recordToDelete.gender}
-                    </div>
-                    <div>
-                      <span className="text-stone-400">Jamaat:</span> {recordToDelete.jamaat || '—'}
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-stone-400">Stay Duration:</span> {recordToDelete.arrivalDate} to {recordToDelete.departureDate}
-                    </div>
-                  </div>
+
                   {recordToDelete.roomNumber ? (
-                    <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px]">
-                      ⚠️ <strong>Room Allocation Note:</strong> {recordToDelete.building} - Room {recordToDelete.roomNumber} will become vacant immediately upon deletion.
+                    <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 px-3.5 py-3 text-[13px] text-amber-900">
+                      <AlertCircle className="mt-0.5 w-4 h-4 shrink-0 text-amber-700" />
+                      <span>
+                        <strong className="font-semibold">{recordToDelete.building} room {recordToDelete.roomNumber}</strong> becomes vacant as soon as this record is deleted.
+                      </span>
                     </div>
                   ) : (
-                    <div className="mt-1 text-[11px] text-stone-500 italic">
-                      Zaer is currently unallotted (no room).
-                    </div>
+                    <p className="text-[13px] text-stone-600">This zair has no room allotted.</p>
                   )}
-                  <div className="mt-2 text-[11px] text-stone-500">
+
+                  <p className="text-[13px] text-stone-600">
                     If NKERP still lists this stay, it stays hidden until NKERP changes its dates. You can bring it back from
                     More → Deleted NKERP stays.
-                  </div>
+                  </p>
                 </div>
 
-                {/* Modal Actions */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
-                  <button
-                    type="button"
-                    onClick={() => setRecordToDelete(null)}
-                    className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-semibold text-xs transition cursor-pointer"
-                  >
+                <div className={modalFooter}>
+                  <button type="button" onClick={() => setRecordToDelete(null)} className={btn.secondary}>
                     Cancel
                   </button>
                   <button
@@ -2664,10 +2735,10 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                         setRecordToDelete(null);
                       }
                     }}
-                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                    className={btnDanger}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Yes, Delete Record</span>
+                    <Trash2 className="w-4 h-4" />
+                    Yes, delete record
                   </button>
                 </div>
               </>
@@ -2676,98 +2747,82 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
       )}
 
-      {/* Batch Delete Confirmation Modal */}
+      {/* Delete the selection */}
       {isBatchDeleteModalOpen && selectedIds.size > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0 text-red-600">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-stone-900">
-                  Delete {selectedIds.size} Zair Record{selectedIds.size > 1 ? 's' : ''}
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="batch-delete-title">
+          <div className={`${modalCard} max-w-lg`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 id="batch-delete-title" className={modalTitle}>
+                  Delete {selectedIds.size} zair record{selectedIds.size > 1 ? 's' : ''}
                 </h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Are you sure you want to permanently delete all {selectedIds.size} selected zaereen? Any associated room allocations will be freed up.
+                <p className="mt-1 text-sm text-stone-600">
+                  Are you sure you want to permanently delete all {selectedIds.size} selected zaereen? Their rooms will be freed.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsBatchDeleteModalOpen(false)}
-                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
+              <button type="button" onClick={() => setIsBatchDeleteModalOpen(false)} className={modalClose} aria-label="Close">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* B to A Warning if any selected are B to A */}
-            {selectedBToACount > 0 && (
-              <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5 space-y-1.5 text-xs text-amber-900">
-                <div className="flex items-center gap-2 font-black text-sm text-amber-950">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>
-                    {selectedBToACount} of the selected {selectedIds.size > 1 ? 'entries are' : 'entry is'} in B to A. Do you want to delete {selectedBToACount > 1 ? 'them' : 'it'}?
-                  </span>
-                </div>
-                {userRole !== 'admin' ? (
-                  <p className="text-[11px] text-red-700 font-bold pt-1">
-                    ⛔ ACTION BLOCKED: A pax added in B to A cannot be deleted at any cost until deleted by the admin. Please switch to Admin mode with PIN to proceed.
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-amber-800">
-                    Admin Confirmation: Proceeding will permanently delete these B to A entries, free up their rooms, and purge related Accounts Request Slips.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Selected zaereen preview list */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5 text-xs">
-              {Array.from(selectedIds).map((id) => {
-                const z = reservations.find((r) => r.id === id);
-                if (!z) return null;
-                const isB2A = isBToARecord(z);
-                return (
-                  <div key={id} className={`flex items-center justify-between py-1 px-2 rounded border ${isB2A ? 'bg-amber-50/70 border-amber-200' : 'bg-white border-stone-100'}`}>
-                    <div>
-                      <span className="font-semibold text-stone-900">{z.applicantName}</span>
-                      <span className="font-mono text-stone-400 ml-1.5 text-[11px]">({z.itsId})</span>
-                      {isB2A && (
-                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                          B ➔ A Entry
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-stone-500">
-                      {z.building} {z.roomNumber ? `Rm ${z.roomNumber}` : 'Unallotted'}
-                    </div>
+            <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+              {/* Warning when part of the selection is B to A */}
+              {selectedBToACount > 0 && (
+                <div className="rounded-xl bg-amber-50 px-4 py-3.5">
+                  <div className="flex items-start gap-2.5 text-sm font-semibold text-amber-950">
+                    <AlertCircle className="mt-0.5 w-4 h-4 shrink-0 text-amber-600" />
+                    <span>
+                      {selectedBToACount} of the selected {selectedIds.size > 1 ? 'entries are' : 'entry is'} in B to A. Do you want to delete {selectedBToACount > 1 ? 'them' : 'it'}?
+                    </span>
                   </div>
-                );
-              })}
+                  {userRole !== 'admin' ? (
+                    <p className="mt-2 text-[13px] font-medium text-rose-700">
+                      Blocked: a zair added in B to A cannot be deleted until an admin deletes it. Switch to the Admin role with the PIN to go on.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-[13px] text-amber-900">
+                      Admin confirmation: going on permanently deletes these B to A entries, frees their rooms and removes the related accounts request slips.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* The selection */}
+              <ul className={`${panel} max-h-52 divide-y divide-stone-200 overflow-y-auto text-[13px]`}>
+                {Array.from(selectedIds).map((id) => {
+                  const z = reservations.find((r) => r.id === id);
+                  if (!z) return null;
+                  const isB2A = isBToARecord(z);
+                  return (
+                    <li key={id} className="flex items-center justify-between gap-3 px-3.5 py-2">
+                      <div className="min-w-0">
+                        <span className="font-medium text-stone-900">{z.applicantName}</span>
+                        <span className="ml-1.5 text-stone-500 tabular-nums">{z.itsId}</span>
+                        {isB2A && <span className={`${chip('special')} ml-2`}>B→A entry</span>}
+                      </div>
+                      <div className="shrink-0 text-stone-600 tabular-nums">
+                        {z.building} {z.roomNumber ? z.roomNumber : 'Unallotted'}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => setIsBatchDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-semibold text-xs transition cursor-pointer"
-              >
+            <div className={modalFooter}>
+              <button type="button" onClick={() => setIsBatchDeleteModalOpen(false)} className={btn.secondary}>
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleExecuteBatchDelete}
                 disabled={selectedBToACount > 0 && userRole !== 'admin'}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                className={btnDanger}
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>
-                  {selectedBToACount > 0 && userRole === 'admin'
-                    ? `Delete All (${selectedBToACount} in B to A)`
-                    : `Delete All ${selectedIds.size} Records`}
-                </span>
+                <Trash2 className="w-4 h-4" />
+                {selectedBToACount > 0 && userRole === 'admin'
+                  ? `Delete all (${selectedBToACount} in B to A)`
+                  : `Delete all ${selectedIds.size} records`}
               </button>
             </div>
           </div>
@@ -2809,203 +2864,163 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         <option value="02:00 PM" />
       </datalist>
 
-      {/* Tour Date/Time Batch Change Prompt Modal */}
+      {/* A date or time changed for someone in a tour: this zair only, or the whole tour? */}
       {pendingTourDateChange && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 max-w-lg w-full overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-brand-700">
-                <Calendar className="w-5 h-5 text-brand-700" />
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="tour-change-title">
+          <div className={`${modalCard} max-w-lg`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 id="tour-change-title" className={modalTitle}>Update the schedule for the whole tour?</h3>
+                <p className="mt-1 text-sm text-stone-600 tabular-nums">
+                  Tour <span className="font-medium text-stone-900">{shortTour(pendingTourDateChange.tourId)}</span> · {pendingTourDateChange.allTourZaereen.length} zaereen
+                </p>
               </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-stone-900">
-                  Update Tour Schedule for All Zaereen?
-                </h3>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <span className="font-mono text-xs font-black text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    Tour: {pendingTourDateChange.tourId}
-                  </span>
-                  <span className="text-xs text-stone-500 font-semibold">
-                    • {pendingTourDateChange.allTourZaereen.length} Zaereen Total
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelTourDateChange}
-                className="text-stone-400 hover:text-stone-600 p-1 cursor-pointer rounded-lg"
-                title="Cancel changes"
-              >
-                <X className="w-4 h-4" />
+              <button type="button" onClick={handleCancelTourDateChange} className={modalClose} aria-label="Cancel the change" title="Cancel the change">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Change Detail Card */}
-            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3.5 space-y-2 text-xs">
-              <div className="flex items-center justify-between pb-1.5 border-b border-stone-200">
-                <span className="font-bold text-stone-700">
-                  {pendingTourDateChange.field === 'arrivalDate'
-                    ? 'Arrival Date'
-                    : pendingTourDateChange.field === 'departureDate'
-                    ? 'Departure Date'
-                    : pendingTourDateChange.field === 'arrivalTime'
-                    ? 'Arrival Time'
-                    : 'Departure Time'}{' '}
-                  Changed:
-                </span>
-                <span className="font-bold text-stone-900 truncate max-w-[220px]" title={pendingTourDateChange.reservation.applicantName}>
-                  {pendingTourDateChange.reservation.applicantName} (ITS: {pendingTourDateChange.reservation.itsId})
-                </span>
-              </div>
-
-              <div className="flex items-center justify-center gap-3 py-1 font-mono text-xs">
-                <div className="px-2.5 py-1 rounded-md bg-stone-100 text-stone-600 border border-stone-200 text-center min-w-[100px]">
-                  <span className="text-[10px] block text-stone-400 font-sans uppercase font-bold">Current</span>
-                  <span className="font-bold">{pendingTourDateChange.oldValue || '—'}</span>
+            <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className={`${panel} p-3.5`}>
+                <div className="text-[13px] text-stone-600">
+                  {fieldName(pendingTourDateChange.field)} changed for{' '}
+                  <span className="font-medium text-stone-900">{pendingTourDateChange.reservation.applicantName}</span>{' '}
+                  <span className="tabular-nums">(ITS {pendingTourDateChange.reservation.itsId})</span>
                 </div>
-                <span className="text-stone-400 font-bold text-sm">➔</span>
-                <div className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 border border-emerald-300 font-bold text-center min-w-[100px]">
-                  <span className="text-[10px] block text-emerald-700 font-sans uppercase font-bold">New Value</span>
-                  <span>{pendingTourDateChange.newValue}</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-stone-600 pt-1 leading-relaxed">
-                There are <strong>{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in Tour{' '}
-                <strong className="font-mono text-brand-700">{pendingTourDateChange.tourId}</strong>. Would you like to apply this new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all zaereen of the same tour ID, or change it for <strong>{pendingTourDateChange.reservation.applicantName}</strong> only?
-              </p>
-            </div>
-
-            {/* List preview of all zaereen in this tour */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-stone-500 font-semibold px-1">
-                <span>Zaereen in Tour ({pendingTourDateChange.allTourZaereen.length}):</span>
-                <span>Family & Room</span>
-              </div>
-              <div className="bg-stone-50 border border-stone-200 rounded-xl p-2 max-h-36 overflow-y-auto space-y-1 text-xs">
-                {pendingTourDateChange.allTourZaereen.map((m) => {
-                  const isCurrent = m.id === pendingTourDateChange.reservation.id;
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex items-center justify-between py-1 px-2 rounded ${
-                        isCurrent ? 'bg-emerald-50 border border-emerald-200 font-bold text-emerald-950' : 'bg-white border border-stone-100 text-stone-800'
-                      }`}
-                    >
-                      <div className="truncate max-w-[240px]">
-                        <span>{m.applicantName}</span>
-                        {isCurrent && <span className="text-[10px] text-emerald-700 ml-1 font-semibold">(Selected)</span>}
-                        <span className="font-mono text-stone-400 ml-1 text-[11px]">({m.itsId || '—'})</span>
-                      </div>
-                      <div className="font-mono text-[11px] text-stone-600 shrink-0">
-                        Fam #{m.family || '—'} • {m.roomNumber ? `${m.building} Rm ${m.roomNumber}` : 'Unallotted'}
-                      </div>
+                <div className="mt-3 flex items-end gap-4 tabular-nums">
+                  <div>
+                    <div className="text-xs text-stone-500">Current</div>
+                    <div className="text-[15px] text-stone-600">
+                      {pendingTourDateChange.field.includes('Date')
+                        ? (pendingTourDateChange.oldValue ? longDay(pendingTourDateChange.oldValue) : '—')
+                        : (pendingTourDateChange.oldValue || '—')}
                     </div>
-                  );
-                })}
+                  </div>
+                  <ArrowRight className="mb-1 w-4 h-4 shrink-0 text-stone-400" />
+                  <div>
+                    <div className="text-xs text-stone-500">New</div>
+                    <div className="text-[15px] font-semibold text-stone-950">
+                      {pendingTourDateChange.field.includes('Date')
+                        ? longDay(pendingTourDateChange.newValue)
+                        : pendingTourDateChange.newValue}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm leading-relaxed text-stone-700">
+                There are <strong className="font-semibold">{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in this tour. Apply the new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all of them, or change it for <strong className="font-semibold">{pendingTourDateChange.reservation.applicantName}</strong> only?
+              </p>
+
+              {/* Everyone in the tour */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between px-1 text-xs font-medium text-stone-500">
+                  <span>Zaereen in the tour ({pendingTourDateChange.allTourZaereen.length})</span>
+                  <span>Family and room</span>
+                </div>
+                <ul className={`${panel} max-h-40 divide-y divide-stone-200 overflow-y-auto text-[13px]`}>
+                  {pendingTourDateChange.allTourZaereen.map((m) => {
+                    const isCurrent = m.id === pendingTourDateChange.reservation.id;
+                    return (
+                      <li key={m.id} className="flex items-center justify-between gap-3 px-3.5 py-2">
+                        <div className="min-w-0 truncate">
+                          <span className={isCurrent ? 'font-semibold text-stone-950' : 'text-stone-800'}>{m.applicantName}</span>
+                          {isCurrent && <span className="ml-1.5 text-brand-700">(this zair)</span>}
+                          <span className="ml-1.5 text-stone-500 tabular-nums">{m.itsId || '—'}</span>
+                        </div>
+                        <div className="shrink-0 text-stone-600 tabular-nums">
+                          Family {m.family || '—'} · {m.roomNumber ? `${m.building} ${m.roomNumber}` : 'Unallotted'}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleCancelTourDateChange}
-                className="w-full sm:w-auto px-3.5 py-2 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-100 font-semibold text-xs transition cursor-pointer"
-              >
+            <div className={`${modalFooter} max-sm:flex-col max-sm:items-stretch`}>
+              <button type="button" onClick={handleCancelTourDateChange} className={btn.ghost}>
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmApplyToSingle}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-white hover:bg-stone-100 text-stone-800 border border-stone-300 font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                className={btn.secondary}
                 title={`Apply ${pendingTourDateChange.newValue} only to ${pendingTourDateChange.reservation.applicantName}`}
               >
-                <User className="w-3.5 h-3.5 text-stone-600" />
-                <span>Change for This Zaer Only</span>
+                <User className="w-4 h-4 text-stone-500" />
+                This zair only
               </button>
               <button
                 type="button"
                 onClick={handleConfirmApplyToAllTour}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
-                title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in Tour ${pendingTourDateChange.tourId}`}
+                className={btn.primary}
+                title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in tour ${pendingTourDateChange.tourId}`}
               >
-                <Users className="w-4 h-4 text-gold-200" />
-                <span>Update All ({pendingTourDateChange.allTourZaereen.length}) in Tour</span>
+                <Users className="w-4 h-4" />
+                Update all {pendingTourDateChange.allTourZaereen.length} in tour
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* User requirement: Purge Expired (>48h Departure) Records Modal */}
+      {/* Remove zaereen who left more than 48 hours ago */}
       {isPurgeExpiredModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-stone-200 flex flex-col max-h-[90vh]">
-            <div className="flex items-start justify-between pb-4 border-b border-stone-100">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700">
-                  <Trash2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-stone-900">
-                    Purge Expired Records (&gt;48h Departure)
-                  </h3>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Permanently delete completed zaereen records whose departure date was 48+ hours ago.
-                  </p>
-                </div>
+        <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="purge-title">
+          <div className={`${modalCard} max-w-2xl`}>
+            <div className={modalHeader}>
+              <div className="min-w-0">
+                <h3 id="purge-title" className={modalTitle}>Remove departed zaereen</h3>
+                <p className="mt-1 text-sm text-stone-600">
+                  Permanently deletes the records of zaereen whose departure was 48 hours ago or more.
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsPurgeExpiredModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 p-1 rounded-lg cursor-pointer"
-              >
+              <button type="button" onClick={() => setIsPurgeExpiredModalOpen(false)} className={modalClose} aria-label="Close">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="py-4 space-y-3 flex-1 overflow-y-auto">
+            <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5 sm:px-6">
               {expiredReservations.length > 0 ? (
                 <>
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-700 shrink-0" />
+                  <div className="flex items-center gap-2.5 rounded-xl bg-amber-50 px-3.5 py-3 text-[13px] text-amber-900">
+                    <Clock className="w-4 h-4 shrink-0 text-amber-700" />
                     <span>
-                      Found <strong>{expiredReservations.length}</strong> record{expiredReservations.length > 1 ? 's' : ''} whose departure was 48 hours or more in the past.
+                      <strong className="font-semibold">{expiredReservations.length}</strong> record{expiredReservations.length > 1 ? 's' : ''} left 48 hours ago or more.
                     </span>
                   </div>
 
-                  <div className="border border-stone-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-stone-100 text-stone-700 uppercase text-[10px] sticky top-0">
-                        <tr>
-                          <th className="py-2 px-3">ITS</th>
-                          <th className="py-2 px-3">Applicant Name</th>
-                          <th className="py-2 px-3">Family & Tour</th>
-                          <th className="py-2 px-3">Room</th>
-                          <th className="py-2 px-3 text-right">Departure & Elapsed</th>
+                  <div className={`${panel} max-h-72 overflow-auto`}>
+                    <table className="w-full min-w-[600px] border-separate border-spacing-0 text-left text-[13px]">
+                      <thead>
+                        <tr className="text-xs font-semibold text-stone-600">
+                          <th className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3.5 py-2">ITS</th>
+                          <th className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3 py-2">Name</th>
+                          <th className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3 py-2 whitespace-nowrap">Family and tour</th>
+                          <th className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3 py-2">Room</th>
+                          <th className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3.5 py-2 text-right">Departure</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-100 font-medium text-stone-800">
+                      <tbody className="text-stone-800">
                         {expiredReservations.map((r) => {
                           const elapsed = getDepartureElapsedHours(r);
                           return (
-                            <tr key={r.id} className="hover:bg-stone-50">
-                              <td className="py-2 px-3 font-mono font-bold text-stone-900">{r.itsId}</td>
-                              <td className="py-2 px-3 font-semibold">{r.applicantName}</td>
-                              <td className="py-2 px-3 text-[11px] text-stone-600 font-mono">
-                                {r.family} • {r.tourRefNo}
+                            <tr key={r.id}>
+                              <td className="border-b border-stone-200 px-3.5 py-2 font-medium text-stone-900 tabular-nums whitespace-nowrap">{r.itsId}</td>
+                              <td className="border-b border-stone-200 px-3 py-2 font-semibold text-stone-950">{r.applicantName}</td>
+                              <td className="border-b border-stone-200 px-3 py-2 text-stone-600 tabular-nums whitespace-nowrap">
+                                {r.family} · {shortTour(r.tourRefNo)}
                               </td>
-                              <td className="py-2 px-3 text-emerald-800 font-bold">
-                                {r.roomNumber ? `${r.building} Rm ${r.roomNumber}` : '—'}
+                              <td className="border-b border-stone-200 px-3 py-2 tabular-nums whitespace-nowrap">
+                                {r.roomNumber ? `${r.building} ${r.roomNumber}` : '—'}
                               </td>
-                              <td className="py-2 px-3 text-right">
-                                <span className="font-semibold text-rose-700">
-                                  {r.departureDate} {r.departureTime || ''}
+                              <td className="border-b border-stone-200 px-3.5 py-2 text-right tabular-nums whitespace-nowrap">
+                                <span className="text-stone-900">
+                                  {longDay(r.departureDate)} {r.departureTime || ''}
                                 </span>
-                                <span className="block text-[10px] text-stone-400">
-                                  ({elapsed > 0 ? `${elapsed}h ago` : '48h+ passed'})
+                                <span className="block text-xs text-stone-500">
+                                  {elapsed > 0 ? `${elapsed}h ago` : '48h+ passed'}
                                 </span>
                               </td>
                             </tr>
@@ -3016,32 +3031,26 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   </div>
                 </>
               ) : (
-                <div className="py-8 text-center text-stone-500 text-sm">
-                  No records currently match the criteria (departure date passed for 48+ hours).
+                <div className="py-8 text-center text-sm text-stone-600">
+                  No zaereen left more than 48 hours ago, so there is nothing to remove.
                 </div>
               )}
             </div>
 
-            <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-3">
-              <span className="text-xs text-stone-500">
-                Action is permanent and cleans up the active database.
-              </span>
+            <div className={`${modalFooter} sm:justify-between`}>
+              <span className="text-[13px] text-stone-600">This cannot be undone.</span>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPurgeExpiredModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition cursor-pointer"
-                >
+                <button type="button" onClick={() => setIsPurgeExpiredModalOpen(false)} className={btn.secondary}>
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handlePurgeExpiredRecords}
                   disabled={expiredReservations.length === 0}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  className={btnDanger}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete {expiredReservations.length} Expired Record{expiredReservations.length > 1 ? 's' : ''}</span>
+                  <Trash2 className="w-4 h-4" />
+                  Delete {expiredReservations.length} record{expiredReservations.length > 1 ? 's' : ''}
                 </button>
               </div>
             </div>
@@ -3049,27 +3058,27 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
         </div>
       )}
 
-      {/* Toast Feedback Notification */}
+      {/* Feedback toast */}
       {toastMessage && (
-        <div className="fixed bottom-20 lg:bottom-5 right-4 lg:right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <div
-            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-bold ${
-              toastMessage.type === 'success'
-                ? 'bg-brand-700 text-white border-brand-700'
-                : 'bg-stone-800 text-white border-stone-700'
-            }`}
+        <div
+          role="status"
+          className="fixed bottom-20 lg:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:max-w-md z-50 flex items-start gap-2.5 rounded-xl bg-stone-900 px-4 py-3 text-[13px] leading-snug text-white shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200"
+        >
+          {toastMessage.type === 'success' ? (
+            <CheckCircle2 className="mt-px w-4 h-4 shrink-0 text-emerald-300" />
+          ) : (
+            <Info className="mt-px w-4 h-4 shrink-0 text-stone-300" />
+          )}
+          <span className="min-w-0 flex-1">{toastMessage.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="-mr-1 -mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-stone-300 hover:text-white cursor-pointer"
+            title="Close"
+            aria-label="Close"
           >
-            <CheckCircle2 className="w-4 h-4 text-gold-200 shrink-0" />
-            <span>{toastMessage.text}</span>
-            <button
-              type="button"
-              onClick={() => setToastMessage(null)}
-              className="ml-2 text-stone-300 hover:text-white cursor-pointer"
-              title="Close"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

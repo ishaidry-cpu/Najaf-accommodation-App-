@@ -1,28 +1,65 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  ArrowRightLeft,
-  Building2,
-  Search,
-  Users,
-  User,
-  CheckCircle2,
-  AlertTriangle,
-  X,
-  BedDouble,
-  Bath,
-  Clock,
-  Lock,
-  ArrowRight,
-} from 'lucide-react';
+import { ArrowRightLeft, Search, Users, User, CheckCircle2, AlertTriangle, X, Lock, ArrowRight } from 'lucide-react';
 import { Room, Reservation } from '../types';
 import {
   getRoomBookingsForDuration,
   countEffectivePax,
   isInfant,
-  normalizeBuildingName,
   getDistinctBuildings,
   getRoomBedCount,
 } from '../services/storage';
+import {
+  btn,
+  chip,
+  field,
+  fieldLabel,
+  panel,
+  modalScrim,
+  modalCard,
+  modalHeader,
+  modalTitle,
+  modalClose,
+  modalFooter,
+  type ChipTone,
+} from './ui';
+
+/* Display helpers. Stored values are never changed, only how they read on screen. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const showDate = (v?: string) => {
+  const raw = String(v || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!m) return raw || '—';
+  return `${parseInt(m[3], 10)} ${MONTHS[parseInt(m[2], 10) - 1] || m[2]}`;
+};
+const showTime = (v?: string) => {
+  const raw = String(v || '').trim();
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw);
+  if (!m) return raw;
+  const h = parseInt(m[1], 10);
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+};
+const sentence = (v: string) => {
+  const t = v.trim().toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+/** "A, B, C +2" */
+const nameList = (list: Reservation[], max = 3) =>
+  `${list
+    .slice(0, max)
+    .map((r) => r.applicantName)
+    .join(', ')}${list.length > max ? ` +${list.length - max}` : ''}`;
+
+const segWrap = 'flex items-center gap-1 p-1 rounded-lg bg-stone-100';
+const segBtn = (on: boolean) =>
+  `h-8 max-sm:h-10 px-3 rounded-md text-[13px] whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+    on
+      ? 'bg-white text-brand-700 font-semibold ring-1 ring-inset ring-stone-300'
+      : 'font-medium text-stone-600 hover:text-stone-950'
+  }`;
+const pick = (on: boolean) =>
+  `inline-flex items-center h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium ring-1 ring-inset cursor-pointer ${
+    on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50'
+  }`;
 
 export interface SwitchRoomTarget {
   reservations: Reservation[]; // 1 guest or multiple (family/room occupants)
@@ -266,16 +303,19 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
 
   if (!isOpen || !target || !primary) return null;
 
+  type RoomItem = (typeof evaluatedRooms)[number];
+
   const canSwitchGroup = familyGroup.length > 1 || target.reservations.length > 1;
   const occupiedRoomCountForSwap = evaluatedRooms.filter((r) => !r.isSameAsCurrent && !r.isBlocked && r.occupants.length > 0).length;
 
-  const handleChooseMoveRoom = (item: (typeof evaluatedRooms)[0]) => {
+  // Choosing a room only marks it. The footer button carries the move out, through executePending.
+  const handleChooseMoveRoom = (item: RoomItem) => {
     if (item.isBlocked) {
       setPendingConfirm({
         room: item.room,
         isSwap: false,
         targetOccupants: item.occupants,
-        warningText: `Room ${item.room.roomNumber} (${item.room.building}) is currently marked BLOCKED (${item.room.blockedReason || 'Maintenance'}). Confirm if you want to override and move here.`,
+        warningText: `Room ${item.room.roomNumber} (${item.room.building}) is marked blocked (${item.room.blockedReason || 'Maintenance'}). Confirm only if you want to override the block and move here.`,
       });
       return;
     }
@@ -288,26 +328,21 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
         targetOccupants: item.occupants,
         warningText:
           item.occupants.length > 0
-            ? `Room ${item.room.roomNumber} (${item.room.building}) already has ${item.currentOccupancy}/${item.maxCap} pax (${occNames}). Move alongside them anyway, or switch to Swap Mode to exchange rooms.`
-            : `Room ${item.room.roomNumber} (${item.room.building}) has capacity ${item.maxCap} pax, while selection has ${requestedPax} bed pax.`,
+            ? `Room ${item.room.roomNumber} (${item.room.building}) already has ${item.currentOccupancy} of ${item.maxCap} beds taken (${occNames}). Move in alongside them anyway, or use Swap rooms to exchange rooms.`
+            : `Room ${item.room.roomNumber} (${item.room.building}) sleeps ${item.maxCap} at most, and this move needs ${requestedPax} beds.`,
       });
       return;
     }
 
-    // Direct clean move
-    onConfirmSwitch(
-      activeSourceList.map((r) => r.id),
-      item.room.building,
-      item.room.roomNumber,
-      {
-        swapWithExistingOccupants: false,
-        reason: reason.trim() || undefined,
-      }
-    );
-    onClose();
+    // Clean move: same call as before (no swap, no warning), made when the footer button is pressed.
+    setPendingConfirm({
+      room: item.room,
+      isSwap: false,
+      targetOccupants: item.occupants,
+    });
   };
 
-  const handleChooseSwapRoom = (item: (typeof evaluatedRooms)[0]) => {
+  const handleChooseSwapRoom = (item: RoomItem) => {
     setPendingConfirm({
       room: item.room,
       isSwap: true,
@@ -330,403 +365,520 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-150">
-      <div className="bg-stone-50 w-full sm:max-w-3xl rounded-t-2xl sm:rounded-2xl border border-stone-200 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
-        {/* Header */}
-        <div className="bg-brand-700 text-white px-4 py-3.5 sm:px-5 sm:py-4 flex items-start justify-between gap-3 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <ArrowRightLeft className="w-4 h-4 text-gold-200 shrink-0" />
-              <h3 className="font-bold text-sm sm:text-base text-gold-200 tracking-tight truncate">
-                Switch or Swap Room Allotment
-              </h3>
-            </div>
-            <div className="text-xs text-emerald-100 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="font-bold text-white">
-                {activeSourceList.length === 1
-                  ? primary.applicantName
-                  : `${activeSourceList.length} Zaereen (Family #${primary.family || '—'})`}
-              </span>
-              <span className="opacity-60">·</span>
-              <span className="font-mono">Tour {primary.tourRefNo || primary.tourId || '—'}</span>
-              {primary.officeName && (
-                <>
-                  <span className="opacity-60">·</span>
-                  <span className="truncate max-w-[220px]">{primary.officeName}</span>
-                </>
-              )}
-            </div>
-            <div className="text-[11px] text-emerald-100/90 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums">
-              <span>
-                Current:{' '}
-                <strong className="text-gold-200">
-                  {hasCurrentRoom ? `${currentBuilding} Rm ${currentRoom}` : 'Unallotted'}
-                </strong>
-              </span>
-              <span className="opacity-60">·</span>
-              <span>
-                {arrivalDate.slice(0, 10)} {primary.arrivalTime ? `(${primary.arrivalTime})` : ''} ➔{' '}
-                {departureDate.slice(0, 10)} {primary.departureTime ? `(${primary.departureTime})` : ''}
-              </span>
-            </div>
-          </div>
+  // One state per room. Tone follows the colour table: ok fits, wait look first, bad conflict.
+  const roomState = (item: RoomItem): { tone: ChipTone; label: string } => {
+    if (mode === 'swap') return { tone: 'neutral', label: `${item.occupants.length} in room` };
+    if (item.isBlocked) return { tone: 'bad', label: 'Blocked' };
+    if (item.isVacant) {
+      if (!item.canFitInRemaining) return { tone: 'bad', label: 'Too small' };
+      if (requestedPax > item.baseCap) return { tone: 'wait', label: 'Uses buffer bed' };
+      return { tone: 'ok', label: 'Fits' };
+    }
+    if (item.canFitInRemaining) return { tone: 'wait', label: 'Shared room' };
+    return { tone: 'bad', label: item.remainingSlots === 0 ? 'Full' : 'Not enough beds' };
+  };
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-w-[44px] min-h-[44px] -mr-2 -mt-1 flex items-center justify-center rounded-xl text-emerald-100 hover:text-white hover:bg-white/10 transition cursor-pointer shrink-0"
-            aria-label="Close switch room modal"
-          >
+  const chosen = pendingConfirm;
+  const chosenItem = chosen ? evaluatedRooms.find((r) => r.room.id === chosen.room.id) || null : null;
+  const currentItem = evaluatedRooms.find((r) => r.isSameAsCurrent) || null;
+  const staying = currentItem ? currentItem.occupants : [];
+  const movingCount = activeSourceList.length;
+  const tourLabel = primary.tourRefNo || primary.tourId || '—';
+  const movers = movingCount === 1 ? primary.applicantName : `${movingCount} zaereen`;
+  // Family members who are not in the same room as the first one (they all go to the new room).
+  const elsewhere = Array.from(
+    new Set(
+      activeSourceList
+        .filter(
+          (r) =>
+            r.roomNumber &&
+            String(r.roomNumber).trim() !== '' &&
+            (String(r.roomNumber).trim().toLowerCase() !== currentRoom.trim().toLowerCase() ||
+              String(r.building || '').trim().toLowerCase() !== currentBuilding.trim().toLowerCase())
+        )
+        .map((r) => `${r.building} ${r.roomNumber}`)
+    )
+  );
+
+  const confirmLabel = !chosen
+    ? mode === 'swap'
+      ? 'Swap rooms'
+      : 'Move to room'
+    : chosen.isSwap
+    ? `Swap with room ${chosen.room.roomNumber}`
+    : chosenItem?.isBlocked
+    ? `Override block, move to ${chosen.room.roomNumber}`
+    : chosen.warningText
+    ? `Force move to room ${chosen.room.roomNumber}`
+    : chosen.targetOccupants.length > 0
+    ? `Move and share room ${chosen.room.roomNumber}`
+    : `Move to room ${chosen.room.roomNumber}`;
+
+  return (
+    <div className={modalScrim}>
+      <div
+        className={`${modalCard} max-w-5xl lg:h-[min(92dvh,860px)]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="switch-room-title"
+      >
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h3 id="switch-room-title" className={modalTitle}>
+              Switch room
+            </h3>
+            <p className="mt-1 text-sm text-stone-600">
+              {movers}
+              {' · '}Family {primary.family || '—'}
+              {' · '}
+              <span className="tabular-nums">Tour {tourLabel}</span>
+              {primary.officeName && <span className="max-sm:hidden"> · {primary.officeName}</span>}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close switch room dialog">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Scope & Mode Bar */}
-        <div className="bg-white border-b border-stone-200 px-4 py-3 space-y-2.5 shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            {/* Mode Switcher: Move vs 2-Way Swap */}
-            <div className="grid grid-cols-2 sm:inline-flex bg-stone-100 p-1 rounded-xl gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('move');
-                  setPendingConfirm(null);
-                }}
-                className={`min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                  mode === 'move'
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950'
-                }`}
-              >
-                <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                <span>Move to Room</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={!hasCurrentRoom}
-                onClick={() => {
-                  setMode('swap');
-                  setPendingConfirm(null);
-                }}
-                title={hasCurrentRoom ? 'Swap rooms 2-way with occupants of another room' : 'Assign a room first before swapping'}
-                className={`min-h-[44px] sm:min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  mode === 'swap'
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-950'
-                }`}
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
-                <span>Swap Rooms ({occupiedRoomCountForSwap})</span>
-              </button>
-            </div>
-
-            {/* Single Guest vs Whole Family Scope */}
-            {canSwitchGroup && (
-              <div className="grid grid-cols-2 sm:inline-flex bg-stone-100 p-1 rounded-xl gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScope('single');
-                    setPendingConfirm(null);
-                  }}
-                  className={`min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer ${
-                    scope === 'single'
-                      ? 'bg-white text-brand-700 shadow-xs border border-stone-200'
-                      : 'text-stone-600'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>This Zair Only</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScope('group');
-                    setPendingConfirm(null);
-                  }}
-                  className={`min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer ${
-                    scope === 'group'
-                      ? 'bg-white text-brand-700 shadow-xs border border-stone-200'
-                      : 'text-stone-600'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>
-                    All ({target.reservations.length > 1 ? target.reservations.length : familyGroup.length})
-                  </span>
-                </button>
+        <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex lg:flex-col">
+          {/* From → to */}
+          <div className="lg:shrink-0 border-b border-stone-200 px-5 sm:px-6 py-4 space-y-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-2 sm:gap-4">
+              <div className={`${panel} px-3.5 py-3 min-w-0`}>
+                <p className="text-xs font-medium text-stone-500">From</p>
+                <p className="mt-1 flex items-baseline gap-2 min-w-0">
+                  {hasCurrentRoom ? (
+                    <>
+                      <span className="font-display text-2xl leading-none font-semibold text-stone-950 tabular-nums">
+                        {currentRoom}
+                      </span>
+                      <span className="text-[13px] text-stone-600 truncate">{currentBuilding}</span>
+                    </>
+                  ) : (
+                    <span className="text-base font-semibold text-stone-950">Unallotted</span>
+                  )}
+                </p>
+                <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2">{nameList(activeSourceList)}</p>
+                <p className="mt-0.5 text-xs text-stone-600">
+                  {chosen?.isSwap
+                    ? `Move${movingCount === 1 ? 's' : ''} out. ${nameList(chosen.targetOccupants, 2)} move${
+                        chosen.targetOccupants.length === 1 ? 's' : ''
+                      } in here.`
+                    : !hasCurrentRoom
+                    ? 'No room yet.'
+                    : staying.length > 0
+                    ? `Move${movingCount === 1 ? 's' : ''} out. ${staying.length} other${
+                        staying.length === 1 ? ' stays' : 's stay'
+                      } in this room.`
+                    : `Move${movingCount === 1 ? 's' : ''} out. No one else is in this room on these dates.`}
+                </p>
+                {elsewhere.length > 0 && (
+                  <p className="mt-0.5 text-xs text-stone-500 tabular-nums">Some are now in {elsewhere.join(', ')}.</p>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Search & Hotel / Floor Filters */}
-          <div className="grid grid-cols-2 sm:grid-cols-12 gap-2">
-            <div className="col-span-2 sm:col-span-5 relative">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3 sm:top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={
-                  mode === 'swap'
-                    ? 'Search room #, guest, office, tour ID...'
-                    : 'Search room #, hotel, floor, bed...'
-                }
-                className="w-full min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl pl-9 pr-3 text-xs font-medium text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
-              />
-            </div>
+              <div className="flex items-center text-stone-400" aria-hidden="true">
+                {mode === 'swap' ? <ArrowRightLeft className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+              </div>
 
-            <select
-              value={hotelFilter}
-              onChange={(e) => {
-                setHotelFilter(e.target.value);
-                setFloorFilter('ALL');
-              }}
-              className="col-span-1 sm:col-span-3 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-bold text-brand-700 cursor-pointer"
-            >
-              <option value="ALL">All Hotels</option>
-              {distinctBuildings.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={floorFilter}
-              onChange={(e) => setFloorFilter(e.target.value)}
-              className="col-span-1 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
-            >
-              {floorOptions.map((fl) => (
-                <option key={fl} value={fl}>
-                  {fl === 'ALL' ? 'All Floors' : fl}
-                </option>
-              ))}
-            </select>
-
-            {mode === 'move' && (
-              <select
-                value={availabilityFilter}
-                onChange={(e) => setAvailabilityFilter(e.target.value as any)}
-                className="col-span-2 sm:col-span-2 min-h-[44px] sm:min-h-[38px] bg-stone-50 border border-stone-300 rounded-xl px-2.5 text-xs font-semibold text-stone-800 cursor-pointer"
+              <div
+                className={`rounded-xl px-3.5 py-3 min-w-0 ring-inset ${
+                  chosen ? 'bg-brand-50 ring-2 ring-brand-500' : 'bg-stone-50 ring-1 ring-stone-200/70'
+                }`}
+                aria-live="polite"
               >
-                <option value="vacant_first">Vacant First</option>
-                <option value="vacant_only">Vacant Only</option>
-                <option value="all">All Rooms</option>
-              </select>
-            )}
-          </div>
-
-          {/* Optional Reason Input + Quick Presets */}
-          <div className="space-y-1.5">
-            <input
-              type="text"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Optional reason for switching room (e.g. Ground floor needed for senior)..."
-              className="w-full min-h-[40px] sm:min-h-[34px] bg-white border border-stone-200 rounded-xl px-3 text-xs text-stone-800 focus:outline-none focus:ring-1 focus:ring-brand-700"
-            />
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              {QUICK_REASONS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setReason(preset)}
-                  className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
-                    reason === preset
-                      ? 'bg-brand-700 text-white border-brand-700'
-                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Inline Confirmation Banner when Swap or Force Move is selected */}
-        {pendingConfirm && (
-          <div className="bg-amber-50 border-b border-amber-300 p-4 space-y-3 shrink-0 animate-in fade-in">
-            <div className="flex items-start gap-2.5">
-              {pendingConfirm.isSwap ? (
-                <ArrowRightLeft className="w-5 h-5 text-brand-700 shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1 text-xs space-y-1">
-                <div className="font-bold text-stone-900 text-sm">
-                  {pendingConfirm.isSwap
-                    ? `Confirm 2-Way Room Swap`
-                    : `Confirm Room Move Override`}
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-medium text-stone-500">To</p>
+                  {chosen && (
+                    <button
+                      type="button"
+                      onClick={() => setPendingConfirm(null)}
+                      aria-label="Clear the chosen room"
+                      className="-mt-1.5 -mr-2 w-8 h-8 max-sm:w-10 max-sm:h-10 shrink-0 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-brand-100 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                {pendingConfirm.isSwap ? (
-                  <div className="text-stone-700 space-y-1">
-                    <div>
-                      <strong>{activeSourceList.map((r) => r.applicantName).slice(0, 2).join(', ')}{activeSourceList.length > 2 ? ` +${activeSourceList.length - 2}` : ''}</strong>{' '}
-                      ({currentBuilding} Rm {currentRoom}) ➔{' '}
-                      <strong className="text-brand-700">
-                        {pendingConfirm.room.building} Rm {pendingConfirm.room.roomNumber}
-                      </strong>
-                    </div>
-                    <div>
-                      <strong>{pendingConfirm.targetOccupants.map((o) => o.applicantName).slice(0, 2).join(', ')}{pendingConfirm.targetOccupants.length > 2 ? ` +${pendingConfirm.targetOccupants.length - 2}` : ''}</strong>{' '}
-                      ({pendingConfirm.room.building} Rm {pendingConfirm.room.roomNumber}) ➔{' '}
-                      <strong className="text-brand-700">
-                        {currentBuilding} Rm {currentRoom}
-                      </strong>
-                    </div>
-                  </div>
+                {chosen ? (
+                  <>
+                    <p className="-mt-1 max-sm:-mt-3 flex items-baseline gap-2 min-w-0">
+                      <span className="font-display text-2xl leading-none font-semibold text-stone-950 tabular-nums">
+                        {chosen.room.roomNumber}
+                      </span>
+                      <span className="text-[13px] text-stone-600 truncate">{chosen.room.building}</span>
+                    </p>
+                    <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2">
+                      {chosen.isSwap
+                        ? `${movers} move${movingCount === 1 ? 's' : ''} in`
+                        : chosen.targetOccupants.length > 0
+                        ? `Shares with ${nameList(chosen.targetOccupants, 2)}`
+                        : `${movers} move${movingCount === 1 ? 's' : ''} in`}
+                    </p>
+                    <p className="mt-0.5 text-xs text-stone-600">
+                      {chosen.isSwap
+                        ? `${nameList(chosen.targetOccupants, 2)} move${
+                            chosen.targetOccupants.length === 1 ? 's' : ''
+                          } to ${currentBuilding} ${currentRoom}.`
+                        : chosenItem
+                        ? `${chosen.targetOccupants.length > 0 ? '' : 'Empty on these dates. '}Sleeps ${chosenItem.baseCap}${
+                            chosenItem.bufCap > 0 ? ` + ${chosenItem.bufCap} buffer` : ''
+                          }, ${requestedPax} bed${requestedPax === 1 ? '' : 's'} needed.`
+                        : ''}
+                    </p>
+                  </>
                 ) : (
-                  <p className="text-amber-950 font-medium">{pendingConfirm.warningText}</p>
+                  <>
+                    <p className="mt-1 text-base font-semibold text-stone-950">Not chosen yet</p>
+                    <p className="mt-2 text-xs text-stone-600">
+                      {mode === 'swap'
+                        ? 'Choose the occupied room to swap with. Both groups change places.'
+                        : `Choose a room below. ${requestedPax} bed${requestedPax === 1 ? '' : 's'} needed.`}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPendingConfirm(null)}
-                className="min-h-[44px] sm:min-h-[36px] px-4 rounded-xl border border-stone-300 bg-white text-stone-700 font-bold text-xs cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={executePending}
-                className="min-h-[44px] sm:min-h-[36px] px-4 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{pendingConfirm.isSwap ? 'Confirm Swap ↔' : 'Confirm Move'}</span>
-              </button>
+            <p className="text-[13px] text-stone-600 tabular-nums">
+              Stay:{' '}
+              <span className="font-medium text-stone-900">
+                {showDate(arrivalDate)}
+                {primary.arrivalTime ? `, ${showTime(primary.arrivalTime)}` : ''}
+                <ArrowRight className="inline w-3.5 h-3.5 mx-1 -mt-0.5 text-stone-500" aria-label="to" />
+                {showDate(departureDate)}
+                {primary.departureTime ? `, ${showTime(primary.departureTime)}` : ''}
+              </span>
+            </p>
+
+          </div>
+
+          <div className="lg:flex-1 lg:min-h-0 lg:flex">
+            {/* How to move */}
+            <aside className="lg:w-[304px] lg:shrink-0 lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-stone-200 px-5 sm:px-6 lg:pr-5 py-4 space-y-4">
+              <div>
+                <p className={fieldLabel} id="switch-mode-label">
+                  What to do
+                </p>
+                <div className={`${segWrap} w-full`} role="group" aria-labelledby="switch-mode-label">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('move');
+                      setPendingConfirm(null);
+                    }}
+                    aria-pressed={mode === 'move'}
+                    className={`${segBtn(mode === 'move')} flex-1 inline-flex items-center justify-center gap-1.5`}
+                  >
+                    <ArrowRight className="w-4 h-4 shrink-0" />
+                    Move
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!hasCurrentRoom}
+                    onClick={() => {
+                      setMode('swap');
+                      setPendingConfirm(null);
+                    }}
+                    aria-pressed={mode === 'swap'}
+                    title={hasCurrentRoom ? 'Swap rooms 2-way with occupants of another room' : 'Assign a room first before swapping'}
+                    className={`${segBtn(mode === 'swap')} flex-1 inline-flex items-center justify-center gap-1.5`}
+                  >
+                    <ArrowRightLeft className="w-4 h-4 shrink-0" />
+                    Swap rooms ({occupiedRoomCountForSwap})
+                  </button>
+                </div>
+              </div>
+
+              {canSwitchGroup && (
+                <div>
+                  <p className={fieldLabel} id="switch-scope-label">
+                    Who moves
+                  </p>
+                  <div className={`${segWrap} w-full`} role="group" aria-labelledby="switch-scope-label">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScope('single');
+                        setPendingConfirm(null);
+                      }}
+                      aria-pressed={scope === 'single'}
+                      className={`${segBtn(scope === 'single')} flex-1 inline-flex items-center justify-center gap-1.5`}
+                    >
+                      <User className="w-4 h-4 shrink-0" />
+                      This zair only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScope('group');
+                        setPendingConfirm(null);
+                      }}
+                      aria-pressed={scope === 'group'}
+                      className={`${segBtn(scope === 'group')} flex-1 inline-flex items-center justify-center gap-1.5`}
+                    >
+                      <Users className="w-4 h-4 shrink-0" />
+                      All ({target.reservations.length > 1 ? target.reservations.length : familyGroup.length})
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="switch-reason" className={fieldLabel}>
+                  Reason <span className="font-normal text-stone-500">(optional)</span>
+                </label>
+                <input
+                  id="switch-reason"
+                  type="text"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Ground floor needed for senior"
+                  className={field}
+                />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {QUICK_REASONS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setReason(preset)}
+                      aria-pressed={reason === preset}
+                      className={pick(reason === preset)}
+                    >
+                      {sentence(preset)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </aside>
+
+            {/* Rooms */}
+            <div className="lg:flex-1 lg:min-w-0 lg:flex lg:flex-col">
+              <div className="px-5 sm:px-6 lg:pl-5 pt-4 pb-3 space-y-2 lg:border-b border-stone-200">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder={
+                        mode === 'swap' ? 'Search room, zair, office or Tour ID' : 'Search room, building, floor or bed'
+                      }
+                      aria-label="Search rooms"
+                      className={`${field} pl-9`}
+                    />
+                  </div>
+                  {mode === 'move' && (
+                    <select
+                      value={availabilityFilter}
+                      onChange={(e) => setAvailabilityFilter(e.target.value as typeof availabilityFilter)}
+                      aria-label="Which rooms to show"
+                      className={`${field} sm:w-40 shrink-0`}
+                    >
+                      <option value="vacant_first">Vacant first</option>
+                      <option value="vacant_only">Vacant only</option>
+                      <option value="all">All rooms</option>
+                    </select>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div
+                    className={`${segWrap} flex-1 min-w-0 overflow-x-auto app-scroll-x`}
+                    role="group"
+                    aria-label="Building"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHotelFilter('ALL');
+                        setFloorFilter('ALL');
+                      }}
+                      aria-pressed={hotelFilter === 'ALL'}
+                      className={segBtn(hotelFilter === 'ALL')}
+                    >
+                      All
+                    </button>
+                    {distinctBuildings.map((b) => {
+                      const on = hotelFilter.toLowerCase() === b.toLowerCase();
+                      return (
+                        <button
+                          key={b}
+                          type="button"
+                          onClick={() => {
+                            setHotelFilter(b);
+                            setFloorFilter('ALL');
+                          }}
+                          aria-pressed={on}
+                          className={segBtn(on)}
+                        >
+                          {b}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <select
+                    value={floorFilter}
+                    onChange={(e) => setFloorFilter(e.target.value)}
+                    aria-label="Floor"
+                    className={`${field} sm:w-36 shrink-0`}
+                  >
+                    {floorOptions.map((fl) => (
+                      <option key={fl} value={fl}>
+                        {fl === 'ALL' ? 'All floors' : fl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto px-5 sm:px-6 lg:pl-5 py-3">
+                {filteredRooms.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {filteredRooms.map((item) => {
+                      const { room, occupants, isBlocked, currentOccupancy, maxCap, remainingSlots, baseCap, bufCap } = item;
+                      const state = roomState(item);
+                      const isChosen = chosen?.room.id === room.id;
+                      return (
+                        <button
+                          key={room.id}
+                          type="button"
+                          aria-pressed={isChosen}
+                          onClick={() => {
+                            if (isChosen) {
+                              setPendingConfirm(null);
+                            } else if (mode === 'swap') {
+                              handleChooseSwapRoom(item);
+                            } else {
+                              handleChooseMoveRoom(item);
+                            }
+                          }}
+                          className={`flex flex-col justify-start items-stretch w-full text-left rounded-xl p-3.5 ring-inset cursor-pointer ${
+                            isChosen
+                              ? 'bg-brand-50 ring-2 ring-brand-500'
+                              : isBlocked
+                              ? 'bg-stone-50 ring-1 ring-stone-200 hover:ring-stone-400'
+                              : 'bg-white ring-1 ring-stone-200 hover:ring-stone-400 hover:bg-stone-50'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex items-baseline gap-2">
+                              <span className="font-display text-[22px] leading-none font-semibold text-stone-950 tabular-nums">
+                                {room.roomNumber}
+                              </span>
+                              <span className="text-[13px] text-stone-600 truncate">
+                                {room.building} · {room.floorLabel || `Floor ${room.floor}`}
+                              </span>
+                            </div>
+                            <span className={`${chip(state.tone)} shrink-0`}>
+                              {isChosen ? (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              ) : (
+                                isBlocked && mode !== 'swap' && <Lock className="w-3 h-3" />
+                              )}
+                              {state.label}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 text-[13px] text-stone-800">
+                            Sleeps {baseCap}
+                            {bufCap > 0 ? ` + ${bufCap} buffer` : ''}
+                            <span className="text-stone-500">
+                              {' '}
+                              ·{' '}
+                              {isBlocked
+                                ? `blocked${room.blockedReason ? `: ${room.blockedReason}` : ''}`
+                                : occupants.length === 0
+                                ? 'empty'
+                                : `${currentOccupancy} of ${maxCap} taken, ${remainingSlots} free`}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-xs text-stone-500">
+                            {getRoomBedCount(room)} × {sentence(room.bedType || 'Single Beds')} ·{' '}
+                            {sentence(room.toiletType || 'Standard')} toilet
+                          </div>
+
+                          {occupants.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-stone-200 text-xs">
+                              <div
+                                className="font-medium text-stone-800 truncate"
+                                title={occupants.map((o) => o.applicantName).join(', ')}
+                              >
+                                {occupants.map((o) => o.applicantName).join(', ')}
+                              </div>
+                              <div className="mt-0.5 text-stone-600 truncate tabular-nums">
+                                Family {occupants[0].family || '—'} · Tour {occupants[0].tourRefNo || occupants[0].tourId || '—'}
+                                {occupants[0].officeName ? ` · ${occupants[0].officeName}` : ''}
+                              </div>
+                              <div className="mt-0.5 text-stone-500 tabular-nums">
+                                {showDate(occupants[0].arrivalDate)}
+                                <ArrowRight className="inline w-3 h-3 mx-1 -mt-0.5" aria-label="to" />
+                                {showDate(occupants[0].departureDate)}
+                              </div>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-14 text-center">
+                    <p className="text-sm font-semibold text-stone-900">
+                      {mode === 'swap' ? 'No other occupied rooms match' : 'No rooms match'}
+                    </p>
+                    <p className="mt-1 text-[13px] text-stone-600">
+                      {mode === 'swap'
+                        ? 'Swapping needs a room with people in it on these dates. Clear the search or pick another building.'
+                        : 'Clear the search, pick another building or floor, or show all rooms.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* What needs confirming about the chosen room, in plain words, before the move */}
+        {chosen && !chosen.isSwap && chosen.warningText && (
+          <div className="shrink-0 border-t border-stone-200 px-5 sm:px-6 py-3 max-h-[30dvh] overflow-y-auto">
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-amber-800"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="min-w-0 text-[13px] leading-relaxed">
+                <p className="font-semibold">This move needs your confirmation</p>
+                <p className="mt-0.5">{chosen.warningText}</p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Room List */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
-          {filteredRooms.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {filteredRooms.map((item) => {
-                const { room, occupants, isVacant, isBlocked, canFitInRemaining, currentOccupancy, maxCap, remainingSlots } = item;
-                return (
-                  <div
-                    key={room.id}
-                    className={`bg-white rounded-xl border p-3 flex flex-col justify-between gap-2.5 transition ${
-                      isBlocked
-                        ? 'border-stone-300 bg-stone-50'
-                        : isVacant
-                        ? 'border-emerald-300'
-                        : canFitInRemaining
-                        ? 'border-amber-300'
-                        : 'border-stone-200'
-                    }`}
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-mono font-extrabold text-sm text-brand-700 tabular-nums">
-                            {room.building} · Room {room.roomNumber}
-                          </div>
-                          <div className="text-[11px] text-stone-500">
-                            {room.floorLabel || `Floor ${room.floor}`} · {getRoomBedCount(room)} beds · Cap {room.capacity}
-                            {room.buffer ? ` (+${room.buffer})` : ''} · {room.bedType || 'Single Beds'} ·{' '}
-                            {room.toiletType || 'Standard'}
-                          </div>
-                        </div>
-
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 tabular-nums ${
-                            isBlocked
-                              ? 'bg-stone-200 text-stone-700'
-                              : isVacant
-                              ? 'bg-emerald-100 text-emerald-900'
-                              : canFitInRemaining
-                              ? 'bg-amber-100 text-amber-900'
-                              : 'bg-rose-100 text-rose-900'
-                          }`}
-                        >
-                          {isBlocked
-                            ? 'Blocked'
-                            : isVacant
-                            ? `Vacant (${maxCap})`
-                            : `${currentOccupancy}/${maxCap} Pax`}
-                        </span>
-                      </div>
-
-                      {occupants.length > 0 && (
-                        <div className="bg-stone-50 border border-stone-200/80 rounded-lg p-2 text-[11px] space-y-0.5">
-                          <div className="font-bold text-stone-800 truncate">
-                            {occupants.map((o) => o.applicantName).join(', ')}
-                          </div>
-                          <div className="text-stone-600 truncate">
-                            Tour {occupants[0].tourRefNo || occupants[0].tourId || '—'}
-                            {occupants[0].officeName ? ` · ${occupants[0].officeName}` : ''} · Fam #{occupants[0].family || '—'}
-                          </div>
-                          <div className="text-stone-500 flex items-center gap-1 tabular-nums">
-                            <Clock className="w-3 h-3 text-stone-400 shrink-0" />
-                            <span>
-                              {(occupants[0].arrivalDate || '').slice(0, 10)} ➔{' '}
-                              {(occupants[0].departureDate || '').slice(0, 10)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-1">
-                      {mode === 'swap' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleChooseSwapRoom(item)}
-                          className="w-full min-h-[44px] sm:min-h-[36px] rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
-                        >
-                          <ArrowRightLeft className="w-3.5 h-3.5" />
-                          <span>
-                            Swap with Rm {room.roomNumber} ({occupants.length} pax)
-                          </span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleChooseMoveRoom(item)}
-                          className={`w-full min-h-[44px] sm:min-h-[36px] rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                            isVacant
-                              ? 'bg-brand-700 hover:bg-brand-800 text-white'
-                              : canFitInRemaining
-                              ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                              : 'bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300'
-                          }`}
-                        >
-                          {isBlocked && <Lock className="w-3.5 h-3.5" />}
-                          <span>
-                            {isVacant
-                              ? `Move to Rm ${room.roomNumber}`
-                              : canFitInRemaining
-                              ? `Move & Share (${remainingSlots} slots open)`
-                              : isBlocked
-                              ? `Override Blocked Rm ${room.roomNumber}`
-                              : `Force Move to Rm ${room.roomNumber}`}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-12 text-center text-xs text-stone-500 space-y-2">
-              <Building2 className="w-8 h-8 mx-auto text-stone-300" />
-              <p className="font-semibold">
-                {mode === 'swap'
-                  ? 'No other occupied rooms found matching your filters.'
-                  : 'No rooms match your search criteria.'}
-              </p>
-            </div>
-          )}
+        <div className={`${modalFooter} sm:justify-between`}>
+          <p className="max-sm:w-full text-[13px] text-stone-600 tabular-nums">
+            {chosen ? (
+              <>
+                {chosen.isSwap ? 'Swap' : 'Move'}:{' '}
+                <span className="font-semibold text-stone-950">
+                  {hasCurrentRoom ? `${currentBuilding} ${currentRoom}` : 'Unallotted'}
+                  {chosen.isSwap ? ' ↔ ' : ' → '}
+                  {chosen.room.building} {chosen.room.roomNumber}
+                </span>
+              </>
+            ) : (
+              <>{filteredRooms.length} rooms shown. Choose one to continue.</>
+            )}
+          </p>
+          <div className="flex items-center gap-2 ml-auto">
+            <button type="button" onClick={onClose} className={btn.ghost}>
+              Cancel
+            </button>
+            <button type="button" disabled={!chosen} onClick={executePending} className={btn.primary}>
+              {chosen?.isSwap ? <ArrowRightLeft className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+              {confirmLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BedDouble, CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, X } from 'lucide-react';
 import { Room, RoomCategory, RoomStatus } from '../types';
 import {
   ROOM_BED_TYPES,
@@ -9,6 +9,7 @@ import {
   getRoomBedCount,
   getRoomCustomFeatures,
 } from '../services/storage';
+import { btn, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
 
 /** Everything about a room except its building and number. */
 export interface RoomSpecDraft {
@@ -94,8 +95,26 @@ export function applyRoomSpec(base: Pick<Room, 'id' | 'building' | 'roomNumber'>
   };
 }
 
-const inputClass =
-  'w-full min-h-[40px] sm:min-h-0 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-brand-700';
+/**
+ * One segmented control for the room screens (building, floor, capacity, range, status switches).
+ * A stone track; the chosen option is a white tab. 40px tall on phones, 32px in desktop toolbars.
+ */
+export const segTrack = 'inline-flex items-center gap-0.5 rounded-lg bg-stone-100 p-0.5';
+export const segBtn = (selected: boolean) =>
+  `inline-flex items-center justify-center gap-1.5 h-10 sm:h-8 px-3 rounded-md text-[13px] whitespace-nowrap transition cursor-pointer ${
+    selected
+      ? 'bg-white text-stone-950 font-semibold shadow-xs ring-1 ring-stone-300/80'
+      : 'font-medium text-stone-600 hover:text-stone-950 hover:bg-stone-200/60'
+  }`;
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2026-11-28" reads as "28 Nov" (with the year when it is not this year). For display only. */
+export const formatDay = (value?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+  if (!m) return value || '—';
+  const text = `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] || m[2]}`;
+  return Number(m[1]) === new Date().getFullYear() ? text : `${text} ${m[1]}`;
+};
 
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; className?: string }> = ({
   label,
@@ -103,10 +122,10 @@ const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode;
   children,
   className,
 }) => (
-  <label className={`block ${className || ''}`}>
-    <span className="block text-stone-600 font-semibold mb-1">{label}</span>
+  <label className={`block min-w-0 ${className || ''}`}>
+    <span className={fieldLabel}>{label}</span>
     {children}
-    {hint && <span className="block text-[11px] text-stone-400 mt-0.5">{hint}</span>}
+    {hint && <span className="block mt-1 text-xs text-stone-500">{hint}</span>}
   </label>
 );
 
@@ -125,7 +144,7 @@ const NumberInput: React.FC<{
     step={step}
     value={Number.isFinite(value) ? value : ''}
     onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
-    className={`${inputClass} tabular-nums`}
+    className={`${field} tabular-nums`}
   />
 );
 
@@ -139,9 +158,9 @@ export const RoomSpecFields: React.FC<{
   const maxGuests = (Number.isFinite(value.capacity) ? value.capacity : 0) + (Number.isFinite(value.buffer) ? value.buffer : 0);
 
   return (
-    <div className="space-y-4 text-xs">
+    <div className="space-y-4">
       {showFloor && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
           <Field label="Floor level" hint="0 = Ground">
             <NumberInput
               value={value.floor}
@@ -167,38 +186,40 @@ export const RoomSpecFields: React.FC<{
               value={value.floorLabel}
               placeholder="e.g. Ground, Mezzanine, Floor 2"
               onChange={(e) => set('floorLabel', e.target.value)}
-              className={inputClass}
+              className={field}
             />
           </Field>
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Beds *" hint="Physical beds">
-          <NumberInput value={value.beds} min={1} max={20} onChange={(n) => set('beds', n)} />
-        </Field>
-        <Field label="Sleeps (pax) *" hint="Guests per room">
-          <NumberInput value={value.capacity} min={1} max={20} onChange={(n) => set('capacity', n)} />
-        </Field>
-        <Field label="Buffer" hint="Extra guests allowed">
-          <NumberInput value={value.buffer} min={0} max={10} onChange={(n) => set('buffer', n)} />
-        </Field>
+      <div>
+        <div className="grid grid-cols-3 gap-x-4 gap-y-4">
+          <Field label="Beds *" hint="Physical beds">
+            <NumberInput value={value.beds} min={1} max={20} onChange={(n) => set('beds', n)} />
+          </Field>
+          <Field label="Sleeps (pax) *" hint="Guests per room">
+            <NumberInput value={value.capacity} min={1} max={20} onChange={(n) => set('capacity', n)} />
+          </Field>
+          <Field label="Buffer" hint="Extra guests allowed">
+            <NumberInput value={value.buffer} min={0} max={10} onChange={(n) => set('buffer', n)} />
+          </Field>
+        </div>
+        <p className="mt-2 text-[13px] text-stone-600">
+          Allocation fills up to <strong className="font-semibold text-stone-900 tabular-nums">{value.capacity || 0}</strong> guests
+          {value.buffer ? <>, or <strong className="font-semibold text-stone-900 tabular-nums">{maxGuests}</strong> using the buffer</> : null}.
+        </p>
       </div>
-      <p className="-mt-2 text-[11px] text-stone-500">
-        Allocation fills up to <strong className="text-stone-800 tabular-nums">{value.capacity || 0}</strong> guests
-        {value.buffer ? <>, or <strong className="text-stone-800 tabular-nums">{maxGuests}</strong> using the buffer</> : null}.
-      </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
         <Field label="Bed type">
-          <select value={value.bedType} onChange={(e) => set('bedType', e.target.value)} className={inputClass}>
+          <select value={value.bedType} onChange={(e) => set('bedType', e.target.value)} className={field}>
             {Array.from(new Set([...ROOM_BED_TYPES, value.bedType])).map((b) => (
               <option key={b} value={b}>{b}</option>
             ))}
           </select>
         </Field>
         <Field label="Toilet">
-          <select value={value.toiletType} onChange={(e) => set('toiletType', e.target.value)} className={inputClass}>
+          <select value={value.toiletType} onChange={(e) => set('toiletType', e.target.value)} className={field}>
             {ROOM_TOILET_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
@@ -208,7 +229,7 @@ export const RoomSpecFields: React.FC<{
           </select>
         </Field>
         <Field label="Category">
-          <select value={value.category} onChange={(e) => set('category', e.target.value as RoomCategory)} className={inputClass}>
+          <select value={value.category} onChange={(e) => set('category', e.target.value as RoomCategory)} className={field}>
             {Array.from(new Set([...ROOM_CATEGORIES, value.category])).map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
@@ -217,9 +238,9 @@ export const RoomSpecFields: React.FC<{
       </div>
 
       {showStatus && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
           <Field label="Status">
-            <select value={value.status} onChange={(e) => set('status', e.target.value as RoomStatus)} className={inputClass}>
+            <select value={value.status} onChange={(e) => set('status', e.target.value as RoomStatus)} className={field}>
               <option value="available">Available</option>
               <option value="blocked">Blocked</option>
               <option value="cleaning">Cleaning</option>
@@ -232,21 +253,21 @@ export const RoomSpecFields: React.FC<{
                 value={value.blockedReason}
                 placeholder="e.g. AC repair"
                 onChange={(e) => set('blockedReason', e.target.value)}
-                className={inputClass}
+                className={field}
               />
             </Field>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
         <Field label="Other features" hint="Comma separated, e.g. Balcony, Wheelchair access">
           <input
             type="text"
             value={value.features}
             placeholder="Balcony, Near lift"
             onChange={(e) => set('features', e.target.value)}
-            className={inputClass}
+            className={field}
           />
         </Field>
         <Field label="Notes">
@@ -255,7 +276,7 @@ export const RoomSpecFields: React.FC<{
             value={value.notes}
             placeholder="Anything reception should know"
             onChange={(e) => set('notes', e.target.value)}
-            className={inputClass}
+            className={field}
           />
         </Field>
       </div>
@@ -280,51 +301,30 @@ export const RoomEditModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="room-edit-title"
-        className="bg-stone-50 rounded-t-3xl sm:rounded-2xl max-w-2xl w-full shadow-2xl border border-stone-200 flex flex-col max-h-[92vh] overflow-hidden"
-      >
-        <div className="bg-brand-700 text-white px-5 py-4 flex items-start justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <BedDouble className="w-5 h-5 text-gold-200" />
-            <div>
-              <h2 id="room-edit-title" className="text-base font-bold">Edit room {room.roomNumber}</h2>
-              <p className="text-xs text-stone-200">{room.building}</p>
-            </div>
+    <div className={`${modalScrim} z-[60]!`}>
+      <div role="dialog" aria-modal="true" aria-labelledby="room-edit-title" className={`${modalCard} max-w-2xl`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="room-edit-title" className={modalTitle}>Edit room {room.roomNumber}</h2>
+            <p className="mt-1 text-[13px] text-stone-600">
+              {room.building}. The building and room number stay fixed because allotments use them.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-white/10 cursor-pointer"
-          >
+          <button type="button" onClick={onClose} aria-label="Close" className={modalClose}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1">
-          <div className="bg-white p-4 rounded-xl border border-stone-200">
-            <RoomSpecFields value={spec} onChange={(next) => { setSpec(next); setError(null); }} />
-          </div>
-          {error && <p role="alert" className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
+        <div className="px-5 sm:px-6 py-5 overflow-y-auto flex-1 min-h-0">
+          <RoomSpecFields value={spec} onChange={(next) => { setSpec(next); setError(null); }} />
+          {error && <p role="alert" className="mt-4 text-[13px] font-medium text-rose-700">{error}</p>}
         </div>
 
-        <div className="px-4 sm:px-5 py-3 border-t border-stone-200 bg-white flex items-center justify-end gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 cursor-pointer"
-          >
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.secondary}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={save}
-            className="min-h-[40px] px-5 py-2 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white flex items-center gap-1.5 cursor-pointer"
-          >
+          <button type="button" onClick={save} className={btn.primary}>
             <CheckCircle2 className="w-4 h-4" />
             Save room
           </button>

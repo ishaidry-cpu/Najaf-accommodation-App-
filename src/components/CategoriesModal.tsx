@@ -1,20 +1,7 @@
 import React, { useState } from 'react';
-import { 
-  FileSpreadsheet, 
-  ExternalLink, 
-  RefreshCw, 
-  CheckCircle2, 
-  AlertCircle, 
-  Plus, 
-  Trash2, 
-  X, 
-  Tag, 
-  Link as LinkIcon,
-  Sparkles,
-  Info,
-  Check
-} from 'lucide-react';
+import { Check, CheckCircle2, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { DEFAULT_ZAEREEN_CATEGORIES } from '../types';
+import { btn, btnSm, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
 
 interface CategoriesModalProps {
   isOpen: boolean;
@@ -22,6 +9,9 @@ interface CategoriesModalProps {
   categories: string[];
   onSaveCategories: (newCategories: string[]) => void;
 }
+
+/** Compact buttons grow to the 40px touch size on phones. */
+const tap = (cls: string) => `${cls} max-sm:h-10 max-sm:px-3.5`;
 
 export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   isOpen,
@@ -34,6 +24,8 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   const [currentList, setCurrentList] = useState<string[]>(categories && categories.length > 0 ? categories : DEFAULT_ZAEREEN_CATEGORIES);
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Which part of the dialog the error belongs to, so it can sit right under it.
+  const [errorAt, setErrorAt] = useState<'add' | 'list'>('list');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleAddManualCategory = () => {
@@ -41,6 +33,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
     if (!trimmed) return;
     if (currentList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
       setErrorMsg(`"${trimmed}" is already in the categories list.`);
+      setErrorAt('add');
       return;
     }
     setCurrentList([...currentList, trimmed]);
@@ -52,6 +45,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
   const handleRemoveCategory = (catToRemove: string) => {
     if (currentList.length <= 1) {
       setErrorMsg('You must have at least one category.');
+      setErrorAt('list');
       return;
     }
     setCurrentList(currentList.filter((c) => c !== catToRemove));
@@ -71,97 +65,62 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
     onClose();
   };
 
+  const addError = errorMsg && errorAt === 'add';
+  const listError = errorMsg && errorAt === 'list';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px]">
-      <div 
-        className="bg-stone-50 border border-stone-200 rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="bg-brand-700 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-gold-200 border border-gold-400/40">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>Zaereen categories</span>
-                <span className="text-[11px] bg-gold-200 text-brand-700 px-2 py-0.5 rounded-full font-extrabold uppercase">
-                  {currentList.length} Active
-                </span>
-              </h2>
-              <p className="text-xs text-emerald-100/80">
-                Configure Zaereen categories (Mumineen, Muntasbeen, Qasreali, Baitezainy)
-              </p>
-            </div>
+    <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="categories-modal-title">
+      <div className={`${modalCard} max-w-lg`} onClick={(e) => e.stopPropagation()}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="categories-modal-title" className={modalTitle}>Zaereen categories</h2>
+            <p className="mt-1 text-sm text-stone-600">
+              The categories a zair can be given, such as Mumineen, Muntasbeen, Qasreali and Baitezainy.
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition"
-          >
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-6">
-          
-          {/* Feedback Alerts */}
-          {errorMsg && (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3.5 text-xs flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <div className="flex-1">{errorMsg}</div>
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3.5 text-xs flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <div className="flex-1 font-medium">{successMsg}</div>
-            </div>
-          )}
-
-          {/* Section 2: Current Active Categories */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-4 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Tag className="w-4 h-4 text-brand-700" />
-                <h3 className="text-sm font-bold text-brand-700">Active Categories in System</h3>
-              </div>
-              <button
-                type="button"
-                onClick={handleResetToDefault}
-                className="text-[11px] font-bold text-stone-500 hover:text-stone-800 underline"
-              >
-                Reset to Standard Defaults
+        <div className="px-5 sm:px-6 py-5 space-y-5 overflow-y-auto">
+          <div>
+            <div className="flex items-end justify-between gap-3 mb-1.5">
+              <h3 className="text-[13px] font-medium text-stone-700">
+                Active categories <span className="font-normal text-stone-500 tabular-nums">({currentList.length})</span>
+              </h3>
+              <button type="button" onClick={handleResetToDefault} className={tap(btnSm.ghost)}>
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset to standard
               </button>
             </div>
-
-            {/* Categories Pills */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <ul className="divide-y divide-stone-200 rounded-xl ring-1 ring-inset ring-stone-200">
               {currentList.map((cat) => (
-                <div
-                  key={cat}
-                  className="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-brand-700 font-bold text-xs shadow-2xs hover:bg-emerald-100 transition"
-                >
-                  <span>{cat}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCategory(cat)}
-                    className="text-stone-400 group-hover:text-red-600 hover:bg-white/60 p-0.5 rounded transition"
-                    title={`Remove ${cat}`}
-                  >
-                    <X className="w-3.5 h-3.5" />
+                <li key={cat} className="flex items-center justify-between gap-3 min-h-11 pl-3.5 pr-1.5 py-1">
+                  <span className="min-w-0 break-words text-sm font-medium text-stone-900">{cat}</span>
+                  <button type="button" onClick={() => handleRemoveCategory(cat)} title={`Remove ${cat}`} className={tap(btnSm.danger)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove
                   </button>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
+            {listError && <p role="alert" className="mt-1.5 text-[13px] font-medium text-rose-700">{errorMsg}</p>}
+            {successMsg && (
+              <p role="status" className="mt-2 flex items-start gap-2 text-[13px] font-medium text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+                <span>{successMsg}</span>
+              </p>
+            )}
+          </div>
 
-            {/* Quick Add Manual Category */}
-            <div className="pt-2 flex items-center gap-2">
+          <div>
+            <label htmlFor="categories-add-input" className={fieldLabel}>Add a category</label>
+            <div className="flex items-center gap-2">
               <input
+                id="categories-add-input"
                 type="text"
-                placeholder="Add custom category name (e.g. Mahad, Staff)..."
+                placeholder="For example Mahad or Staff"
                 value={newCategoryInput}
                 onChange={(e) => setNewCategoryInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -170,37 +129,25 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({
                     handleAddManualCategory();
                   }
                 }}
-                className="flex-1 bg-stone-50 border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-brand-700"
+                aria-invalid={addError ? true : undefined}
+                className={addError ? field.replace('border-stone-300', 'border-rose-500') : field}
               />
-              <button
-                type="button"
-                onClick={handleAddManualCategory}
-                className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition flex items-center gap-1 border border-stone-300 shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add</span>
+              <button type="button" onClick={handleAddManualCategory} className={`${btn.secondary} shrink-0`}>
+                <Plus className="w-4 h-4 text-stone-500" />
+                Add
               </button>
             </div>
+            {addError
+              ? <p role="alert" className="mt-1.5 text-[13px] font-medium text-rose-700">{errorMsg}</p>
+              : <p className="mt-1.5 text-[13px] text-stone-500">Changes apply when you save.</p>}
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 bg-stone-100/80 border-t border-stone-200 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-stone-300 hover:bg-white text-stone-700 text-xs font-bold transition"
-          >
-            Cancel
-          </button>
-          
-          <button
-            type="button"
-            onClick={handleSaveAndApply}
-            className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5"
-          >
-            <Check className="w-4 h-4 text-gold-200" />
-            <span>Save & Apply Categories</span>
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.secondary}>Cancel</button>
+          <button type="button" onClick={handleSaveAndApply} className={btn.primary}>
+            <Check className="w-4 h-4" />
+            Save categories
           </button>
         </div>
       </div>

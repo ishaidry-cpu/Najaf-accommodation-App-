@@ -26,12 +26,14 @@ import {
   HardHat,
   ClipboardList,
   FileCheck,
-  Search
+  Search,
+  ChevronDown
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Reservation, Room } from '../types';
 import { FaizHusainiLogo } from './FaizHusainiLogo';
+import { btn, btnSm, fieldSm, fieldLabel, modalHeader, modalTitle, modalClose, Dropdown, MenuItem, MenuDivider, MenuHeading } from './ui';
 import { normalizeDate } from '../services/excelService';
 import { saveOrDownloadPdf, PdfDownloadResult } from '../services/pdfExport';
 import { parseTimeToMinutes, isInfant, countEffectivePax, getReservationEffectivePax } from '../utils/turnoverTiming';
@@ -637,6 +639,15 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     }
     return dates;
   }, [activeDatesSummary.sortedDates, selectedDate]);
+
+  // Keep the chosen day in view inside the "days with activity" row (screen only).
+  const activeDateRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = activeDateRowRef.current;
+    const chosen = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!row || !chosen) return;
+    row.scrollLeft = Math.max(0, chosen.offsetLeft - (row.clientWidth - chosen.offsetWidth) / 2);
+  }, [selectedDate, displayDates.length]);
 
   const [activeHotelFilter, setActiveHotelFilter] = useState<'ALL' | 'Saifee' | 'Burhani'>('ALL');
   const [activeTab, setActiveTab] = useState<'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload'>(
@@ -2553,8 +2564,46 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   if (!isOpen) return null;
 
+  /* ---- On-screen chrome helpers (nothing here reaches the printed slip) ---- */
+  type SlipTabId = typeof activeTab;
+  const slipTabs: { id: SlipTabId; label: string; title: string; icon: React.ElementType }[] = [
+    { id: 'arrival_slip', label: 'Arrival slip', title: 'Arrival slip: room allotments and dates', icon: LogIn },
+    { id: 'departure_list', label: 'Departure list', title: 'Departure list: room numbers and dates', icon: LogOut },
+    { id: 'turnover', label: 'Room turnover', title: 'Room-by-room turnover schedule', icon: DoorClosed },
+    { id: 'roster', label: 'Tour ID roster', title: 'Arrivals and departures by Tour ID', icon: Users },
+    { id: 'worker_summary', label: 'Worker sheet', title: 'Worker room operations sheet, by office, tour and time', icon: HardHat },
+    { id: 'portal_upload', label: 'Portal upload', title: 'Assistant portal upload sheet: Tour IDs and rooms', icon: ClipboardList },
+  ];
+  const activeSlip = slipTabs.find((t) => t.id === activeTab) ?? slipTabs[0];
+
+  /** PDF of the slip on screen: for the chosen building filter, or for one named building. */
+  const downloadSlipPdf = (hotel?: 'Saifee' | 'Burhani') => {
+    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf(hotel ?? activeHotelFilter);
+    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf(hotel ?? activeHotelFilter);
+    else if (activeTab === 'roster') handleDownloadRosterPdf(hotel ?? activeHotelFilter);
+    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf(hotel ?? activeHotelFilter);
+    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(hotel ?? portalHotelFilter);
+    else handleDownloadPdf(hotel ?? activeHotelFilter);
+  };
+
+  const buildingCounts =
+    activeTab === 'arrival_slip'
+      ? { all: simpleArrivalsData.totalRooms, saifee: simpleArrivalsData.saifee.length, burhani: simpleArrivalsData.burhani.length, unit: 'rooms arriving' }
+      : activeTab === 'departure_list'
+      ? { all: simpleDeparturesData.totalRooms, saifee: simpleDeparturesData.saifee.length, burhani: simpleDeparturesData.burhani.length, unit: 'rooms departing' }
+      : { all: 114, saifee: 70, burhani: 44, unit: 'rooms' };
+
+  const slipSegWrap = 'inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-stone-100 ring-1 ring-inset ring-stone-200';
+  const slipSegBtn = (selected: boolean) =>
+    `h-10 sm:h-8 px-3 rounded-md text-[13px] whitespace-nowrap cursor-pointer transition ${
+      selected ? 'bg-white text-stone-950 font-semibold shadow-xs ring-1 ring-stone-300' : 'text-stone-600 font-medium hover:text-stone-950'
+    }`;
+  const slipIconBtn =
+    'w-10 h-10 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-stone-600 ring-1 ring-inset ring-stone-300 bg-white hover:bg-stone-50 hover:text-stone-950 cursor-pointer';
+  const slipCheckLabel = 'inline-flex items-center gap-2 min-h-10 sm:min-h-9 text-[13px] text-stone-700 cursor-pointer';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200 reception-slip-modal-backdrop">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/50 animate-in fade-in duration-150 reception-slip-modal-backdrop">
       
       {/* Print-specific style to guarantee pristine paper print without scroll cutoffs */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -2604,6 +2653,16 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
             box-shadow: none !important;
             border: none !important;
           }
+          .reception-slip-desk {
+            display: block !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent !important;
+            border-radius: 0 !important;
+          }
           .print-hidden-element {
             display: none !important;
           }
@@ -2622,541 +2681,449 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         }
       `}} />
 
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-6xl w-full p-4 sm:p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[94vh] reception-slip-modal-card">
-        
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="print-hidden-element absolute top-4 right-4 text-stone-500 hover:text-stone-800 p-1.5 rounded-lg hover:bg-stone-200/60 transition cursor-pointer z-10"
-        >
-          <X className="w-5 h-5" />
-        </button>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reception-slip-title"
+        className="bg-white rounded-t-2xl sm:rounded-2xl max-w-6xl w-full h-[96dvh] sm:h-[94vh] shadow-2xl relative text-stone-800 flex flex-col max-sm:overflow-y-auto animate-in zoom-in-95 duration-200 reception-slip-modal-card"
+      >
+        {/* Title bar and slip tabs (hidden in print). On phones they stay put while the rest scrolls. */}
+        <div className="print-hidden-element shrink-0 bg-white rounded-t-2xl max-sm:sticky max-sm:top-0 max-sm:z-20">
+        <div className="flex items-start justify-between gap-4 px-4 sm:px-6 pt-4 sm:pt-5 pb-2 sm:pb-3">
+          <div className="min-w-0">
+            <h3 id="reception-slip-title" className={modalTitle}>
+              Daily reception slips
+            </h3>
+            <p className="mt-1 text-[13px] text-stone-600 truncate">
+              Arrival, departure, turnover and roster sheets for one day, to print or download.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className={`${modalClose} max-sm:w-10 max-sm:h-10`}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-        {/* Top Controls Bar (Hidden in Print) */}
-        <div className="print-hidden-element flex flex-col gap-3 pb-3 border-b border-stone-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <FaizHusainiLogo size="sm" showSubtitle={false} />
-                <h3 className="text-base font-bold text-brand-700">
-                  Daily Reception Slip — Room Turnover & Guest Roster
-                </h3>
+        {/* Slip type tabs */}
+        <div className="px-2 sm:px-4 border-b border-stone-200">
+          <div role="tablist" aria-label="Slip type" className="flex gap-1 overflow-x-auto app-scroll-x">
+            {slipTabs.map((tab) => {
+              const TabIcon = tab.icon;
+              const selected = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  title={tab.title}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`shrink-0 inline-flex items-center gap-2 h-11 px-3 rounded-t-lg border-b-2 text-sm whitespace-nowrap cursor-pointer transition-colors ${
+                    selected
+                      ? 'border-brand-700 bg-brand-50 text-brand-800 font-semibold'
+                      : 'border-transparent text-stone-600 font-medium hover:text-stone-950 hover:bg-stone-100'
+                  }`}
+                >
+                  <TabIcon className={`w-4 h-4 ${selected ? 'text-brand-700' : 'text-stone-400'}`} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        </div>
+
+        {/* Toolbar: what to include on the left, output on the right (hidden in print) */}
+        <div className="print-hidden-element shrink-0 px-4 sm:px-6 py-3 border-b border-stone-200 flex flex-col gap-3">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-3 min-w-0">
+              {/* Date */}
+              <div>
+                <label htmlFor="reception-slip-date" className={fieldLabel}>
+                  Date
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      userManuallyPickedDateRef.current = true;
+                      handleNavigateActiveDate('prev');
+                    }}
+                    className={slipIconBtn}
+                    aria-label="Previous date with activity"
+                    title="Previous date with activity"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <input
+                    id="reception-slip-date"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      userManuallyPickedDateRef.current = true;
+                      setSelectedDate(e.target.value);
+                    }}
+                    className={`${fieldSm} max-sm:h-10 tabular-nums cursor-pointer`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      userManuallyPickedDateRef.current = true;
+                      handleNavigateActiveDate('next');
+                    }}
+                    className={slipIconBtn}
+                    aria-label="Next date with activity"
+                    title="Next date with activity"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Room-by-room preparation matrix for housekeeping turnover, checkouts, and incoming zaereen check-in.
-              </p>
+
+              {/* Building */}
+              <div>
+                <span id="reception-slip-building-label" className={fieldLabel}>
+                  Building
+                </span>
+                <div role="group" aria-labelledby="reception-slip-building-label" className={slipSegWrap}>
+                  {(
+                    [
+                      ['ALL', 'All', buildingCounts.all],
+                      ['Saifee', 'Saifee', buildingCounts.saifee],
+                      ['Burhani', 'Burhani', buildingCounts.burhani],
+                    ] as const
+                  ).map(([value, label, count]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={activeHotelFilter === value}
+                      onClick={() => setActiveHotelFilter(value)}
+                      title={`${label === 'All' ? 'All buildings' : `${label} Hotel`}: ${count} ${buildingCounts.unit}`}
+                      className={slipSegBtn(activeHotelFilter === value)}
+                    >
+                      {label} <span className="tabular-nums font-normal text-stone-500">({count})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Options for the current slip */}
+              {(activeTab === 'arrival_slip' || activeTab === 'departure_list') && (
+                <label className={slipCheckLabel}>
+                  <input
+                    type="checkbox"
+                    checked={showOnlyTurnoversInSlip}
+                    onChange={(e) => setShowOnlyTurnoversInSlip(e.target.checked)}
+                    className="w-4 h-4 rounded cursor-pointer"
+                  />
+                  <span>
+                    Show only turnovers{' '}
+                    <span className="tabular-nums text-stone-500">
+                      ({activeTab === 'arrival_slip' ? simpleArrivalsData.totalTurnovers : simpleDeparturesData.totalTurnovers} rooms)
+                    </span>
+                  </span>
+                </label>
+              )}
+
+              {activeTab === 'turnover' && (
+                <label className={slipCheckLabel}>
+                  <input
+                    type="checkbox"
+                    checked={showOnlyActiveRooms}
+                    onChange={(e) => setShowOnlyActiveRooms(e.target.checked)}
+                    className="w-4 h-4 rounded cursor-pointer"
+                  />
+                  <span>
+                    Show only rooms with turnover or activity today{' '}
+                    <span className="tabular-nums text-stone-500">({filteredRoomPrep.length})</span>
+                  </span>
+                </label>
+              )}
+
+              {activeTab === 'roster' && (
+                <div>
+                  <span id="reception-slip-order-label" className={fieldLabel}>
+                    Order
+                  </span>
+                  <div role="group" aria-labelledby="reception-slip-order-label" className={slipSegWrap}>
+                    <button
+                      type="button"
+                      aria-pressed={rosterGroupByTour}
+                      onClick={() => setRosterGroupByTour(true)}
+                      className={slipSegBtn(rosterGroupByTour)}
+                    >
+                      Group by Tour ID and time
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={!rosterGroupByTour}
+                      onClick={() => setRosterGroupByTour(false)}
+                      title="Sorted by room, as on the arrival slip"
+                      className={slipSegBtn(!rosterGroupByTour)}
+                    >
+                      Sort by room
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'worker_summary' && (
+                <p className="basis-full -mt-1 text-[13px] text-stone-600">
+                  Ordered by room number and time, grouped by office and tour.
+                </p>
+              )}
+
+              {activeTab === 'portal_upload' && (
+                <p className="basis-full -mt-1 text-[13px] text-stone-600">
+                  For the assistant's portal upload. Tick families off on the sheet below.
+                </p>
+              )}
             </div>
 
-            {/* Print and PDF Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Output */}
+            <div className="flex items-center gap-2 lg:justify-end shrink-0 lg:mt-[23.5px]">
+              <button type="button" onClick={handlePrint} className={btn.secondary} title="Print the slip shown below">
+                <Printer className="w-4 h-4" />
+                <span>Print</span>
+              </button>
               <button
                 type="button"
-                onClick={handlePrint}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-stone-800 hover:bg-stone-900 text-white shadow-xs transition cursor-pointer"
-                title="Print current slip on paper"
+                onClick={() => downloadSlipPdf()}
+                className={`${btn.primary} max-lg:flex-1`}
+                title={`Download the ${activeSlip.label.toLowerCase()} PDF for ${selectedDate}`}
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print Slip</span>
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
               </button>
-
-              {/* Dedicated Chosen Arrival Date PDF Group */}
-              <div className="flex items-center rounded-xl bg-brand-700 p-0.5 border border-gold-400 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadArrivalsPdf('ALL')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer"
-                  title={`Download official Arrival Slip PDF (Joined & Bifurcated with page breaks) for chosen arrival date: ${selectedDate}`}
+              <div className="lg:order-first">
+                <Dropdown
+                  label="Other PDFs"
+                  align="right"
+                  width="w-72"
+                  trigger={(open) => (
+                    <span className={`${btn.secondary} ${open ? 'bg-stone-50 ring-stone-400' : ''}`}>
+                      <span>Other PDFs</span>
+                      <ChevronDown className="w-4 h-4 text-stone-500" />
+                    </span>
+                  )}
                 >
-                  <LogIn className="w-3.5 h-3.5 text-gold-200" />
-                  <span>Arrival Slip PDF ({selectedDate})</span>
-                </button>
-
-                <div className="h-4 w-px bg-gold-400/40 my-auto" />
-
-                <button
-                  type="button"
-                  onClick={() => handleDownloadArrivalsPdf('Saifee')}
-                  className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Print Saifee Hotel Arrivals Separately for ${selectedDate}`}
-                >
-                  Saifee ({simpleArrivalsData.saifee.length})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDownloadArrivalsPdf('Burhani')}
-                  className="px-2 py-1.5 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Print Burhani Hotel Arrivals Separately for ${selectedDate}`}
-                >
-                  Burhani ({simpleArrivalsData.burhani.length})
-                </button>
+                  {(close) => (
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      <MenuHeading>{activeSlip.label}, one building</MenuHeading>
+                      <MenuItem
+                        icon={Building2}
+                        onClick={() => {
+                          close();
+                          downloadSlipPdf('Saifee');
+                        }}
+                      >
+                        Saifee only
+                      </MenuItem>
+                      <MenuItem
+                        icon={Building2}
+                        onClick={() => {
+                          close();
+                          downloadSlipPdf('Burhani');
+                        }}
+                      >
+                        Burhani only
+                      </MenuItem>
+                      <MenuDivider />
+                      <MenuHeading>Arrival slip, {selectedDate}</MenuHeading>
+                      <MenuItem
+                        icon={LogIn}
+                        hint="Both buildings, with page breaks"
+                        onClick={() => {
+                          close();
+                          handleDownloadArrivalsPdf('ALL');
+                        }}
+                      >
+                        Arrival slip PDF
+                      </MenuItem>
+                      <MenuItem
+                        icon={LogIn}
+                        onClick={() => {
+                          close();
+                          handleDownloadArrivalsPdf('Saifee');
+                        }}
+                      >
+                        Saifee arrivals ({simpleArrivalsData.saifee.length})
+                      </MenuItem>
+                      <MenuItem
+                        icon={LogIn}
+                        onClick={() => {
+                          close();
+                          handleDownloadArrivalsPdf('Burhani');
+                        }}
+                      >
+                        Burhani arrivals ({simpleArrivalsData.burhani.length})
+                      </MenuItem>
+                      <MenuDivider />
+                      <MenuHeading>Departure list, {selectedDate}</MenuHeading>
+                      <MenuItem
+                        icon={LogOut}
+                        hint="Both buildings, with page breaks"
+                        onClick={() => {
+                          close();
+                          handleDownloadDeparturesPdf('ALL');
+                        }}
+                      >
+                        Departure list PDF
+                      </MenuItem>
+                      <MenuItem
+                        icon={LogOut}
+                        onClick={() => {
+                          close();
+                          handleDownloadDeparturesPdf('Saifee');
+                        }}
+                      >
+                        Saifee departures ({simpleDeparturesData.saifee.length})
+                      </MenuItem>
+                      <MenuItem
+                        icon={LogOut}
+                        onClick={() => {
+                          close();
+                          handleDownloadDeparturesPdf('Burhani');
+                        }}
+                      >
+                        Burhani departures ({simpleDeparturesData.burhani.length})
+                      </MenuItem>
+                      <MenuDivider />
+                      <MenuHeading>Other sheets, {activeHotelFilter === 'ALL' ? 'all buildings' : activeHotelFilter}</MenuHeading>
+                      <MenuItem
+                        icon={DoorClosed}
+                        onClick={() => {
+                          close();
+                          handleDownloadPdf(activeHotelFilter);
+                        }}
+                      >
+                        Turnover PDF
+                      </MenuItem>
+                      <MenuItem
+                        icon={Users}
+                        onClick={() => {
+                          close();
+                          handleDownloadRosterPdf(activeHotelFilter);
+                        }}
+                      >
+                        Roster PDF
+                      </MenuItem>
+                      <MenuItem
+                        icon={HardHat}
+                        onClick={() => {
+                          close();
+                          handleDownloadWorkerPdf(activeHotelFilter);
+                        }}
+                      >
+                        Worker sheet PDF
+                      </MenuItem>
+                      <MenuItem
+                        icon={ClipboardList}
+                        onClick={() => {
+                          close();
+                          handleDownloadPortalUploadPdf(portalHotelFilter);
+                        }}
+                      >
+                        Portal upload PDF
+                      </MenuItem>
+                    </div>
+                  )}
+                </Dropdown>
               </div>
-
-              {/* Dedicated Chosen Departure Date PDF Group */}
-              <div className="flex items-center rounded-xl bg-amber-900/90 p-0.5 border border-amber-500 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadDeparturesPdf('ALL')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber-200 hover:bg-amber-950 transition cursor-pointer"
-                  title={`Download official Departure List PDF (Joined & Bifurcated with page breaks) for chosen date: ${selectedDate}`}
-                >
-                  <LogOut className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Departure List PDF ({selectedDate})</span>
-                </button>
-
-                <div className="h-4 w-px bg-amber-500/40 my-auto" />
-
-                <button
-                  type="button"
-                  onClick={() => handleDownloadDeparturesPdf('Saifee')}
-                  className="px-2 py-1.5 text-[11px] font-semibold text-amber-100 hover:text-white hover:bg-amber-800 rounded-md transition cursor-pointer"
-                  title={`Print Saifee Hotel Departures Separately for ${selectedDate}`}
-                >
-                  Saifee ({simpleDeparturesData.saifee.length})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleDownloadDeparturesPdf('Burhani')}
-                  className="px-2 py-1.5 text-[11px] font-semibold text-amber-100 hover:text-white hover:bg-amber-800 rounded-md transition cursor-pointer"
-                  title={`Print Burhani Hotel Departures Separately for ${selectedDate}`}
-                >
-                  Burhani ({simpleDeparturesData.burhani.length})
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleDownloadPdf(activeHotelFilter)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
-                  activeTab === 'turnover'
-                    ? 'bg-brand-700 text-white ring-2 ring-gold-200'
-                    : 'bg-emerald-900/80 hover:bg-brand-700 text-white'
-                }`}
-                title={`Download Room Turnover Slip PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
-              >
-                <Download className="w-3.5 h-3.5 text-gold-200" />
-                <span>Turnover PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDownloadRosterPdf(activeHotelFilter)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
-                  activeTab === 'roster'
-                    ? 'bg-brand-700 text-white ring-2 ring-gold-200'
-                    : 'bg-emerald-900/80 hover:bg-brand-700 text-white'
-                }`}
-                title={`Download Tour ID Roster PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
-              >
-                <Users className="w-3.5 h-3.5 text-gold-200" />
-                <span>Roster PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDownloadWorkerPdf(activeHotelFilter)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
-                  activeTab === 'worker_summary'
-                    ? 'bg-amber-800 text-white ring-2 ring-amber-300'
-                    : 'bg-amber-700 hover:bg-amber-800 text-white'
-                }`}
-                title={`Download Worker Operations Summary PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
-              >
-                <HardHat className="w-3.5 h-3.5 text-gold-200" />
-                <span>Worker Sheet PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDownloadPortalUploadPdf(portalHotelFilter)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer ${
-                  activeTab === 'portal_upload'
-                    ? 'bg-blue-800 text-white ring-2 ring-blue-300'
-                    : 'bg-blue-700 hover:bg-blue-800 text-white'
-                }`}
-                title={`Download Assistant Portal Allotment Checklist PDF (${activeHotelFilter === 'ALL' ? 'Joined Bifurcated' : activeHotelFilter})`}
-              >
-                <ClipboardList className="w-3.5 h-3.5 text-blue-200" />
-                <span>Portal Upload PDF</span>
-              </button>
             </div>
           </div>
 
-          {/* Real-time PDF Generation & Download Status Banner */}
+          {/* Jump to a day that has arrivals or departures */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="shrink-0 text-xs font-medium text-stone-500 max-sm:sr-only">Days with activity</span>
+            <div ref={activeDateRowRef} className="relative flex items-center gap-1.5 overflow-x-auto app-scroll-x min-w-0 p-px">
+              {displayDates.map((dateStr) => {
+                const stat = activeDatesSummary.datesMap.get(dateStr);
+                const isSelected = dateStr === selectedDate;
+                const dateLabel = formatSafeDateLabel(dateStr, { day: '2-digit', month: 'short' });
+
+                return (
+                  <button
+                    key={dateStr}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      userManuallyPickedDateRef.current = true;
+                      setSelectedDate(dateStr);
+                    }}
+                    title={`${stat?.arrivals ?? 0} arrivals, ${stat?.departures ?? 0} departures`}
+                    className={`shrink-0 inline-flex items-center gap-1.5 h-10 sm:h-8 px-2.5 rounded-lg text-[13px] tabular-nums whitespace-nowrap cursor-pointer transition ring-1 ring-inset ${
+                      isSelected
+                        ? 'bg-brand-50 ring-brand-600 text-brand-900 font-semibold'
+                        : 'bg-white ring-stone-200 text-stone-700 font-medium hover:bg-stone-50 hover:ring-stone-300'
+                    }`}
+                  >
+                    <span>{dateLabel}</span>
+                    {stat && stat.arrivals > 0 && <span className="text-xs font-medium text-blue-700">+{stat.arrivals}</span>}
+                    {stat && stat.departures > 0 && <span className="text-xs font-medium text-amber-700">−{stat.departures}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PDF ready notice */}
           {pdfDownloadStatus && (
-            <div className="bg-emerald-50 border border-emerald-400 rounded-xl p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-emerald-950 shadow-xs animate-in fade-in">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                <div>
-                  <div className="font-bold text-xs">
-                    PDF Document Ready: <span className="font-mono text-emerald-900 font-black">{pdfDownloadStatus.fileName}</span>
+            <div
+              role="status"
+              className="rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+            >
+              <div className="flex items-start gap-2 min-w-0">
+                <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-700 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-emerald-900">
+                    PDF ready: <span className="font-medium break-all">{pdfDownloadStatus.fileName}</span>
                   </div>
-                  <div className="text-[11px] text-emerald-800">
-                    If automatic download was blocked by browser restrictions, click Direct Download or View PDF.
+                  <div className="text-xs text-emerald-800">
+                    If the download did not start, download it again or open it here.
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
                 {pdfDownloadStatus.blobUrl && (
                   <a
                     href={pdfDownloadStatus.blobUrl}
                     download={pdfDownloadStatus.fileName}
-                    className="px-3 py-1.5 rounded-lg bg-brand-700 text-white font-bold text-xs hover:bg-brand-800 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    className={`${btnSm.primary} max-sm:h-10`}
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Direct Download</span>
+                    <Download className="w-4 h-4" />
+                    <span>Download again</span>
                   </a>
                 )}
                 {pdfDownloadStatus.blobUrl && (
                   <button
                     type="button"
                     onClick={() => setPdfPreviewBlobUrl(pdfDownloadStatus.blobUrl)}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-emerald-400 text-emerald-950 font-bold text-xs hover:bg-emerald-100 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    className={`${btnSm.secondary} max-sm:h-10`}
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>View / Print PDF</span>
+                    <FileCheck className="w-4 h-4 text-stone-500" />
+                    <span>View or print PDF</span>
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setPdfDownloadStatus(null)}
-                  className="p-1 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
-                  title="Dismiss notification"
+                  className="w-8 h-8 max-sm:w-10 max-sm:h-10 rounded-lg flex items-center justify-center text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                  aria-label="Dismiss"
+                  title="Dismiss"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
-
-          {/* Date Picker & Active Date Chips Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Date navigation */}
-              <div className="flex items-center gap-1 bg-white border border-stone-300 rounded-xl px-2 py-1 shadow-2xs text-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    userManuallyPickedDateRef.current = true;
-                    handleNavigateActiveDate('prev');
-                  }}
-                  className="p-1 text-stone-500 hover:text-stone-900 rounded"
-                  title="Previous operational date with activity"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-
-                <Calendar className="w-4 h-4 text-brand-700" />
-                <span className="font-semibold text-stone-600">Date:</span>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => {
-                    userManuallyPickedDateRef.current = true;
-                    setSelectedDate(e.target.value);
-                  }}
-                  className="bg-transparent font-bold text-stone-900 focus:outline-none cursor-pointer"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    userManuallyPickedDateRef.current = true;
-                    handleNavigateActiveDate('next');
-                  }}
-                  className="p-1 text-stone-500 hover:text-stone-900 rounded"
-                  title="Next operational date with activity"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Quick Jump to Active Dates */}
-              <div className="flex items-center gap-1 overflow-x-auto max-w-xl py-0.5">
-                <span className="text-[11px] font-bold text-stone-500 mr-1 hidden sm:inline">Active Dates:</span>
-                {displayDates.map((dateStr) => {
-                  const stat = activeDatesSummary.datesMap.get(dateStr);
-                  const isSelected = dateStr === selectedDate;
-                  const dateLabel = formatSafeDateLabel(dateStr, { day: '2-digit', month: 'short' });
-
-                  return (
-                    <button
-                      key={dateStr}
-                      type="button"
-                      onClick={() => {
-                        userManuallyPickedDateRef.current = true;
-                        setSelectedDate(dateStr);
-                      }}
-                      className={`px-2 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap shadow-2xs flex items-center gap-1 ${
-                        isSelected
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'bg-white text-stone-700 hover:bg-stone-100 border border-stone-200'
-                      }`}
-                    >
-                      <span>{dateLabel}</span>
-                      {stat && stat.arrivals > 0 && (
-                        <span className={`text-[10px] px-1 rounded ${isSelected ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-900'}`}>
-                          +{stat.arrivals}
-                        </span>
-                      )}
-                      {stat && stat.departures > 0 && (
-                        <span className={`text-[10px] px-1 rounded ${isSelected ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-900'}`}>
-                          -{stat.departures}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Dynamic 1-Click Download PDF for current tab & chosen date */}
-              <div className="flex items-center rounded-xl bg-brand-700 p-0.5 border border-gold-400/50 shadow-xs">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf(activeHotelFilter);
-                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf(activeHotelFilter);
-                    else if (activeTab === 'roster') handleDownloadRosterPdf(activeHotelFilter);
-                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf(activeHotelFilter);
-                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf(portalHotelFilter);
-                    else handleDownloadPdf(activeHotelFilter);
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-gold-200 hover:bg-brand-800 transition cursor-pointer whitespace-nowrap"
-                  title={`Download dedicated PDF for ${activeTab} (${selectedDate})`}
-                >
-                  <Download className="w-3.5 h-3.5 text-gold-200" />
-                  <span>
-                    {activeTab === 'arrival_slip'
-                      ? 'Download Arrival Slip PDF'
-                      : activeTab === 'departure_list'
-                      ? 'Download Departure List PDF'
-                      : activeTab === 'roster'
-                      ? 'Download Roster PDF'
-                      : activeTab === 'worker_summary'
-                      ? 'Download Worker PDF'
-                      : activeTab === 'portal_upload'
-                      ? 'Download Portal PDF'
-                      : 'Download Turnover PDF'}{' '}
-                    ({selectedDate})
-                  </span>
-                </button>
-                <div className="h-3.5 w-px bg-gold-400/40 my-auto" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf('Saifee');
-                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf('Saifee');
-                    else if (activeTab === 'roster') handleDownloadRosterPdf('Saifee');
-                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Saifee');
-                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Saifee');
-                    else handleDownloadPdf('Saifee');
-                  }}
-                  className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Download Saifee Hotel ${activeTab} PDF separately for ${selectedDate}`}
-                >
-                  Saifee
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'arrival_slip') handleDownloadArrivalsPdf('Burhani');
-                    else if (activeTab === 'departure_list') handleDownloadDeparturesPdf('Burhani');
-                    else if (activeTab === 'roster') handleDownloadRosterPdf('Burhani');
-                    else if (activeTab === 'worker_summary') handleDownloadWorkerPdf('Burhani');
-                    else if (activeTab === 'portal_upload') handleDownloadPortalUploadPdf('Burhani');
-                    else handleDownloadPdf('Burhani');
-                  }}
-                  className="px-2 py-1 text-[11px] font-semibold text-emerald-100 hover:text-white hover:bg-emerald-800/60 rounded-md transition cursor-pointer"
-                  title={`Download Burhani Hotel ${activeTab} PDF separately for ${selectedDate}`}
-                >
-                  Burhani
-                </button>
-              </div>
-            </div>
-
-            {/* Hotel Filter Tabs */}
-            <div className="flex items-center bg-stone-200/70 p-0.5 rounded-xl text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setActiveHotelFilter('ALL')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  activeHotelFilter === 'ALL'
-                    ? 'bg-brand-700 text-white shadow-xs font-bold'
-                    : 'text-stone-700 hover:text-stone-900'
-                }`}
-              >
-                All (114)
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveHotelFilter('Saifee')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  activeHotelFilter === 'Saifee'
-                    ? 'bg-brand-700 text-white shadow-xs font-bold'
-                    : 'text-stone-700 hover:text-stone-900'
-                }`}
-              >
-                Saifee (70)
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveHotelFilter('Burhani')}
-                className={`px-2.5 py-1 rounded-lg transition ${
-                  activeHotelFilter === 'Burhani'
-                    ? 'bg-brand-700 text-white shadow-xs font-bold'
-                    : 'text-stone-700 hover:text-stone-900'
-                }`}
-              >
-                Burhani (44)
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* View Switcher Tabs (Arrival Slip vs Departure List vs Turnover vs Roster vs Worker) */}
-        <div className="print-hidden-element flex items-center justify-between gap-3 pt-3 flex-wrap">
-          <div className="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl text-xs font-bold flex-wrap">
-            {/* 1. Simple Arrival Slip */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('arrival_slip')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'arrival_slip'
-                  ? 'bg-brand-700 text-white shadow-xs font-bold'
-                  : 'text-stone-700 hover:text-stone-900 font-semibold'
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5 text-gold-200" />
-              <span>Arrival Slip (Simple)</span>
-            </button>
-
-            {/* 2. Simple Departure List */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('departure_list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'departure_list'
-                  ? 'bg-brand-700 text-white shadow-xs font-bold'
-                  : 'text-stone-700 hover:text-stone-900 font-semibold'
-              }`}
-            >
-              <LogOut className="w-3.5 h-3.5 text-amber-300" />
-              <span>Departure List (Simple)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('turnover')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                activeTab === 'turnover'
-                  ? 'bg-brand-700 text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <DoorClosed className="w-3.5 h-3.5 text-gold-200" />
-              <span>Room-by-Room Turnover Schedule</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('roster')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
-                activeTab === 'roster'
-                  ? 'bg-brand-700 text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Arrivals & Departures by Tour ID</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('worker_summary')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
-                activeTab === 'worker_summary'
-                  ? 'bg-brand-700 text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <HardHat className="w-3.5 h-3.5 text-gold-200" />
-              <span>Worker Room Operations Sheet (By Office ➔ Tour ➔ Time)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('portal_upload')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition ${
-                activeTab === 'portal_upload'
-                  ? 'bg-brand-700 text-white shadow-xs'
-                  : 'text-stone-700 hover:text-stone-900'
-              }`}
-            >
-              <ClipboardList className="w-3.5 h-3.5 text-blue-300" />
-              <span>Assistant Portal Upload Sheet (Tour IDs & Rooms)</span>
-            </button>
-          </div>
-
-          {activeTab === 'turnover' && (
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showOnlyActiveRooms}
-                onChange={(e) => setShowOnlyActiveRooms(e.target.checked)}
-                className="rounded text-brand-700 focus:ring-brand-700"
-              />
-              <span>Show only rooms with Turnover / Activity Today ({filteredRoomPrep.length})</span>
-            </label>
-          )}
-
-          {activeTab === 'roster' && (
-            <div className="flex items-center bg-stone-200/80 p-0.5 rounded-xl text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setRosterGroupByTour(true)}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  rosterGroupByTour
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Group by Tour ID & Time (Req 2)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRosterGroupByTour(false)}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  !rosterGroupByTour
-                    ? 'bg-brand-700 text-white shadow-xs'
-                    : 'text-stone-700 hover:text-stone-900'
-                }`}
-              >
-                <DoorClosed className="w-3.5 h-3.5" />
-                <span>Sorted as Per Rooms (Arrival Slip)</span>
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'worker_summary' && (
-            <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
-              <span className="bg-amber-100 text-amber-950 border border-amber-300 px-2.5 py-1 rounded-lg">
-                Base Room # • Timing Sequence • Grouped by Office & Tour (Req 3)
-              </span>
-            </div>
-          )}
-
-          {activeTab === 'portal_upload' && (
-            <div className="flex items-center gap-2 text-xs font-bold">
-              <span className="bg-blue-100 text-blue-950 border border-blue-300 px-2.5 py-1 rounded-lg">
-                For Assistant Portal Upload (Req 4)
-              </span>
-            </div>
-          )}
-        </div>
-
+        {/* The desk: a neutral well with the paper on it. Print CSS flattens the desk and prints the paper alone. */}
+        <div className="reception-slip-desk bg-stone-100 p-3 sm:p-5 max-sm:shrink-0 sm:flex-1 sm:min-h-0 sm:overflow-y-auto sm:rounded-b-2xl">
         {/* Printable Paper Slip View Container */}
         <div
           id="reception-slip-printable-area"
-          className="flex-1 overflow-y-auto mt-4 p-4 sm:p-6 bg-white border border-stone-200 rounded-xl shadow-xs space-y-6"
+          className="p-4 sm:p-6 bg-white border border-stone-200 rounded-sm shadow-sm space-y-6"
         >
           {/* Slip Official Header */}
           <div className="text-center pb-4 border-b-2 border-brand-700">
@@ -3315,65 +3282,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           {/* Simple Arrival Slip Table (User requirement) */}
           {activeTab === 'arrival_slip' && (
             <div className="space-y-6">
-              {/* Building filter & Turnover toggle bar */}
-              <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-stone-700">
-                  <Building2 className="w-4 h-4 text-brand-700" />
-                  <span>Building View:</span>
-                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('ALL')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'ALL'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      All Buildings ({simpleArrivalsData.totalRooms} Rooms)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('Saifee')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'Saifee'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      Saifee Hotel ({simpleArrivalsData.saifee.length} Rooms)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('Burhani')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'Burhani'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      Burhani Hotel ({simpleArrivalsData.burhani.length} Rooms)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-100/90 hover:bg-amber-200/80 px-3 py-1 rounded-lg border border-amber-300 cursor-pointer shadow-2xs transition">
-                    <input
-                      type="checkbox"
-                      checked={showOnlyTurnoversInSlip}
-                      onChange={(e) => setShowOnlyTurnoversInSlip(e.target.checked)}
-                      className="rounded text-amber-700 focus:ring-amber-600 cursor-pointer"
-                    />
-                    <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
-                    <span>Show only Turnovers ({simpleArrivalsData.totalTurnovers} Rooms)</span>
-                  </label>
-                  <div className="text-xs text-stone-600 font-semibold hidden md:block">
-                    Date of Arrival: <span className="font-bold text-stone-900">{selectedDate}</span>
-                  </div>
-                </div>
-              </div>
-
               {/* Saifee Hotel Arrivals */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
                 <div className="space-y-3">
@@ -3863,65 +3771,6 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           {/* Simple Departure List Table (User requirement) */}
           {activeTab === 'departure_list' && (
             <div className="space-y-6">
-              {/* Building filter bar */}
-              <div className="print-hidden-element flex flex-wrap items-center justify-between gap-3 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
-                <div className="flex items-center gap-2 text-xs font-bold text-stone-700">
-                  <Building2 className="w-4 h-4 text-brand-700" />
-                  <span>Building View:</span>
-                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-stone-300">
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('ALL')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'ALL'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      All Buildings ({simpleDeparturesData.totalRooms} Rooms)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('Saifee')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'Saifee'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      Saifee Hotel ({simpleDeparturesData.saifee.length} Rooms)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelFilter('Burhani')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
-                        activeHotelFilter === 'Burhani'
-                          ? 'bg-brand-700 text-white shadow-xs'
-                          : 'text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      Burhani Hotel ({simpleDeparturesData.burhani.length} Rooms)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-100/90 hover:bg-amber-200/80 px-3 py-1 rounded-lg border border-amber-300 cursor-pointer shadow-2xs transition">
-                    <input
-                      type="checkbox"
-                      checked={showOnlyTurnoversInSlip}
-                      onChange={(e) => setShowOnlyTurnoversInSlip(e.target.checked)}
-                      className="rounded text-amber-700 focus:ring-amber-600 cursor-pointer"
-                    />
-                    <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
-                    <span>Show only Turnovers ({simpleDeparturesData.totalTurnovers} Rooms)</span>
-                  </label>
-                  <div className="text-xs text-stone-600 font-semibold hidden md:block">
-                    Date of Departure: <span className="font-bold text-stone-900">{selectedDate}</span>
-                  </div>
-                </div>
-              </div>
-
               {/* Saifee Hotel Departures */}
               {(activeHotelFilter === 'ALL' || activeHotelFilter === 'Saifee') && (
                 <div className="space-y-4">
@@ -6279,23 +6128,28 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           </div>
 
         </div>
+        </div>
       </div>
 
       {/* Embedded PDF Viewer Modal for Instant In-Browser Inspection & Printing */}
       {pdfPreviewBlobUrl && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl border border-stone-400 overflow-hidden">
-            <div className="flex items-center justify-between bg-brand-700 text-white px-4 py-3 shrink-0">
-              <div className="flex items-center gap-2 font-bold text-sm">
-                <FileCheck className="w-5 h-5 text-gold-200" />
-                <span>Faiz-e-Husaini — PDF Document Preview & Print</span>
+        <div className="fixed inset-0 z-70 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/60 animate-in fade-in duration-150">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdf-preview-title"
+            className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-5xl h-[92dvh] sm:h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+          >
+            <div className={`${modalHeader} shrink-0 items-center`}>
+              <div className="min-w-0">
+                <h3 id="pdf-preview-title" className={modalTitle}>
+                  PDF preview
+                </h3>
                 {pdfDownloadStatus?.fileName && (
-                  <span className="hidden sm:inline text-xs text-emerald-200 font-mono">
-                    ({pdfDownloadStatus.fileName})
-                  </span>
+                  <p className="mt-1 text-[13px] text-stone-600 truncate">{pdfDownloadStatus.fileName}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -6311,47 +6165,50 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       window.print();
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white shadow-xs transition cursor-pointer"
-                  title="Print document directly"
+                  className={btn.secondary}
+                  title="Print this PDF"
+                  aria-label="Print this PDF"
                 >
-                  <Printer className="w-3.5 h-3.5 text-gold-200" />
-                  <span>Print Document</span>
+                  <Printer className="w-4 h-4" />
+                  <span className="max-sm:sr-only">Print</span>
                 </button>
                 <a
                   href={pdfPreviewBlobUrl}
                   download={pdfDownloadStatus?.fileName || 'document.pdf'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-gold-200 hover:bg-amber-300 text-stone-950 shadow-xs transition cursor-pointer"
+                  className={btn.primary}
+                  aria-label="Download this PDF"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download File</span>
+                  <Download className="w-4 h-4" />
+                  <span className="max-sm:sr-only">Download</span>
                 </a>
                 <button
                   type="button"
                   onClick={() => setPdfPreviewBlobUrl(null)}
-                  className="p-1.5 text-stone-300 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+                  className={modalClose}
+                  aria-label="Close PDF preview"
                   title="Close PDF preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
-            <div className="flex-1 w-full bg-stone-200 p-1 flex flex-col">
+            <div className="flex-1 min-h-0 w-full bg-stone-100 p-3 sm:p-4 flex flex-col gap-2">
               <iframe
                 id="pdf-preview-iframe"
                 src={pdfPreviewBlobUrl}
-                className="w-full flex-1 rounded-xl border border-stone-300 bg-white"
+                className="w-full flex-1 rounded-lg border border-stone-300 bg-white"
                 title="Generated PDF Document Preview"
               />
-              <div className="p-2 text-center text-[11px] text-stone-500 bg-stone-100 border-t border-stone-300 flex items-center justify-center gap-2">
-                <span>Can't view the document inside the browser?</span>
+              <p className="text-center text-xs text-stone-600">
+                Can't see the document here?{' '}
                 <a
                   href={pdfPreviewBlobUrl}
                   download={pdfDownloadStatus?.fileName || 'document.pdf'}
-                  className="text-emerald-800 font-bold underline hover:text-emerald-950"
+                  className="font-semibold text-brand-700 underline hover:text-brand-900"
                 >
-                  Click here to download directly to your computer
+                  Download it to your computer
                 </a>
-              </div>
+              </p>
             </div>
           </div>
         </div>

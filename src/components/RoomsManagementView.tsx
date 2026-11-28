@@ -1,18 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Building2, 
-  BedDouble, 
-  ShieldAlert, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Filter, 
-  Plus, 
-  Trash2, 
-  Search, 
-  Lock, 
-  Unlock, 
-  Sparkles,
-  Calendar,
+import {
+  Building2,
+  Plus,
+  Trash2,
+  Search,
+  Lock,
   X,
   RotateCcw,
   DoorClosed,
@@ -20,12 +12,23 @@ import {
   Users,
   Pencil
 } from 'lucide-react';
-import { Room, RoomStatus, RoomCategory, Reservation } from '../types';
-import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, getDistinctBuildings, getRoomBedCount } from '../services/storage';
+import { Room, RoomStatus, Reservation } from '../types';
+import { getRoomStatusOnDate, getRoomBookingOnDate, getRoomBookingsOnDate, deduplicateRooms, normalizeBuildingName, normalizeRoomNumber, getDistinctBuildings, getRoomBedCount, ROOM_TOILET_TYPES } from '../services/storage';
 import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
-import { RoomEditModal } from './RoomSpecFields';
+import { RoomEditModal, formatDay, segBtn, segTrack } from './RoomSpecFields';
 import { SwitchRoomTarget } from './SwitchRoomModal';
-import { PageHeader, btn } from './ui';
+import { PageHeader, btn, btnSm, card, chip, fieldSm, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
+
+/** Card actions sit in a tight row: slightly narrower padding, and a full 40px target on phones. */
+const cardBtn = 'px-2! max-sm:h-10';
+
+/** The stored toilet type ("WESTERN", "Both WESTERN & INDIAN") as staff read it. */
+const toiletLabel = (value?: string) => {
+  const raw = value || 'Standard';
+  const known = ROOM_TOILET_TYPES.find((t) => t.value.toLowerCase() === raw.toLowerCase());
+  if (known) return known.label;
+  return raw.toLowerCase().replace(/(^|[\s&/-])([a-z])/g, (_, a, b) => a + b.toUpperCase());
+};
 
 interface RoomsManagementViewProps {
   rooms: Room[];
@@ -114,23 +117,18 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
   const totalSleeps = cleanRooms.reduce((n, r) => n + (r.capacity || r.pax || 0), 0);
   const blockedCount = cleanRooms.filter((r) => r.status === 'blocked').length;
 
+  const clearFilters = () => {
+    setSelectedBuilding('ALL');
+    setSelectedFloorLabel('ALL');
+    setStatusFilter('ALL');
+    setSearchQuery('');
+  };
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
         title="Rooms"
         description={`${totalCount} rooms, ${totalBeds} beds, sleeping ${totalSleeps} across ${distinctBuildings.length} buildings. Block a room, edit its details or add new ones.`}
-        meta={
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-stone-600">
-            {distinctBuildings.map((bldg) => {
-              const count = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
-              return (
-                <span key={bldg}>
-                  {bldg} <span className="text-stone-400 tabular-nums">{count}</span>
-                </span>
-              );
-            })}
-          </div>
-        }
         actions={
           <>
             <button
@@ -148,10 +146,10 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                 setAddModalInitialMode('new_building');
                 setIsAddModalOpen(true);
               }}
-              className={btn.ghost}
+              className={btn.secondary}
               title="Add a new building and configure its rooms"
             >
-              <Building2 className="w-4 h-4 text-brand-700" />
+              <Building2 className="w-4 h-4" />
               Add building
             </button>
             <button
@@ -162,177 +160,200 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
               }}
               className={btn.primary}
             >
-              <Plus className="w-4 h-4 text-gold-200" />
+              <Plus className="w-4 h-4" />
               Add rooms
             </button>
           </>
         }
       />
 
-      {/* Filter Toolbar */}
-      <div className="bg-white border border-stone-200 rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
-          {/* Search Box */}
-          <div className="relative min-w-[160px] flex-1 sm:flex-none">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-3.5 sm:top-2.5 text-stone-400" />
+      {/* Filter toolbar: find a room (search, date, status), then narrow by building and floor. */}
+      <div className={`${card} p-3 sm:p-4 space-y-3`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative md:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search Room, Building, Bed..."
+              placeholder="Search room, building, bed or feature"
+              aria-label="Search rooms"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg pl-8 pr-3 py-2 sm:py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-emerald-700"
+              className={`${fieldSm} w-full pl-9 max-sm:h-10`}
             />
           </div>
 
-          {/* Dynamic Building Tabs */}
-          <div className="flex items-center bg-stone-100 p-1 rounded-lg font-semibold flex-wrap gap-1">
-            <button
-              onClick={() => {
-                setSelectedBuilding('ALL');
-                setSelectedFloorLabel('ALL');
-              }}
-              className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === 'ALL' ? 'bg-brand-700 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
-            >
-              All Buildings ({totalCount})
-            </button>
-            {distinctBuildings.map((bldg) => {
-              const bCount = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
-              return (
-                <button
-                  key={bldg}
-                  onClick={() => {
-                    setSelectedBuilding(bldg);
-                    setSelectedFloorLabel('ALL');
-                  }}
-                  className={`min-h-[40px] sm:min-h-0 px-2.5 py-1.5 sm:py-1 rounded-md transition cursor-pointer ${selectedBuilding === bldg ? 'bg-brand-700 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}
-                >
-                  {bldg} ({bCount})
-                </button>
-              );
-            })}
-          </div>
+          <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+            <label className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2 min-w-0">
+              <span className="text-xs md:text-[13px] text-stone-600 whitespace-nowrap">Check date</span>
+              <input
+                type="date"
+                aria-label="Check date"
+                title="Show each room's status on this date"
+                value={checkDate}
+                onChange={(e) => setCheckDate(e.target.value)}
+                className={`${fieldSm} w-full md:w-auto max-sm:h-10 tabular-nums cursor-pointer`}
+              />
+            </label>
 
-          {/* Dynamic Floor Tabs / Selector */}
-          <div className="flex items-center bg-stone-100 p-1 rounded-lg overflow-x-auto max-w-full gap-1">
-            {availableFloorLabels.map((lbl) => (
-              <button
-                key={lbl}
-                onClick={() => setSelectedFloorLabel(lbl)}
-                className={`min-h-[36px] sm:min-h-0 px-2.5 py-1 sm:py-0.5 rounded transition text-[11px] whitespace-nowrap cursor-pointer ${
-                  selectedFloorLabel === lbl
-                    ? 'bg-white font-bold text-stone-900 shadow-2xs'
-                    : 'text-stone-500 hover:text-stone-800'
-                }`}
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="md:hidden text-xs text-stone-600">Status</span>
+              <select
+                aria-label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={`${fieldSm} w-full md:w-auto max-sm:h-10`}
               >
-                {lbl}
-              </button>
-            ))}
+                <option value="ALL">All statuses</option>
+                <option value="available">Vacant</option>
+                <option value="occupied">Occupied</option>
+                <option value="blocked">Blocked ({blockedCount})</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        {/* Status Filter & Date Picker */}
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="flex items-center gap-1.5 min-h-[44px] sm:min-h-0 bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-300">
-            <Calendar className="w-3.5 h-3.5 text-brand-700" />
-            <span className="text-[11px] text-stone-500 font-semibold">Check Date:</span>
-            <input
-              type="date"
-              value={checkDate}
-              onChange={(e) => setCheckDate(e.target.value)}
-              className="bg-transparent text-xs font-bold text-stone-800 cursor-pointer focus:outline-none"
-            />
+        <div className="flex flex-col gap-2 pt-3 border-t border-stone-200">
+          <div className="flex items-center justify-between gap-4">
+            <div className="app-scroll-x overflow-x-auto max-w-full -mx-1 px-1">
+              <div role="group" aria-label="Building" className={segTrack}>
+                <button
+                  type="button"
+                  aria-pressed={selectedBuilding === 'ALL'}
+                  onClick={() => {
+                    setSelectedBuilding('ALL');
+                    setSelectedFloorLabel('ALL');
+                  }}
+                  className={segBtn(selectedBuilding === 'ALL')}
+                >
+                  All buildings <span className="font-normal text-stone-500 tabular-nums">{totalCount}</span>
+                </button>
+                {distinctBuildings.map((bldg) => {
+                  const bCount = cleanRooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
+                  return (
+                    <button
+                      key={bldg}
+                      type="button"
+                      aria-pressed={selectedBuilding === bldg}
+                      onClick={() => {
+                        setSelectedBuilding(bldg);
+                        setSelectedFloorLabel('ALL');
+                      }}
+                      className={segBtn(selectedBuilding === bldg)}
+                    >
+                      {bldg} <span className="font-normal text-stone-500 tabular-nums">{bCount}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <span className="hidden lg:block shrink-0 text-[13px] text-stone-600 tabular-nums" aria-live="polite">
+              {filteredRooms.length === totalCount ? `${totalCount} rooms` : `${filteredRooms.length} of ${totalCount} rooms`}
+            </span>
           </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="min-h-[44px] sm:min-h-0 bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-800 font-semibold focus:outline-none"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="available">Available (Vacant)</option>
-            <option value="occupied">Occupied</option>
-            <option value="blocked">Blocked ({blockedCount})</option>
-          </select>
+          <div className="app-scroll-x overflow-x-auto max-w-full -mx-1 px-1">
+            <div role="group" aria-label="Floor" className={segTrack}>
+              {availableFloorLabels.map((lbl) => (
+                <button
+                  key={lbl}
+                  type="button"
+                  aria-pressed={selectedFloorLabel === lbl}
+                  onClick={() => setSelectedFloorLabel(lbl)}
+                  className={segBtn(selectedFloorLabel === lbl)}
+                >
+                  {lbl === 'ALL' ? 'All floors' : lbl}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Rooms Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-        {filteredRooms.map((room) => {
-          const dynStatus = getRoomStatusOnDate(room, checkDate, reservations);
-          const currentBooking = getRoomBookingOnDate(room, checkDate, reservations);
-          const isBlocked = room.status === 'blocked';
+      {/* Rooms grid: the number of columns follows the room the page has, not the window. */}
+      <div className="@container">
+        <div className="grid grid-cols-1 @[520px]:grid-cols-2 @[860px]:grid-cols-3 @[1080px]:grid-cols-4 gap-3 sm:gap-4">
+          {filteredRooms.map((room) => {
+            const dynStatus = getRoomStatusOnDate(room, checkDate, reservations);
+            const currentBooking = getRoomBookingOnDate(room, checkDate, reservations);
+            const isBlocked = room.status === 'blocked';
 
-          let statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-          let statusText = 'Vacant Ready';
+            let statusTone: 'ok' | 'neutral' = 'ok';
+            let statusText = 'Vacant ready';
 
-          if (isBlocked) {
-            statusBadgeClass = 'bg-stone-200 text-stone-700 border-stone-300';
-            statusText = 'Blocked';
-          } else if (dynStatus === 'occupied') {
-            statusBadgeClass = 'bg-purple-100 text-purple-900 border-purple-300';
-            statusText = 'Occupied';
-          }
+            if (isBlocked) {
+              statusTone = 'neutral';
+              statusText = 'Blocked';
+            } else if (dynStatus === 'occupied') {
+              statusTone = 'neutral';
+              statusText = 'Occupied';
+            }
 
-          return (
-            <div
-              key={room.id}
-              className={`bg-white border rounded-xl p-4 shadow-xs hover:shadow-md transition flex flex-col justify-between ${
-                isBlocked
-                  ? 'border-stone-300 bg-stone-50/50'
-                  : dynStatus === 'occupied'
-                  ? 'border-purple-200 hover:border-purple-300'
-                  : 'border-stone-200 hover:border-stone-300'
-              }`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <span className="text-[17px] font-semibold tracking-[-0.01em] text-stone-950 block tabular-nums">
+            const floorText = room.floorLabel || `Floor ${room.floor}`;
+            const bedTypeText = /single.*double|double.*single/i.test(room.bedType || '')
+              ? 'mixed'
+              : (room.bedType || 'Single Beds').replace(/ beds?$/i, '').toLowerCase();
+
+            return (
+              <div
+                key={room.id}
+                className={`${card} px-4 pt-3.5 pb-2 flex flex-col ${isBlocked ? 'bg-stone-50!' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2.5 min-w-0">
+                    <span className="type-display text-[22px] leading-7 font-semibold text-stone-950">
                       {room.roomNumber}
                     </span>
-                    <span className="text-xs text-stone-500">
-                      {room.building}, {room.floorLabel || `Floor ${room.floor}`}
+                    <span className="text-[13px] leading-5 text-stone-600">
+                      {room.building}, {floorText}
                     </span>
                   </div>
-
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${statusBadgeClass}`}>
+                  <span className={`${chip(statusTone)} shrink-0 self-start mt-0.5`}>
+                    {isBlocked && <Lock className="w-3 h-3" />}
                     {statusText}
                   </span>
                 </div>
 
                 {/* Specs */}
-                <dl className="grid grid-cols-3 gap-2 text-xs py-2.5 mb-2 border-y border-stone-100">
-                  <div className="min-w-0">
-                    <dt className="text-stone-400">Sleeps</dt>
-                    <dd className="mt-0.5 font-medium text-stone-900 tabular-nums">
+                <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 sm:grid sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-x-3">
+                  <div className="min-w-0 flex items-baseline gap-1.5 sm:block">
+                    <dt className="text-xs text-stone-500">Sleeps</dt>
+                    <dd
+                      className="text-sm text-stone-900 tabular-nums truncate"
+                      title={room.buffer ? `Sleeps ${room.capacity}, plus ${room.buffer} buffer` : undefined}
+                    >
                       {room.capacity}
-                      {room.buffer ? <span className="text-stone-400 font-normal"> +{room.buffer}</span> : null}
+                      {room.buffer ? <span className="text-stone-600"> + {room.buffer} buffer</span> : null}
                     </dd>
                   </div>
-                  <div className="min-w-0">
-                    <dt className="text-stone-400">Beds</dt>
-                    <dd className="mt-0.5 font-medium text-stone-900 truncate" title={room.bedType || 'Single Beds'}>
-                      <span className="tabular-nums">{getRoomBedCount(room)}</span>
-                      <span className="text-stone-400 font-normal"> {/single.*double|double.*single/i.test(room.bedType || '') ? 'mixed' : (room.bedType || 'Single Beds').replace(/ beds?$/i, '').toLowerCase()}</span>
+                  <div className="min-w-0 flex items-baseline gap-1.5 sm:block">
+                    <dt className="text-xs text-stone-500">Beds</dt>
+                    <dd className="text-sm text-stone-900 truncate" title={room.bedType || 'Single Beds'}>
+                      <span className="tabular-nums">{getRoomBedCount(room)}</span> {bedTypeText}
                     </dd>
                   </div>
-                  <div className="min-w-0">
-                    <dt className="text-stone-400">Toilet</dt>
-                    <dd className="mt-0.5 font-medium text-stone-900 truncate capitalize">{(room.toiletType || 'Standard').toLowerCase()}</dd>
+                  <div className="min-w-0 flex items-baseline gap-1.5 sm:block">
+                    <dt className="text-xs text-stone-500">Toilet</dt>
+                    <dd className="text-sm text-stone-900 truncate" title={toiletLabel(room.toiletType)}>
+                      {toiletLabel(room.toiletType)}
+                    </dd>
                   </div>
                 </dl>
 
-                {/* Current Guest info if occupied */}
+                {/* Who is in the room on the check date */}
                 {currentBooking && !isBlocked && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 text-[11px] text-purple-950 mb-2 space-y-0.5">
-                    <div className="font-bold truncate">{currentBooking.applicantName}</div>
-                    <div className="text-[10px] text-purple-800">
-                      Fam #{currentBooking.family} · Tour: {currentBooking.tourRefNo}
+                  <div className="mt-2 pt-2 border-t border-stone-200 min-w-0">
+                    <div className="text-sm font-semibold text-stone-900 truncate" title={currentBooking.applicantName}>
+                      {currentBooking.applicantName}
+                    </div>
+                    <div
+                      className="text-[13px] leading-[18px] text-stone-600 truncate"
+                      title={`Family ${currentBooking.family} · Tour ${currentBooking.tourRefNo}`}
+                    >
+                      Fam {String(currentBooking.family ?? '').replace(/^#/, '')} · Tour {currentBooking.tourRefNo}
                     </div>
                     {currentBooking.officeName && (
-                      <div className="text-[10px] text-purple-900 font-semibold truncate">
-                        Office: {currentBooking.officeName}
+                      <div className="text-[13px] leading-[18px] text-stone-600 truncate" title={`Office: ${currentBooking.officeName}`}>
+                        {currentBooking.officeName}
                       </div>
                     )}
                   </div>
@@ -340,85 +361,74 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
 
                 {/* Blocked reason */}
                 {isBlocked && room.blockedReason && (
-                  <div className="bg-stone-200/70 border border-stone-300 rounded-lg p-2 text-[11px] text-stone-700 mb-2">
-                    <span className="font-bold block text-[10px] uppercase text-stone-500">Hold Reason:</span>
-                    <p className="text-[10px] line-clamp-2">{room.blockedReason}</p>
+                  <div className="mt-2 pt-2 border-t border-stone-200 min-w-0">
+                    <div className="text-xs text-stone-500">Hold reason</div>
+                    <p className="text-[13px] leading-[18px] text-stone-800 line-clamp-2" title={room.blockedReason}>{room.blockedReason}</p>
                   </div>
                 )}
-              </div>
 
-              {/* Actions */}
-              <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-1.5 text-xs">
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => setInspectingRoom(room)}
-                    className="min-h-[44px] sm:min-h-0 px-2 text-brand-700 hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
-                  >
-                    Details
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingRoom(room)}
-                    className="min-h-[44px] sm:min-h-0 px-2 flex items-center gap-1 text-stone-600 hover:text-stone-900 hover:underline font-bold text-xs sm:text-[11px] cursor-pointer"
-                    aria-label={`Edit room ${room.roomNumber}, ${room.building}`}
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Edit
-                  </button>
-                </div>
+                {/* Actions */}
+                <div className="mt-auto pt-2">
+                  <div className="pt-1.5 border-t border-stone-200 flex items-center justify-between gap-1">
+                    <div className="flex items-center -ml-2">
+                      <button
+                        type="button"
+                        onClick={() => setInspectingRoom(room)}
+                        className={`${btnSm.ghost} ${cardBtn}`}
+                        aria-label={`Details of room ${room.roomNumber}, ${room.building}`}
+                      >
+                        Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingRoom(room)}
+                        className={`${btnSm.ghost} ${cardBtn}`}
+                        aria-label={`Edit room ${room.roomNumber}, ${room.building}`}
+                      >
+                        Edit
+                      </button>
+                    </div>
 
-                <div className="flex items-center gap-1.5">
-                  {!isBlocked && dynStatus === 'occupied' && onOpenSwitchRoomModal && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const occupants = getRoomBookingsOnDate(room, checkDate, reservations);
-                        if (occupants.length > 0) {
-                          onOpenSwitchRoomModal({ reservations: occupants, initialScope: 'group' });
-                        }
-                      }}
-                      className="min-h-[44px] sm:min-h-0 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 transition cursor-pointer"
-                      title="Switch or swap this room's occupants to another room"
-                    >
-                      <ArrowRightLeft className="w-3 h-3 text-amber-700" />
-                      <span>Switch</span>
-                    </button>
-                  )}
+                    <div className="flex items-center gap-1 -mr-2">
+                      {!isBlocked && dynStatus === 'occupied' && onOpenSwitchRoomModal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const occupants = getRoomBookingsOnDate(room, checkDate, reservations);
+                            if (occupants.length > 0) {
+                              onOpenSwitchRoomModal({ reservations: occupants, initialScope: 'group' });
+                            }
+                          }}
+                          className={`${btnSm.secondary} ${cardBtn}`}
+                          title="Switch or swap this room's occupants to another room"
+                        >
+                          Switch room
+                        </button>
+                      )}
 
-                  <button
-                    type="button"
-                    onClick={() => onUpdateRoomStatus(room.id, isBlocked ? 'available' : 'blocked')}
-                    className={`min-h-[44px] sm:min-h-0 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
-                      isBlocked
-                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                        : 'bg-stone-200 hover:bg-stone-300 text-stone-800'
-                    }`}
-                  >
-                    {isBlocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                    <span>{isBlocked ? 'Unblock' : 'Block'}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateRoomStatus(room.id, isBlocked ? 'available' : 'blocked')}
+                        className={`${btnSm.ghost} ${cardBtn} ${isBlocked ? '' : 'hover:text-rose-700! hover:bg-rose-50!'}`}
+                        title={isBlocked ? 'Put this room back into use' : 'Take this room out of use'}
+                      >
+                        {isBlocked ? 'Unblock' : 'Block'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {filteredRooms.length === 0 && (
-        <div className="bg-white p-12 rounded-2xl border border-stone-200 text-center text-stone-500 space-y-2">
-          <DoorClosed className="w-10 h-10 mx-auto text-stone-300" />
-          <p className="font-bold text-sm">No rooms match the selected filters.</p>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedBuilding('ALL');
-              setSelectedFloorLabel('ALL');
-              setStatusFilter('ALL');
-              setSearchQuery('');
-            }}
-            className="text-xs text-brand-700 underline font-bold cursor-pointer"
-          >
+        <div className={`${card} px-6 py-12 text-center`}>
+          <DoorClosed className="w-9 h-9 mx-auto text-stone-400" />
+          <p className="mt-3 text-[15px] font-semibold text-stone-900">No rooms match these filters</p>
+          <p className="mt-1 text-sm text-stone-600">Try another building, floor, status or search, or show every room again.</p>
+          <button type="button" onClick={clearFilters} className={`${btn.secondary} mt-4`}>
             Clear all filters
           </button>
         </div>
@@ -427,71 +437,63 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
       {/* Inspect Room Details Modal */}
       {inspectingRoom && (() => {
         const occupantsOnDate = getRoomBookingsOnDate(inspectingRoom, checkDate, reservations);
+        const statusLabel = String(inspectingRoom.status || '');
+        const facts: [string, React.ReactNode][] = [
+          ['Building / hotel', `${inspectingRoom.building} Hotel`],
+          ['Floor', inspectingRoom.floorLabel || `Floor ${inspectingRoom.floor}`],
+          ['Beds', getRoomBedCount(inspectingRoom)],
+          ['Sleeps', `${inspectingRoom.capacity} guests`],
+          ['Buffer', inspectingRoom.buffer ?? 0],
+          ['Toilet type', toiletLabel(inspectingRoom.toiletType)],
+          ['Bed types', inspectingRoom.bedType || 'Single Beds'],
+          ['Accommodation category', inspectingRoom.category],
+        ];
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in">
-            <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl border border-stone-200 space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-2 border-b border-stone-200">
-                <div className="flex items-center gap-2">
-                  <BedDouble className="w-5 h-5 text-brand-700" />
-                  <h3 className="font-bold text-base text-stone-900">
-                    Room {inspectingRoom.roomNumber} ({inspectingRoom.building} Hotel)
+          <div className={modalScrim}>
+            <div role="dialog" aria-modal="true" aria-labelledby="room-details-title" className={`${modalCard} max-w-xl`}>
+              <div className={modalHeader}>
+                <div className="min-w-0">
+                  <h3 id="room-details-title" className={modalTitle}>
+                    Room {inspectingRoom.roomNumber}
                   </h3>
+                  <p className="mt-1 text-[13px] text-stone-600">
+                    {inspectingRoom.building} Hotel, {inspectingRoom.floorLabel || `Floor ${inspectingRoom.floor}`}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setInspectingRoom(null)}
-                  className="min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-stone-700 rounded-lg cursor-pointer"
-                >
+                <button type="button" onClick={() => setInspectingRoom(null)} aria-label="Close" className={modalClose}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-2 text-xs text-stone-700">
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Building / Hotel:</span>
-                  <span className="font-bold text-brand-700">{inspectingRoom.building} Hotel</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Floor:</span>
-                  <span className="font-bold">{inspectingRoom.floorLabel || `Floor ${inspectingRoom.floor}`}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Beds:</span>
-                  <span className="font-bold">{getRoomBedCount(inspectingRoom)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Sleeps:</span>
-                  <span className="font-bold">{inspectingRoom.capacity} Guests</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Buffer:</span>
-                  <span className="font-bold">{inspectingRoom.buffer ?? 0}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Toilet Type:</span>
-                  <span className="font-bold text-blue-900">{inspectingRoom.toiletType || 'Standard'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Bed Types:</span>
-                  <span className="font-bold text-amber-900">{inspectingRoom.bedType || 'Single Beds'}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Accommodation Category:</span>
-                  <span className="font-bold text-brand-700">{inspectingRoom.category}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-200">
-                  <span className="text-stone-500">Status:</span>
-                  <span className="font-bold uppercase">{inspectingRoom.status}</span>
-                </div>
+              <div className="px-5 sm:px-6 py-5 overflow-y-auto flex-1 min-h-0 space-y-5">
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4">
+                  {facts.map(([label, value]) => (
+                    <div key={label} className="min-w-0">
+                      <dt className="text-xs text-stone-500">{label}</dt>
+                      <dd className="mt-0.5 text-sm font-medium text-stone-900 tabular-nums break-words">{value}</dd>
+                    </div>
+                  ))}
+                  <div className="min-w-0">
+                    <dt className="text-xs text-stone-500">Status</dt>
+                    <dd className="mt-1">
+                      <span className={chip(statusLabel === 'available' ? 'ok' : statusLabel === 'cleaning' ? 'wait' : 'neutral')}>
+                        {statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1)}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
 
                 {/* Current Occupants on Check Date + Switch Room */}
                 {occupantsOnDate.length > 0 && (
-                  <div className="pt-2 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-700 font-bold flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-brand-700" />
-                        <span>Occupants on {checkDate} ({occupantsOnDate.length})</span>
-                      </span>
+                  <div className="pt-5 border-t border-stone-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="flex items-center gap-2 text-[15px] font-semibold text-stone-950">
+                        <Users className="w-4 h-4 text-stone-500" />
+                        <span>
+                          Occupants on {formatDay(checkDate)}{' '}
+                          <span className="font-normal text-stone-500 tabular-nums">{occupantsOnDate.length}</span>
+                        </span>
+                      </h4>
                       {onOpenSwitchRoomModal && (
                         <button
                           type="button"
@@ -500,28 +502,26 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                             setInspectingRoom(null);
                             onOpenSwitchRoomModal({ reservations: targetRoomOccupants, initialScope: 'group' });
                           }}
-                          className="min-h-[36px] px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                          className={`${btnSm.secondary} max-sm:h-10`}
                         >
-                          <ArrowRightLeft className="w-3 h-3 text-amber-700" />
-                          <span>Switch / Swap Room</span>
+                          <ArrowRightLeft className="w-4 h-4" />
+                          Switch / swap room
                         </button>
                       )}
                     </div>
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                    <ul className="mt-2 divide-y divide-stone-200">
                       {occupantsOnDate.map((occ) => (
-                        <div key={occ.id} className="bg-stone-50 border border-stone-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                        <li key={occ.id} className="py-2.5 flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="font-bold text-stone-900 truncate">{occ.applicantName}</div>
-                            <div className="text-[11px] text-stone-600 font-mono">
-                              Fam #{occ.family} · Tour: {occ.tourRefNo || occ.tourId || '—'}
+                            <div className="text-sm font-semibold text-stone-900 truncate">{occ.applicantName}</div>
+                            <div className="text-[13px] text-stone-600">
+                              Fam {String(occ.family ?? '').replace(/^#/, '')} · Tour {occ.tourRefNo || occ.tourId || '—'}
                             </div>
                             {occ.officeName && (
-                              <div className="text-[11px] text-stone-700 font-semibold truncate">
-                                Office: {occ.officeName}
-                              </div>
+                              <div className="text-[13px] text-stone-600 truncate">Office: {occ.officeName}</div>
                             )}
-                            <div className="text-[10px] text-stone-500 tabular-nums">
-                              {occ.arrivalDate?.slice(0, 10)} ({occ.arrivalTime || '11:00 AM'}) ➔ {occ.departureDate?.slice(0, 10)} ({occ.departureTime || '01:00 AM'})
+                            <div className="text-xs text-stone-500 tabular-nums">
+                              {formatDay(occ.arrivalDate)}, {occ.arrivalTime || '11:00 AM'} → {formatDay(occ.departureDate)}, {occ.departureTime || '01:00 AM'}
                             </div>
                           </div>
                           {onOpenSwitchRoomModal && (
@@ -531,44 +531,43 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                                 setInspectingRoom(null);
                                 onOpenSwitchRoomModal({ reservations: [occ], initialScope: 'single' });
                               }}
-                              className="shrink-0 min-h-[36px] px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 font-bold text-[11px] cursor-pointer"
+                              className={`${btnSm.ghost} shrink-0 max-sm:h-10`}
                             >
                               Switch
                             </button>
                           )}
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 )}
 
-                {inspectingRoom.blockedReason && (
-                  <div className="p-2.5 rounded-lg bg-stone-200 border border-stone-300 text-stone-800">
-                    <div className="font-semibold text-stone-900 mb-0.5">Maintenance Hold Details:</div>
-                    <p className="text-[11px] text-stone-600">{inspectingRoom.blockedReason}</p>
+                {(inspectingRoom.blockedReason || inspectingRoom.notes) && (
+                  <div className="pt-5 border-t border-stone-200 space-y-4">
+                    {inspectingRoom.blockedReason && (
+                      <div>
+                        <div className="text-xs text-stone-500">Maintenance hold details</div>
+                        <p className="mt-0.5 text-sm text-stone-900">{inspectingRoom.blockedReason}</p>
+                      </div>
+                    )}
+                    {inspectingRoom.notes && (
+                      <div>
+                        <div className="text-xs text-stone-500">Notes</div>
+                        <p className="mt-0.5 text-sm text-stone-900">{inspectingRoom.notes}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {inspectingRoom.notes && (
-                  <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950">
-                    <div className="font-semibold mb-0.5">Notes</div>
-                    <p className="text-[11px]">{inspectingRoom.notes}</p>
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <span className="text-stone-500 font-semibold block mb-1">Amenities & Specs:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {inspectingRoom.amenities.map((a, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-white border border-stone-200 rounded text-[10px]">
-                        {a}
-                      </span>
-                    ))}
-                  </div>
+                <div className="pt-5 border-t border-stone-200">
+                  <div className="text-xs text-stone-500">Amenities and specs</div>
+                  <p className="mt-0.5 text-sm text-stone-900">
+                    {inspectingRoom.amenities.length > 0 ? inspectingRoom.amenities.join(' · ') : '—'}
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between gap-2">
+              <div className={modalFooter}>
                 {onDeleteRoom ? (() => {
                   const inspNum = normalizeRoomNumber(inspectingRoom.roomNumber);
                   const inspBldg = normalizeBuildingName(inspectingRoom.building).toLowerCase();
@@ -589,38 +588,32 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                         }
                       }}
                       title={hasAnyAllotted ? 'Cannot delete: this room has allotted Zaereen' : 'Delete room from inventory'}
-                      className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      className={`mr-auto inline-flex items-center justify-center gap-1.5 h-10 px-3 -ml-3 rounded-lg text-sm font-medium whitespace-nowrap transition ${
                         hasAnyAllotted
-                          ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                          : 'bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer'
+                          ? 'text-stone-500 cursor-not-allowed'
+                          : 'text-rose-700 hover:bg-rose-50 cursor-pointer'
                       }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>{hasAnyAllotted ? 'Allotted (Protected)' : 'Delete Room'}</span>
+                      {hasAnyAllotted ? <Lock className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                      <span>{hasAnyAllotted ? 'Allotted (protected)' : 'Delete room'}</span>
                     </button>
                   );
-                })() : <div />}
+                })() : null}
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingRoom(inspectingRoom);
-                      setInspectingRoom(null);
-                    }}
-                    className="min-h-[44px] px-4 py-2 rounded-lg bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInspectingRoom(null)}
-                    className="min-h-[44px] px-5 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRoom(inspectingRoom);
+                    setInspectingRoom(null);
+                  }}
+                  className={btn.secondary}
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit
+                </button>
+                <button type="button" onClick={() => setInspectingRoom(null)} className={btn.primary}>
+                  Close
+                </button>
               </div>
             </div>
           </div>

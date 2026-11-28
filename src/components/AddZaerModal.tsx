@@ -1,21 +1,24 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  X, 
-  UserPlus, 
-  CheckCircle2, 
-  AlertCircle, 
-  Calendar, 
-  Building2, 
-  BedDouble, 
-  ShieldCheck, 
-  Users, 
-  Clock, 
-  ArrowRight,
-  BadgeAlert
-} from 'lucide-react';
+import { X, UserPlus, AlertCircle, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Reservation, Room, MoneyGivenStatus } from '../types';
 import { isDuplicateReservation, normalizeItsId, normalizeText } from '../utils/deduplication';
 import { getVacantRoomsForDuration, getDistinctBuildings } from '../services/storage';
+import { btn, btnSm, field, fieldLabel, modalScrim, modalCard, modalHeader, modalTitle, modalClose, modalFooter } from './ui';
+
+/* Shared form pieces for this dialog. */
+const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
+const helpText = 'mt-1.5 text-xs text-stone-500';
+const errorText = 'mt-1.5 text-xs text-rose-700';
+const fieldBad = ' border-rose-400';
+const pick = (on: boolean) =>
+  `inline-flex items-center h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium tabular-nums ring-1 ring-inset cursor-pointer ${
+    on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50'
+  }`;
+const Required = () => (
+  <span className="text-rose-600" aria-hidden="true">
+    {' '}*
+  </span>
+);
 
 interface AddZaerModalProps {
   isOpen: boolean;
@@ -180,18 +183,18 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
     setErrorMsg('');
 
     if (!applicantName.trim()) {
-      setErrorMsg('Please enter the Zair applicant full name.');
+      setErrorMsg('Enter the zair’s full name.');
       return;
     }
 
     if (!tourRefNo.trim()) {
-      setErrorMsg('Please provide a Tour ID / Tour Reference Number.');
+      setErrorMsg('Enter a Tour ID.');
       return;
     }
 
     if (duplicateMatch) {
       setErrorMsg(
-        `Cannot add: A Zair with this ITS ID or Name already exists in the system (${duplicateMatch.applicantName}, Family ${duplicateMatch.family}, Tour ${duplicateMatch.tourRefNo}).`
+        `Cannot add: a zair with this ITS or name is already in the list (${duplicateMatch.applicantName}, family ${duplicateMatch.family}, tour ${duplicateMatch.tourRefNo}).`
       );
       return;
     }
@@ -233,7 +236,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
 
     // Strict duplication guard
     if (existingReservations.some((r) => isDuplicateReservation(r, newReservation))) {
-      setErrorMsg('A duplicate record already exists in the list.');
+      setErrorMsg('This zair is already in the list.');
       return;
     }
 
@@ -241,172 +244,149 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-3xl w-full p-5 sm:p-7 shadow-2xl relative text-stone-800 max-h-[92vh] flex flex-col">
-        
-        {/* Header */}
-        <div className="flex items-start justify-between pb-4 border-b border-stone-200">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-brand-700 text-white shadow-xs">
-              <UserPlus className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-brand-700">Add New Zair</h3>
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
-                  Unique-Check Active
-                </span>
-              </div>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Manually enter complete details for a Zair. Verified against current zaereen list to prevent duplicate entries.
-              </p>
-            </div>
-          </div>
+  // After a failed save, point at the fields that still need filling.
+  const nameMissing = !!errorMsg && !applicantName.trim();
+  const tourMissing = !!errorMsg && !tourRefNo.trim();
+  const itsChecked = !duplicateMatch && itsId.trim().length >= 7;
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg hover:bg-stone-200/60 transition cursor-pointer"
-          >
+  return (
+    <div className={modalScrim}>
+      <div className={`${modalCard} max-w-3xl`} role="dialog" aria-modal="true" aria-labelledby="add-zair-title">
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h3 id="add-zair-title" className={modalTitle}>
+              Add zair
+            </h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Enter one zair’s details. The ITS and name are checked against the list so nobody is added twice.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Quick Switch to Tour Group Builder */}
-        {onSwitchToAddTourGroup && (
-          <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-emerald-950 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-brand-700 shrink-0" />
-              <span>
-                Adding a full tour group? Add one Tour ID with <strong>different family IDs</strong> & multiple individuals sharing the same dates.
-              </span>
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-7">
+          {onSwitchToAddTourGroup && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-x-4 gap-y-2 rounded-xl bg-stone-50 ring-1 ring-inset ring-stone-200/70 px-4 py-3">
+              <p className="text-[13px] text-stone-600">
+                Adding a whole tour? Enter the Tour ID and dates once, then add everyone with their own family IDs.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSwitchToAddTourGroup();
+                }}
+                className={`${btnSm.secondary} max-sm:h-10 shrink-0`}
+              >
+                Add tour group instead
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onSwitchToAddTourGroup();
-              }}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-2xs transition cursor-pointer shrink-0 text-xs"
-            >
-              <span>Add Tour Group Instead</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 py-4 space-y-5 pr-1">
-
-          {/* Duplicate Detection Alert / Status Banner */}
-          {duplicateMatch ? (
-            <div className="p-3.5 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-950 flex items-start gap-3 shadow-xs">
-              <BadgeAlert className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
-              <div className="text-xs">
-                <div className="font-bold text-rose-900 text-sm">
-                  ⚠️ Zair Already Exists in List!
-                </div>
-                <p className="mt-1 text-rose-800 leading-relaxed">
-                  A registered record already exists with matching credentials:{' '}
-                  <strong>{duplicateMatch.applicantName}</strong>{' '}
-                  {duplicateMatch.itsId && <span>(ITS: <strong>{duplicateMatch.itsId}</strong>)</span>} •{' '}
-                  Family: <strong>{duplicateMatch.family}</strong> • Tour: <strong>{duplicateMatch.tourRefNo}</strong> •{' '}
-                  Room: <strong>{duplicateMatch.roomNumber ? `Room ${duplicateMatch.roomNumber} (${duplicateMatch.building})` : 'Unallotted'}</strong>.
+          {duplicateMatch && (
+            <div role="alert" className="flex items-start gap-3 rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 px-4 py-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 text-[13px] leading-relaxed text-rose-800">
+                <p className="text-sm font-semibold">This zair is already in the list</p>
+                <p className="mt-0.5">
+                  <span className="font-semibold">{duplicateMatch.applicantName}</span>
+                  {duplicateMatch.itsId && <span className="tabular-nums"> · ITS {duplicateMatch.itsId}</span>} · Family{' '}
+                  {duplicateMatch.family} · Tour {duplicateMatch.tourRefNo} ·{' '}
+                  {duplicateMatch.roomNumber
+                    ? `Room ${duplicateMatch.roomNumber} (${duplicateMatch.building})`
+                    : 'No room yet'}
+                  . A zair cannot be added twice.
                 </p>
-                <div className="mt-2 text-[11px] font-bold text-rose-900">
-                  Duplicate zaereen cannot be re-added to preserve data integrity.
-                </div>
               </div>
-            </div>
-          ) : (
-            itsId.trim().length >= 7 && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 flex items-center gap-2.5 text-xs font-semibold">
-                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>✓ Verified Unique: This ITS ID is not in the present list. Safe to add.</span>
-              </div>
-            )
-          )}
-
-          {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-100 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* Section 1: Personal Details */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
-              <span>1. Zair Personal Information</span>
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* ITS ID */}
+          {/* Zair */}
+          <section>
+            <h4 className={groupTitle}>Zair</h4>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  ITS ID <span className="text-stone-400 font-normal">(8 Digits)</span>
+                <label htmlFor="az-its" className={fieldLabel}>
+                  ITS
                 </label>
                 <input
+                  id="az-its"
                   type="text"
-                  placeholder="e.g. 30318214"
+                  inputMode="numeric"
+                  placeholder="30318214"
                   value={itsId}
                   onChange={(e) => setItsId(e.target.value)}
-                  className={`w-full bg-stone-50 border rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 ${
-                    duplicateMatch ? 'border-rose-400 focus:ring-rose-500' : 'border-stone-300 focus:ring-brand-700'
-                  }`}
+                  aria-invalid={!!duplicateMatch}
+                  className={`${field} tabular-nums${duplicateMatch ? fieldBad : ''}`}
                 />
+                {duplicateMatch ? (
+                  <p className={errorText}>Already in the list.</p>
+                ) : itsChecked ? (
+                  <p className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    Not in the list. Safe to add.
+                  </p>
+                ) : (
+                  <p className={helpText}>8 digits.</p>
+                )}
               </div>
 
-              {/* Applicant Name */}
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Full Name / Applicant Name <span className="text-rose-500">*</span>
+                <label htmlFor="az-name" className={fieldLabel}>
+                  Full name
+                  <Required />
                 </label>
                 <input
+                  id="az-name"
                   type="text"
                   required
-                  placeholder="e.g. Nafisa Abbas Fatehi"
+                  placeholder="Nafisa Abbas Fatehi"
                   value={applicantName}
                   onChange={(e) => setApplicantName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  aria-invalid={nameMissing}
+                  className={`${field}${nameMissing ? fieldBad : ''}`}
                 />
+                {nameMissing && <p className={errorText}>Enter the zair’s full name.</p>}
               </div>
 
-              {/* Age */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Age</label>
+                <label htmlFor="az-age" className={fieldLabel}>
+                  Age
+                </label>
                 <input
+                  id="az-age"
                   type="number"
                   min="1"
                   max="120"
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={`${field} tabular-nums`}
                 />
               </div>
 
-              {/* Gender */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Gender</label>
+                <label htmlFor="az-gender" className={fieldLabel}>
+                  Gender
+                </label>
                 <select
+                  id="az-gender"
                   value={gender}
                   onChange={(e) => setGender(e.target.value as 'Male' | 'Female')}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={field}
                 >
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
               </div>
 
-              {/* Pilgrim Category */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Pilgrim Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                >
+                <label htmlFor="az-category" className={fieldLabel}>
+                  Pilgrim category
+                </label>
+                <select id="az-category" value={category} onChange={(e) => setCategory(e.target.value)} className={field}>
                   {categories.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -415,338 +395,325 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 </select>
               </div>
 
-              {/* Jamaat / Mohalla */}
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Jamaat / Mohalla <span className="text-stone-400 font-normal">(Optional)</span>
+                <label htmlFor="az-jamaat" className={fieldLabel}>
+                  Jamaat / mohalla <span className="font-normal text-stone-500">(optional)</span>
                 </label>
                 <input
+                  id="az-jamaat"
                   type="text"
-                  placeholder="e.g. HATEMI MOHALLA (MUMBAI)"
+                  placeholder="HATEMI MOHALLA (MUMBAI)"
                   value={jamaat}
                   onChange={(e) => setJamaat(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={field}
                 />
               </div>
 
-              {/* HOF ITS ID */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Head of Family ITS <span className="text-stone-400 font-normal">(HOF)</span>
+                <label htmlFor="az-hof" className={fieldLabel}>
+                  Head of family ITS <span className="font-normal text-stone-500">(HOF)</span>
                 </label>
                 <input
+                  id="az-hof"
                   type="text"
-                  placeholder="e.g. 20304504"
+                  inputMode="numeric"
+                  placeholder="20304504"
                   value={hofId}
                   onChange={(e) => setHofId(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={`${field} tabular-nums`}
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Section 2: Tour & Family Affiliation */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
-              <span>2. Tour ID & Family Grouping</span>
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Tour Reference No */}
+          {/* Tour and family */}
+          <section>
+            <h4 className={groupTitle}>Tour and family</h4>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-bold text-stone-700">
-                    Tour ID <span className="text-rose-500">*</span>
-                  </label>
-                  {existingTourIds.length > 0 && (
-                    <span className="text-[10px] text-stone-400">or pick existing below</span>
-                  )}
-                </div>
+                <label htmlFor="az-tour" className={fieldLabel}>
+                  Tour ID
+                  <Required />
+                </label>
                 <input
+                  id="az-tour"
                   type="text"
                   required
-                  placeholder="e.g. NKERP/TOUR/2026/1333"
+                  placeholder="NKERP/TOUR/2026/1333"
                   value={tourRefNo}
                   onChange={(e) => setTourRefNo(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  aria-invalid={tourMissing}
+                  className={`${field} tabular-nums${tourMissing ? fieldBad : ''}`}
                 />
-
-                {/* Quick tour chips */}
+                {tourMissing && <p className={errorText}>Enter a Tour ID.</p>}
                 {existingTourIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {existingTourIds.slice(0, 4).map((tid) => (
-                      <button
-                        key={tid}
-                        type="button"
-                        onClick={() => handleSelectTour(tid)}
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
-                          tourRefNo === tid
-                            ? 'bg-brand-700 text-white border-brand-700 font-bold'
-                            : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
-                        }`}
-                      >
-                        {tid}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <p className={helpText}>Or pick a tour already in the list:</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {existingTourIds.slice(0, 4).map((tid) => (
+                        <button
+                          key={tid}
+                          type="button"
+                          onClick={() => handleSelectTour(tid)}
+                          aria-pressed={tourRefNo === tid}
+                          className={pick(tourRefNo === tid)}
+                        >
+                          {tid}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
 
-              {/* Family Number */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-bold text-stone-700">
-                    Family Number <span className="text-rose-500">*</span>
-                  </label>
-                  {existingFamilies.length > 0 && (
-                    <span className="text-[10px] text-stone-400">or pick existing</span>
-                  )}
-                </div>
+                <label htmlFor="az-family" className={fieldLabel}>
+                  Family number
+                  <Required />
+                </label>
                 <input
+                  id="az-family"
                   type="text"
                   required
-                  placeholder="e.g. F-1, 102"
+                  placeholder="F-1"
                   value={family}
                   onChange={(e) => setFamily(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={`${field} tabular-nums`}
                 />
-
-                {/* Quick family chips */}
                 {existingFamilies.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {existingFamilies.slice(0, 5).map((fam) => (
-                      <button
-                        key={fam}
-                        type="button"
-                        onClick={() => handleSelectFamily(fam)}
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition cursor-pointer ${
-                          family === fam
-                            ? 'bg-brand-700 text-white border-brand-700 font-bold'
-                            : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
-                        }`}
-                      >
-                        {fam}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <p className={helpText}>Or pick a family already in the list:</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {existingFamilies.slice(0, 5).map((fam) => (
+                        <button
+                          key={fam}
+                          type="button"
+                          onClick={() => handleSelectFamily(fam)}
+                          aria-pressed={family === fam}
+                          className={pick(family === fam)}
+                        >
+                          {fam}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
 
-              {/* Office Name */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Office Name
+                <label htmlFor="az-office" className={fieldLabel}>
+                  Office
                 </label>
                 <input
+                  id="az-office"
                   type="text"
-                  placeholder="e.g. Fayz E Husayni Trust Mumbai"
+                  placeholder="Fayz E Husayni Trust Mumbai"
                   value={officeName}
                   onChange={(e) => setOfficeName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={field}
                 />
               </div>
 
-              {/* Group Lead Name */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Group Leader Name <span className="text-stone-400 font-normal">(Optional)</span>
+                <label htmlFor="az-lead" className={fieldLabel}>
+                  Group leader <span className="font-normal text-stone-500">(optional)</span>
                 </label>
                 <input
+                  id="az-lead"
                   type="text"
-                  placeholder="e.g. Husain Shaikh Asgar Arsiwala"
+                  placeholder="Husain Shaikh Asgar Arsiwala"
                   value={groupLeadName}
                   onChange={(e) => setGroupLeadName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={field}
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Section 3: Arrival, Departure & Room Allotment */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-brand-700 border-b border-stone-100 pb-1.5 flex items-center gap-1.5">
-              <span>3. Dates & Room Allotment</span>
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Arrival Date */}
+          {/* Dates and room */}
+          <section>
+            <h4 className={groupTitle}>Dates and room</h4>
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Arrival Date <span className="text-rose-500">*</span>
+                <label htmlFor="az-arr-date" className={fieldLabel}>
+                  Arrival date
+                  <Required />
                 </label>
                 <input
+                  id="az-arr-date"
                   type="date"
                   required
                   value={arrivalDate}
                   onChange={(e) => setArrivalDate(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
+                  className={`${field} tabular-nums cursor-pointer`}
                 />
               </div>
 
-              {/* Arrival Time */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Arrival Time</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 11:00 AM"
-                  value={arrivalTime}
-                  onChange={(e) => setArrivalTime(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
-                />
-              </div>
-
-              {/* Departure Date */}
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Departure Date <span className="text-rose-500">*</span>
+                <label htmlFor="az-arr-time" className={fieldLabel}>
+                  Arrival time
                 </label>
                 <input
+                  id="az-arr-time"
+                  type="text"
+                  placeholder="11:00 AM"
+                  value={arrivalTime}
+                  onChange={(e) => setArrivalTime(e.target.value)}
+                  className={`${field} tabular-nums`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="az-dep-date" className={fieldLabel}>
+                  Departure date
+                  <Required />
+                </label>
+                <input
+                  id="az-dep-date"
                   type="date"
                   required
                   value={departureDate}
                   onChange={(e) => setDepartureDate(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
+                  className={`${field} tabular-nums cursor-pointer`}
                 />
               </div>
 
-              {/* Departure Time */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Departure Time</label>
+                <label htmlFor="az-dep-time" className={fieldLabel}>
+                  Departure time
+                </label>
                 <input
+                  id="az-dep-time"
                   type="text"
-                  placeholder="e.g. 01:00 AM"
+                  placeholder="01:00 AM"
                   value={departureTime}
                   onChange={(e) => setDepartureTime(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={`${field} tabular-nums`}
                 />
               </div>
-            </div>
 
-            {/* Room Selection */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Hotel / Building
+              <div className="col-span-2">
+                <label htmlFor="az-building" className={fieldLabel}>
+                  Building
                 </label>
                 <select
+                  id="az-building"
                   value={building}
                   onChange={(e) => {
                     setBuilding(e.target.value);
                     setRoomNumber('');
                   }}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-brand-700 focus:outline-none focus:ring-1 focus:ring-brand-700 cursor-pointer"
+                  className={field}
                 >
                   {distinctBuildings.map((bldg) => {
                     const count = rooms.filter((r) => r.building.toLowerCase() === bldg.toLowerCase()).length;
                     return (
                       <option key={bldg} value={bldg}>
-                        {bldg} Hotel ({count} Rooms)
+                        {bldg} ({count} rooms)
                       </option>
                     );
                   })}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Room Allotment <span className="text-stone-400 font-normal">({vacantRooms.length} Vacant for these dates)</span>
+              <div className="col-span-2">
+                <label htmlFor="az-room" className={fieldLabel}>
+                  Room
                 </label>
                 <select
+                  id="az-room"
                   value={roomNumber}
                   onChange={(e) => setRoomNumber(e.target.value)}
-                  className="w-full bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-700"
+                  className={`${field} tabular-nums`}
                 >
-                  <option value="">-- Leave Unallotted for Now --</option>
+                  <option value="">Leave unallotted for now</option>
                   {vacantRooms.map((rm) => (
                     <option key={rm.id} value={rm.roomNumber}>
-                      Room {rm.roomNumber} ({rm.building}) • Pax {rm.capacity} • {rm.floorLabel || `Floor ${rm.floor}`}
+                      Room {rm.roomNumber} ({rm.building}) · sleeps {rm.capacity} · {rm.floorLabel || `Floor ${rm.floor}`}
                     </option>
                   ))}
                 </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 4: Accommodation B to A Shift (Optional) */}
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-xs font-bold text-stone-900 flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={shiftToCategoryA}
-                    onChange={(e) => setShiftToCategoryA(e.target.checked)}
-                    className="w-4 h-4 text-brand-700 rounded border-stone-300 focus:ring-brand-700 cursor-pointer"
-                  />
-                  <span>Shift from Standard (B) to Nizaam (Category A)</span>
-                </label>
-                <p className="text-[11px] text-stone-500 ml-6 mt-0.5">
-                  Generates an Accounts Request Slip for money collection for this Zair.
+                <p className={helpText}>
+                  {vacantRooms.length} vacant in {building} for these dates.
                 </p>
               </div>
             </div>
+          </section>
+
+          {/* B→A shift */}
+          <section>
+            <h4 className={groupTitle}>B→A shift</h4>
+            <label className="mt-3 flex items-start gap-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={shiftToCategoryA}
+                onChange={(e) => setShiftToCategoryA(e.target.checked)}
+                className="mt-0.5 w-[18px] h-[18px] rounded border-stone-300 cursor-pointer"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-stone-900">
+                  Shift this zair from Category B (standard) to Category A (Nizaam)
+                </span>
+                <span className="mt-0.5 block text-xs text-stone-500">
+                  Makes an accounts request slip so the money can be collected.
+                </span>
+              </span>
+            </label>
 
             {shiftToCategoryA && (
-              <div className="p-3 bg-stone-50 border border-brand-700/30 rounded-xl space-y-3 animate-in fade-in duration-150">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                      Money Given to Accounts?
-                    </label>
-                    <select
-                      value={moneyGiven}
-                      onChange={(e) => setMoneyGiven(e.target.value as MoneyGivenStatus)}
-                      className="w-full bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs font-bold text-stone-900"
-                    >
-                      <option value="No">No — Money Pending (Generate Request Slip)</option>
-                      <option value="Yes">Yes — Money Collected by Accounts</option>
-                    </select>
-                  </div>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in duration-150">
+                <div>
+                  <label htmlFor="az-money" className={fieldLabel}>
+                    Money given to accounts?
+                  </label>
+                  <select
+                    id="az-money"
+                    value={moneyGiven}
+                    onChange={(e) => setMoneyGiven(e.target.value as MoneyGivenStatus)}
+                    className={field}
+                  >
+                    <option value="No">No, money pending (make a request slip)</option>
+                    <option value="Yes">Yes, collected by accounts</option>
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                      Accounts Receipt / Notes
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Paid in cash at reception desk"
-                      value={moneyNotes}
-                      onChange={(e) => setMoneyNotes(e.target.value)}
-                      className="w-full bg-white border border-stone-300 rounded-lg px-3 py-1.5 text-xs text-stone-900"
-                    />
-                  </div>
+                <div>
+                  <label htmlFor="az-money-notes" className={fieldLabel}>
+                    Accounts receipt / notes
+                  </label>
+                  <input
+                    id="az-money-notes"
+                    type="text"
+                    placeholder="Paid in cash at reception desk"
+                    value={moneyNotes}
+                    onChange={(e) => setMoneyNotes(e.target.value)}
+                    className={field}
+                  />
                 </div>
               </div>
             )}
-          </div>
-
+          </section>
         </form>
 
-        {/* Footer Actions */}
-        <div className="pt-3 border-t border-stone-200 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition cursor-pointer"
+        {errorMsg && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 px-5 sm:px-6 py-3 border-t border-rose-200 bg-rose-50 text-[13px] text-rose-800"
           >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.ghost}>
             Cancel
           </button>
-
-          <button
-            type="button"
-            disabled={!!duplicateMatch}
-            onClick={handleSubmit}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition ${
-              duplicateMatch
-                ? 'bg-stone-300 text-stone-500 cursor-not-allowed'
-                : 'bg-brand-700 hover:bg-brand-800 text-white cursor-pointer'
-            }`}
-          >
+          <button type="button" disabled={!!duplicateMatch} onClick={handleSubmit} className={btn.primary}>
             <UserPlus className="w-4 h-4" />
-            <span>{duplicateMatch ? 'Zair Already in List (Cannot Add Duplicate)' : 'Add Zair to System'}</span>
+            {duplicateMatch ? 'Already in the list' : 'Add zair'}
           </button>
         </div>
-
       </div>
     </div>
   );

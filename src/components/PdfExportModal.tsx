@@ -1,28 +1,33 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  FileText, 
-  Download, 
-  CheckSquare, 
-  Filter, 
-  Building2, 
-  Calendar, 
-  ArrowUpRight, 
-  ShieldCheck,
-  X,
-  Search,
-  Users,
-  Star,
-  BedDouble,
-  Clock,
-  Printer,
-  ChevronRight,
-  Info,
-  CheckCircle2
-} from 'lucide-react';
+import { Download, Search, Star, X } from 'lucide-react';
 import { Reservation, Room } from '../types';
 import { generateAdministrativePdf, PdfExportOptions } from '../services/pdfExport';
 import { normalizeDate } from '../services/excelService';
 import { getDistinctBuildings, normalizeBuildingName } from '../services/storage';
+import {
+  btn, btnSm, chip, field, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle, panel,
+} from './ui';
+
+/** Compact buttons grow to the 40px touch size on phones. */
+const tap = (cls: string) => `${cls} max-sm:h-10 max-sm:px-3.5`;
+/** A field with room for a search icon on the left and a clear button on the right. */
+const searchField = field.replace('px-3', 'pl-9 pr-9');
+
+/** A yyyy-mm-dd date as "28 Nov 2026" on screen (shown only; filter values and the PDF keep the stored date). */
+function shownDate(value: string | undefined): string {
+  if (!value) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return value;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const REPORTS: { value: PdfExportOptions['reportType']; title: string; detail: string }[] = [
+  { value: 'tour_manifest', title: 'Tour ID lodging manifest', detail: 'Search and filter by Tour ID. Every zair’s name, ITS, family, room allotment and timings.' },
+  { value: 'all_reservations', title: 'All zaereen manifest', detail: 'Full roster across all tours with zaereen names, assigned rooms, buildings, and arrival and departure dates.' },
+  { value: 'category_upgrades', title: 'Category B→A (Nizaam) upgrades audit', detail: 'Ledger of guests shifted from standard to Nizaam, with surcharge and payment records.' },
+  { value: 'rooms_inventory', title: 'Room inventory and blocked rooms audit', detail: 'Every room by building, with blocked reasons.' },
+];
 
 export interface PdfExportModalProps {
   isOpen: boolean;
@@ -227,271 +232,156 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
   const isTourManifest = reportType === 'tour_manifest';
 
+  const buildings = getDistinctBuildings(rooms);
+  const buildingText = buildingFilter === 'ALL' ? 'all buildings' : buildingFilter;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-      <div className={`bg-slate-900 border border-slate-800 rounded-2xl w-full p-4 sm:p-6 shadow-2xl relative text-xs my-auto transition-all ${
-        isTourManifest ? 'max-w-5xl max-h-[92vh] flex flex-col' : 'max-w-xl'
-      }`}>
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer z-10"
-          title="Close"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Modal Header */}
-        <div className="flex items-center gap-2 mb-1 text-amber-400 shrink-0">
-          <FileText className="w-5 h-5 text-amber-400" />
-          <h3 className="text-base font-bold text-white tracking-tight">
-            Administrative PDF Manifest & Documentation
-          </h3>
-        </div>
-        <p className="text-slate-400 mb-4 shrink-0 text-[11px]">
-          Generate formal PDF reports for coordinators, bus guides, front-desk records, and security desk manifests.
-        </p>
-
-        {/* Main Body */}
-        <div className={`space-y-4 ${isTourManifest ? 'overflow-y-auto pr-1' : ''}`}>
-          {/* Report Type Selector */}
-          <div>
-            <label className="block text-slate-300 font-bold mb-2">
-              Select Report Type
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Option 1: Tour ID Specific Lodging Manifest (User Request Focus) */}
-              <label
-                onClick={() => setReportType('tour_manifest')}
-                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
-                  reportType === 'tour_manifest'
-                    ? 'bg-amber-950/40 border-amber-500 text-amber-200 ring-1 ring-amber-500/50'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="reportType"
-                  checked={reportType === 'tour_manifest'}
-                  onChange={() => setReportType('tour_manifest')}
-                  className="mt-0.5 text-amber-500 accent-amber-500"
-                />
-                <div>
-                  <div className="font-bold text-white text-xs flex items-center gap-1.5">
-                    <span>Tour ID Specific Lodging Manifest</span>
-                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold">
-                      Pax Names Included
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Search and filter by Tour ID. Full manifest with <strong>every pax name</strong>, ITS ID, family #, room allotment & timings.
-                  </div>
-                </div>
-              </label>
-
-              {/* Option 2: All Reservations Manifest */}
-              <label
-                onClick={() => setReportType('all_reservations')}
-                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
-                  reportType === 'all_reservations'
-                    ? 'bg-amber-950/40 border-amber-500 text-amber-200 ring-1 ring-amber-500/50'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="reportType"
-                  checked={reportType === 'all_reservations'}
-                  onChange={() => setReportType('all_reservations')}
-                  className="mt-0.5 text-amber-500 accent-amber-500"
-                />
-                <div>
-                  <div className="font-bold text-white text-xs">
-                    Comprehensive All Zaereen Manifest
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Full system roster across all tours with Zaereen names, assigned rooms, buildings, and arrival/departure dates.
-                  </div>
-                </div>
-              </label>
-
-              {/* Option 3: Category Upgrades */}
-              <label
-                onClick={() => setReportType('category_upgrades')}
-                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
-                  reportType === 'category_upgrades'
-                    ? 'bg-amber-950/40 border-amber-500 text-amber-200 ring-1 ring-amber-500/50'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="reportType"
-                  checked={reportType === 'category_upgrades'}
-                  onChange={() => setReportType('category_upgrades')}
-                  className="mt-0.5 text-amber-500 accent-amber-500"
-                />
-                <div>
-                  <div className="font-bold text-amber-400 text-xs flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                    <span>Category B ➔ A (Nizaam) Upgrades Audit</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Ledger of guests shifted from standard to Nizaam with surcharge & payment records.
-                  </div>
-                </div>
-              </label>
-
-              {/* Option 4: Room Inventory */}
-              <label
-                onClick={() => setReportType('rooms_inventory')}
-                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
-                  reportType === 'rooms_inventory'
-                    ? 'bg-amber-950/40 border-amber-500 text-amber-200 ring-1 ring-amber-500/50'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="reportType"
-                  checked={reportType === 'rooms_inventory'}
-                  onChange={() => setReportType('rooms_inventory')}
-                  className="mt-0.5 text-amber-500 accent-amber-500"
-                />
-                <div>
-                  <div className="font-bold text-white text-xs">
-                    Room Inventory & Blocked Rooms Audit
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    Complete 114 rooms listing across Saifee and Burhani with blocked reasons.
-                  </div>
-                </div>
-              </label>
-            </div>
+    <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="pdf-export-title">
+      <div className={`${modalCard} ${isTourManifest ? 'max-w-5xl' : 'max-w-2xl'}`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h3 id="pdf-export-title" className={modalTitle}>Export PDF reports</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Formal PDF reports for coordinators, bus guides, front-desk records and security desk manifests.
+            </p>
           </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close" title="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-          {/* TOUR ID SEARCH & SELECTION (User Request: "I also want to able to search the tour ID") */}
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-amber-500/30 space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label className="text-amber-300 font-bold flex items-center gap-1.5 text-xs">
-                <Search className="w-3.5 h-3.5 text-amber-400" />
-                <span>Search Tour ID {isTourManifest ? '(Required for Specific Manifest)' : '(Optional Filter)'}</span>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-6">
+          {/* Which report */}
+          <fieldset>
+            <legend className={fieldLabel}>Report type</legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {REPORTS.map(({ value, title, detail }) => {
+                const on = reportType === value;
+                return (
+                  <label key={value}
+                    className={`flex items-start gap-3 rounded-xl px-3.5 py-3 cursor-pointer transition ring-inset ${
+                      on ? 'bg-brand-50 ring-2 ring-brand-600' : 'bg-white ring-1 ring-stone-300 hover:ring-stone-400'}`}>
+                    <input
+                      type="radio"
+                      name="reportType"
+                      checked={on}
+                      onChange={() => setReportType(value)}
+                      className="mt-0.5 w-4 h-4 shrink-0 accent-brand-700"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-stone-950">{title}</span>
+                      <span className="mt-0.5 block text-[13px] leading-relaxed text-stone-600">{detail}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          {/* Tour ID: search, pick from the matches, or choose from the list */}
+          <div>
+            <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 mb-1.5">
+              <label htmlFor="pdf-tour-search" className="text-[13px] font-medium text-stone-700">
+                Tour ID <span className="font-normal text-stone-500">{isTourManifest ? '(pick one for the tour manifest)' : '(optional filter)'}</span>
               </label>
-
               {tourIdFilter !== 'ALL' && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold border border-amber-500/40">
-                    Active Tour: {tourIdFilter}
-                  </span>
+                <span className="flex items-center gap-2 text-[13px] text-stone-600">
+                  <span>Active tour <span className="font-semibold text-stone-950 tabular-nums">{tourIdFilter}</span></span>
                   <button
                     type="button"
                     onClick={() => {
                       setTourIdFilter('ALL');
                       setTourSearchQuery('');
                     }}
-                    className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                    className={tap(btnSm.ghost)}
                   >
-                    Reset to All
+                    Reset to all
                   </button>
-                </div>
+                </span>
               )}
             </div>
 
-            {/* Interactive Tour ID Search Input */}
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
               <input
+                id="pdf-tour-search"
                 type="text"
                 value={tourSearchQuery}
                 onChange={(e) => setTourSearchQuery(e.target.value)}
-                placeholder="Type to search Tour ID (e.g. 1333, NKERP, VIP, Mumbai)..."
-                className="w-full bg-slate-900 text-white pl-9 pr-8 py-2 rounded-xl border border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-slate-500 font-mono"
+                placeholder="Search by Tour ID or office (e.g. 1333, Mumbai)"
+                className={searchField}
               />
               {tourSearchQuery && (
                 <button
                   type="button"
                   onClick={() => setTourSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                  className="absolute right-1 top-1 w-8 h-8 rounded-md flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 cursor-pointer"
                   title="Clear search"
+                  aria-label="Clear search"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            {/* Quick Tour Selection Matching Pills / Cards */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>Matching Tours ({filteredTourSummaries.length}):</span>
-                {uniqueTourIds.length > 0 && (
-                  <span>Total {uniqueTourIds.length} Tours in System</span>
-                )}
-              </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 text-[13px] text-stone-600 tabular-nums">
+              <span>Matching tours ({filteredTourSummaries.length})</span>
+              {uniqueTourIds.length > 0 && <span>{uniqueTourIds.length} tours in all</span>}
+            </div>
+            <div className={`${panel} mt-1.5 flex flex-wrap items-center gap-2 max-h-36 overflow-y-auto p-2`}>
+              <button
+                type="button"
+                onClick={() => setTourIdFilter('ALL')}
+                aria-pressed={tourIdFilter === 'ALL'}
+                className={tap(tourIdFilter === 'ALL' ? btnSm.primary : btnSm.secondary)}
+              >
+                All tours
+                <span className={`font-normal tabular-nums ${tourIdFilter === 'ALL' ? 'text-white/80' : 'text-stone-500'}`}>{reservations.length} zaereen</span>
+              </button>
 
-              <div className="flex flex-wrap items-center gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-900/60 rounded-lg border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setTourIdFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    tourIdFilter === 'ALL'
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  All Tours ({reservations.length} Zaereen)
-                </button>
-
-                {filteredTourSummaries.slice(0, 15).map((t) => {
-                  const isSelected = tourIdFilter === t.tourId;
-                  return (
-                    <button
-                      key={t.tourId}
-                      type="button"
-                      onClick={() => setTourIdFilter(t.tourId)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition flex items-center gap-1.5 cursor-pointer border ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 border-amber-400 shadow-md font-black'
-                          : 'bg-slate-800/90 text-slate-200 border-slate-700 hover:border-amber-500/60 hover:bg-slate-800'
-                      }`}
-                      title={`Tour ${t.tourId}: ${t.totalPax} Zaereen across ${t.familiesSet.size} families`}
-                    >
-                      <span>{t.tourId}</span>
-                      <span className={`text-[10px] font-sans font-semibold px-1 rounded ${
-                        isSelected ? 'bg-amber-950/20 text-slate-950' : 'bg-slate-700 text-amber-300'
-                      }`}>
-                        {t.totalPax}p
+              {filteredTourSummaries.slice(0, 15).map((t) => {
+                const isSelected = tourIdFilter === t.tourId;
+                return (
+                  <button
+                    key={t.tourId}
+                    type="button"
+                    onClick={() => setTourIdFilter(t.tourId)}
+                    aria-pressed={isSelected}
+                    className={`${tap(isSelected ? btnSm.primary : btnSm.secondary)} tabular-nums`}
+                    title={`Tour ${t.tourId}: ${t.totalPax} Zaereen across ${t.familiesSet.size} families`}
+                  >
+                    {t.tourId}
+                    <span className={`font-normal ${isSelected ? 'text-white/80' : 'text-stone-500'}`}>{t.totalPax}</span>
+                    {t.specialCount > 0 && (
+                      <span className="inline-flex items-center gap-0.5 font-normal" title={`${t.specialCount} Special Guest(s)`}>
+                        <Star className="w-3 h-3 fill-gold-400 text-gold-500" />{t.specialCount}
                       </span>
-                      {t.specialCount > 0 && (
-                        <span className="text-[10px] text-amber-300 flex items-center font-bold" title={`${t.specialCount} Special Guest(s)`}>
-                          ★{t.specialCount}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                    )}
+                  </button>
+                );
+              })}
 
-                {filteredTourSummaries.length === 0 && (
-                  <div className="py-2 px-3 text-amber-300/80 text-xs italic">
-                    No tours found matching "{tourSearchQuery}". Try clearing search.
-                  </div>
-                )}
-              </div>
+              {filteredTourSummaries.length === 0 && (
+                <div className="px-2 py-1.5 text-[13px] text-stone-600">
+                  No tours match "{tourSearchQuery}". Try clearing the search.
+                </div>
+              )}
             </div>
 
-            {/* Dropdown Selector Fallback */}
-            <div className="pt-1 flex items-center gap-2">
-              <span className="text-[11px] text-slate-400 shrink-0">Or choose from list:</span>
+            <div className="mt-3">
+              <label htmlFor="pdf-tour-select" className={fieldLabel}>Or choose from the list</label>
               <select
+                id="pdf-tour-select"
                 value={tourIdFilter}
                 onChange={(e) => setTourIdFilter(e.target.value)}
-                className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono cursor-pointer"
+                className={`${field} cursor-pointer tabular-nums`}
               >
-                <option value="ALL">All Tours ({reservations.length} Zaereen)</option>
+                <option value="ALL">All tours ({reservations.length} zaereen)</option>
                 {uniqueTourIds.map((tid) => {
                   const sum = tourSummaries.find((s) => s.tourId === tid);
                   return (
                     <option key={tid} value={tid}>
-                      {tid} — {sum?.totalPax || 0} Zaereen ({sum?.familiesSet.size || 0} Families • Arr: {sum?.earliestArrival || '—'})
+                      {tid} — {sum?.totalPax || 0} zaereen ({sum?.familiesSet.size || 0} families · arrives {shownDate(sum?.earliestArrival) || '—'})
                     </option>
                   );
                 })}
@@ -499,156 +389,101 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             </div>
           </div>
 
-          {/* LIVE IN-MODAL PAX LODGING MANIFEST TABLE (User Request: "I want names of pax too") */}
+          {/* The roster the tour manifest will carry */}
           {isTourManifest && (
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-emerald-600/40 space-y-3 animate-in fade-in">
-              {/* Manifest Header & Stats Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-emerald-400" />
-                      <span>Tour Manifest Pax Roster:</span>
-                    </span>
-                    <span className="font-mono font-black text-xs text-white bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-                      {tourIdFilter === 'ALL' ? 'All Tours' : `Tour ID: ${tourIdFilter}`}
-                    </span>
-                    {currentTourSummary && (
-                      <span className="text-[11px] text-slate-300">
-                        {currentTourSummary.totalPax} Zaereen • {currentTourSummary.familiesSet.size} Families • Arr: {currentTourSummary.earliestArrival || '—'} ➔ Dep: {currentTourSummary.latestDeparture || '—'}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Below are the individual <strong>names of all pax</strong>, ITS IDs, family numbers, room allocations & flight timings.
+            <div className="animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                  <h4 className="text-[15px] font-semibold text-stone-950">
+                    Tour manifest roster: <span className="tabular-nums">{tourIdFilter === 'ALL' ? 'all tours' : `Tour ID ${tourIdFilter}`}</span>
+                  </h4>
+                  {currentTourSummary && (
+                    <p className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                      {currentTourSummary.totalPax} zaereen · {currentTourSummary.familiesSet.size} families · arrives {shownDate(currentTourSummary.earliestArrival) || '—'} · departs {shownDate(currentTourSummary.latestDeparture) || '—'}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[13px] text-stone-500">
+                    Every zair by name, with ITS, family number, room allotment and timings.
                   </p>
                 </div>
 
-                {/* Filter within Pax Names */}
                 <div className="relative w-full sm:w-64 shrink-0">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2 pointer-events-none" />
+                  <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
                   <input
                     type="text"
                     value={paxSearchQuery}
                     onChange={(e) => setPaxSearchQuery(e.target.value)}
-                    placeholder="Filter pax by name or ITS..."
-                    className="w-full bg-slate-900 text-white pl-8 pr-7 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-500"
+                    placeholder="Filter by name or ITS"
+                    aria-label="Filter the roster by name or ITS"
+                    className={searchField}
                   />
                   {paxSearchQuery && (
                     <button
                       type="button"
                       onClick={() => setPaxSearchQuery('')}
-                      className="absolute right-2 top-2 text-slate-400 hover:text-white cursor-pointer"
+                      className="absolute right-1 top-1 w-8 h-8 rounded-md flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 cursor-pointer"
+                      aria-label="Clear filter"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-4 h-4" />
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Scrollable Pax Table */}
-              <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-slate-800">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 bg-stone-50 text-stone-600 font-medium border-b border-stone-200 text-[11px] shadow-xs">
-                    <tr>
-                      <th className="py-2 px-2.5 w-10 text-center">#</th>
-                      <th className="py-2 px-3">Pax / Zair Full Name</th>
-                      <th className="py-2 px-2.5 text-center">Fam #</th>
-                      <th className="py-2 px-3">Room & Hotel</th>
-                      <th className="py-2 px-3">Arrival Date & Time</th>
-                      <th className="py-2 px-3">Departure Date & Time</th>
-                      <th className="py-2 px-2.5">Category</th>
-                      <th className="py-2 px-3">Special / Remarks</th>
+              <div className="overflow-auto max-h-72 rounded-xl ring-1 ring-inset ring-stone-200">
+                <table className="w-full text-left text-[13px] border-collapse">
+                  <thead className="sticky top-0 z-10 bg-stone-50 text-xs text-stone-600">
+                    <tr className="[&>th]:px-3 [&>th]:py-2.5 [&>th]:font-semibold [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-stone-200">
+                      <th scope="col" className="w-10 text-right">#</th>
+                      <th scope="col">Zair</th>
+                      <th scope="col">Family</th>
+                      <th scope="col">Room</th>
+                      <th scope="col">Arrival</th>
+                      <th scope="col">Departure</th>
+                      <th scope="col">Category</th>
+                      <th scope="col">Special / remarks</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80 bg-slate-950/70">
+                  <tbody className="divide-y divide-stone-200">
                     {displayedPaxManifest.length > 0 ? (
                       displayedPaxManifest.map((res, idx) => {
                         const isAllotted = !!res.roomNumber && res.roomNumber.trim() !== '';
                         return (
-                          <tr key={res.id || idx} className="hover:bg-slate-900/60 transition">
-                            <td className="py-2 px-2.5 text-center font-mono text-slate-400 text-[11px]">
-                              {idx + 1}
-                            </td>
-                            {/* PAX NAME (Prominently displayed) */}
-                            <td className="py-2 px-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {res.isSpecialGuest && (
-                                  <span className="p-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Special Guest">
-                                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                                  </span>
-                                )}
-                                <span className={`font-bold ${res.isSpecialGuest ? 'text-amber-300 font-black' : 'text-white'}`}>
-                                  {res.applicantName || res.groupLeadName || 'Guest'}
-                                </span>
+                          <tr key={res.id || idx} className="hover:bg-stone-50 [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-top">
+                            <td className="text-right text-stone-500 tabular-nums">{idx + 1}</td>
+                            <td className="min-w-[11rem]">
+                              <div className="flex items-center gap-1.5 font-semibold text-stone-950">
+                                {res.isSpecialGuest && <Star className="w-3.5 h-3.5 shrink-0 fill-gold-400 text-gold-500" aria-label="Special guest" />}
+                                <span>{res.applicantName || res.groupLeadName || 'Guest'}</span>
                               </div>
-                              <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 font-mono">
-                                {res.itsId && <span>ITS: {res.itsId}</span>}
-                                {res.gender && <span>• {res.gender}</span>}
-                                {res.age && <span>• Age {res.age}</span>}
+                              <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-stone-500 tabular-nums">
+                                {res.itsId && <span>ITS {res.itsId}</span>}
+                                {res.gender && <span>{res.gender}</span>}
+                                {res.age && <span>Age {res.age}</span>}
                               </div>
                             </td>
-
-                            {/* FAMILY NUMBER */}
-                            <td className="py-2 px-2.5 text-center font-mono text-amber-300 font-bold">
-                              {res.family || '—'}
+                            <td className="text-stone-800 tabular-nums whitespace-nowrap">{res.family || '—'}</td>
+                            <td className="whitespace-nowrap">
+                              {isAllotted
+                                ? <span className="font-semibold text-stone-950 tabular-nums">{res.building || 'Hotel'} {res.roomNumber}</span>
+                                : <span className={chip('wait')}>Unallotted</span>}
                             </td>
-
-                            {/* ROOM & BUILDING */}
-                            <td className="py-2 px-3">
-                              {isAllotted ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-bold text-[11px]">
-                                  <BedDouble className="w-3 h-3 text-emerald-400" />
-                                  <span>{res.building || 'Hotel'} Rm {res.roomNumber}</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-950/70 text-rose-300 border border-rose-800 font-semibold text-[11px]">
-                                  Unallotted
-                                </span>
-                              )}
+                            <td className="whitespace-nowrap tabular-nums">
+                              <div className="text-stone-900">{shownDate(res.arrivalDate) || '—'}</div>
+                              {res.arrivalTime && <div className="text-xs text-stone-500">{res.arrivalTime}</div>}
                             </td>
-
-                            {/* ARRIVAL */}
-                            <td className="py-2 px-3 font-mono text-slate-200">
-                              <div>{res.arrivalDate || '—'}</div>
-                              {res.arrivalTime && (
-                                <div className="text-[10px] text-emerald-400 flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  <span>{res.arrivalTime}</span>
-                                </div>
-                              )}
+                            <td className="whitespace-nowrap tabular-nums">
+                              <div className="text-stone-900">{shownDate(res.departureDate) || '—'}</div>
+                              {res.departureTime && <div className="text-xs text-stone-500">{res.departureTime}</div>}
                             </td>
-
-                            {/* DEPARTURE */}
-                            <td className="py-2 px-3 font-mono text-slate-200">
-                              <div>{res.departureDate || '—'}</div>
-                              {res.departureTime && (
-                                <div className="text-[10px] text-amber-400 flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  <span>{res.departureTime}</span>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* CATEGORY */}
-                            <td className="py-2 px-2.5 text-slate-300">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-medium border border-slate-700">
-                                {res.category || 'Standard'}
-                              </span>
-                            </td>
-
-                            {/* SPECIAL / REMARKS */}
-                            <td className="py-2 px-3 text-[11px]">
+                            <td className="text-stone-700 whitespace-nowrap">{res.category || 'Standard'}</td>
+                            <td className="min-w-[10rem]">
                               {res.isSpecialGuest ? (
-                                <div className="text-amber-300 font-bold bg-amber-950/40 p-1 rounded border border-amber-500/30">
-                                  ★ {res.specialRemarks || 'Special Guest'}
-                                </div>
+                                <span className="text-stone-900">{res.specialRemarks || 'Special guest'}</span>
                               ) : res.remarks || res.notes ? (
-                                <span className="text-slate-400 italic">
-                                  {res.remarks || res.notes}
-                                </span>
+                                <span className="text-stone-600">{res.remarks || res.notes}</span>
                               ) : (
-                                <span className="text-slate-600">—</span>
+                                <span className="text-stone-400">—</span>
                               )}
                             </td>
                           </tr>
@@ -656,7 +491,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                       })
                     ) : (
                       <tr>
-                        <td colSpan={8} className="py-6 text-center text-slate-400 text-xs">
+                        <td colSpan={8} className="px-3 py-8 text-center text-[13px] text-stone-600">
                           {paxSearchQuery
                             ? `No zaereen found matching "${paxSearchQuery}" in this tour.`
                             : 'No zaereen found for the selected Tour ID.'}
@@ -667,142 +502,103 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 </table>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                <span>
-                  Showing {displayedPaxManifest.length} of {selectedTourReservations.length} Zaereen in manifest
-                </span>
-                <span className="text-emerald-400 font-medium">
-                  ✓ All Pax Names, ITS & room allotments will be exported in the PDF
-                </span>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[13px] text-stone-600">
+                <span className="tabular-nums">Showing {displayedPaxManifest.length} of {selectedTourReservations.length} zaereen in the manifest</span>
+                <span>All names, ITS and room allotments are exported in the PDF</span>
               </div>
             </div>
           )}
 
-          {/* Secondary Filters: Hotel Building & Arrival Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {/* Hotel Filter */}
-            <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between text-xs">
-                <span>Hotel / Building Filter</span>
-                <span className="text-[10px] text-amber-400 font-mono">
-                  {buildingFilter === 'ALL' ? 'Both Hotels' : `${buildingFilter} Hotel`}
-                </span>
-              </label>
+          {/* Narrow by building and arrival date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="pdf-building" className={fieldLabel}>Hotel / building</label>
               <select
+                id="pdf-building"
                 value={buildingFilter}
                 onChange={(e) => setBuildingFilter(e.target.value)}
-                className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none cursor-pointer"
+                className={`${field} cursor-pointer`}
               >
-                <option value="ALL">All Hotels ({getDistinctBuildings(rooms).join(', ')})</option>
-                {getDistinctBuildings(rooms).map((bldg) => {
+                <option value="ALL">All buildings ({buildings.join(', ')})</option>
+                {buildings.map((bldg) => {
                   const count = rooms.filter((r) => normalizeBuildingName(r.building).toLowerCase() === bldg.toLowerCase()).length;
                   return (
                     <option key={bldg} value={bldg}>
-                      {bldg} Hotel ({count} Rooms)
+                      {bldg} ({count} rooms)
                     </option>
                   );
                 })}
               </select>
             </div>
 
-            {/* Arrival Date Filter */}
-            <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-              <label className="block text-slate-300 font-semibold mb-1 flex items-center justify-between text-xs">
-                <span>Filter by Arrival Date</span>
-                {arrivalDateFilter !== 'ALL' && (
-                  <span className="text-[10px] text-amber-400 font-mono">
-                    {arrivalDateFilter}
-                  </span>
-                )}
-              </label>
+            <div>
+              <label htmlFor="pdf-arrival" className={fieldLabel}>Arrival date</label>
               <select
+                id="pdf-arrival"
                 value={arrivalDateFilter}
                 onChange={(e) => setArrivalDateFilter(e.target.value)}
-                className="w-full bg-slate-900 text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs focus:outline-none cursor-pointer"
+                className={`${field} cursor-pointer tabular-nums`}
               >
-                <option value="ALL">All Arrival Dates</option>
+                <option value="ALL">All arrival dates</option>
                 {uniqueArrivalDates.map(({ date, count }) => (
                   <option key={date} value={date}>
-                    {date} ({count} Zaereen)
+                    {shownDate(date)} ({count} zaereen)
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* Signature Box Checkbox */}
-          <div className="flex items-center gap-2 pt-0.5">
+          <label htmlFor="sigCheck" className="flex items-start gap-2.5 min-h-10 py-2 text-sm text-stone-800 cursor-pointer">
             <input
               type="checkbox"
               id="sigCheck"
               checked={includeSignatures}
               onChange={(e) => setIncludeSignatures(e.target.checked)}
-              className="w-4 h-4 text-amber-500 rounded border-slate-700 cursor-pointer accent-amber-500"
+              className="mt-0.5 w-4 h-4 shrink-0 accent-brand-700 cursor-pointer"
             />
-            <label htmlFor="sigCheck" className="text-slate-300 text-xs cursor-pointer">
-              Include Official Administrative Signatures & Stamp block in PDF footer
-            </label>
-          </div>
+            Include the official signatures and stamp block in the PDF footer
+          </label>
         </div>
 
-        {/* Action Buttons */}
-        <div className="pt-4 mt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-          <div className="text-slate-400 text-[11px]">
+        <div className={modalFooter}>
+          <span className="mr-auto min-w-0 text-[13px] text-stone-600">
             {isTourManifest && tourIdFilter !== 'ALL' ? (
-              <span className="text-amber-300 font-medium">
-                Tour: <strong className="font-mono text-white">{tourIdFilter}</strong> ({selectedTourReservations.length} Pax with Names)
-              </span>
+              <>Tour <span className="font-semibold text-stone-950 tabular-nums">{tourIdFilter}</span> · <span className="tabular-nums">{selectedTourReservations.length}</span> zaereen with names</>
             ) : (
-              <span>Full Manifest ({buildingFilter === 'ALL' ? 'Both Hotels' : `${buildingFilter} Hotel`})</span>
+              <>Full manifest, {buildingText}</>
             )}
-          </div>
+          </span>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={onClose}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition cursor-pointer text-xs"
-            >
-              Cancel
-            </button>
-
-            {/* Quick Saifee Only */}
-            <button
-              type="button"
-              disabled={isGenerating}
-              onClick={() => handleExport('Saifee')}
-              className="px-3 py-2 bg-slate-800 hover:bg-emerald-950 text-emerald-300 border border-emerald-700/60 rounded-xl font-semibold text-xs transition cursor-pointer"
-              title="Download only Saifee Hotel records"
-            >
-              Saifee Only
-            </button>
-
-            {/* Quick Burhani Only */}
-            <button
-              type="button"
-              disabled={isGenerating}
-              onClick={() => handleExport('Burhani')}
-              className="px-3 py-2 bg-slate-800 hover:bg-emerald-950 text-emerald-300 border border-emerald-700/60 rounded-xl font-semibold text-xs transition cursor-pointer"
-              title="Download only Burhani Hotel records"
-            >
-              Burhani Only
-            </button>
-
-            {/* Main Download Button */}
-            <button
-              onClick={() => handleExport()}
-              disabled={isGenerating}
-              className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-amber-600 hover:from-emerald-500 hover:to-amber-500 text-white rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-950/40 disabled:opacity-50 cursor-pointer text-xs"
-            >
-              <Download className="w-4 h-4 text-amber-200" />
-              <span>
-                {isGenerating
-                  ? 'Generating PDF...'
-                  : isTourManifest
-                  ? `Download Tour Manifest PDF (${tourIdFilter !== 'ALL' ? tourIdFilter : 'All Tours'})`
-                  : `Download PDF Manifest (${buildingFilter === 'ALL' ? 'Joined' : buildingFilter})`}
-              </span>
-            </button>
-          </div>
+          <button type="button" onClick={onClose} className={btn.ghost}>Cancel</button>
+          <button
+            type="button"
+            disabled={isGenerating}
+            onClick={() => handleExport('Saifee')}
+            className={btn.secondary}
+            title="Download only Saifee Hotel records"
+          >
+            Saifee only
+          </button>
+          <button
+            type="button"
+            disabled={isGenerating}
+            onClick={() => handleExport('Burhani')}
+            className={btn.secondary}
+            title="Download only Burhani Hotel records"
+          >
+            Burhani only
+          </button>
+          <button type="button" onClick={() => handleExport()} disabled={isGenerating} className={`${btn.primary} max-w-full`}>
+            <Download className="w-4 h-4 shrink-0" />
+            <span className="truncate">
+              {isGenerating
+                ? 'Generating PDF…'
+                : isTourManifest
+                ? `Download tour manifest PDF (${tourIdFilter !== 'ALL' ? tourIdFilter : 'all tours'})`
+                : `Download PDF manifest (${buildingText})`}
+            </span>
+          </button>
         </div>
       </div>
     </div>

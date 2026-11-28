@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertOctagon, AlertTriangle, ArrowRight, Bot, CheckCircle2, ChevronDown, ChevronRight, Circle, ClipboardList, Clock,
-  ExternalLink, Eye, FileSpreadsheet, History, Info, KeyRound, Loader2, LogOut, MessageSquare, RefreshCcw, Send,
-  ShieldAlert, Square, Terminal, User, Wifi, WifiOff, XCircle,
+  AlertOctagon, AlertTriangle, ArrowRight, Bot, CheckCircle2, ChevronDown, ChevronRight, Clock, Eye, Info, KeyRound,
+  Loader2, LogOut, MessageSquare, RefreshCcw, Send, ShieldAlert, Square, User, Wifi, WifiOff, XCircle,
 } from 'lucide-react';
 import type { NkerpSyncState } from '../hooks/useNkerpSync';
 import {
   type AttentionItem, type ChatMessage, type JobEvent, type JobStatus, type LogLevel, type ReportEntry, scopeOptions,
   scopeText, type SyncReport,
 } from '../services/nkerpSync';
-import { SyncScopePicker } from './SyncScopePicker';
+import { Segmented, SyncScopePicker } from './SyncScopePicker';
+import { btn, btnDanger, btnSm, card, chip, type ChipTone, fieldLabel, PageHeader } from './ui';
 
 const ACTIONS = ['deallocate', 'reallocate', 'allocate'] as const;
 const ACTION_LABEL: Record<string, string> = { deallocate: 'Deallocated', reallocate: 'Reallocated', allocate: 'Allocated' };
@@ -21,25 +21,77 @@ const STAGE_LABEL: Record<string, string> = {
   finish: 'Finishing', cancel: 'Cancelling',
 };
 
-const STATUS_STYLE: Record<JobStatus, { label: string; cls: string }> = {
-  running: { label: 'Running', cls: 'bg-amber-100 text-amber-900 border-amber-300' },
-  succeeded: { label: 'All good', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
-  attention: { label: 'Needs you', cls: 'bg-orange-100 text-orange-900 border-orange-300' },
-  stopped: { label: 'Stopped', cls: 'bg-rose-100 text-rose-900 border-rose-300' },
-  failed: { label: 'Failed', cls: 'bg-rose-100 text-rose-900 border-rose-300' },
-  cancelled: { label: 'Stopped early', cls: 'bg-stone-200 text-stone-800 border-stone-300' },
+const STATUS_STYLE: Record<JobStatus, { label: string; tone: ChipTone }> = {
+  running: { label: 'Running', tone: 'wait' },
+  succeeded: { label: 'All good', tone: 'ok' },
+  attention: { label: 'Needs you', tone: 'wait' },
+  stopped: { label: 'Stopped', tone: 'bad' },
+  failed: { label: 'Failed', tone: 'bad' },
+  cancelled: { label: 'Stopped early', tone: 'neutral' },
 };
 
+/* Tinted message panels: one shape, the tone carries the meaning (same meanings as the chips). */
+type Tone = 'ok' | 'wait' | 'bad' | 'neutral';
+const TONE_PANEL: Record<Tone, string> = {
+  ok: 'bg-emerald-50 ring-emerald-200 text-emerald-900',
+  wait: 'bg-amber-50 ring-amber-200 text-amber-900',
+  bad: 'bg-rose-50 ring-rose-200 text-rose-800',
+  neutral: 'bg-stone-50 ring-stone-200 text-stone-800',
+};
+const TONE_ICON: Record<Tone, React.ReactNode> = {
+  ok: <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />,
+  wait: <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />,
+  bad: <AlertOctagon className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />,
+  neutral: <Info className="w-4 h-4 mt-0.5 shrink-0 text-stone-500" />,
+};
+const Notice: React.FC<{ tone: Tone; children: React.ReactNode; className?: string }> = ({ tone, children, className = '' }) => (
+  <div className={`flex gap-2.5 rounded-xl px-3.5 py-3 text-[13px] leading-relaxed ring-1 ring-inset ${TONE_PANEL[tone]} ${className}`}>
+    {TONE_ICON[tone]}
+    <div className="min-w-0 flex-1 break-words">{children}</div>
+  </div>
+);
+
 const LEVEL_STYLE: Record<LogLevel, string> = {
-  debug: 'text-stone-400', info: 'text-stone-200', success: 'text-emerald-300', warn: 'text-amber-300', error: 'text-rose-300',
+  debug: 'text-stone-500', info: 'text-stone-800', success: 'text-emerald-700', warn: 'font-medium text-amber-800',
+  error: 'font-medium text-rose-700',
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** Compact buttons grow to the 40px touch size on phones. */
+const tap = (cls: string) => `${cls} max-sm:h-10 max-sm:px-3.5`;
+/** A compact button whose label may run to two lines (long suggestions on a phone). */
+const wrapping = (cls: string) => cls.replace(' h-8 ', ' min-h-8 py-1.5 max-sm:min-h-10 ').replace('whitespace-nowrap', 'whitespace-normal text-left');
+
+/** The 40px send button: the primary button as a square. */
+const squareBtn = btn.primary.replace('px-4', 'w-10 px-0');
+
+/** A server secret's name, set apart so it can be read and copied exactly. */
+const EnvName: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <code className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[13px] font-medium text-stone-900 ring-1 ring-inset ring-stone-200 break-all">{children}</code>
+);
+
+const dayMonth = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const clock = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? iso : `${dayMonth(d)}, ${clock(d)}`;
+}
+
+/** A plain yyyy-mm-dd date as "28 Nov" (shown only; the value itself is never changed). */
+function fmtIsoDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? iso : dayMonth(d);
+}
+
+/** Sync History's "Run At" (yyyy-mm-dd hh:mm, Najaf time) as "28 Nov, 2:05 PM"; anything else is shown as written. */
+function fmtRunAt(runAt: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(runAt);
+  if (!m) return runAt;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  return Number.isNaN(d.getTime()) ? runAt : `${dayMonth(d)}, ${clock(d)}`;
 }
 
 function fmtDuration(ms: number | null | undefined): string {
@@ -50,21 +102,21 @@ function fmtDuration(ms: number | null | undefined): string {
 
 function nightsLabel(dates: string[]): string {
   if (!dates.length) return '';
-  const f = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  return dates.length === 1 ? f(dates[0]) : `${f(dates[0])} – ${f(dates[dates.length - 1])} (${dates.length} nights)`;
+  return dates.length === 1 ? fmtIsoDay(dates[0]) : `${fmtIsoDay(dates[0])} – ${fmtIsoDay(dates[dates.length - 1])} (${dates.length} nights)`;
 }
 
 const StatusPill: React.FC<{ status: JobStatus }> = ({ status }) => (
-  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-extrabold uppercase tracking-wide ${STATUS_STYLE[status].cls}`}>
+  <span className={chip(STATUS_STYLE[status].tone)}>
     {status === 'running' && <Loader2 className="w-3 h-3 animate-spin" />}
     {STATUS_STYLE[status].label}
   </span>
 );
 
-const Card: React.FC<{ title: React.ReactNode; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, right, children, className = '' }) => (
-  <section className={`bg-white rounded-2xl border border-stone-200 shadow-2xs overflow-hidden ${className}`}>
-    <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-stone-100">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-900 [&>svg]:text-stone-400">{icon}{title}</h2>
+/** One titled card of the page. Everything inside is separated by dividers, never by another card. */
+const Section: React.FC<{ title: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, right, children, className = '' }) => (
+  <section className={`${card} overflow-hidden ${className}`}>
+    <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 min-h-14 px-4 sm:px-5 py-2.5 border-b border-stone-200">
+      <h2 className="text-base font-semibold text-stone-950">{title}</h2>
       {right}
     </header>
     {children}
@@ -86,31 +138,33 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
   }, [shown.length]);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-stone-100">
-        {(['all', 'problems'] as const).map((f) => (
-          <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer ${filter === f ? 'bg-brand-700 text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
-            {f === 'all' ? 'Everything' : 'Warnings & errors'}
-          </button>
-        ))}
-        <label className="ml-auto flex items-center gap-1 text-[11px] text-stone-600 cursor-pointer">
-          <input type="checkbox" checked={showDebug} onChange={(e) => setShowDebug(e.target.checked)} /> detail
+    <div className="border-t border-stone-200">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 sm:px-5 py-2.5">
+        <h3 className="text-sm font-semibold text-stone-950">Log</h3>
+        <div className="w-full sm:w-72 order-last sm:order-none">
+          <Segmented size="sm" label="Which log lines to show" value={filter} onChange={setFilter}
+            options={[{ value: 'all', label: 'Everything' }, { value: 'problems', label: 'Warnings and errors' }]} />
+        </div>
+        <label className="ml-auto inline-flex items-center gap-2 min-h-10 sm:min-h-0 text-[13px] text-stone-700 cursor-pointer">
+          <input type="checkbox" checked={showDebug} onChange={(e) => setShowDebug(e.target.checked)} className="w-4 h-4 accent-brand-700" />
+          Show detail
         </label>
       </div>
       <div ref={box} onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
       }}
-      className="bg-stone-950 font-mono text-[11px] leading-relaxed h-64 overflow-y-auto px-3 py-2" role="log" aria-live={live ? 'polite' : 'off'}>
+      className="h-64 overflow-y-auto border-t border-stone-200 bg-stone-50 px-4 sm:px-5 py-3 text-[13px] leading-relaxed" role="log" aria-live={live ? 'polite' : 'off'}>
         {shown.length === 0 && <div className="text-stone-500">No log lines yet.</div>}
         {shown.map((e) => (
-          <div key={e.seq} className={`whitespace-pre-wrap break-words ${LEVEL_STYLE[e.level]}`}>
-            <span className="text-stone-500">{new Date(e.at).toLocaleTimeString(undefined, { hour12: false })} </span>
-            <span className="text-stone-400">[{e.stage}]</span> {e.message}
+          <div key={e.seq} className="flex gap-3">
+            <span className="shrink-0 tabular-nums text-stone-500">{new Date(e.at).toLocaleTimeString(undefined, { hour12: false })}</span>
+            <span className={`min-w-0 whitespace-pre-wrap break-words ${LEVEL_STYLE[e.level]}`}>
+              <span className="font-normal text-stone-500">[{e.stage}]</span> {e.message}
+            </span>
           </div>
         ))}
-        {live && <div className="text-amber-300 animate-pulse">▍</div>}
+        {live && <div className="mt-1 flex items-center gap-1.5 text-stone-500"><Loader2 className="w-3.5 h-3.5 animate-spin" />Working…</div>}
       </div>
     </div>
   );
@@ -119,18 +173,22 @@ const LogConsole: React.FC<{ events: JobEvent[]; live: boolean }> = ({ events, l
 // ------------------------------------------------------------------------------------------------ results
 
 const EntryRow: React.FC<{ e: ReportEntry }> = ({ e }) => (
-  <li className="px-3.5 py-2 border-t border-stone-100 first:border-t-0">
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-      <span className="text-xs font-bold text-stone-900">{e.group}</span>
-      {e.from && e.from.length > 0 && <span className="text-[11px] text-stone-500">from {e.from.join(', ')}</span>}
+  <li className="px-4 sm:px-5 py-3 border-t border-stone-200">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+      <span className="text-sm font-semibold text-stone-950">{e.group}</span>
+      {e.from && e.from.length > 0 && <span className="text-[13px] text-stone-600">from {e.from.join(', ')}</span>}
     </div>
-    <div className="text-[11px] text-stone-700">{e.people.join(', ')}</div>
-    <div className="flex flex-wrap gap-x-3 text-[10px] text-stone-500">
-      <span>{nightsLabel(e.dates)}</span>
+    <div className="mt-0.5 text-[13px] text-stone-700">{e.people.join(', ')}</div>
+    <div className="mt-0.5 flex flex-wrap gap-x-4 text-[13px] text-stone-500">
+      <span className="tabular-nums">{nightsLabel(e.dates)}</span>
       {e.by.length > 0 && <span>by {e.by.join('; ')}</span>}
     </div>
-    {e.warning && <div className="mt-0.5 text-[10px] font-semibold text-amber-800">⚠ {e.warning}</div>}
-    {e.over_capacity && e.over_capacity.length > 0 && <div className="mt-0.5 text-[10px] font-semibold text-amber-800">Over capacity (allowed): {e.over_capacity.join('; ')}</div>}
+    {e.warning && (
+      <div className="mt-1.5 flex gap-1.5 text-[13px] font-medium text-amber-800"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{e.warning}</div>
+    )}
+    {e.over_capacity && e.over_capacity.length > 0 && (
+      <div className="mt-1.5 flex gap-1.5 text-[13px] font-medium text-amber-800"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />Over capacity (allowed): {e.over_capacity.join('; ')}</div>
+    )}
   </li>
 );
 
@@ -144,24 +202,24 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
         const entries = list.filter((e) => e.action === a);
         const people = entries.reduce((n, e) => n + e.people.length, 0);
         return (
-          <div key={a} className="border-b border-stone-100 last:border-b-0">
-            <button type="button" onClick={() => setOpen((o) => ({ ...o, [a]: !o[a] }))}
-              className="w-full flex items-center justify-between px-3.5 py-2 text-left cursor-pointer hover:bg-stone-50">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-stone-800">
-                {open[a] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          <div key={a} className="border-b border-stone-200 last:border-b-0">
+            <button type="button" onClick={() => setOpen((o) => ({ ...o, [a]: !o[a] }))} aria-expanded={open[a]}
+              className="w-full flex items-center justify-between gap-3 min-h-11 px-4 sm:px-5 py-2 text-left cursor-pointer hover:bg-stone-50">
+              <span className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                {open[a] ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
                 {(report.mode === 'apply' ? ACTION_LABEL : ACTION_PLANNED)[a]}
               </span>
-              <span className="text-[11px] text-stone-500">{entries.length} room{entries.length === 1 ? '' : 's'} · {people} {people === 1 ? 'person' : 'people'}</span>
+              <span className="text-[13px] text-stone-600 tabular-nums">{entries.length} room{entries.length === 1 ? '' : 's'} · {people} {people === 1 ? 'person' : 'people'}</span>
             </button>
             {open[a] && entries.length > 0 && <ul>{entries.map((e, i) => <EntryRow key={`${a}${i}`} e={e} />)}</ul>}
           </div>
         );
       })}
-      <div className="px-3.5 py-2 text-[11px] text-stone-500 space-y-0.5 bg-stone-50">
+      <div className="px-4 sm:px-5 py-3 text-[13px] text-stone-600 space-y-0.5 bg-stone-50 border-t border-stone-200 empty:hidden">
         {skipped.length > 0 && <div>Skipped: {skipped.map(([k, v]) => `${v} ${k}`).join(' · ')}</div>}
         {report.history?.rows_written !== undefined && <div>Sync History: {report.history.rows_written} rows logged.</div>}
         {report.history?.rows_planned !== undefined && <div>Sync History: {report.history.rows_planned} rows would be logged (preview logs nothing).</div>}
-        {report.history?.error && <div className="text-rose-700 font-semibold">Sync History: {report.history.error}</div>}
+        {report.history?.error && <div className="text-rose-700 font-medium">Sync History: {report.history.error}</div>}
       </div>
     </div>
   );
@@ -170,9 +228,9 @@ const Results: React.FC<{ report: SyncReport }> = ({ report }) => {
 // ------------------------------------------------------------------------------------------------ needs you
 
 const SEVERITY_ICON = {
-  critical: <AlertOctagon className="w-4 h-4 text-rose-700 shrink-0" />,
-  warning: <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />,
-  info: <Info className="w-4 h-4 text-sky-700 shrink-0" />,
+  critical: <AlertOctagon className="w-[18px] h-[18px] mt-0.5 text-rose-600 shrink-0" aria-label="Problem" />,
+  warning: <AlertTriangle className="w-[18px] h-[18px] mt-0.5 text-amber-600 shrink-0" aria-label="Needs a look" />,
+  info: <Info className="w-[18px] h-[18px] mt-0.5 text-blue-600 shrink-0" aria-label="Note" />,
 };
 
 const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; onAsk: (t: string) => void; disabled: boolean }> = ({ items, onSend, onAsk, disabled }) => {
@@ -180,46 +238,50 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
   const main = items.filter((i) => i.kind !== 'note');
   const notes = items.filter((i) => i.kind === 'note');
   if (!items.length) {
-    return <div className="px-3.5 py-6 text-center text-xs text-stone-600 flex flex-col items-center gap-1.5">
-      <CheckCircle2 className="w-6 h-6 text-emerald-600" />Nothing needs you from the last run.
-    </div>;
+    return (
+      <div className="flex items-center gap-3 px-4 sm:px-5 py-5">
+        <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600" />
+        <p className="text-sm text-stone-700">Nothing needs you from the last run.</p>
+      </div>
+    );
   }
   const render = (it: AttentionItem) => (
-    <li key={it.id} className="px-3.5 py-2.5 border-t border-stone-100 first:border-t-0">
-      <div className="flex gap-2">
-        {SEVERITY_ICON[it.severity]}
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="text-xs font-bold text-stone-900 break-words">
-            <span className="uppercase text-[10px] text-stone-500 mr-1">{it.action}</span>{it.title}
-          </div>
-          {it.people.length > 0 && <div className="text-[11px] text-stone-700">{it.people.join(', ')}</div>}
-          <div className="text-[11px] text-stone-600 break-words">{it.detail}</div>
-          {it.hint && <div className="text-[11px] text-brand-700 bg-emerald-50/70 border border-emerald-100 rounded-lg px-2 py-1">{it.hint}</div>}
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {it.suggestion && (
-              <button type="button" disabled={disabled} onClick={() => onSend(it.suggestion!)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">
-                <ArrowRight className="w-3 h-3" />{it.suggestion}
-              </button>
-            )}
-            <button type="button" onClick={() => onAsk(`About "${it.title}": `)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold text-stone-700 border border-stone-300 hover:bg-stone-100 cursor-pointer">
-              <MessageSquare className="w-3 h-3" />Tell the sync what to do
+    <li key={it.id} className="flex gap-3 px-4 sm:px-5 py-4 border-t border-stone-200 first:border-t-0">
+      {SEVERITY_ICON[it.severity]}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-stone-950 break-words">
+          {it.action && <span className="font-normal text-stone-500 first-letter:uppercase inline-block mr-1.5">{it.action}:</span>}{it.title}
+        </div>
+        {it.people.length > 0 && <div className="mt-0.5 text-[13px] text-stone-700">{it.people.join(', ')}</div>}
+        <p className="mt-1 text-[13px] leading-relaxed text-stone-600 break-words">{it.detail}</p>
+        {it.hint && (
+          <p className="mt-1.5 text-[13px] leading-relaxed text-stone-900 break-words">
+            <span className="font-semibold">What to do: </span>{it.hint}
+          </p>
+        )}
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {it.suggestion && (
+            <button type="button" disabled={disabled} onClick={() => onSend(it.suggestion!)} className={wrapping(btnSm.primary)}>
+              <ArrowRight className="w-3.5 h-3.5 shrink-0" />{it.suggestion}
             </button>
-          </div>
+          )}
+          <button type="button" onClick={() => onAsk(`About "${it.title}": `)} className={tap(btnSm.secondary)}>
+            <MessageSquare className="w-3.5 h-3.5 text-stone-500" />Tell the sync what to do
+          </button>
         </div>
       </div>
     </li>
   );
   return (
     <div>
-      {main.length > 0 ? <ul>{main.map(render)}</ul> : <div className="px-3.5 py-3 text-xs text-stone-600">No problems; only notes.</div>}
+      {main.length > 0 ? <ul>{main.map(render)}</ul> : <div className="px-4 sm:px-5 py-4 text-sm text-stone-700">No problems; only notes.</div>}
       {notes.length > 0 && (
-        <div className="border-t border-stone-100">
-          <button type="button" onClick={() => setShowNotes((v) => !v)} className="w-full flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-stone-700 cursor-pointer hover:bg-stone-50">
-            {showNotes ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}Notes ({notes.length})
+        <div className="border-t border-stone-200">
+          <button type="button" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}
+            className="w-full flex items-center gap-2 min-h-11 px-4 sm:px-5 py-2 text-sm font-semibold text-stone-900 cursor-pointer hover:bg-stone-50">
+            {showNotes ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}Notes ({notes.length})
           </button>
-          {showNotes && <ul>{notes.map(render)}</ul>}
+          {showNotes && <ul className="border-t border-stone-200">{notes.map(render)}</ul>}
         </div>
       )}
     </div>
@@ -230,28 +292,35 @@ const NeedsYou: React.FC<{ items: AttentionItem[]; onSend: (t: string) => void; 
 
 const EXAMPLES = ['Preview', 'Sync tomorrow only', 'What needs fixing?', 'Only allocations', 'Status', 'Help'];
 
+const PROPOSAL_STATUS: Record<string, { label: string; tone: ChipTone }> = {
+  executed: { label: 'Started', tone: 'ok' },
+  dismissed: { label: 'Dismissed', tone: 'neutral' },
+  expired: { label: 'Expired', tone: 'neutral' },
+  failed: { label: 'Failed', tone: 'bad' },
+};
+
 const ProposalCard: React.FC<{ m: ChatMessage; onConfirm: () => void; onDismiss: () => void; running: boolean }> = ({ m, onConfirm, onDismiss, running }) => {
   const p = m.proposal!;
   const needs = p.status === 'pending' && p.needsConfirmation;
+  const state = p.status === 'pending'
+    ? (needs ? { label: 'Waiting for you', tone: 'wait' as ChipTone } : { label: 'Starting…', tone: 'info' as ChipTone })
+    : PROPOSAL_STATUS[p.status] ?? { label: p.status, tone: 'neutral' as ChipTone };
   return (
-    <div className={`mt-1.5 rounded-xl border px-2.5 py-2 text-[11px] ${needs ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}>
+    <div className={`mt-2.5 rounded-xl px-3 py-2.5 text-[13px] ring-1 ring-inset ${needs ? 'bg-amber-50 ring-amber-200' : 'bg-stone-50 ring-stone-200'}`}>
       {p.overrides.length > 0 && (
-        <ul className="mb-1 space-y-0.5">
-          {p.overrides.map((o) => <li key={o} className="flex gap-1 text-amber-900 font-semibold"><ShieldAlert className="w-3.5 h-3.5 shrink-0" />{o}</li>)}
+        <ul className="mb-2 space-y-1">
+          {p.overrides.map((o) => <li key={o} className="flex gap-1.5 font-medium text-amber-900"><ShieldAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />{o}</li>)}
         </ul>
       )}
       {p.cautions && p.cautions.length > 0 && (
-        <ul className="mb-1 space-y-0.5">{p.cautions.map((c) => <li key={c} className="flex gap-1 text-stone-700"><Info className="w-3.5 h-3.5 shrink-0" />{c}</li>)}</ul>
+        <ul className="mb-2 space-y-1">{p.cautions.map((c) => <li key={c} className="flex gap-1.5 text-stone-700"><Info className="w-4 h-4 mt-0.5 shrink-0 text-stone-500" />{c}</li>)}</ul>
       )}
-      <div className="flex items-center gap-2">
-        <span className="font-bold text-stone-600 uppercase text-[10px]">
-          {p.status === 'pending' ? (needs ? 'Waiting for you' : 'Starting…') : p.status === 'executed' ? 'Started' : p.status}
-        </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={chip(state.tone)}>{state.label}</span>
         {needs && (
-          <span className="ml-auto flex gap-1.5">
-            <button type="button" onClick={onDismiss} className="px-2 py-0.5 rounded-lg font-bold text-stone-700 hover:bg-stone-200 cursor-pointer">Dismiss</button>
-            <button type="button" onClick={onConfirm} disabled={running}
-              className="px-2 py-0.5 rounded-lg font-bold bg-brand-700 text-white disabled:opacity-50 cursor-pointer">Confirm and run</button>
+          <span className="ml-auto flex gap-2">
+            <button type="button" onClick={onDismiss} className={tap(btnSm.ghost)}>Dismiss</button>
+            <button type="button" onClick={onConfirm} disabled={running} className={tap(btnSm.primary)}>Confirm and run</button>
           </span>
         )}
       </div>
@@ -280,35 +349,37 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
 
   return (
     <div className="flex flex-col">
-      <div ref={box} className="h-80 lg:h-[26rem] overflow-y-auto px-3 py-3 space-y-2.5 bg-stone-50">
+      <div ref={box} className="max-h-[min(26rem,calc(100dvh-23rem))] min-h-32 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 bg-stone-50">
         {sync.messages.length === 0 && (
-          <div className="text-xs text-stone-600 leading-relaxed">
-            Type what should be done in plain words: <em>"sync 25 Nov only"</em>, <em>"preview 20-25 Nov"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
-            {' '}<em>"the app allocations are correct, allow the deallocations"</em>. Safe requests run straight away; anything that loosens a safety rule asks you to confirm first.
+          <div className="text-sm text-stone-600 leading-relaxed">
+            <p>Type what should be done in plain words. Safe requests run straight away; anything that loosens a safety rule asks you to confirm first.</p>
+            <p className="mt-2 text-[13px] text-stone-500">
+              For example: <em>"sync 25 Nov only"</em>, <em>"preview 20-25 Nov"</em>, <em>"only allocations"</em>, <em>"why was Saifee 107 held?"</em>,
+              {' '}<em>"the app allocations are correct, allow the deallocations"</em>.
+            </p>
           </div>
         )}
         {sync.messages.map((m) => (
           <div key={m.id} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
-            {m.role === 'assistant' && <Bot className="w-5 h-5 text-brand-700 shrink-0 mt-0.5" />}
-            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${m.role === 'user'
-              ? 'bg-brand-700 text-white rounded-br-sm' : 'bg-white border border-stone-200 text-stone-800 rounded-bl-sm'}`}>
+            {m.role === 'assistant' && <Bot className="w-5 h-5 text-brand-700 shrink-0 mt-1.5" />}
+            <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${m.role === 'user'
+              ? 'bg-brand-700 text-white rounded-br-md' : 'bg-white ring-1 ring-inset ring-stone-200 text-stone-800 rounded-bl-md'}`}>
               <div className="whitespace-pre-wrap break-words">{m.text}</div>
               {m.proposal && (m.proposal.intent === 'sync' || m.proposal.intent === 'preview') && (
                 <ProposalCard m={m} running={sync.running} onConfirm={() => void sync.confirm(m.id)} onDismiss={() => void sync.dismiss(m.id)} />
               )}
-              <div className={`mt-1 text-[9px] ${m.role === 'user' ? 'text-emerald-200' : 'text-stone-400'}`}>
+              <div className={`mt-1 text-xs tabular-nums ${m.role === 'user' ? 'text-brand-100' : 'text-stone-500'}`}>
                 {fmtTime(m.at)}{m.source === 'gemini' ? ' · Gemini' : ''}
               </div>
             </div>
-            {m.role === 'user' && <User className="w-5 h-5 text-stone-500 shrink-0 mt-0.5" />}
+            {m.role === 'user' && <User className="w-5 h-5 text-stone-500 shrink-0 mt-1.5" />}
           </div>
         ))}
       </div>
-      <div className="border-t border-stone-100 p-2.5 space-y-2">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="border-t border-stone-200 px-4 sm:px-5 py-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
           {EXAMPLES.map((x) => (
-            <button key={x} type="button" onClick={() => void submit(x)} disabled={sending}
-              className="px-2 py-0.5 rounded-full border border-stone-300 text-[11px] font-semibold text-stone-700 hover:bg-stone-100 cursor-pointer disabled:opacity-50">{x}</button>
+            <button key={x} type="button" onClick={() => void submit(x)} disabled={sending} className={tap(btnSm.secondary)}>{x}</button>
           ))}
         </div>
         <form onSubmit={(e) => {
@@ -329,10 +400,9 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
             maxLength={2000}
             placeholder="Tell the sync what to do…"
             aria-label="Instruction for the sync"
-            className="flex-1 resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-700/40"
+            className="flex-1 min-w-0 resize-none rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm leading-snug text-stone-900 placeholder:text-stone-400"
           />
-          <button type="submit" disabled={!draft.trim() || sending}
-            className="h-9 w-9 flex items-center justify-center rounded-xl bg-brand-700 text-white disabled:opacity-40 cursor-pointer" aria-label="Send">
+          <button type="submit" disabled={!draft.trim() || sending} className={`${squareBtn} shrink-0`} aria-label="Send">
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
@@ -343,22 +413,47 @@ const Conversation: React.FC<{ sync: NkerpSyncState; draft: string; setDraft: (s
 
 // ------------------------------------------------------------------------------------------------ view
 
+/** What the server still needs before a sync can run. Shown only while something is missing. */
 const Setup: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   const c = sync.config;
   if (!c || c.configured) return null;
-  const Row = ({ ok, label, children }: { ok: boolean; label: string; children: React.ReactNode }) => (
-    <li className="flex gap-2">
-      {ok ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-      <div><span className="font-bold">{label}</span> <span className="text-stone-600">{children}</span></div>
-    </li>
-  );
+  const missing = c.nkerp ? 0 : 1;
   return (
-    <Card title="Set up the sync" icon={<ShieldAlert className="w-4 h-4" />}>
-      <ul className="p-3.5 space-y-2 text-xs">
-        <Row ok={c.nkerp} label="NKERP login">server secrets <code>NKERP_LOGIN_ID</code> and <code>NKERP_PASSWORD</code> (an account with the Tour and Accomodation Admin role).</Row>
-        <Row ok label="Access key (optional)">{c.keySource === 'env' ? 'set: staff enter it once per device.' : <>not set, so anyone who can open the app can run the sync. Set <code>NKERP_SYNC_ACCESS_KEY</code> to require a key.</>}</Row>
+    <Section
+      title={<span className="flex items-center gap-2"><ShieldAlert className="w-[18px] h-[18px] text-rose-600" />Set up the sync</span>}
+      right={missing > 0 ? <span className={chip('bad')}>{missing} missing</span> : undefined}
+    >
+      <ul className="divide-y divide-stone-200">
+        <li className="flex gap-3 px-4 sm:px-5 py-4">
+          {c.nkerp ? <CheckCircle2 className="w-[18px] h-[18px] mt-0.5 text-emerald-600 shrink-0" /> : <XCircle className="w-[18px] h-[18px] mt-0.5 text-rose-600 shrink-0" />}
+          <div className="min-w-0 flex-1">
+            {c.nkerp ? (
+              <p className="text-[13px] text-stone-600"><span className="font-medium text-stone-800">NKERP login</span> is set on the server.</p>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-rose-700">NKERP login is missing</p>
+                <p className="mt-1 text-sm leading-relaxed text-stone-700">
+                  Whoever runs the server adds two server secrets, for an NKERP account with the Tour and Accomodation Admin role:
+                </p>
+                <ul className="mt-2 space-y-1.5 text-[13px] text-stone-600">
+                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1"><EnvName>NKERP_LOGIN_ID</EnvName>the account's login ID</li>
+                  <li className="flex flex-wrap items-center gap-x-2 gap-y-1"><EnvName>NKERP_PASSWORD</EnvName>its password</li>
+                </ul>
+              </>
+            )}
+          </div>
+        </li>
+        <li className="flex gap-3 px-4 sm:px-5 py-3.5">
+          <CheckCircle2 className="w-[18px] h-[18px] mt-0.5 text-emerald-600 shrink-0" />
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-stone-600">
+            <span className="font-medium text-stone-800">Access key (optional)</span>{' '}
+            {c.keySource === 'env'
+              ? 'is set: staff enter it once per device.'
+              : <>is not set, so anyone who can open the app can run the sync. To require a key, set <EnvName>NKERP_SYNC_ACCESS_KEY</EnvName>.</>}
+          </p>
+        </li>
       </ul>
-    </Card>
+    </Section>
   );
 };
 
@@ -382,39 +477,50 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
     setTimeout(() => inputRef.current?.focus(), 20);
   };
 
+  const description = (
+    <>
+      Najaf rooms in NKERP brought in line with saved app allocations: deallocate, then reallocate, then allocate. Karbala is never touched.
+      {active ? ' Keep this page open while it runs.' : ''}
+    </>
+  );
+
   if (!sync.hasKey) {
     return (
-      <div className="max-w-xl mx-auto mt-6 space-y-3">
-        {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
-        {!config && (
-          <div className="rounded-2xl bg-white ring-1 ring-stone-200 shadow-xs p-8 text-center">
-            <div className="mx-auto w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-stone-500">
-              {sync.connected ? <Loader2 className="w-5 h-5 animate-spin" /> : <WifiOff className="w-5 h-5" />}
+      <div className="space-y-6">
+        <PageHeader title="NKERP sync" description={description} />
+        <div className="max-w-xl space-y-6">
+          {sync.error && <Notice tone="bad">{sync.error}</Notice>}
+          {!config && (
+            <div className={`${card} p-8 text-center`}>
+              <div className="mx-auto w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-stone-500">
+                {sync.connected ? <Loader2 className="w-5 h-5 animate-spin" /> : <WifiOff className="w-5 h-5" />}
+              </div>
+              <h2 className="mt-4 text-lg font-semibold text-stone-950">
+                {sync.connected ? 'Connecting to the sync…' : 'The sync server is not reachable'}
+              </h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-stone-600 max-w-sm mx-auto">
+                {sync.connected
+                  ? 'Loading the sync settings from the server.'
+                  : 'Sync to NKERP runs on the app server. Check the internet connection, then reload this page. If it keeps happening, the server may need its NKERP settings.'}
+              </p>
+              <button type="button" onClick={() => window.location.reload()} className={`${btn.secondary} mt-5`}>
+                <RefreshCcw className="w-4 h-4 text-stone-500" />
+                Reload
+              </button>
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-stone-950">
-              {sync.connected ? 'Connecting to the sync…' : 'The sync server is not reachable'}
-            </h2>
-            <p className="mt-1 text-sm text-stone-500 max-w-sm mx-auto">
-              {sync.connected
-                ? 'Loading the sync settings from the server.'
-                : 'Sync to NKERP runs on the app server. Check the internet connection, then reload this page. If it keeps happening, the server may need its NKERP settings.'}
-            </p>
-            <button type="button" onClick={() => window.location.reload()} className="mt-5 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 cursor-pointer">
-              <RefreshCcw className="w-4 h-4 text-stone-500" />
-              Reload
-            </button>
-          </div>
-        )}
-        <Setup sync={sync} />
-        {config?.keySource === 'env' && (
-          <Card title="Sync to NKERP" icon={<KeyRound className="w-4 h-4" />}>
-            <div className="p-4 text-xs text-stone-700 space-y-3">
-              <p>The sync is protected with an access key. Enter it once on this device to open the log, history and instructions.</p>
-              <button type="button" onClick={sync.requestKey}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-700 text-white cursor-pointer">Enter access key</button>
-            </div>
-          </Card>
-        )}
+          )}
+          <Setup sync={sync} />
+          {config?.keySource === 'env' && (
+            <Section title="Sync to NKERP">
+              <div className="px-4 sm:px-5 py-4">
+                <p className="text-sm leading-relaxed text-stone-700">The sync is protected with an access key. Enter it once on this device to open the log, history and instructions.</p>
+                <button type="button" onClick={sync.requestKey} className={`${btn.primary} mt-4`}>
+                  <KeyRound className="w-4 h-4" />Enter access key
+                </button>
+              </div>
+            </Section>
+          )}
+        </div>
       </div>
     );
   }
@@ -424,182 +530,241 @@ export const NkerpSyncView: React.FC<{ sync: NkerpSyncState }> = ({ sync }) => {
   const summary = shownJob?.summary;
   const counts = summary ? (shownJob!.options.apply ? summary.done : summary.planned) : null;
 
-  return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between pt-1 md:pt-3 pb-1">
-        <div className="min-w-0">
-          <h1 className="type-display text-[26px] md:text-[32px] leading-none font-semibold text-stone-950">NKERP sync</h1>
-          <p className="mt-2 text-sm text-stone-500 max-w-2xl">
-            Najaf rooms in NKERP brought in line with saved app allocations: deallocate, then reallocate, then allocate. Karbala is never touched.
-            {active ? ' Keep this page open while it runs.' : ''}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1">
-          <span title={sync.connected ? 'The sync is reachable on the server' : 'The sync is not reachable on the server'}
-            className={`flex items-center gap-1.5 text-[13px] px-2 h-9 ${sync.connected ? 'text-emerald-700' : 'text-stone-500'}`}>
-            <span className={`relative flex w-2 h-2`}>
-              {sync.connected && <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-60 animate-ping" />}
-              <span className={`relative w-2 h-2 rounded-full ${sync.connected ? 'bg-emerald-500' : 'bg-stone-400'}`} />
-            </span>
-            {sync.connected ? 'Online' : 'Offline'}
-          </span>
-          {config?.keySource === 'env' && (
-            <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync"
-              className="p-2 rounded-lg text-stone-500 hover:text-rose-700 hover:bg-stone-100 cursor-pointer" aria-label="Sign out of sync">
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
+  // Why Preview and Sync cannot be pressed, in plain words (shown beside them).
+  const offReason = !config
+    ? 'the sync is not reachable on the server right now'
+    : !config.configured
+      ? (config.nkerp ? (config.problem ?? 'the sync is not set up on the server yet') : 'the NKERP login is not set up on the server yet')
+      : null;
+  const cannotRun = sync.busy || !config?.configured || !sync.scopeReady;
 
-      {/* Run bar: which arrivals, then preview or sync */}
-      <section className="rounded-2xl bg-white border border-stone-200 shadow-2xs px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="text-[13px] font-medium text-stone-800 shrink-0 lg:w-24">Arrivals</div>
-        <div className="flex-1 min-w-0">
-          <SyncScopePicker scope={sync.scope} onChange={sync.setScope} today={config?.today ?? new Date().toISOString().slice(0, 10)}
-            layout="inline" disabled={sync.running} />
+  const problemCount = shownAttention.filter((i) => i.kind !== 'note').length;
+  const noteCount = shownAttention.filter((i) => i.kind === 'note').length;
+
+  // The finished run in one line: what ended and how.
+  const what = shownJob?.options.apply ? 'Sync' : 'Preview';
+  const outcome: { tone: Tone; headline: string } | null = !shownJob || active ? null
+    : shownJob.status === 'succeeded' ? { tone: 'ok', headline: `${what} finished: nothing needs you.` }
+      : shownJob.status === 'attention' ? { tone: 'wait', headline: problemCount ? `${what} finished: ${plural(problemCount, 'item')} need${problemCount === 1 ? 's' : ''} you, listed below.` : `${what} finished: see the notes below.` }
+        : shownJob.status === 'cancelled' ? { tone: 'neutral', headline: `${what} stopped early.` }
+          : { tone: 'bad', headline: `${what} ${shownJob.status}.` };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="NKERP sync"
+        description={description}
+        actions={(
+          <>
+            <span title={sync.connected ? 'The sync is reachable on the server' : 'The sync is not reachable on the server'}
+              className={chip(sync.connected ? 'ok' : 'bad')}>
+              {sync.connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              {sync.connected ? 'Online' : 'Offline'}
+            </span>
+            {config?.keySource === 'env' && (
+              <button type="button" onClick={sync.forgetKey} title="Sign this device out of the sync" className={btn.ghost} aria-label="Sign out of sync">
+                <LogOut className="w-4 h-4" />Sign out
+              </button>
+            )}
+          </>
+        )}
+      />
+
+      {/* The control: which arrivals, then preview or sync */}
+      <section className={`${card} overflow-hidden`}>
+        <div className="flex flex-col gap-4 px-4 sm:px-5 py-4 sm:py-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className={fieldLabel}>Arrivals</div>
+            <SyncScopePicker scope={sync.scope} onChange={sync.setScope} today={config?.today ?? new Date().toISOString().slice(0, 10)}
+              layout="inline" disabled={sync.running} />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {sync.running ? (
+              <button type="button" onClick={sync.cancel} disabled={sync.stopping} className={`${btnDanger} flex-1 lg:flex-none`}>
+                {sync.stopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
+                {sync.stopping ? 'Stopping…' : 'Stop after current save'}
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => void sync.startPreview()} disabled={cannotRun} className={`${btn.secondary} flex-1 lg:flex-none`}>
+                  <Eye className="w-4 h-4 text-stone-500" />Preview
+                </button>
+                <button type="button" onClick={() => void sync.startSync()} disabled={cannotRun} className={`${btn.primary} flex-1 lg:flex-none`}>
+                  {sync.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}Sync to NKERP
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 lg:justify-end">
-          <span className="hidden xl:inline text-xs text-stone-500 mr-1" aria-live="polite">
-            {sync.scopeReady ? <>Covers <b className="font-semibold text-stone-800">{scopeText(scopeOptions(sync.scope))}</b></> : 'Pick the dates'}
-          </span>
-          {sync.running ? (
-            <button type="button" onClick={sync.cancel} disabled={sync.stopping}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-rose-700 hover:bg-rose-800 text-white disabled:opacity-60 cursor-pointer">
-              {sync.stopping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
-              {sync.stopping ? 'Stopping…' : 'Stop after current save'}
-            </button>
+        <div className="flex flex-col gap-x-6 gap-y-1.5 px-4 sm:px-5 py-3 border-t border-stone-200 bg-stone-50 lg:flex-row lg:items-center lg:justify-between">
+          <p className="text-sm text-stone-600" aria-live="polite">
+            {sync.scopeReady
+              ? <>Covers <b className="font-semibold text-stone-950">{scopeText(scopeOptions(sync.scope))}</b>.</>
+              : <span className="font-medium text-amber-800">Pick the dates to preview or sync.</span>}
+          </p>
+          {!sync.running && offReason ? (
+            <p className="flex items-start gap-1.5 text-[13px] font-medium text-rose-700">
+              <AlertTriangle className="w-4 h-4 mt-px shrink-0" />
+              <span>Preview and sync are off: {offReason}.{config && !config.configured ? ' See “Set up the sync” below.' : ''}</span>
+            </p>
           ) : (
-            <>
-              <button type="button" onClick={() => void sync.startPreview()} disabled={sync.busy || !config?.configured || !sync.scopeReady}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13px] font-medium bg-white text-stone-800 ring-1 ring-inset ring-stone-200 hover:bg-stone-50 shadow-xs disabled:opacity-50 cursor-pointer">
-                <Eye className="w-3.5 h-3.5" />Preview
-              </button>
-              <button type="button" onClick={() => void sync.startSync()} disabled={sync.busy || !config?.configured || !sync.scopeReady}
-                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-medium bg-brand-700 hover:bg-brand-800 text-white shadow-xs disabled:opacity-50 cursor-pointer">
-                {sync.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5 text-gold-200" />}Sync to NKERP
-              </button>
-            </>
+            (sync.running || shownJob) && (
+              <p className="text-[13px] text-stone-500">
+                {sync.running ? 'A run is going. Stopping lets the save it is on finish first.' : 'Preview shows what a sync would do without saving anything.'}
+              </p>
+            )
           )}
         </div>
       </section>
 
-      {sync.error && <div className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">{sync.error}</div>}
+      {sync.error && <Notice tone="bad">{sync.error}</Notice>}
       <Setup sync={sync} />
 
       {/* Current or last run on this device */}
       {shownJob ? (
-        <Card
-          title={active ? 'Running now' : 'Last run on this device'}
-          icon={<Terminal className="w-4 h-4" />}
-          right={<StatusPill status={shownJob.status} />}
-        >
-          <div className="px-3.5 py-2.5 space-y-2 border-b border-stone-100">
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-600">
-              <span className="font-bold text-stone-800">{shownJob.options.apply ? 'Sync' : 'Preview (nothing saved)'}</span>
-              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(shownJob.startedAt)}{shownJob.durationMs ? ` · ${fmtDuration(shownJob.durationMs)}` : ''}</span>
-              {shownJob.trigger.instruction && <span>“{shownJob.trigger.instruction}”</span>}
-              {shownJob.options.only && <span>only {shownJob.options.only.join(', ')}</span>}
-              <span className="font-semibold text-brand-700">{scopeText(shownJob.options)}</span>
-              {shownJob.options.today && <span>from {shownJob.options.today}</span>}
-              {shownJob.options.allowOverCapacity && <span className="text-amber-800 font-bold">over capacity allowed</span>}
-              {shownJob.options.allowMassDeallocation && <span className="text-amber-800 font-bold">mass deallocation allowed</span>}
+        <Section title={active ? 'Running now' : 'Last run on this device'} right={<StatusPill status={shownJob.status} />}>
+          <div className="px-4 sm:px-5 py-4 space-y-4">
+            <div>
+              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                <span className="text-[15px] font-semibold text-stone-950">{shownJob.options.apply ? 'Sync' : 'Preview (nothing saved)'}</span>
+                <span className="text-sm text-stone-700">{scopeText(shownJob.options)}</span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-stone-600">
+                <span className="inline-flex items-center gap-1.5 tabular-nums"><Clock className="w-3.5 h-3.5 text-stone-400" />{fmtTime(shownJob.startedAt)}{shownJob.durationMs ? ` · ${fmtDuration(shownJob.durationMs)}` : ''}</span>
+                {shownJob.trigger.instruction && <span className="break-words">“{shownJob.trigger.instruction}”</span>}
+                {shownJob.options.only && <span>only {shownJob.options.only.join(', ')}</span>}
+                {shownJob.options.today && <span className="tabular-nums">from {fmtIsoDay(shownJob.options.today)}</span>}
+                {shownJob.options.allowOverCapacity && <span className={chip('wait')}>Over capacity allowed</span>}
+                {shownJob.options.allowMassDeallocation && <span className={chip('wait')}>Mass deallocation allowed</span>}
+              </div>
             </div>
             {active && (
               <div>
-                <div className="flex justify-between text-[11px] font-bold text-stone-700">
-                  <span>{STAGE_LABEL[active.stage] ?? active.stage}</span>
-                  {progress && <span>{progress.current} / {progress.total}</span>}
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium text-stone-950">{STAGE_LABEL[active.stage] ?? active.stage}</span>
+                  {progress && <span className="tabular-nums text-stone-600">{progress.current} / {progress.total}{pct !== null ? ` · ${pct}%` : ''}</span>}
                 </div>
-                <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden mt-1">
-                  <div className={`h-full bg-brand-700 transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
+                <div role="progressbar" aria-label={STAGE_LABEL[active.stage] ?? active.stage} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined}
+                  className="mt-2 h-2 rounded-full bg-stone-200 overflow-hidden">
+                  <div className={`h-full rounded-full bg-brand-600 transition-all duration-500 ${pct === null ? 'w-1/3 animate-pulse' : ''}`} style={pct !== null ? { width: `${pct}%` } : undefined} />
                 </div>
               </div>
+            )}
+            {(outcome || shownJob.error) && (
+              <Notice tone={outcome?.tone ?? 'bad'}>
+                {outcome && <div className="font-semibold">{outcome.headline}</div>}
+                {shownJob.error && (
+                  <>
+                    <div className={outcome ? 'mt-0.5' : 'font-semibold'}>{shownJob.error}</div>
+                    {/could not reach to\.najafkarbala\.com|ran out of time while reading NKERP/.test(shownJob.error) && <div className="mt-1">NKERP did not answer in time from this server. Check NKERP is up, then sync again. Nothing was saved.</div>}
+                    {/NKERP login failed|role is missing/.test(shownJob.error) && <div className="mt-1">Check the NKERP login configured on the server (NKERP_LOGIN_ID / NKERP_PASSWORD) and that it has the Tour and Accomodation Admin role. Nothing was saved.</div>}
+                  </>
+                )}
+              </Notice>
             )}
             {counts && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px overflow-hidden rounded-xl bg-stone-200 ring-1 ring-stone-200">
                 {ACTIONS.map((a) => (
-                  <div key={a} className="rounded-xl bg-stone-50 border border-stone-200 px-2.5 py-1.5">
-                    <div className="text-[10px] uppercase font-bold text-stone-500">{(shownJob.options.apply ? ACTION_LABEL : ACTION_PLANNED)[a]}</div>
-                    <div className="text-lg font-extrabold text-stone-900">{counts[a] ?? 0}</div>
+                  <div key={a} className="bg-stone-50 px-4 py-3">
+                    <dt className="text-[13px] text-stone-600">{(shownJob.options.apply ? ACTION_LABEL : ACTION_PLANNED)[a]}</dt>
+                    <dd className="mt-1 type-display text-[26px] leading-none font-semibold text-stone-950 tabular-nums">{counts[a] ?? 0}</dd>
                   </div>
                 ))}
-                <div className={`rounded-xl border px-2.5 py-1.5 ${summary!.problems ? 'bg-orange-50 border-orange-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                  <div className="text-[10px] uppercase font-bold text-stone-500">Need you</div>
-                  <div className="text-lg font-extrabold text-stone-900">{summary!.problems}</div>
+                <div className="bg-stone-50 px-4 py-3">
+                  <dt className="text-[13px] text-stone-600">Need you</dt>
+                  <dd className={`mt-1 type-display text-[26px] leading-none font-semibold tabular-nums ${summary!.problems ? 'text-amber-700' : 'text-emerald-700'}`}>{summary!.problems}</dd>
                 </div>
-              </div>
+              </dl>
             )}
             {shownJob.stats && (
-              <div className="text-[10px] text-stone-500">
+              <p className="text-[13px] leading-relaxed text-stone-600 tabular-nums">
                 App {shownJob.stats.sheetRows} rows ({shownJob.stats.sheetRooms} with a room) · NKERP {shownJob.stats.pending} unallocated, {shownJob.stats.peopleInNkerp} allocated across {shownJob.stats.toursRead} tours · {shownJob.stats.remembered} remembered from Sync History
-              </div>
-            )}
-            {shownJob.error && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-900">
-                <div className="font-bold">{shownJob.error}</div>
-                {/could not reach to\.najafkarbala\.com|ran out of time while reading NKERP/.test(shownJob.error) && <div>NKERP did not answer in time from this server. Check NKERP is up, then sync again. Nothing was saved.</div>}
-                {/NKERP login failed|role is missing/.test(shownJob.error) && <div>Check the NKERP login configured on the server (NKERP_LOGIN_ID / NKERP_PASSWORD) and that it has the Tour and Accomodation Admin role. Nothing was saved.</div>}
-              </div>
+              </p>
             )}
           </div>
           <LogConsole events={shownJob.events ?? []} live={Boolean(active)} />
-        </Card>
+        </Section>
       ) : (
-        <Card title="No runs on this device yet" icon={<Terminal className="w-4 h-4" />}>
-          <div className="p-4 text-xs text-stone-600">Choose the arrivals above, then press <b>Sync to NKERP</b> to run it, or <b>Preview</b> to see what it would do without saving anything.</div>
-        </Card>
+        <Section title="No runs on this device yet">
+          <p className="px-4 sm:px-5 py-4 text-sm leading-relaxed text-stone-600">
+            Choose the arrivals above, then press <b className="font-semibold text-stone-900">Sync to NKERP</b> to run it, or <b className="font-semibold text-stone-900">Preview</b> to see what it would do without saving anything.
+          </p>
+        </Section>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-5">
-        <div className="lg:col-span-3 space-y-3">
-          <Card title="Needs you" icon={<AlertTriangle className="w-4 h-4" />}
-            right={<span className="text-[11px] text-stone-500">{plural(shownAttention.filter((i) => i.kind !== 'note').length, 'problem')} · {plural(shownAttention.filter((i) => i.kind === 'note').length, 'note')}</span>}>
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3 lg:min-w-0">
+          <Section title="Needs you" className="order-1"
+            right={<span className="text-[13px] text-stone-600 tabular-nums">{plural(problemCount, 'problem')} · {plural(noteCount, 'note')}</span>}>
             <NeedsYou items={shownAttention} onSend={(t) => void sync.send(t)} onAsk={ask} disabled={sync.running} />
-          </Card>
+          </Section>
           {shownReport && (
-            <Card title={shownReport.mode === 'apply' ? 'What was done' : 'What would be done'} icon={<ClipboardList className="w-4 h-4" />}>
+            <Section title={shownReport.mode === 'apply' ? 'What was done' : 'What would be done'} className="order-3">
               <Results report={shownReport} />
-            </Card>
+            </Section>
           )}
+          <Section title="Sync history" className="@container order-4"
+            right={(
+              <button type="button" onClick={() => void sync.refresh()} className={tap(btnSm.ghost)}>
+                <RefreshCcw className="w-3.5 h-3.5" />Refresh
+              </button>
+            )}>
+            {sync.historyError && <p className="px-4 sm:px-5 py-3 text-[13px] font-medium text-rose-700 border-b border-stone-200">{sync.historyError}</p>}
+            {!sync.historyError && sync.history.length === 0 && (
+              <div className="px-5 py-10 text-center">
+                <p className="text-[15px] font-semibold text-stone-950">No applied runs yet</p>
+                <p className="mt-1 mx-auto max-w-md text-sm leading-relaxed text-stone-600">
+                  Each run of Sync to NKERP that saves changes is listed here, from every device.
+                </p>
+              </div>
+            )}
+            {sync.history.length > 0 && (
+              <div className="max-h-96 overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-stone-50 text-xs text-stone-600">
+                    <tr className="[&>th]:px-4 sm:[&>th]:px-5 [&>th]:py-2.5 [&>th]:font-semibold [&>th]:border-b [&>th]:border-stone-200 [&>th]:whitespace-nowrap">
+                      <th scope="col">Run</th>
+                      <th scope="col" className="hidden @min-[38rem]:table-cell text-right">Deallocated</th>
+                      <th scope="col" className="hidden @min-[38rem]:table-cell text-right">Reallocated</th>
+                      <th scope="col" className="hidden @min-[38rem]:table-cell text-right">Allocated</th>
+                      <th scope="col" className="hidden @min-[38rem]:table-cell text-right">People logged</th>
+                      <th scope="col" className="text-right @min-[38rem]:text-left">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {sync.history.map((h) => (
+                      <tr key={h.runId} className="hover:bg-stone-50 [&>td]:px-4 sm:[&>td]:px-5 [&>td]:py-3 [&>td]:align-top @min-[38rem]:[&>td]:align-middle">
+                        <td>
+                          <div className="font-semibold text-stone-950 tabular-nums whitespace-nowrap">{fmtRunAt(h.runAt)}</div>
+                          <div className="@min-[38rem]:hidden mt-0.5 text-[13px] text-stone-600 tabular-nums">
+                            {ACTIONS.map((a) => `${h.done[a] ?? 0} ${ACTION_LABEL[a].toLowerCase()}`).join(' · ')} · {plural(h.people, 'person')} logged
+                          </div>
+                        </td>
+                        {ACTIONS.map((a) => (
+                          <td key={a} className="hidden @min-[38rem]:table-cell text-right tabular-nums text-stone-800">{h.done[a] ?? 0}</td>
+                        ))}
+                        <td className="hidden @min-[38rem]:table-cell text-right tabular-nums text-stone-800">{h.people}</td>
+                        <td className="text-right @min-[38rem]:text-left">
+                          <span className={chip(h.problems ? 'wait' : 'ok')}>{h.problems ? `${h.problems} held` : 'All good'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="px-4 sm:px-5 py-3 border-t border-stone-200 bg-stone-50 text-[13px] leading-relaxed text-stone-600">
+              Previews save nothing, so they appear only on the device that ran them. Every applied run is logged in the app’s <b className="font-semibold text-stone-800">Sync History</b>, which is the sync's memory: don't edit or delete its rows.
+            </p>
+          </Section>
         </div>
-        <div className="lg:col-span-2 space-y-3">
-          <Card title="Tell the sync" icon={<MessageSquare className="w-4 h-4" />}
-            right={<span className="text-[10px] text-stone-500">Built-in rules</span>}>
+        <div className="order-2 lg:order-none lg:col-span-2 min-w-0">
+          <Section title="Tell the sync" className="lg:sticky lg:top-6" right={<span className="text-xs text-stone-500">Built-in rules</span>}>
             <Conversation sync={sync} draft={draft} setDraft={setDraft} inputRef={inputRef} />
-          </Card>
-          <Card title="Sync history" icon={<History className="w-4 h-4" />}
-            right={<button type="button" onClick={() => void sync.refresh()} className="text-[11px] font-bold text-stone-600 hover:underline cursor-pointer">Refresh</button>}>
-            <ul className="max-h-72 overflow-y-auto">
-              {sync.historyError && <li className="px-3.5 py-2 text-[11px] text-rose-700">{sync.historyError}</li>}
-              {!sync.historyError && sync.history.length === 0 && (
-                <li className="px-3.5 py-3 text-xs text-stone-500">No applied runs in local Sync History yet.</li>
-              )}
-              {sync.history.map((h) => (
-                <li key={h.runId} className="px-3.5 py-2 border-t border-stone-100 first:border-t-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
-                      <RefreshCcw className="w-3 h-3" />Sync <span className="font-normal text-stone-500">{h.runAt}</span>
-                    </span>
-                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${h.problems ? 'bg-orange-100 text-orange-900 border-orange-300' : 'bg-emerald-100 text-emerald-900 border-emerald-300'}`}>
-                      {h.problems ? `${h.problems} held` : 'All good'}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-stone-500 mt-0.5">
-                    {ACTIONS.map((a) => `${h.done[a] ?? 0} ${a}`).join(' · ')} · {plural(h.people, 'person')} logged
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="px-3.5 py-1.5 text-[10px] text-stone-500 border-t border-stone-100">Previews save nothing, so they appear only on the device that ran them.</div>
-          </Card>
+          </Section>
         </div>
       </div>
-      <div className="flex items-start gap-1.5 text-[10px] text-stone-500">
-        <Circle className="w-2 h-2 fill-current mt-1 shrink-0" />
-        <span>Every applied run is logged in the app’s <b>Sync History</b>, which is the sync's memory: don't edit or delete its rows.</span>
-      </div>
+
     </div>
   );
 };

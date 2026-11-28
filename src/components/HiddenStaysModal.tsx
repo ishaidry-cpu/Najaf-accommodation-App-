@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { RotateCcw, X } from 'lucide-react';
 import { fetchHiddenStays, restoreHiddenStays, type HiddenStay } from '../services/api';
-import { btn } from './ui';
+import { btnSm, modalCard, modalClose, modalHeader, modalScrim, modalTitle } from './ui';
 
 const when = (v: string) => {
   const date = new Date(String(v).slice(0, 16) + 'Z');
@@ -38,46 +38,62 @@ export const HiddenStaysModal: React.FC<{ onClose: () => void; onRestored: (coun
     }
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 p-5 border-b border-stone-100">
-          <div>
-            <h2 className="text-base font-semibold text-stone-900">Deleted NKERP stays</h2>
-            <p className="text-xs text-stone-500 mt-1">
+    <div className={modalScrim} onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="hidden-stays-title">
+      <div className={`${modalCard} max-w-2xl`} onClick={(e) => e.stopPropagation()}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h2 id="hidden-stays-title" className={modalTitle}>Deleted NKERP stays</h2>
+            <p className="mt-1 text-sm text-stone-600 max-w-[60ch]">
               NKERP still lists these zaereen, but they were deleted in the app, so they are hidden. A stay comes back by
               itself when NKERP changes its dates. Restore brings it back now.
             </p>
           </div>
-          <button type="button" onClick={onClose} className={btn.ghost} aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
-        <div className="overflow-y-auto p-5 space-y-4">
-          {error && <div className="text-sm text-red-700">{error}</div>}
-          {!stays && !error && <div className="text-sm text-stone-500">Loading…</div>}
-          {stays && !stays.length && <div className="text-sm text-stone-500">Nothing is hidden. Every stay NKERP lists is in the app.</div>}
-          {tours.map(([tour, list]) => (
-            <div key={tour} className="rounded-xl ring-1 ring-stone-200">
-              <div className="flex items-center justify-between gap-3 px-3 py-2 bg-stone-50 rounded-t-xl">
-                <div className="text-sm font-medium text-stone-900">
-                  {tour.replace(/^NKERP\/TOUR\//i, '')}
-                  <span className="text-stone-500 font-normal"> · {list[0].office} · {list.length} zaereen</span>
-                </div>
-                <button type="button" disabled={busy} className={btn.secondary} onClick={() => restore(list.map((s) => s.key))}>
-                  <RotateCcw className="w-4 h-4 text-stone-500" /> Restore tour
-                </button>
-              </div>
-              {list.map((s) => (
-                <div key={s.key} className="flex items-center justify-between gap-3 px-3 py-2 border-t border-stone-100 text-sm">
-                  <div className="min-w-0">
-                    <div className="truncate text-stone-900">{s.name} <span className="font-mono text-xs text-stone-500">{s.its}</span></div>
-                    <div className="text-xs text-stone-500">
-                      {when(s.arrival)} – {when(s.departure)}{s.deletedAt ? ` · deleted ${new Date(s.deletedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
-                    </div>
-                  </div>
-                  <button type="button" disabled={busy} className={btn.ghost} onClick={() => restore([s.key])}>Restore</button>
-                </div>
-              ))}
+        <div className="overflow-y-auto px-5 sm:px-6 py-5">
+          {error && (
+            <div role="alert" className="mb-4 rounded-xl bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{error}</div>
+          )}
+          {!stays && !error && <div className="py-6 text-center text-sm text-stone-600">Loading hidden stays…</div>}
+          {stays && !stays.length && (
+            <div className="py-8 text-center">
+              <div className="text-[15px] font-semibold text-stone-900">Nothing is hidden</div>
+              <p className="mt-1 text-sm text-stone-600">
+                Every stay NKERP lists is in the app. A stay you delete on the Zaereen screen appears here while NKERP
+                still lists it.
+              </p>
             </div>
-          ))}
+          )}
+          <div className="divide-y divide-stone-200">
+            {tours.map(([tour, list]) => (
+              <section key={tour} className="py-4 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-stone-950 tabular-nums">{tour.replace(/^NKERP\/TOUR\//i, '')}</div>
+                    <div className="text-[13px] text-stone-600">{list[0].office} · {list.length} zaereen</div>
+                  </div>
+                  <button type="button" disabled={busy} className={`${btnSm.secondary} max-sm:h-10`} onClick={() => restore(list.map((s) => s.key))}>
+                    <RotateCcw className="w-4 h-4 text-stone-500" /> Restore tour
+                  </button>
+                </div>
+                <ul className="mt-2 rounded-xl bg-stone-50 divide-y divide-stone-200">
+                  {list.map((s) => (
+                    <li key={s.key} className="flex items-center justify-between gap-3 pl-3.5 pr-2 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-stone-900">
+                          {s.name} <span className="font-normal text-[13px] text-stone-600 tabular-nums">{s.its}</span>
+                        </div>
+                        <div className="text-[13px] text-stone-600 tabular-nums">
+                          {when(s.arrival)} – {when(s.departure)}{s.deletedAt ? ` · deleted ${new Date(s.deletedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                        </div>
+                      </div>
+                      <button type="button" disabled={busy} className={`${btnSm.ghost} max-sm:h-10 shrink-0`} onClick={() => restore([s.key])}>Restore</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         </div>
       </div>
     </div>

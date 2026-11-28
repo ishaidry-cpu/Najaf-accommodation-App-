@@ -1,18 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { 
-  FileSpreadsheet, 
-  Upload, 
-  Download, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  Users, 
-  ArrowRight,
-  RefreshCw,
-  FileCheck,
-  Sparkles,
-  Clock
-} from 'lucide-react';
+import { AlertOctagon, AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Upload, X } from 'lucide-react';
 import { 
   parseZaereenExcelFile, 
   downloadSampleExcelTemplate, 
@@ -22,6 +9,21 @@ import {
 } from '../services/excelService';
 import { Reservation } from '../types';
 import { deduplicateForAppend } from '../utils/deduplication';
+import {
+  btn, btnDanger, btnSm, chip, fieldLabel, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle, panel,
+} from './ui';
+
+/** Compact buttons grow to the 40px touch size on phones. */
+const tap = (cls: string) => `${cls} max-sm:h-10 max-sm:px-3.5`;
+
+/** A parsed yyyy-mm-dd date as "28 Nov 2026" for the preview (shown only; the imported value is untouched). */
+function previewDate(value: string | undefined): string {
+  if (!value) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return value;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 interface ExcelUploadModalProps {
   isOpen: boolean;
@@ -101,94 +103,78 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/45 backdrop-blur-[2px] animate-in fade-in duration-200">
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative text-stone-800 flex flex-col max-h-[90vh]">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-stone-500 hover:text-stone-800 p-1.5 rounded-lg hover:bg-stone-200/60 transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
+  // What an append would add, once per render (the preview note and the import button both show it).
+  const dedup = importMode === 'append' && parsedRows.length > 0
+    ? deduplicateForAppend(existingReservations, convertRowsToReservations(parsedRows))
+    : null;
 
-        {/* Modal Header */}
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-brand-700 text-white flex items-center justify-center shadow-md">
-            <FileSpreadsheet className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-brand-700 tracking-tight">
-              Upload Zaereen Excel Sheet
-            </h3>
-            <p className="text-xs text-stone-600">
-              Import applicant list directly from Faiz Husaini or ITS portal Excel sheets
+  return (
+    <div className={modalScrim} role="dialog" aria-modal="true" aria-labelledby="excel-upload-title">
+      <div className={`${modalCard} max-w-3xl`}>
+        <div className={modalHeader}>
+          <div className="min-w-0">
+            <h3 id="excel-upload-title" className={modalTitle}>Upload zaereen Excel sheet</h3>
+            <p className="mt-1 text-sm text-stone-600">
+              Import the applicant list from a Faiz Husaini or ITS portal Excel sheet.
             </p>
           </div>
+          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Required Fields Info Banner */}
-        <div className="my-3 p-3 rounded-xl bg-white border border-stone-200 text-xs space-y-1">
-          <div className="font-semibold text-brand-700 flex items-center gap-1.5">
-            <FileCheck className="w-4 h-4 text-emerald-700" />
-            <span>Supported Columns:</span>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
+          {/* Columns the sheet can carry */}
+          <div className={`${panel} px-3.5 py-3`}>
+            <div className="text-[13px] font-medium text-stone-700">Supported columns</div>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-stone-600">
+              ITS Id · Applicant Name · Age · Category · Gender · Family · Tour Reference No. · Office Name · Group Lead Name · Arrival Date · Departure Date
+            </p>
           </div>
-          <p className="text-stone-600 text-[11px] leading-relaxed">
-            ITS Id • Applicant Name • Age • Category • Gender • Family • Tour Reference No. • Office Name • Group Lead Name • Arrival Date • Departure Date
-          </p>
-        </div>
 
-        {/* Dropzone */}
-        {!parsedRows.length && (
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-7 text-center cursor-pointer transition-all ${
-              isDragging
-                ? 'border-emerald-600 bg-emerald-50/60'
-                : 'border-stone-300 hover:border-emerald-700 bg-white'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-              className="hidden"
-              onChange={handleFileChange}
-            />
+          {/* Dropzone */}
+          {!parsedRows.length && (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`rounded-xl border-2 border-dashed px-5 py-8 text-center cursor-pointer transition-colors ${
+                isDragging ? 'border-brand-600 bg-brand-50' : 'border-stone-300 bg-white hover:border-brand-600 hover:bg-stone-50'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                className="hidden"
+                onChange={handleFileChange}
+              />
 
-            <div className="flex flex-col items-center justify-center gap-2">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mb-1">
-                {isLoading ? (
-                  <RefreshCw className="w-6 h-6 animate-spin text-emerald-700" />
-                ) : (
-                  <Upload className="w-6 h-6" />
-                )}
+              <div className="mx-auto w-11 h-11 rounded-full bg-stone-100 text-stone-600 flex items-center justify-center">
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
               </div>
-
-              <div className="font-semibold text-sm text-stone-800">
-                {isLoading ? 'Reading file & detecting columns...' : 'Click to select or drag and drop Excel / CSV file'}
+              <div className="mt-3 text-[15px] font-semibold text-stone-950">
+                {isLoading ? 'Reading the file and detecting columns…' : 'Click to select, or drag and drop an Excel or CSV file'}
               </div>
-              <p className="text-xs text-stone-500">
-                Supports Microsoft Excel (.xlsx, .xls), CSV, and TSV spreadsheets
+              <p className="mt-1 text-[13px] text-stone-600">
+                Supports Microsoft Excel (.xlsx, .xls), CSV and TSV spreadsheets
               </p>
 
-              <div className="flex flex-wrap items-center justify-center gap-2.5 mt-3">
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     downloadSampleExcelTemplate();
                   }}
-                  className="inline-flex items-center gap-1.5 text-xs text-brand-700 font-medium bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 px-3 py-1.5 rounded-lg transition"
+                  className={tap(btnSm.secondary)}
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  Download Sample Template
+                  <Download className="w-3.5 h-3.5 text-stone-500" />
+                  Download sample template
                 </button>
 
                 <button
@@ -197,223 +183,171 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
                     e.stopPropagation();
                     handleLoadSampleData();
                   }}
-                  className="inline-flex items-center gap-1.5 text-xs text-stone-700 font-medium bg-stone-100 hover:bg-stone-200 border border-stone-300 px-3 py-1.5 rounded-lg transition"
+                  className={tap(btnSm.ghost)}
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                  Load Sample Data
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  Load sample data
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Error Notification */}
-        {errorMsg && (
-          <div className="mt-3 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600 mt-0.5" />
-              <div className="flex-1">
-                <span className="font-semibold block mb-0.5">Excel File Notice:</span>
-                <span>{errorMsg}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1 border-t border-rose-200/60">
-              <button
-                type="button"
-                onClick={downloadSampleExcelTemplate}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white hover:bg-stone-50 border border-rose-300 text-rose-900 text-[11px] font-semibold"
-              >
-                <Download className="w-3 h-3" />
-                Download Working Template
-              </button>
-              <button
-                type="button"
-                onClick={handleLoadSampleData}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-brand-700 hover:bg-brand-800 text-white text-[11px] font-semibold"
-              >
-                <Sparkles className="w-3 h-3 text-gold-200" />
-                Use Sample Data Instead
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Parsed Preview Table */}
-        {parsedRows.length > 0 && (
-          <div className="flex-1 overflow-hidden flex flex-col mt-2">
-            <div className="flex items-center justify-between py-2 border-b border-stone-200">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-brand-700">
-                  Preview ({parsedRows.length} Zaereen Applicants Found)
-                </span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">
-                  {selectedFile?.name || 'Uploaded File'}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setParsedRows([]);
-                  setSelectedFile(null);
-                  setErrorMsg(null);
-                }}
-                className="text-xs text-stone-500 hover:text-stone-800 underline"
-              >
-                Choose another file
-              </button>
-            </div>
-
-            <div className="overflow-x-auto overflow-y-auto max-h-56 mt-2 border border-stone-200 rounded-xl bg-white shadow-inner">
-              <table className="w-full text-left text-[11px]">
-                <thead className="bg-stone-50 sticky top-0 border-b border-stone-200 text-stone-700 font-semibold uppercase text-[10px]">
-                  <tr>
-                    <th className="py-2 px-2.5">ITS ID</th>
-                    <th className="py-2 px-2.5">Applicant Name</th>
-                    <th className="py-2 px-2.5">Age</th>
-                    <th className="py-2 px-2.5">Cat</th>
-                    <th className="py-2 px-2.5">Family</th>
-                    <th className="py-2 px-2.5">Tour Ref</th>
-                    <th className="py-2 px-2.5">Office</th>
-                    <th className="py-2 px-2.5">Arrival (Date & Time)</th>
-                    <th className="py-2 px-2.5">Departure (Date & Time)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {parsedRows.slice(0, 15).map((row, i) => (
-                    <tr key={i} className="hover:bg-emerald-50/40">
-                      <td className="py-1.5 px-2.5 font-mono text-stone-900 font-medium">{row.itsId}</td>
-                      <td className="py-1.5 px-2.5 font-semibold text-stone-900">{row.applicantName}</td>
-                      <td className="py-1.5 px-2.5 text-stone-600">{row.age}</td>
-                      <td className="py-1.5 px-2.5">
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            row.category === 'B to A'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                          }`}
-                        >
-                          {row.category}
-                        </span>
-                      </td>
-                      <td className="py-1.5 px-2.5 font-mono text-stone-700">{row.family}</td>
-                      <td className="py-1.5 px-2.5 text-stone-700">{row.tourRefNo}</td>
-                      <td className="py-1.5 px-2.5 text-stone-600">{row.officeName}</td>
-                      <td className="py-1.5 px-2.5 text-stone-700">
-                        <div className="font-semibold text-stone-900">{row.arrivalDate}</div>
-                        {row.arrivalTime && (
-                          <div className="inline-flex items-center gap-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1 rounded border border-indigo-200 mt-0.5">
-                            <Clock className="w-2.5 h-2.5 text-indigo-600" />
-                            <span>{row.arrivalTime}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-1.5 px-2.5 text-stone-700">
-                        <div className="font-semibold text-stone-900">{row.departureDate}</div>
-                        {row.departureTime && (
-                          <div className="inline-flex items-center gap-1 text-[10px] text-amber-800 font-bold bg-amber-50 px-1 rounded border border-amber-200 mt-0.5">
-                            <Clock className="w-2.5 h-2.5 text-amber-700" />
-                            <span>{row.departureTime}</span>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {parsedRows.length > 15 && (
-                <div className="py-2 text-center text-[11px] text-stone-500 bg-stone-50 border-t border-stone-200">
-                  ...and {parsedRows.length - 15} more zaereen applicants
+          {/* What went wrong with the file, and the two ways on */}
+          {errorMsg && (
+            <div role="alert" className="flex gap-2.5 rounded-xl bg-rose-50 px-3.5 py-3 text-rose-800 ring-1 ring-inset ring-rose-200">
+              <AlertOctagon className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold">Excel file notice</div>
+                <p className="mt-0.5 text-[13px] leading-relaxed break-words">{errorMsg}</p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={downloadSampleExcelTemplate} className={tap(btnSm.secondary)}>
+                    <Download className="w-3.5 h-3.5 text-stone-500" />
+                    Download working template
+                  </button>
+                  <button type="button" onClick={handleLoadSampleData} className={tap(btnSm.secondary)}>
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-stone-500" />
+                    Use sample data instead
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
+          )}
 
-            {/* Import Mode Radio & Duplicate Prevention Indicator */}
-            <div className="mt-4 p-3 bg-white border border-stone-200 rounded-xl flex flex-col gap-2.5 text-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <span className="font-bold text-stone-700">Import Method:</span>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
+          {/* Parsed preview */}
+          {parsedRows.length > 0 && (
+            <>
+              <div>
+                <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1 mb-2">
+                  <div className="min-w-0">
+                    <h4 className="text-[15px] font-semibold text-stone-950">
+                      Preview: <span className="tabular-nums">{parsedRows.length}</span> zaereen applicants found
+                    </h4>
+                    <p className="text-[13px] text-stone-600 truncate">{selectedFile?.name || 'Uploaded file'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setParsedRows([]);
+                      setSelectedFile(null);
+                      setErrorMsg(null);
+                    }}
+                    className={tap(btnSm.secondary)}
+                  >
+                    Choose another file
+                  </button>
+                </div>
+
+                <div className="overflow-auto max-h-64 rounded-xl ring-1 ring-inset ring-stone-200">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="sticky top-0 bg-stone-50 text-xs text-stone-600">
+                      <tr className="[&>th]:px-3 [&>th]:py-2.5 [&>th]:font-semibold [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-stone-200">
+                        <th scope="col">ITS</th>
+                        <th scope="col">Applicant name</th>
+                        <th scope="col">Age</th>
+                        <th scope="col">Category</th>
+                        <th scope="col">Family</th>
+                        <th scope="col">Tour ref</th>
+                        <th scope="col">Office</th>
+                        <th scope="col">Arrival</th>
+                        <th scope="col">Departure</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {parsedRows.slice(0, 15).map((row, i) => (
+                        <tr key={i} className="hover:bg-stone-50 [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-top">
+                          <td className="font-bold text-stone-950 tabular-nums whitespace-nowrap">{row.itsId}</td>
+                          <td className="font-semibold text-stone-950 min-w-[10rem]">{row.applicantName}</td>
+                          <td className="text-stone-700 tabular-nums">{row.age}</td>
+                          <td className="whitespace-nowrap">
+                            {row.category === 'B to A'
+                              ? <span className={chip('wait')}>{row.category}</span>
+                              : <span className="text-stone-700">{row.category}</span>}
+                          </td>
+                          <td className="text-stone-700 tabular-nums whitespace-nowrap">{row.family}</td>
+                          <td className="text-stone-700 tabular-nums whitespace-nowrap">{row.tourRefNo}</td>
+                          <td className="text-stone-700">{row.officeName}</td>
+                          <td className="whitespace-nowrap tabular-nums">
+                            <div className="text-stone-900">{previewDate(row.arrivalDate)}</div>
+                            {row.arrivalTime && <div className="text-xs text-stone-500">{row.arrivalTime}</div>}
+                          </td>
+                          <td className="whitespace-nowrap tabular-nums">
+                            <div className="text-stone-900">{previewDate(row.departureDate)}</div>
+                            {row.departureTime && <div className="text-xs text-stone-500">{row.departureTime}</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {parsedRows.length > 15 && (
+                    <div className="px-3 py-2.5 text-center text-[13px] text-stone-600 bg-stone-50 border-t border-stone-200">
+                      …and {parsedRows.length - 15} more zaereen applicants
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* How to bring the rows in */}
+              <fieldset>
+                <legend className={fieldLabel}>Import method</legend>
+                <div className="flex flex-col sm:flex-row gap-x-6">
+                  <label className="inline-flex items-center gap-2.5 min-h-10 text-sm text-stone-900 cursor-pointer">
                     <input
                       type="radio"
                       name="importMode"
                       value="append"
                       checked={importMode === 'append'}
                       onChange={() => setImportMode('append')}
-                      className="accent-emerald-700"
+                      className="w-4 h-4 accent-brand-700"
                     />
-                    <span className="font-semibold text-emerald-950">
-                      Append unique only (skips duplicates)
-                    </span>
+                    Append unique only (skips duplicates)
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
+                  <label className="inline-flex items-center gap-2.5 min-h-10 text-sm text-stone-900 cursor-pointer">
                     <input
                       type="radio"
                       name="importMode"
                       value="replace"
                       checked={importMode === 'replace'}
                       onChange={() => setImportMode('replace')}
-                      className="accent-emerald-700"
+                      className="w-4 h-4 accent-brand-700"
                     />
-                    <span className="text-amber-800 font-medium">Replace all</span>
+                    Replace all
                   </label>
                 </div>
-              </div>
 
-              {/* Deduplication Status Banner (User request: "When append dont append duplicates only unique should be added") */}
-              {(() => {
-                if (importMode !== 'append' || parsedRows.length === 0) return null;
-                const sampleRes = convertRowsToReservations(parsedRows);
-                const dedup = deduplicateForAppend(existingReservations, sampleRes);
-                return (
-                  <div className="p-2 rounded-lg bg-emerald-50/80 border border-emerald-300 text-[11px] text-emerald-950 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                      <span>
-                        <strong>Deduplication Guard:</strong> <strong>{dedup.uniqueToAppend.length}</strong> unique zaereen will be added.
-                        {dedup.totalDuplicatesSkipped > 0 && (
-                          <span className="text-amber-800 font-semibold ml-1">
-                            ({dedup.totalDuplicatesSkipped} duplicate{dedup.totalDuplicatesSkipped > 1 ? 's' : ''} skipped)
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-bold text-[10px]">
-                      Zero Duplicates
+                {/* When appending, only unique zaereen are added */}
+                {dedup && (
+                  <p className="mt-1.5 flex items-start gap-2 rounded-xl bg-emerald-50 px-3.5 py-3 text-[13px] leading-relaxed text-emerald-900 ring-1 ring-inset ring-emerald-200">
+                    <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+                    <span>
+                      <strong className="font-semibold">{dedup.uniqueToAppend.length}</strong> unique zaereen will be added.
+                      {dedup.totalDuplicatesSkipped > 0 && (
+                        <span className="ml-1">
+                          ({dedup.totalDuplicatesSkipped} duplicate{dedup.totalDuplicatesSkipped > 1 ? 's' : ''} skipped)
+                        </span>
+                      )}
                     </span>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        )}
+                  </p>
+                )}
+                {importMode === 'replace' && (
+                  <p className="mt-1.5 flex items-start gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-[13px] leading-relaxed text-amber-900 ring-1 ring-inset ring-amber-200">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                    <span>Replace all keeps everyone who already has a room, and replaces the rest of the current list (<span className="tabular-nums">{existingCount}</span> zaereen) with the <span className="tabular-nums">{parsedRows.length}</span> in this file.</span>
+                  </p>
+                )}
+              </fieldset>
+            </>
+          )}
+        </div>
 
-        {/* Modal Actions */}
-        <div className="mt-5 pt-3 border-t border-stone-200 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition"
-          >
-            Cancel
-          </button>
+        <div className={modalFooter}>
+          <button type="button" onClick={onClose} className={btn.secondary}>Cancel</button>
 
           {parsedRows.length > 0 && (
-            <button
-              type="button"
-              onClick={handleConfirmImport}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white shadow-md transition"
-            >
-              <CheckCircle2 className="w-4 h-4 text-gold-200" />
-              <span>
-                {(() => {
-                  if (importMode === 'append') {
-                    const sampleRes = convertRowsToReservations(parsedRows);
-                    const dedup = deduplicateForAppend(existingReservations, sampleRes);
-                    return `Append ${dedup.uniqueToAppend.length} Unique Zaereen`;
-                  }
-                  return `Replace with ${parsedRows.length} Zaereen Applicants`;
-                })()}
-              </span>
+            <button type="button" onClick={handleConfirmImport} className={importMode === 'replace' ? btnDanger : btn.primary}>
+              <CheckCircle2 className="w-4 h-4" />
+              {dedup
+                ? `Append ${dedup.uniqueToAppend.length} unique zaereen`
+                : `Replace with ${parsedRows.length} zaereen applicants`}
             </button>
           )}
         </div>
