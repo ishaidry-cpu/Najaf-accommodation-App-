@@ -50,7 +50,7 @@ const Tick: React.FC<{ state: 'on' | 'mixed' | 'off' }> = ({ state }) => (
 
 /** Server secret names, set apart so they can be read and copied exactly. */
 const EnvName: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <code className="rounded-md bg-white/70 px-1.5 py-0.5 text-[13px] font-medium ring-1 ring-inset ring-rose-200 break-all">{children}</code>
+  <code className="rounded-md bg-white/70 px-1.5 py-0.5 text-[13px] font-medium ring-1 ring-inset ring-rose-200 whitespace-nowrap">{children}</code>
 );
 
 // ------------------------------------------------------------------------------------------------ envelope

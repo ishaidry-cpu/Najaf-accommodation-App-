@@ -68,7 +68,7 @@ const squareBtn = btn.primary.replace('px-4', 'w-10 px-0');
 
 /** A server secret's name, set apart so it can be read and copied exactly. */
 const EnvName: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <code className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[13px] font-medium text-stone-900 ring-1 ring-inset ring-stone-200 break-all">{children}</code>
+  <code className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[13px] font-medium text-stone-900 ring-1 ring-inset ring-stone-200 whitespace-nowrap">{children}</code>
 );
 
 const dayMonth = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });

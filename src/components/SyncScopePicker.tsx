@@ -27,7 +27,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, s
   const i = Math.max(0, options.findIndex((o) => o.value === value));
   return (
     <div role="radiogroup" aria-label={label}
-      className={`relative grid rounded-lg bg-stone-100 p-1 ring-1 ring-inset ring-stone-200 ${size === 'sm' ? 'h-10 sm:h-9' : 'h-10'}`}
+      className={`relative grid rounded-lg bg-stone-100 px-1 ring-1 ring-inset ring-stone-200 ${size === 'sm' ? 'h-10 sm:h-9' : 'h-10'}`}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
       <span aria-hidden className="absolute top-1 bottom-1 left-1 rounded-md bg-white shadow-xs ring-1 ring-stone-300 transition-transform duration-200 ease-out"
         style={{ width: `calc((100% - 8px) / ${options.length})`, transform: `translateX(${i * 100}%)` }} />
