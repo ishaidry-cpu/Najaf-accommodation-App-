@@ -1162,7 +1162,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // Column widths in px. "Fit to screen" squeezes the text columns; "Wide" gives every column room.
   const pageHasPhoto = pageRows.some((r) => Boolean(photoUrl(photos, r.itsId)));
   const columnWidths = fitColumnsToScreen
-    ? [56, pageHasPhoto ? 108 : 60, 88, 196, 60, 78, 96, 96, 98, 224, 80, 92, 200, 200, 100, 80, 72]
+    ? [56, pageHasPhoto ? 108 : 60, 118, 184, 60, 78, 96, 96, 98, 224, 80, 92, 200, 200, 100, 80, 72]
     : [64, pageHasPhoto ? 108 : 60, 112, 250, 64, 84, 200, 190, 124, 232, 84, 190, 204, 204, 150, 96, 80];
   const tableMinWidth = columnWidths.reduce((sum, w) => sum + w, 0);
   const nameColumnLeft = columnWidths[0] + columnWidths[1] + columnWidths[2];
