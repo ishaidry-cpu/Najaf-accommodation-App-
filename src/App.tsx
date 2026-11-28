@@ -55,7 +55,7 @@ import {
 } from './utils/deduplication';
 import { subscribeToMultiWindowSync } from './utils/multiWindowSync';
 
-import { Navbar, type AppTab } from './components/Navbar';
+import { Navbar, RECEPTIONIST_TABS, type AppTab } from './components/Navbar';
 import { btn, modalScrim, modalCard, modalHeader, modalTitle, modalClose, modalFooter } from './components/ui';
 import { NkerpSyncView } from './components/NkerpSyncView';
 import { NajafEmailsView } from './components/NajafEmailsView';
@@ -100,6 +100,15 @@ export default function App() {
 
   // User Role & Permissions (Admin: editable, Receptionist: view-only)
   const [userRole, setUserRole] = useState<UserRole>(() => getStoredUserRole());
+  /** Receptionist access is view only: Overview, Rooms, the arrival/departure slips and the tour manifest. */
+  const isReceptionist = userRole === 'receptionist';
+  const roleRef = useRef<UserRole>(userRole);
+  roleRef.current = userRole;
+  // A receptionist only ever lands on their own screens; any other screen is hidden from them.
+  const visibleTab: AppTab = isReceptionist && !RECEPTIONIST_TABS.includes(activeTab) ? 'dashboard' : activeTab;
+  const navigateTab = useCallback((tab: AppTab) => {
+    setActiveTab(roleRef.current === 'receptionist' && !RECEPTIONIST_TABS.includes(tab) ? 'dashboard' : tab);
+  }, []);
   const [adminPin, setAdminPin] = useState<string>(() => getStoredAdminPin());
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [quickAllotTarget, setQuickAllotTarget] = useState<Reservation | null>(null);
@@ -299,6 +308,11 @@ export default function App() {
   }, [handleRefreshLiveComputerData]);
 
   function persist<T extends Reservation | Room>(collection: 'reservations' | 'rooms', next: T[]) {
+    // Every app edit goes through here; a receptionist's device never writes.
+    if (roleRef.current === 'receptionist') {
+      showToast('Receptionist access is view only. Switch to admin to make changes.', 'error');
+      return;
+    }
     const ref = collection === 'reservations' ? reservationsRef : roomsRef;
     const before = ref.current as T[];
     if (collection === 'reservations') {
@@ -1150,8 +1164,8 @@ export default function App() {
     <div className="min-h-screen bg-canvas text-ink font-sans">
       {/* Top Navbar */}
       <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeTab={visibleTab}
+        setActiveTab={navigateTab}
         userRole={userRole}
         onOpenRoleModal={() => setIsRoleModalOpen(true)}
         onOpenPdfModal={handleOpenPdfModal}
@@ -1172,39 +1186,40 @@ export default function App() {
 
       {/* Main Container - Full Screen Width with mobile bottom-bar clearance */}
       <div className="app-content">
-      <main key={activeTab} className="tab-enter mx-auto w-full max-w-[1720px] px-3 sm:px-5 lg:px-8 pt-4 sm:pt-6 lg:pt-9 pb-28 lg:pb-14">
-        {activeTab === 'dashboard' && (
+      <main key={visibleTab} className="tab-enter mx-auto w-full max-w-[1720px] px-3 sm:px-5 lg:px-8 pt-4 sm:pt-6 lg:pt-9 pb-28 lg:pb-14">
+        {visibleTab === 'dashboard' && (
           <Dashboard
             reservations={reservations}
             rooms={rooms}
-            onNavigateTab={setActiveTab}
+            onNavigateTab={navigateTab}
+            readOnly={isReceptionist}
             onOpenUploadExcel={() => setIsExcelUploadOpen(true)}
             onOpenReceptionSlip={handleOpenReceptionSlip}
-            onOpenAddZaer={() => setIsAddZaerOpen(true)}
-            onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
+            onOpenAddZaer={isReceptionist ? undefined : () => setIsAddZaerOpen(true)}
+            onOpenAddTourGroup={isReceptionist ? undefined : () => setIsAddTourGroupOpen(true)}
             onDownloadTemplate={downloadSampleExcelTemplate}
             onAllotRoom={handleAllotRoom}
-            onBatchAllotFamily={handleBatchAllotFamily}
-            onAddReservation={handleAddReservation}
-            onUpdateReservation={handleUpdateReservation}
-            onBatchUpdateReservations={handleBatchUpdateReservations}
-            onDeleteReservation={handleDeleteReservation}
-            onToggleBlockRoom={(roomId) => {
+            onBatchAllotFamily={isReceptionist ? undefined : handleBatchAllotFamily}
+            onAddReservation={isReceptionist ? undefined : handleAddReservation}
+            onUpdateReservation={isReceptionist ? undefined : handleUpdateReservation}
+            onBatchUpdateReservations={isReceptionist ? undefined : handleBatchUpdateReservations}
+            onDeleteReservation={isReceptionist ? undefined : handleDeleteReservation}
+            onToggleBlockRoom={isReceptionist ? undefined : (roomId) => {
               const r = rooms.find((rm) => rm.id === roomId);
               if (r) {
                 handleUpdateRoomStatus(roomId, r.status === 'blocked' ? 'available' : 'blocked');
               }
             }}
             userRole={userRole}
-            onOpenQuickAllotModal={(res) => setQuickAllotTarget(res)}
-            onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
+            onOpenQuickAllotModal={isReceptionist ? undefined : (res) => setQuickAllotTarget(res)}
+            onOpenSwitchRoomModal={isReceptionist ? undefined : (target) => setSwitchRoomTarget(target)}
             isLiveBackendConnected={isLiveBackendConnected}
             pullStatus={pullStatus}
             isPulling={manualPullRunning}
             onPullNkerp={handlePullNkerp}
             onExportRoomAllocation={() => exportRoomAllocation(reservations, rooms)}
             onRefreshLiveComputerData={() => handleRefreshLiveComputerData(true)}
-            onOpenAddBuildingRooms={() => {
+            onOpenAddBuildingRooms={isReceptionist ? undefined : () => {
 
               setIsAddBuildingRoomsOpen(true);
             }}
@@ -1212,7 +1227,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'reservations' && (
+        {visibleTab === 'reservations' && (
           <ReservationsView
             reservations={reservations}
             photos={photos}
@@ -1233,7 +1248,7 @@ export default function App() {
             onOpenAddTourGroup={() => setIsAddTourGroupOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
             onOpenCategoriesModal={() => setIsCategoriesModalOpen(true)}
-            onNavigateToShifts={() => setActiveTab('upgrades')}
+            onNavigateToShifts={() => navigateTab('upgrades')}
             onBatchAllotFamily={handleBatchAllotFamily}
             onAllotRoom={handleAllotRoom}
             userRole={userRole}
@@ -1248,22 +1263,22 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'planner' && (
+        {visibleTab === 'planner' && (
           <AllocationPlannerView
             reservations={reservations}
             rooms={rooms}
             userRole={userRole}
             onApplyPlan={handleApplyPlan}
             onShiftToB={(ids) => handleBatchShiftToCategoryB(ids, 'No')}
-            onOpenSync={() => setActiveTab('sync')}
+            onOpenSync={() => navigateTab('sync')}
             rules={plannerRules}
             onSaveRules={handleSavePlannerRules}
           />
         )}
 
-        {activeTab === 'approvals' && <ApprovalsView />}
+        {visibleTab === 'approvals' && <ApprovalsView />}
 
-        {activeTab === 'upgrades' && (<>
+        {visibleTab === 'upgrades' && (<>
           <CategoryUpgradeView
             reservations={reservations}
             rooms={rooms}
@@ -1281,20 +1296,21 @@ export default function App() {
           <SlipRecordsPanel refreshKey={isAccountsSlipOpen} />
         </>)}
 
-        {activeTab === 'sync' && <NkerpSyncView sync={syncWithSavedData} />}
+        {visibleTab === 'sync' && <NkerpSyncView sync={syncWithSavedData} />}
 
-        {activeTab === 'emails' && <NajafEmailsView emails={najafEmails} sync={nkerpSync} />}
+        {visibleTab === 'emails' && <NajafEmailsView emails={najafEmails} sync={nkerpSync} />}
 
-        {activeTab === 'rooms' && (
+        {visibleTab === 'rooms' && (
           <RoomsManagementView
             rooms={rooms}
             reservations={reservations}
+            readOnly={isReceptionist}
             onUpdateRoomStatus={handleUpdateRoomStatus}
             onUpdateRoomDetails={handleUpdateRoomDetails}
             onResetRoomsToSaifeeBurhani={handleResetToSaifeeBurhaniRooms}
-            onAddRooms={handleAddRooms}
-            onDeleteRoom={handleDeleteRoom}
-            onOpenSwitchRoomModal={(target) => setSwitchRoomTarget(target)}
+            onAddRooms={isReceptionist ? undefined : handleAddRooms}
+            onDeleteRoom={isReceptionist ? undefined : handleDeleteRoom}
+            onOpenSwitchRoomModal={isReceptionist ? undefined : (target) => setSwitchRoomTarget(target)}
           />
         )}
       </main>
@@ -1341,8 +1357,9 @@ export default function App() {
           reservations={reservations}
           rooms={rooms}
           initialTab={receptionSlipInitialTab}
-          onUpdateReservation={handleUpdateReservation}
-          onBatchUpdateReservations={handleBatchUpdateReservations}
+          readOnly={isReceptionist}
+          onUpdateReservation={isReceptionist ? undefined : handleUpdateReservation}
+          onBatchUpdateReservations={isReceptionist ? undefined : handleBatchUpdateReservations}
         />
       )}
 
@@ -1386,6 +1403,7 @@ export default function App() {
         rooms={rooms}
         initialReportType={pdfModalInitialReportType}
         initialTourId={pdfModalInitialTourId}
+        manifestOnly={isReceptionist}
       />
 
       {/* Role Management Modal (Admin PIN vs Receptionist View-Only) */}

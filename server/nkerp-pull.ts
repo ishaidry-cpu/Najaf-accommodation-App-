@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { normalizeBuildingName, normalizeRoomNumber } from '../src/services/storage.js';
 import type { Reservation } from '../src/types/index.js';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../src/services/stayTimes.js';
 import { nkerpLogin } from './nkerp-sync/credentials.js';
 import { NkerpClient } from './nkerp-sync/nkerpClient.js';
 import { NkerpEmailClient } from './nkerp-sync/emails.js';
@@ -178,6 +179,10 @@ export function reconcileNkerp(incoming: StoredReservation[], now = Date.now()) 
         }
         if (!localFields?.includes('isUploadedToPortal')) merged.isUploadedToPortal = Boolean(source.roomNumber && merged.roomNumber === source.roomNumber && merged.building === source.building);
       }
+      // Najaf check-in is 10:00 AM and check-out 8:00 AM, whatever time NKERP's plan carries, unless the
+      // stay's time was changed in the app. nkerpDates below still records NKERP's own times.
+      if (!merged.localFields?.includes('arrivalTime')) merged.arrivalTime = SUBVENUE_ARRIVAL_TIME;
+      if (!merged.localFields?.includes('departureTime')) merged.departureTime = SUBVENUE_DEPARTURE_TIME;
       merged.nkerpBaseline = source.nkerpBaseline;
       merged.nkerpDates = stayDates(source);
       merged.category ||= 'Mumineen';

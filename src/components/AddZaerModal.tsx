@@ -4,6 +4,7 @@ import { Reservation, Room, MoneyGivenStatus } from '../types';
 import { isDuplicateReservation, normalizeItsId, normalizeText } from '../utils/deduplication';
 import { getVacantRoomsForDuration, getDistinctBuildings } from '../services/storage';
 import { btn, btnSm, field, fieldLabel, modalScrim, modalCard, modalHeader, modalTitle, modalClose, modalFooter } from './ui';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 /* Shared form pieces for this dialog. */
 const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
@@ -72,9 +73,9 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   const [hofId, setHofId] = useState('');
   const [category, setCategory] = useState(categories[0] || 'Mumineen');
   const [arrivalDate, setArrivalDate] = useState(todayStr);
-  const [arrivalTime, setArrivalTime] = useState('11:00 AM');
+  const [arrivalTime, setArrivalTime] = useState(SUBVENUE_ARRIVAL_TIME);
   const [departureDate, setDepartureDate] = useState(defaultDepartureStr);
-  const [departureTime, setDepartureTime] = useState('01:00 AM');
+  const [departureTime, setDepartureTime] = useState(SUBVENUE_DEPARTURE_TIME);
   
   // Dynamic distinct buildings list (core 3 + any custom buildings added by user)
   const distinctBuildings = useMemo(() => getDistinctBuildings(rooms), [rooms]);
@@ -103,9 +104,9 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
       setHofId('');
       setCategory(categories[0] || 'Mumineen');
       setArrivalDate(todayStr);
-      setArrivalTime('11:00 AM');
+      setArrivalTime(SUBVENUE_ARRIVAL_TIME);
       setDepartureDate(defaultDepartureStr);
-      setDepartureTime('01:00 AM');
+      setDepartureTime(SUBVENUE_DEPARTURE_TIME);
       setBuilding('Saifee');
       setRoomNumber('');
       setShiftToCategoryA(false);
@@ -561,7 +562,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <input
                   id="az-arr-time"
                   type="text"
-                  placeholder="11:00 AM"
+                  placeholder="10:00 AM"
                   value={arrivalTime}
                   onChange={(e) => setArrivalTime(e.target.value)}
                   className={`${field} tabular-nums`}
@@ -590,7 +591,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                 <input
                   id="az-dep-time"
                   type="text"
-                  placeholder="01:00 AM"
+                  placeholder="08:00 AM"
                   value={departureTime}
                   onChange={(e) => setDepartureTime(e.target.value)}
                   className={`${field} tabular-nums`}

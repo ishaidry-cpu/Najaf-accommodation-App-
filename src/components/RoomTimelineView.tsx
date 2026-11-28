@@ -32,6 +32,7 @@ import {
 import { checkTurnoverTimingConflict } from '../utils/turnoverTiming';
 import { formatDay, segBtn, segTrack } from './RoomSpecFields';
 import { btn, btnSm, card, chip, field, fieldLabel, fieldSm, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle, panel } from './ui';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 /** Toolbar controls grow to a full 40px touch target on phones. */
 const tap = 'max-sm:h-10';
@@ -154,9 +155,9 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
   const [instantFamilyNumber, setInstantFamilyNumber] = useState<string>('F-1');
   const [instantPax, setInstantPax] = useState<number>(2);
   const [instantArrivalDate, setInstantArrivalDate] = useState<string>('');
-  const [instantArrivalTime, setInstantArrivalTime] = useState<string>('11:00 AM');
+  const [instantArrivalTime, setInstantArrivalTime] = useState<string>(SUBVENUE_ARRIVAL_TIME);
   const [instantDepartureDate, setInstantDepartureDate] = useState<string>('');
-  const [instantDepartureTime, setInstantDepartureTime] = useState<string>('01:00 AM');
+  const [instantDepartureTime, setInstantDepartureTime] = useState<string>(SUBVENUE_DEPARTURE_TIME);
   const [instantRemarks, setInstantRemarks] = useState<string>('');
   const [instantCategory, setInstantCategory] = useState<string>('Category A (Nizaam)');
   const [instantGender, setInstantGender] = useState<'Male' | 'Female'>('Male');
@@ -443,9 +444,9 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       setInstantFamilyNumber('F-1');
       setInstantPax(room.capacity || 2);
       setInstantArrivalDate(dateStr);
-      setInstantArrivalTime('11:00 AM');
+      setInstantArrivalTime(SUBVENUE_ARRIVAL_TIME);
       setInstantDepartureDate(defaultDepStr);
-      setInstantDepartureTime('01:00 AM');
+      setInstantDepartureTime(SUBVENUE_DEPARTURE_TIME);
       setInstantRemarks('');
       setInstantCategory(room.category || 'Category A (Nizaam)');
       setInstantGender('Male');
@@ -494,11 +495,11 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
       building: room.building,
       roomNumber: room.roomNumber,
       arrivalDate: instantArrivalDate,
-      arrivalTime: instantArrivalTime || '11:00 AM',
+      arrivalTime: instantArrivalTime || SUBVENUE_ARRIVAL_TIME,
       departureDate: instantDepartureDate,
-      departureTime: instantDepartureTime || '01:00 AM',
-      rawArrivalStr: `${instantArrivalDate} ${instantArrivalTime || '11:00 AM'}`.trim(),
-      rawDepartureStr: `${instantDepartureDate} ${instantDepartureTime || '01:00 AM'}`.trim(),
+      departureTime: instantDepartureTime || SUBVENUE_DEPARTURE_TIME,
+      rawArrivalStr: `${instantArrivalDate} ${instantArrivalTime || SUBVENUE_ARRIVAL_TIME}`.trim(),
+      rawDepartureStr: `${instantDepartureDate} ${instantDepartureTime || SUBVENUE_DEPARTURE_TIME}`.trim(),
       remarks: instantRemarks.trim(),
       notes: instantRemarks.trim(),
       category: (instantCategory as any) || room.category || 'Category A (Nizaam)',
@@ -1116,7 +1117,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                       // DEPARTURE DAY (The room is freeing up on this day!)
                       if (isDepartureDay) {
                         const dep = departingGuests[0];
-                        const depTime = dep.departureTime || '01:00 AM';
+                        const depTime = dep.departureTime || SUBVENUE_DEPARTURE_TIME;
                         return (
                           <td
                             key={dateStr}
@@ -1240,7 +1241,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                     Arrival
                   </dt>
                   <dd className="mt-0.5 text-sm font-medium text-stone-900 tabular-nums">
-                    {formatDay(hoveredReservation.arrivalDate)}, {hoveredReservation.arrivalTime || '11:00 AM'}
+                    {formatDay(hoveredReservation.arrivalDate)}, {hoveredReservation.arrivalTime || SUBVENUE_ARRIVAL_TIME}
                   </dd>
                   {hoveredReservation.rawArrivalStr && (
                     <dd className="text-xs text-stone-500 break-words">
@@ -1255,7 +1256,7 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                     Departure
                   </dt>
                   <dd className="mt-0.5 text-sm font-medium text-stone-900 tabular-nums">
-                    {formatDay(hoveredReservation.departureDate)}, {hoveredReservation.departureTime || '01:00 AM'}
+                    {formatDay(hoveredReservation.departureDate)}, {hoveredReservation.departureTime || SUBVENUE_DEPARTURE_TIME}
                   </dd>
                   {hoveredReservation.rawDepartureStr && (
                     <dd className="text-xs text-stone-500 break-words">
@@ -1532,10 +1533,10 @@ export const RoomTimelineView: React.FC<RoomTimelineViewProps> = ({
                           <div className="sm:text-right shrink-0 tabular-nums">
                             <div className="inline-flex items-center gap-1 text-[13px] font-medium text-amber-800">
                               <LogOut className="w-3.5 h-3.5" />
-                              <span>Vacating {formatDay(res.departureDate)}, {res.departureTime || '01:00 AM'}</span>
+                              <span>Vacating {formatDay(res.departureDate)}, {res.departureTime || SUBVENUE_DEPARTURE_TIME}</span>
                             </div>
                             <div className="text-xs text-stone-500">
-                              Stay: {formatDay(res.arrivalDate)}, {res.arrivalTime || '11:00 AM'} → {formatDay(res.departureDate)}, {res.departureTime || '01:00 AM'}
+                              Stay: {formatDay(res.arrivalDate)}, {res.arrivalTime || SUBVENUE_ARRIVAL_TIME} → {formatDay(res.departureDate)}, {res.departureTime || SUBVENUE_DEPARTURE_TIME}
                             </div>
                           </div>
                         </li>

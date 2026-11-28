@@ -18,6 +18,7 @@ import {
   modalClose,
   modalFooter,
 } from './ui';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 /* Shared form pieces for this dialog. */
 const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
@@ -118,9 +119,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   const [tourRefNo, setTourRefNo] = useState('');
   const [officeName, setOfficeName] = useState('Fayz E Husayni Trust Mumbai');
   const [arrivalDate, setArrivalDate] = useState(todayStr);
-  const [arrivalTime, setArrivalTime] = useState('11:00 AM');
+  const [arrivalTime, setArrivalTime] = useState(SUBVENUE_ARRIVAL_TIME);
   const [departureDate, setDepartureDate] = useState(defaultDepartureStr);
-  const [departureTime, setDepartureTime] = useState('01:00 AM');
+  const [departureTime, setDepartureTime] = useState(SUBVENUE_DEPARTURE_TIME);
   const [groupLeadName, setGroupLeadName] = useState('');
   const [defaultCategory, setDefaultCategory] = useState(categories[0] || 'Mumineen');
 
@@ -168,9 +169,9 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
       setTourRefNo('');
       setOfficeName(existingOffices[0] || 'Fayz E Husayni Trust Mumbai');
       setArrivalDate(todayStr);
-      setArrivalTime('11:00 AM');
+      setArrivalTime(SUBVENUE_ARRIVAL_TIME);
       setDepartureDate(defaultDepartureStr);
-      setDepartureTime('01:00 AM');
+      setDepartureTime(SUBVENUE_DEPARTURE_TIME);
       setGroupLeadName('');
       const initialCat = categories[0] || 'Mumineen';
       setDefaultCategory(initialCat);
@@ -618,8 +619,8 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
         return;
       }
 
-      const rawArr = `${arrivalDate} ${arrivalTime || '11:00 AM'}`.trim();
-      const rawDep = `${departureDate} ${departureTime || '01:00 AM'}`.trim();
+      const rawArr = `${arrivalDate} ${arrivalTime || SUBVENUE_ARRIVAL_TIME}`.trim();
+      const rawDep = `${departureDate} ${departureTime || SUBVENUE_DEPARTURE_TIME}`.trim();
       const chosenBuilding = normalizeBuildingName(r.building || defaultBuilding) || 'Saifee';
       const chosenRoom = normalizeRoomNumber(r.roomNumber);
 
@@ -644,10 +645,10 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
         departureDate,
         rawArrivalStr: rawArr,
         rawDepartureStr: rawDep,
-        arrivalTime: arrivalTime || '11:00 AM',
-        departureTime: departureTime || '01:00 AM',
-        arrivalDateTime: `${arrivalDate}T${(arrivalTime || '11:00 AM').replace(/\s+/g, '')}`,
-        departureDateTime: `${departureDate}T${(departureTime || '01:00 AM').replace(/\s+/g, '')}`,
+        arrivalTime: arrivalTime || SUBVENUE_ARRIVAL_TIME,
+        departureTime: departureTime || SUBVENUE_DEPARTURE_TIME,
+        arrivalDateTime: `${arrivalDate}T${(arrivalTime || SUBVENUE_ARRIVAL_TIME).replace(/\s+/g, '')}`,
+        departureDateTime: `${departureDate}T${(departureTime || SUBVENUE_DEPARTURE_TIME).replace(/\s+/g, '')}`,
         building: chosenBuilding,
         roomNumber: chosenRoom,
         shiftToCategoryA: Boolean(isBToA),
@@ -779,7 +780,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   <input
                     id="tg-arr-time"
                     type="text"
-                    placeholder="11:00 AM"
+                    placeholder="10:00 AM"
                     value={arrivalTime}
                     onChange={(e) => setArrivalTime(e.target.value)}
                     className={`${field} tabular-nums`}
@@ -808,7 +809,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                   <input
                     id="tg-dep-time"
                     type="text"
-                    placeholder="01:00 AM"
+                    placeholder="08:00 AM"
                     value={departureTime}
                     onChange={(e) => setDepartureTime(e.target.value)}
                     className={`${field} tabular-nums`}

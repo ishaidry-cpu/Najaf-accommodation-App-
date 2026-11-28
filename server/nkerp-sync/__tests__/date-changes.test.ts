@@ -41,7 +41,7 @@ test('a stay NKERP moves to dates that do not overlap updates the saved stay ins
   const stays = guests();
   assert.equal(stays.length, 1);
   assert.deepEqual([stays[0].id, stays[0].arrivalDate, stays[0].departureDate, stays[0].departureTime, stays[0].roomNumber],
-    [saved.id, '2026-11-28', '2026-12-02', '19:00', '305']);
+    [saved.id, '2026-11-28', '2026-12-02', '08:00 AM', '305']);
 }));
 
 test('an outdated copy of a moved stay is removed when NKERP lists the guest only on the new dates', () => withStore(localStore, () => {
@@ -74,7 +74,17 @@ test("NKERP's new dates replace an earlier date edit in the app; an unchanged NK
   reconcileNkerp([nkerp('3', '2026-11-22T11:00:00', '2026-11-24T19:00:00')], now);
   assert.equal(guests()[0].departureTime, '08:00');
   reconcileNkerp([nkerp('3', '2026-11-22T11:00:00', '2026-11-25T19:00:00')], now);
-  assert.deepEqual([guests()[0].departureDate, guests()[0].departureTime, (guests()[0] as StoredReservation).localFields], ['2026-11-25', '19:00', []]);
+  assert.deepEqual([guests()[0].departureDate, guests()[0].departureTime, (guests()[0] as StoredReservation).localFields], ['2026-11-25', '08:00 AM', []]);
+}));
+
+test('NKERP stays take the 10:00 AM arrival and 8:00 AM departure; a time changed in the app is kept', () => withStore(localStore, () => {
+  reset();
+  reconcileNkerp([nkerp('6', '2026-11-22T00:00:00', '2026-11-24T23:59:00')], now);
+  const [saved] = guests();
+  assert.deepEqual([saved.arrivalTime, saved.departureTime], ['10:00 AM', '08:00 AM']);
+  write('reservations', [{ ...saved, departureTime: '06:30 AM', localFields: ['departureTime'] }]);
+  reconcileNkerp([nkerp('6', '2026-11-22T00:00:00', '2026-11-24T23:59:00')], now);
+  assert.deepEqual([guests()[0].arrivalTime, guests()[0].departureTime], ['10:00 AM', '06:30 AM']);
 }));
 
 test('records saved before NKERP dates were tracked follow a changed NKERP day even when the dates were edited', () => withStore(localStore, () => {

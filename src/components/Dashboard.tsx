@@ -57,6 +57,7 @@ import {
   modalClose,
   modalFooter,
 } from './ui';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 /* ------------------------------------------------------------------ */
 /* Display helpers. They only change how a value reads on screen.      */
@@ -193,6 +194,8 @@ interface DashboardProps {
   onOpenAddBuildingRooms?: () => void;
   onRefreshLiveComputerData?: () => Promise<void> | void;
   onOpenPdfModal?: (reportType?: any, tourId?: string) => void;
+  /** Receptionist access: everything is shown, nothing can be changed. */
+  readOnly?: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -222,6 +225,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenAddBuildingRooms,
   onRefreshLiveComputerData,
   onOpenPdfModal,
+  readOnly = false,
 }) => {
   // Rooms View Mode: Compact Matrix by default on mobile phones, Timeline on desktop
   const [roomsViewMode, setRoomsViewMode] = useState<'timeline' | 'buttons'>(() =>
@@ -843,6 +847,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
         {pullLine}
       </span>
+      {!readOnly && (<>
       <button
         type="button"
         className="inline-flex items-center max-lg:min-h-10 font-medium text-brand-700 hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -858,6 +863,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       >
         Export room allocation
       </button>
+      </>)}
+      {readOnly && <span className="text-stone-500">Receptionist · view only</span>}
     </div>
   );
 
@@ -866,7 +873,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="space-y-4 sm:space-y-6 pb-8">
       {/* Phones: the quick look-up comes first */}
-      <section aria-label="Find a zair" className={`md:hidden ${card} p-4`}>
+      <section aria-label="Find a zair" className={`${readOnly ? '' : 'md:hidden'} ${card} p-4`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold leading-tight text-stone-950">Find a zair</h2>
@@ -931,9 +938,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {res.officeName && <span> · {res.officeName}</span>}
                   </div>
                   <div className="mt-0.5 text-[13px] text-stone-500 tabular-nums">
-                    {formatStay((res.arrivalDate || '').slice(0, 10), res.arrivalTime || '11:00 AM')}
+                    {formatStay((res.arrivalDate || '').slice(0, 10), res.arrivalTime || SUBVENUE_ARRIVAL_TIME)}
                     {' → '}
-                    {formatStay((res.departureDate || '').slice(0, 10), res.departureTime || '01:00 AM')}
+                    {formatStay((res.departureDate || '').slice(0, 10), res.departureTime || SUBVENUE_DEPARTURE_TIME)}
                   </div>
 
                   <div className="mt-2.5 grid grid-cols-2 gap-2">
@@ -989,6 +996,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           meta={nkerpLine}
           actions={
             <>
+              {!readOnly && (<>
               <button
                 type="button"
                 onClick={onDownloadTemplate}
@@ -1001,6 +1009,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <Upload className="w-4 h-4 text-stone-500" />
                 Upload Excel
               </button>
+              </>)}
               {onOpenAddTourGroup && (
                 <button
                   type="button"
@@ -1108,7 +1117,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <section aria-label="Tours and families" className={`${card} p-4 sm:p-6 @container`}>
         <SectionHeader
           title="Tours and families"
-          description="Find a tour by ID, office or date, then allot or switch rooms for a whole family at once."
+          description={readOnly ? 'Find a tour by ID, office or date to see its families, rooms and dates.' : 'Find a tour by ID, office or date, then allot or switch rooms for a whole family at once.'}
           actions={
             <>
               {tourSummaries.length > 0 && (
@@ -1334,7 +1343,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       Tour manifest
                     </button>
                   )}
-                  {firstMember && (
+                  {firstMember && !readOnly && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1474,12 +1483,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 <li key={m.id}>
                                   <button
                                     type="button"
+                                    disabled={readOnly}
                                     onClick={() => {
                                       setSpecialGuestModalTarget(m);
                                       setSpecialGuestInitialScope('guest');
                                     }}
-                                    className="text-left text-[13px] text-amber-900 hover:underline cursor-pointer max-lg:min-h-10"
-                                    title="Edit this guest's special requirements"
+                                    className="text-left text-[13px] text-amber-900 enabled:hover:underline enabled:cursor-pointer max-lg:min-h-10"
+                                    title={readOnly ? undefined : "Edit this guest's special requirements"}
                                   >
                                     <span className="font-semibold tabular-nums">
                                       {m.applicantName} ({m.itsId}):
@@ -1495,6 +1505,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                     {/* Where they go */}
                     <div className="@min-[62rem]:w-[38rem] flex flex-wrap items-start gap-x-2 gap-y-1">
+                      {readOnly ? (
+                        <span className="text-sm font-semibold text-stone-950 tabular-nums">
+                          {famItem.allottedCount > 0 && currentRoom ? `${currentBuilding} ${currentRoom}` : 'No room yet'}
+                        </span>
+                      ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         <select
                           aria-label={`Building for Family ${famItem.family}`}
@@ -1617,9 +1632,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </button>
                         )}
                       </div>
+                      )}
 
                       <div className="-ml-2.5 @min-[40rem]:ml-auto @min-[62rem]:-ml-2.5 flex items-center gap-x-1">
-                        {firstMember && (
+                        {firstMember && !readOnly && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1641,8 +1657,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           onClick={() => toggleExpandFamily(famItem.family)}
                           className={`${btnSm.ghost} ${touch}`}
                         >
-                          <Pencil className="w-4 h-4" />
-                          {isExpanded ? 'Hide members' : 'Edit members'}
+                          {!readOnly && <Pencil className="w-4 h-4" />}
+                          {isExpanded ? 'Hide members' : readOnly ? 'View members' : 'Edit members'}
                           <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                         </button>
                       </div>
@@ -1654,7 +1670,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className={`${panel} mt-3 px-3 sm:px-4 py-3 animate-in fade-in`}>
                       <div className="text-[13px] font-medium text-stone-800">
                         Family members
-                        <span className="font-normal text-stone-500"> · choosing a building or room here applies straight away</span>
+                        {!readOnly && <span className="font-normal text-stone-500"> · choosing a building or room here applies straight away</span>}
                       </div>
                       <ul className="mt-1 divide-y divide-stone-200">
                         {famItem.members.map((m) => {
@@ -1685,11 +1701,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <div className="flex items-start gap-1 min-w-0">
                                 <button
                                   type="button"
+                                  disabled={readOnly}
                                   onClick={() => {
                                     setSpecialGuestModalTarget(m);
                                     setSpecialGuestInitialScope('guest');
                                   }}
-                                  className="-ml-2 -mt-1.5 w-8 h-8 max-lg:w-10 max-lg:h-10 shrink-0 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-200/70 cursor-pointer"
+                                  className="-ml-2 -mt-1.5 w-8 h-8 max-lg:w-10 max-lg:h-10 shrink-0 rounded-lg flex items-center justify-center text-stone-500 enabled:hover:text-stone-900 enabled:hover:bg-stone-200/70 enabled:cursor-pointer"
                                   title={`Mark or edit special requirements for ${m.applicantName} (guest, family or Tour ID)`}
                                   aria-label={m.isSpecialGuest ? `${m.applicantName} is starred. Edit special requirements` : `Star ${m.applicantName}`}
                                 >
@@ -1706,11 +1723,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   {m.isSpecialGuest && m.specialRemarks && (
                                     <button
                                       type="button"
+                                      disabled={readOnly}
                                       onClick={() => {
                                         setSpecialGuestModalTarget(m);
                                         setSpecialGuestInitialScope('guest');
                                       }}
-                                      className="mt-0.5 text-left text-xs font-medium text-amber-800 hover:underline cursor-pointer max-lg:py-2"
+                                      className="mt-0.5 text-left text-xs font-medium text-amber-800 enabled:hover:underline enabled:cursor-pointer max-lg:py-2"
                                       title="Edit this special lodging requirement"
                                     >
                                       Requirement: {m.specialRemarks}
@@ -1719,6 +1737,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </div>
                               </div>
 
+                              {readOnly ? (
+                                <span className="shrink-0 text-[13px] font-semibold text-stone-950 tabular-nums">
+                                  {m.roomNumber ? `${m.building || ''} ${m.roomNumber}`.trim() : 'No room yet'}
+                                </span>
+                              ) : (
                               <div className="flex flex-wrap items-center gap-2 shrink-0">
                                 <select
                                   aria-label={`Building for ${m.applicantName}`}
@@ -1801,6 +1824,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   </button>
                                 )}
                               </div>
+                              )}
                             </li>
                           );
                         })}
@@ -2124,7 +2148,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="mt-0.5 flex items-baseline justify-between gap-3 text-[13px] text-stone-500">
                     <span className="flex min-w-0 items-baseline">
-                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.arrivalTime || '11:00 AM')}</span>
+                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.arrivalTime || SUBVENUE_ARRIVAL_TIME)}</span>
                       <span className="truncate tabular-nums" title={`Tour ${res.tourRefNo || res.tourId || '—'}${res.officeName ? ` · ${res.officeName}` : ''}`}>
                         {res.family} · Tour {shortTour(res.tourRefNo || res.tourId) || '—'}
                         {res.officeName ? ` · ${res.officeName}` : ''}
@@ -2173,7 +2197,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
                   <div className="mt-0.5 flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 text-[13px] text-stone-500">
                     <span className="flex min-w-0 max-w-full items-baseline">
-                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.departureTime || '01:00 AM')}</span>
+                      <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.departureTime || SUBVENUE_DEPARTURE_TIME)}</span>
                       <span className="truncate tabular-nums" title={`Tour ${res.tourRefNo || res.tourId || '—'}${res.officeName ? ` · ${res.officeName}` : ''}`}>
                         {res.family} · Tour {shortTour(res.tourRefNo || res.tourId) || '—'}
                         {res.officeName ? ` · ${res.officeName}` : ''}
@@ -2301,7 +2325,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {booking.officeName ? ` · ${booking.officeName}` : ''}
                               </div>
                               <div className="mt-0.5 text-[13px] text-stone-500 tabular-nums">
-                                {formatStay(booking.arrivalDate, booking.arrivalTime || '11:00 AM')} → {formatStay(booking.departureDate, booking.departureTime || '01:00 AM')}
+                                {formatStay(booking.arrivalDate, booking.arrivalTime || SUBVENUE_ARRIVAL_TIME)} → {formatStay(booking.departureDate, booking.departureTime || SUBVENUE_DEPARTURE_TIME)}
                                 {booking.category ? ` · ${booking.category}` : ''}
                               </div>
                             </div>
@@ -2343,6 +2367,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </p>
                       )}
                     </div>
+                  ) : readOnly ? (
+                    <p className={`${panel} px-4 py-4 text-[13px] text-stone-700`}>No zair is in this room on this date.</p>
                   ) : (
                     <div className={`${panel} px-4 py-4`}>
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2504,10 +2530,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className={modalFooter}>
-                  <button type="button" onClick={() => onNavigateTab('reservations')} className={`${btn.ghost} mr-auto -ml-2`}>
+                  {!readOnly && <button type="button" onClick={() => onNavigateTab('reservations')} className={`${btn.ghost} mr-auto -ml-2`}>
                     View all zaereen
                     <ChevronRight className="w-4 h-4" />
-                  </button>
+                  </button>}
                   <button type="button" onClick={() => setInspectedRoom(null)} className={btn.secondary}>
                     Close
                   </button>

@@ -87,6 +87,12 @@ const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 /** The phone's bottom bar holds the four everyday screens; the rest sit under More. */
 const MOBILE_PRIMARY: AppTab[] = ['dashboard', 'reservations', 'planner', 'rooms'];
 
+/** The only screens a receptionist sees. Everything else is hidden from them. */
+export const RECEPTIONIST_TABS: AppTab[] = ['dashboard', 'rooms'];
+const RECEPTION_GROUPS: NavGroup[] = [
+  { heading: 'Reception', items: NAV_ITEMS.filter((n) => RECEPTIONIST_TABS.includes(n.tab)) },
+];
+
 /** The gold marker glides to the chosen tab. */
 const markerSpring = { type: 'spring', stiffness: 520, damping: 40, mass: 0.7 } as const;
 
@@ -141,6 +147,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isReceptionist = userRole === 'receptionist';
+  const navGroups = isReceptionist ? RECEPTION_GROUPS : NAV_GROUPS;
+  const mobilePrimary = isReceptionist ? RECEPTIONIST_TABS : MOBILE_PRIMARY;
+  /** A receptionist prints from two fixed entries: the daily slips and the tour manifest. */
+  const receptionPrints = [
+    { key: 'slips', label: 'Print slips', short: 'Slips', icon: Printer, hint: 'Arrival and departure slips', run: () => onOpenReceptionSlip?.('arrival_slip') },
+    { key: 'manifest', label: 'Tour manifest', short: 'Manifest', icon: FileText, hint: 'View and print a tour manifest', run: () => onOpenPdfModal('tour_manifest') },
+  ];
   useEffect(() => {
     if (!isMobileMenuOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setIsMobileMenuOpen(false);
@@ -191,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <MenuItem
         icon={isReceptionist ? ShieldCheck : Eye}
         onClick={() => { close(); onOpenRoleModal(); }}
-        hint={isReceptionist ? 'Enter the admin PIN to edit' : 'Limit this device to viewing'}
+        hint={isReceptionist ? 'Enter the admin PIN for full access' : 'Limit this device to the reception screens, view only'}
       >
         {isReceptionist ? 'Switch to admin' : 'Switch to receptionist'}
       </MenuItem>
@@ -214,7 +227,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const lastPull = pulledAt(pullStatus?.lastSyncedAt);
   const pullFailed = Boolean(pullStatus?.error);
-  const moreActive = !MOBILE_PRIMARY.includes(activeTab);
+  const moreActive = !mobilePrimary.includes(activeTab);
 
   const railItem = (active: boolean) =>
     `group relative flex items-center gap-2.5 w-full h-10 rounded-lg text-sm whitespace-nowrap cursor-pointer ${
@@ -262,7 +275,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           )}
-          {NAV_GROUPS.map((group, gi) => (
+          {navGroups.map((group, gi) => (
             <div key={group.heading} className={gi ? 'mt-4' : ''}>
               {collapsed
                 ? (gi > 0 && <div className="mx-3 mb-3 h-px bg-white/10" aria-hidden />)
@@ -305,10 +318,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               </ul>
             </div>
           ))}
+          {isReceptionist && (
+            <div className="mt-4">
+              {collapsed
+                ? <div className="mx-3 mb-3 h-px bg-white/10" aria-hidden />
+                : <div className="px-3 pb-1.5 text-xs font-semibold text-brand-300/90">Print</div>}
+              <ul className="space-y-0.5">
+                {receptionPrints.map(({ key, label, icon: Icon, hint, run }) => (
+                  <li key={key}>
+                    <button type="button" onClick={run} aria-label={collapsed ? label : undefined}
+                      title={collapsed ? label : hint} className={railItem(false)}>
+                      <Icon className="relative w-[18px] h-[18px] shrink-0 text-brand-200/80 group-hover:text-white" strokeWidth={1.9} />
+                      {!collapsed && <span className="relative flex-1 text-left truncate">{label}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </nav>
 
         {/* Utilities stay outside the scrolling list so their menus are never clipped. */}
         <div className="relative shrink-0 px-2.5 pt-3 pb-3 border-t border-white/10 space-y-0.5">
+          {!isReceptionist && (<>
           <div className="pb-2">
             <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} variant="rail" iconOnly={collapsed} />
           </div>
@@ -336,6 +368,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             {printItems}
           </Dropdown>
+          </>)}
 
           <Dropdown label="Account" placement="side" block
             trigger={(open) => (
@@ -369,7 +402,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <FaizHusainiLogo size="sm" showSubtitle={false} light />
           </button>
           <div className="ml-auto flex items-center gap-1">
-            <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} variant="rail" compact />
+            {!isReceptionist && <SyncToNkerpButton sync={nkerpSync} onOpenSyncTab={() => setActiveTab('sync')} variant="rail" compact />}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -388,7 +421,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-stone-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       >
         <div className="mx-auto grid max-w-xl grid-cols-5 h-[60px]">
-          {NAV_ITEMS.filter((n) => MOBILE_PRIMARY.includes(n.tab)).map(({ tab, short, icon: Icon }) => {
+          {NAV_ITEMS.filter((n) => mobilePrimary.includes(n.tab)).map(({ tab, short, icon: Icon }) => {
             const active = activeTab === tab;
             return (
               <button
@@ -406,6 +439,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             );
           })}
+          {isReceptionist && receptionPrints.map(({ key, short, icon: Icon, run }) => (
+            <button key={key} type="button" onClick={run}
+              className="relative flex flex-col items-center justify-center gap-1 text-xs cursor-pointer text-stone-500 font-medium">
+              <Icon className="w-[22px] h-[22px]" strokeWidth={1.8} />
+              <span>{short}</span>
+            </button>
+          ))}
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
@@ -418,7 +458,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {moreActive && <motion.span layoutId="nav-marker-mobile" transition={markerSpring} aria-hidden className="absolute top-0 h-[3px] w-10 rounded-b-full bg-gold-400" />}
             <MoreHorizontal className={`w-[22px] h-[22px] ${nkerpSync.running ? 'animate-pulse' : ''}`} strokeWidth={moreActive ? 2.1 : 1.8} />
             <span>{moreActive ? NAV_ITEMS.find((n) => n.tab === activeTab)?.short : 'More'}</span>
-            {syncBadge > 0 && (
+            {!isReceptionist && syncBadge > 0 && (
               <span className="absolute top-1.5 left-1/2 ml-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[11px] leading-[18px] text-center font-semibold">
                 {syncBadge}
               </span>
@@ -451,7 +491,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 pb-10">
-              {NAV_GROUPS.map((group) => (
+              {navGroups.map((group) => (
                 <div key={group.heading}>
                   <MenuHeading>{group.heading}</MenuHeading>
                   {group.items.map(({ tab, label, icon: Icon }) => {
@@ -473,14 +513,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               ))}
               <MenuDivider />
-              <MenuHeading>NKERP data</MenuHeading>
-              <MenuItem icon={Download} disabled={isPulling} onClick={() => { setIsMobileMenuOpen(false); onPullNkerp(); }}
-                hint={lastPull ? `Last pulled ${lastPull}` : undefined}>
-                {isPulling ? 'Pulling…' : 'Pull from NKERP'}
-              </MenuItem>
-              <MenuDivider />
-              <MenuHeading>Print</MenuHeading>
-              {printItems(() => setIsMobileMenuOpen(false))}
+              {isReceptionist ? (
+                <>
+                  <MenuHeading>Print</MenuHeading>
+                  {receptionPrints.map(({ key, label, icon, hint, run }) => (
+                    <MenuItem key={key} icon={icon} hint={hint} onClick={() => { setIsMobileMenuOpen(false); run(); }}>{label}</MenuItem>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <MenuHeading>NKERP data</MenuHeading>
+                  <MenuItem icon={Download} disabled={isPulling} onClick={() => { setIsMobileMenuOpen(false); onPullNkerp(); }}
+                    hint={lastPull ? `Last pulled ${lastPull}` : undefined}>
+                    {isPulling ? 'Pulling…' : 'Pull from NKERP'}
+                  </MenuItem>
+                  <MenuDivider />
+                  <MenuHeading>Print</MenuHeading>
+                  {printItems(() => setIsMobileMenuOpen(false))}
+                </>
+              )}
               <MenuDivider />
               <MenuHeading>Account</MenuHeading>
               {accountItems(() => setIsMobileMenuOpen(false))}

@@ -37,7 +37,8 @@ test('preserves room inventory, allocates persistent local records, and keeps re
   assert.equal(guests().find(r=>r.tourRefNo==='A')?.isSpecialGuest,true);
   const removed = guests().find(r=>r.tourRefNo==='B')!;
   write('reservations',guests().filter(r=>r.id!==removed.id));
-  write('removed-stays',{[removalKey(removed)]:expiry(removed)});
+  // An entry from before deletions kept their dates: the expiry of the stay as NKERP reported it.
+  write('removed-stays',{[removalKey(removed)]:expiry(second)});
   assert.equal(reconcileNkerp([second],now).changed,0);
 }));
 

@@ -40,7 +40,9 @@ Sync.
 - Terminology staff use and the interface keeps: zair / zaereen, Tour ID, family (F-1, F-2 …), ITS, office,
   Category A / B, B→A shift, allot, switch room, portal upload, Nizam, Faiz.
 - Everyone in these four buildings is Category A. Only one family shares a room unless staff choose otherwise.
-- Receptionist access is view only.
+- Receptionist access is view only and limited to Overview, Rooms, Print slips (arrival and departure) and Tour
+  manifest; every other screen and control is hidden.
+- Najaf stays default to a 10:00 AM arrival and an 8:00 AM departure unless changed in the app.
 - Printed slips must keep fitting A4.
 
 ## Brand Commitments

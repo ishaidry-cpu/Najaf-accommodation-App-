@@ -9,7 +9,7 @@ import {
   type ApprovalSnapshot, type ApprovalTour, approvalPayload, compareWithOriginal, DEFAULT_APPROVAL_SETTINGS, dustbinVisible,
   followUpMessage, fromSubvenueDates, latestPlanSet, needsFollowUp, officeFollowUps, najafReport, normalizeApprovalSettings, planApprovals, readChat, splitInOrder,
   submissionState, suggestion, toSubvenueDates, approvalWarnings, chatTemplates, ITINERARY_MISSING, ITINERARY_UNKNOWN,
-  applicantsMustMatch, reopenPayload,
+  applicantsMustMatch, reopenPayload, relayNights,
 } from '../approvalPlanner';
 
 const TODAY = '2026-11-27';
@@ -62,8 +62,15 @@ describe('chat box', () => {
       msg('Karbala: 29th Nov till 1st Dec', '2026-11-25T09:00:00'), msg('1 Dec to 2 Dec Najaf', '2026-11-25T09:01:00')], trip);
     assert.deepEqual(r.segments?.map(s => s.city), ['KARBALA', 'NAJAF']);
   });
-  it('flags dates that no longer match the trip', () => {
+  it('reads dates outside the trip as an earlier plan and re-lays them onto the trip', () => {
     const r = readChat([msg('19 Nov to 20 Nov - Najaf'), msg('20 Nov to 21 Nov - Karbala')], { start: '2026-12-07', end: '2026-12-15' });
+    assert.deepEqual(r.problems, []);
+    assert.match(r.relaid!, /earlier plan/);
+    assert.deepEqual(r.segments, [{ city: 'NAJAF', start: '2026-12-07', end: '2026-12-08' }, { city: 'KARBALA', start: '2026-12-08', end: '2026-12-15' }]);
+  });
+  it('flags chat dates inside the trip that do not cover it', () => {
+    const r = readChat([msg('Najaf 8 Dec to 10 Dec'), msg('Karbala 10 Dec to 13 Dec')], { start: '2026-12-07', end: '2026-12-14' });
+    assert.equal(r.relaid, undefined);
     assert.equal(r.problems.length, 1);
   });
 });
@@ -503,5 +510,68 @@ describe('reopening an approved Tour ID', () => {
     assert.throws(() => reopenPayload({ ...status, PackageId: 3 }), /Package/);
     assert.throws(() => reopenPayload({ ...status, TransportItinerary: [] }), /itinerary is not saved/);
     assert.throws(() => reopenPayload({ ...status, TransportItinerary: [{ ArrivalDateTimeZone: '2026-12-10T10:00:00', DepartureDateTimeZone: '2026-12-14T08:00:00' }] }), /itinerary to be updated/);
+  });
+});
+
+describe('chat dates from an earlier plan', () => {
+  const early = (text: string, i = 0) => msg(text, `2026-09-20T10:0${i}:00`);
+  const segs = (r: ReturnType<typeof readChat>) => r.segments?.map(s => `${s.city} ${s.start.slice(5)}..${s.end.slice(5)}`).join(' | ');
+  const nights = (first: 'KARBALA' | 'NAJAF', f: number | null, s: number | null, total: number) =>
+    relayNights({ city: first, nights: f }, { city: first === 'KARBALA' ? 'NAJAF' : 'KARBALA', nights: s }, total).list.map(x => `${x.city[0]}${x.nights}`).join('/');
+
+  it('keeps the first city\'s nights, gives the rest to the second and the odd extra night to Karbala', () => {
+    assert.equal(nights('KARBALA', 4, 4, 8), 'K4/N4');
+    assert.equal(nights('KARBALA', 4, 4, 7), 'K4/N3');
+    assert.equal(nights('KARBALA', 4, 4, 9), 'K5/N4');
+    assert.equal(nights('KARBALA', 4, 4, 10), 'K4/N6');
+    assert.equal(nights('NAJAF', 3, 3, 7), 'N3/K4');
+    assert.equal(nights('NAJAF', 4, 4, 7), 'N3/K4');
+    assert.equal(nights('KARBALA', 4, 4, 3), 'K2/N1');
+    assert.equal(nights('KARBALA', 4, null, 8), 'K4/N4');
+    assert.equal(nights('KARBALA', 4, null, 3), 'K2/N1');
+    assert.equal(nights('KARBALA', 4, 4, 1), 'K1');
+  });
+  it('never uses past dates as stays: re-lays the nights and sequence onto the current trip', () => {
+    const dec8 = { start: '2026-12-03', end: '2026-12-11' };
+    const r = readChat([early('Karbala 21-25 October, Najaf following 4 nights')], dec8);
+    assert.equal(segs(r), 'KARBALA 12-03..12-07 | NAJAF 12-07..12-11');
+    assert.equal(r.order, 'KARBALA');
+    assert.deepEqual(r.problems, []);
+    assert.deepEqual(r.confirm, []);
+    assert.match(r.relaid!, /21 Oct–25 Oct are from an earlier plan/);
+    const shorter = readChat([early('Karbala 21 Oct to 25 Oct'), early('Najaf 25 Oct to 29 Oct', 1)], { start: '2026-12-03', end: '2026-12-10' });
+    assert.equal(segs(shorter), 'KARBALA 12-03..12-07 | NAJAF 12-07..12-10');
+    assert.match(shorter.relaid!, /Karbala 4 nights then Najaf 4 nights.*Karbala 4 nights then Najaf 3 nights/);
+    const najafFirst = readChat([early('Najaf 21-24 Oct, Karbala 24-27 Oct')], { start: '2026-12-03', end: '2026-12-10' });
+    assert.equal(segs(najafFirst), 'NAJAF 12-03..12-06 | KARBALA 12-06..12-10');
+  });
+  it('still uses chat dates that fit the current trip as written', () => {
+    const r = readChat([msg('KRB 10 Dec - 14 Dec. NJF 14 Dec - 17 Dec')], { start: '2026-12-10', end: '2026-12-17' });
+    assert.equal(segs(r), 'KARBALA 12-10..12-14 | NAJAF 12-14..12-17');
+    assert.equal(r.relaid, undefined);
+  });
+  it('flags what it cannot carry over confidently, without blocking approval', () => {
+    const r = readChat([early('Najaf 25-29 Oct. Karbala first please')], { start: '2026-12-03', end: '2026-12-11' });
+    assert.equal(segs(r), 'KARBALA 12-03..12-07 | NAJAF 12-07..12-11');
+    assert.ok(r.confirm.some(x => /does not give the Karbala nights/.test(x)));
+    const t = tour({ arrivalAt: '2026-12-03T05:00:00', departureAt: '2026-12-11T05:00:00', messages: [early('Najaf 25-29 Oct. Karbala first please')] });
+    const p = planApprovals(snap([t]), {}, settings(), TODAY).plans[0];
+    assert.equal(p.source, 'chat-dates');
+    assert.equal(p.recommendation, 'confirm-dates');
+    assert.equal(p.approvable, true);
+    assert.ok(p.notes.some(x => /from an earlier plan/.test(x)));
+  });
+  it('plans a Faiz tour on the re-laid dates and asks to confirm a hotel tour\'s', () => {
+    const faiz = tour({ arrivalAt: '2026-12-03T05:00:00', departureAt: '2026-12-10T05:00:00', messages: [early('Karbala 21-25 October, Najaf following 4 nights')] });
+    const hotel = tour({ option: 3, optionLabel: 'Not Required', paxFaiz: 0, paxHotel: 4, paxTotal: 4, unread: true,
+      arrivalAt: '2026-12-03T05:00:00', departureAt: '2026-12-10T05:00:00', messages: [early('Karbala 21-25 October, Najaf following 4 nights')] });
+    const plan = planApprovals(snap([faiz, hotel]), {}, settings(), TODAY);
+    const f = plan.plans.find(p => p.tour.id === faiz.id)!;
+    assert.equal(f.source, 'chat-dates');
+    assert.equal(f.recommendation, 'approve');
+    assert.deepEqual(f.segments.map(s => s.end), ['2026-12-07', '2026-12-10']);
+    const h = plan.plans.find(p => p.tour.id === hotel.id)!;
+    assert.equal(h.recommendation, 'confirm-dates');
+    assert.ok(h.confirm.some(x => /earlier plan/.test(x)));
   });
 });

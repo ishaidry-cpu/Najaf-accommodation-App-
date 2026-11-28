@@ -18,6 +18,7 @@ import { AddBuildingAndRoomsModal } from './AddBuildingAndRoomsModal';
 import { RoomEditModal, formatDay, segBtn, segTrack } from './RoomSpecFields';
 import { SwitchRoomTarget } from './SwitchRoomModal';
 import { PageHeader, btn, btnSm, card, chip, fieldSm, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle } from './ui';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 /** Card actions sit in a tight row: slightly narrower padding, and a full 40px target on phones. */
 const cardBtn = 'px-2! max-sm:h-10';
@@ -39,6 +40,8 @@ interface RoomsManagementViewProps {
   onAddRooms?: (newRooms: Room[]) => void;
   onDeleteRoom?: (roomId: string) => void;
   onOpenSwitchRoomModal?: (target: SwitchRoomTarget) => void;
+  /** Receptionist access: rooms, occupancy and details only; no block, edit, add or delete. */
+  readOnly?: boolean;
 }
 
 export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
@@ -50,6 +53,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
   onAddRooms,
   onDeleteRoom,
   onOpenSwitchRoomModal,
+  readOnly = false,
 }) => {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('ALL');
   const [selectedFloorLabel, setSelectedFloorLabel] = useState<string>('ALL');
@@ -128,8 +132,8 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
     <div className="space-y-6">
       <PageHeader
         title="Rooms"
-        description={`${totalCount} rooms, ${totalBeds} beds, sleeping ${totalSleeps} across ${distinctBuildings.length} buildings. Block a room, edit its details or add new ones.`}
-        actions={
+        description={`${totalCount} rooms, ${totalBeds} beds, sleeping ${totalSleeps} across ${distinctBuildings.length} buildings.${readOnly ? ' Pick a date to see who is in each room.' : ' Block a room, edit its details or add new ones.'}`}
+        actions={readOnly ? undefined :
           <>
             <button
               type="button"
@@ -379,6 +383,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                       >
                         Details
                       </button>
+                      {!readOnly && (
                       <button
                         type="button"
                         onClick={() => setEditingRoom(room)}
@@ -387,6 +392,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                       >
                         Edit
                       </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1 -mr-2">
@@ -406,14 +412,14 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                         </button>
                       )}
 
-                      <button
+                      {!readOnly && <button
                         type="button"
                         onClick={() => onUpdateRoomStatus(room.id, isBlocked ? 'available' : 'blocked')}
                         className={`${btnSm.ghost} ${cardBtn} ${isBlocked ? '' : 'hover:text-rose-700! hover:bg-rose-50!'}`}
                         title={isBlocked ? 'Put this room back into use' : 'Take this room out of use'}
                       >
                         {isBlocked ? 'Unblock' : 'Block'}
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 </div>
@@ -521,7 +527,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                               <div className="text-[13px] text-stone-600 truncate">Office: {occ.officeName}</div>
                             )}
                             <div className="text-xs text-stone-500 tabular-nums">
-                              {formatDay(occ.arrivalDate)}, {occ.arrivalTime || '11:00 AM'} → {formatDay(occ.departureDate)}, {occ.departureTime || '01:00 AM'}
+                              {formatDay(occ.arrivalDate)}, {occ.arrivalTime || SUBVENUE_ARRIVAL_TIME} → {formatDay(occ.departureDate)}, {occ.departureTime || SUBVENUE_DEPARTURE_TIME}
                             </div>
                           </div>
                           {onOpenSwitchRoomModal && (
@@ -600,6 +606,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   );
                 })() : null}
 
+                {!readOnly && (
                 <button
                   type="button"
                   onClick={() => {
@@ -611,6 +618,7 @@ export const RoomsManagementView: React.FC<RoomsManagementViewProps> = ({
                   <Pencil className="w-4 h-4" />
                   Edit
                 </button>
+                )}
                 <button type="button" onClick={() => setInspectingRoom(null)} className={btn.primary}>
                   Close
                 </button>

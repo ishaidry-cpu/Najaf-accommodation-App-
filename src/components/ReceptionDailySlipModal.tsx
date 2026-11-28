@@ -38,6 +38,7 @@ import { normalizeDate } from '../services/excelService';
 import { saveOrDownloadPdf, PdfDownloadResult } from '../services/pdfExport';
 import { parseTimeToMinutes, isInfant, countEffectivePax, getReservationEffectivePax } from '../utils/turnoverTiming';
 import { getStoredRooms, generateSaifeeBurhani114Rooms } from '../services/storage';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME } from '../services/stayTimes';
 
 // Safe invocation of jspdf-autotable to prevent runtime errors across bundler environments
 function safeAutoTable(doc: jsPDF, options: any) {
@@ -130,12 +131,12 @@ export function formatFlightOrStayTime(
   return defaultFallback || timeFieldOrFallback || '';
 }
 
-export function getReservationArrivalTime(r?: Partial<Reservation>, defaultFallback: string = '11:00 AM'): string {
+export function getReservationArrivalTime(r?: Partial<Reservation>, defaultFallback: string = SUBVENUE_ARRIVAL_TIME): string {
   if (!r) return defaultFallback;
   return extractCleanTime(r.arrivalTime, r.rawArrivalStr, r.arrivalDateTime, defaultFallback);
 }
 
-export function getReservationDepartureTime(r?: Partial<Reservation>, defaultFallback: string = '12:00 PM'): string {
+export function getReservationDepartureTime(r?: Partial<Reservation>, defaultFallback: string = SUBVENUE_DEPARTURE_TIME): string {
   if (!r) return defaultFallback;
   return extractCleanTime(r.departureTime, r.rawDepartureStr, r.departureDateTime, defaultFallback);
 }
@@ -528,7 +529,12 @@ interface ReceptionDailySlipModalProps {
   initialTab?: 'arrival_slip' | 'departure_list' | 'turnover' | 'roster' | 'worker_summary' | 'portal_upload';
   onUpdateReservation?: (updated: Reservation) => void;
   onBatchUpdateReservations?: (updatedList: Reservation[]) => void;
+  /** Receptionist access: only the arrival slip and departure list, nothing that changes a record. */
+  readOnly?: boolean;
 }
+
+/** The slips a receptionist can open: arrivals and departures, view and print only. */
+const RECEPTION_SLIP_TABS = ['arrival_slip', 'departure_list'] as const;
 
 export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = ({
   isOpen,
@@ -536,9 +542,13 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   reservations = [],
   rooms = [],
   initialTab = 'arrival_slip',
-  onUpdateReservation,
-  onBatchUpdateReservations,
+  onUpdateReservation: onUpdateReservationProp,
+  onBatchUpdateReservations: onBatchUpdateReservationsProp,
+  readOnly = false,
 }) => {
+  // A receptionist never changes a record from the slips.
+  const onUpdateReservation = readOnly ? undefined : onUpdateReservationProp;
+  const onBatchUpdateReservations = readOnly ? undefined : onBatchUpdateReservationsProp;
   const safeReservations = useMemo(() => (Array.isArray(reservations) ? reservations : []), [reservations]);
   const safeRooms = useMemo(() => {
     let baseList = Array.isArray(rooms) && rooms.length > 0 ? rooms : getStoredRooms();
@@ -656,9 +666,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   useEffect(() => {
     if (isOpen && initialTab) {
-      setActiveTab(initialTab);
+      setActiveTab(readOnly && !(RECEPTION_SLIP_TABS as readonly string[]).includes(initialTab) ? 'arrival_slip' : initialTab);
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, readOnly]);
   const [showOnlyTurnoversInSlip, setShowOnlyTurnoversInSlip] = useState<boolean>(false);
   const [showOnlyActiveRooms, setShowOnlyActiveRooms] = useState<boolean>(true);
   const [rosterGroupByTour, setRosterGroupByTour] = useState<boolean>(true);
@@ -818,8 +828,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
     if (deps.length > 0 && arrs.length > 0) {
       actionType = 'turnover';
-      const maxDepM = Math.max(...deps.map(d => parseTimeToMinutes(getReservationDepartureTime(d, '01:00 AM'), 60)));
-      const minArrM = Math.min(...arrs.map(a => parseTimeToMinutes(getReservationArrivalTime(a, '11:00 AM'), 660)));
+      const maxDepM = Math.max(...deps.map(d => parseTimeToMinutes(getReservationDepartureTime(d, SUBVENUE_DEPARTURE_TIME), 480)));
+      const minArrM = Math.min(...arrs.map(a => parseTimeToMinutes(getReservationArrivalTime(a, SUBVENUE_ARRIVAL_TIME), 600)));
       if (maxDepM > minArrM) {
         const diffHours = Math.round(((maxDepM - minArrM) / 60) * 10) / 10;
         if (diffHours > 15) {
@@ -919,8 +929,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   // Helper to sort arrivals chronologically by arrival time (Requirement 2)
   const sortArrivalsByTime = (list: Reservation[]) => {
     return [...list].sort((a, b) => {
-      const tA = getReservationArrivalTime(a, '11:00 AM');
-      const tB = getReservationArrivalTime(b, '11:00 AM');
+      const tA = getReservationArrivalTime(a, SUBVENUE_ARRIVAL_TIME);
+      const tB = getReservationArrivalTime(b, SUBVENUE_ARRIVAL_TIME);
       const diff = timeStringToMinutes(tA, 660) - timeStringToMinutes(tB, 660);
       if (diff !== 0) return diff;
       return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
@@ -930,8 +940,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
   // Helper to sort departures chronologically by departure time (Requirement 2)
   const sortDeparturesByTime = (list: Reservation[]) => {
     return [...list].sort((a, b) => {
-      const tA = getReservationDepartureTime(a, '12:00 PM');
-      const tB = getReservationDepartureTime(b, '12:00 PM');
+      const tA = getReservationDepartureTime(a, SUBVENUE_DEPARTURE_TIME);
+      const tB = getReservationDepartureTime(b, SUBVENUE_DEPARTURE_TIME);
       const diff = timeStringToMinutes(tA, 720) - timeStringToMinutes(tB, 720);
       if (diff !== 0) return diff;
       return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
@@ -963,8 +973,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
       const uniqueFamilies = new Set(items.map((x) => (x.family || '').trim()).filter(Boolean)).size;
       const times = sorted.map((x) =>
         isArrival
-          ? getReservationArrivalTime(x, '11:00 AM')
-          : getReservationDepartureTime(x, '12:00 PM')
+          ? getReservationArrivalTime(x, SUBVENUE_ARRIVAL_TIME)
+          : getReservationDepartureTime(x, SUBVENUE_DEPARTURE_TIME)
       );
       const earliestTime = times[0] || '—';
       const latestTime = times[times.length - 1] || '—';
@@ -1028,8 +1038,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
       if (isDep && isArr) {
         // Priority Turnover
-        const depTime = getReservationDepartureTime(item.deps[0], '12:00 PM');
-        const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
+        const depTime = getReservationDepartureTime(item.deps[0], SUBVENUE_DEPARTURE_TIME);
+        const arrTime = getReservationArrivalTime(item.arrs[0], SUBVENUE_ARRIVAL_TIME);
         const office = item.arrs[0]?.officeName || item.deps[0]?.officeName || 'Main Office';
         const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set([...item.deps, ...item.arrs].map((x) => x.family).filter(Boolean))).join(', ');
@@ -1053,8 +1063,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         });
       } else if (isDep) {
         // Checkout Cleaning
-        const depTime = getReservationDepartureTime(item.deps[0], '12:00 PM');
-        const arrTime = getReservationArrivalTime(item.deps[0], '11:00 AM');
+        const depTime = getReservationDepartureTime(item.deps[0], SUBVENUE_DEPARTURE_TIME);
+        const arrTime = getReservationArrivalTime(item.deps[0], SUBVENUE_ARRIVAL_TIME);
         const office = item.deps[0]?.officeName || 'Main Office';
         const tour = (item.deps[0]?.tourRefNo || item.deps[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set(item.deps.map((x) => x.family).filter(Boolean))).join(', ');
@@ -1079,8 +1089,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         });
       } else if (isArr) {
         // New Arrival Prep
-        const arrTime = getReservationArrivalTime(item.arrs[0], '11:00 AM');
-        const depTime = getReservationDepartureTime(item.arrs[0], '12:00 PM');
+        const arrTime = getReservationArrivalTime(item.arrs[0], SUBVENUE_ARRIVAL_TIME);
+        const depTime = getReservationDepartureTime(item.arrs[0], SUBVENUE_DEPARTURE_TIME);
         const office = item.arrs[0]?.officeName || 'Main Office';
         const tour = (item.arrs[0]?.tourRefNo || item.arrs[0]?.tourId || 'Unassigned Tour').trim();
         const fams = Array.from(new Set(item.arrs.map((x) => x.family).filter(Boolean))).join(', ');
@@ -1450,26 +1460,26 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
         const depText = item.deps.length > 0
           ? item.deps.map((d) => {
-              const timeStr = getReservationDepartureTime(d, '12:00 PM');
+              const timeStr = getReservationDepartureTime(d, SUBVENUE_DEPARTURE_TIME);
               const famPax = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
               return `• ${d.applicantName} (ITS: ${d.itsId})\n  DEP: ${timeStr} | Fam #${d.family || '—'} (${famPax} Pax) | Tour: ${d.tourRefNo || '—'}`;
             }).join('\n\n')
           : item.inHouse.length > 0 && item.arrs.length === 0
           ? item.inHouse.map((ih) => {
-              const timeStr = getReservationDepartureTime(ih, '12:00 PM');
+              const timeStr = getReservationDepartureTime(ih, SUBVENUE_DEPARTURE_TIME);
               return `• In-House Stay: ${ih.applicantName}\n  Dep: ${ih.departureDate || '—'} (${timeStr})`;
             }).join('\n\n')
           : '— None';
 
         const arrText = item.arrs.length > 0
           ? item.arrs.map((a) => {
-              const timeStr = getReservationArrivalTime(a, '11:00 AM');
+              const timeStr = getReservationArrivalTime(a, SUBVENUE_ARRIVAL_TIME);
               const famPax = item.arrs.filter(x => (x.family || '').trim() === (a.family || '').trim()).length;
               return `• ${a.applicantName} (ITS: ${a.itsId})\n  ARR: ${timeStr} | Fam #${a.family || '—'} (${famPax} Pax) | Tour: ${a.tourRefNo || '—'}`;
             }).join('\n\n')
           : item.inHouse.length > 0 && item.deps.length === 0
           ? item.inHouse.map((ih) => {
-              const timeStr = getReservationArrivalTime(ih, '11:00 AM');
+              const timeStr = getReservationArrivalTime(ih, SUBVENUE_ARRIVAL_TIME);
               return `• In-House Stay: ${ih.applicantName}\n  Arr was: ${ih.arrivalDate || '—'} (${timeStr})`;
             }).join('\n\n')
           : '— None';
@@ -2037,8 +2047,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
-          const arrTime = getReservationArrivalTime(r, '11:00 AM');
-          const depTime = getReservationDepartureTime(r, '12:00 PM');
+          const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
+          const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : 'UNALLOTTED\n[Assign Rm]';
           arrivalRows.push([
             `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
@@ -2102,8 +2112,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
         group.reservations.forEach((r) => {
           const paxInfo = getRoomPaxInfo(r);
-          const depTime = getReservationDepartureTime(r, '12:00 PM');
-          const arrTime = getReservationArrivalTime(r, '11:00 AM');
+          const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
+          const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building || ''})` : '—';
           departureRows.push([
             `Tour: ${group.tourRefNo}\nOffice: ${group.officeName}`,
@@ -2454,8 +2464,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
           return (a.roomNumber || '').localeCompare(b.roomNumber || '', undefined, { numeric: true });
         });
 
-        const arrTimes = items.map((r) => getReservationArrivalTime(r, '11:00 AM')).filter(Boolean);
-        const depTimes = items.map((r) => getReservationDepartureTime(r, '12:00 PM')).filter(Boolean);
+        const arrTimes = items.map((r) => getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME)).filter(Boolean);
+        const depTimes = items.map((r) => getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME)).filter(Boolean);
         const earliestArr = arrTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0] || '—';
         const earliestDep = depTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0] || '—';
         const famCount = new Set(items.map((x) => x.family).filter(Boolean)).size;
@@ -2473,8 +2483,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
         items.forEach((r) => {
           const roomStr = r.roomNumber ? `Room ${r.roomNumber}\n(${r.building} Hotel)` : 'UNALLOTTED\n[Needs Room]';
           const isUploaded = (portalUploadedMap[r.id] ?? r.isUploadedToPortal) ? '[✓] Uploaded' : '[  ] Pending';
-          const arrTime = getReservationArrivalTime(r, '11:00 AM');
-          const depTime = getReservationDepartureTime(r, '12:00 PM');
+          const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
+          const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
           const arrDep = `Arr: ${r.arrivalDate || '—'}${arrTime ? ` (${arrTime})` : ''}\nDep: ${r.departureDate || '—'}${depTime ? ` (${depTime})` : ''}`;
 
           portalRows.push([
@@ -2566,7 +2576,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
 
   /* ---- On-screen chrome helpers (nothing here reaches the printed slip) ---- */
   type SlipTabId = typeof activeTab;
-  const slipTabs: { id: SlipTabId; label: string; title: string; icon: React.ElementType }[] = [
+  const allSlipTabs: { id: SlipTabId; label: string; title: string; icon: React.ElementType }[] = [
     { id: 'arrival_slip', label: 'Arrival slip', title: 'Arrival slip: room allotments and dates', icon: LogIn },
     { id: 'departure_list', label: 'Departure list', title: 'Departure list: room numbers and dates', icon: LogOut },
     { id: 'turnover', label: 'Room turnover', title: 'Room-by-room turnover schedule', icon: DoorClosed },
@@ -2574,6 +2584,9 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
     { id: 'worker_summary', label: 'Worker sheet', title: 'Worker room operations sheet, by office, tour and time', icon: HardHat },
     { id: 'portal_upload', label: 'Portal upload', title: 'Assistant portal upload sheet: Tour IDs and rooms', icon: ClipboardList },
   ];
+  const slipTabs = readOnly
+    ? allSlipTabs.filter((t) => (RECEPTION_SLIP_TABS as readonly string[]).includes(t.id))
+    : allSlipTabs;
   const activeSlip = slipTabs.find((t) => t.id === activeTab) ?? slipTabs[0];
 
   /** PDF of the slip on screen: for the chosen building filter, or for one named building. */
@@ -2695,7 +2708,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
               Daily reception slips
             </h3>
             <p className="mt-1 text-[13px] text-stone-600 truncate">
-              Arrival, departure, turnover and roster sheets for one day, to print or download.
+              {readOnly ? 'Arrival slips and departure lists for one day, to view and print.' : 'Arrival, departure, turnover and roster sheets for one day, to print or download.'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className={`${modalClose} max-sm:w-10 max-sm:h-10`}>
@@ -4329,8 +4342,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                         const tourRefText = item.arrs[0]?.tourRefNo || item.deps[0]?.tourRefNo || item.inHouse[0]?.tourRefNo || '—';
 
                         // Unique departure and arrival operational times
-                        const depTimes = item.deps.map(d => getReservationDepartureTime(d, '12:00 PM')).filter(Boolean);
-                        const arrTimes = item.arrs.map(a => getReservationArrivalTime(a, '11:00 AM')).filter(Boolean);
+                        const depTimes = item.deps.map(d => getReservationDepartureTime(d, SUBVENUE_DEPARTURE_TIME)).filter(Boolean);
+                        const arrTimes = item.arrs.map(a => getReservationArrivalTime(a, SUBVENUE_ARRIVAL_TIME)).filter(Boolean);
                         const depTimeDisplay = depTimes.length > 0 ? Array.from(new Set(depTimes)).join(', ') : '';
                         const arrTimeDisplay = arrTimes.length > 0 ? Array.from(new Set(arrTimes)).join(', ') : '';
 
@@ -4426,7 +4439,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <div className="space-y-2">
                                   {item.deps.map((d, dIdx) => {
                                     const famPaxInRoom = item.deps.filter(x => (x.family || '').trim() === (d.family || '').trim()).length;
-                                    const depTime = getReservationDepartureTime(d, '12:00 PM');
+                                    const depTime = getReservationDepartureTime(d, SUBVENUE_DEPARTURE_TIME);
                                     return (
                                       <div key={dIdx} className="p-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 shadow-2xs space-y-1.5">
                                         <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
@@ -4467,7 +4480,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     </span>
                                   </div>
                                   {item.inHouse.map((ih, ihIdx) => {
-                                    const depTime = getReservationDepartureTime(ih, '12:00 PM');
+                                    const depTime = getReservationDepartureTime(ih, SUBVENUE_DEPARTURE_TIME);
                                     return (
                                       <div key={ihIdx} className="text-[10px] text-stone-800 bg-white p-1.5 rounded-lg border border-blue-100 flex items-center justify-between gap-2">
                                         <span className="font-semibold truncate">{ih.applicantName}</span>
@@ -4492,7 +4505,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                 <div className="space-y-2">
                                   {item.arrs.map((a, aIdx) => {
                                     const famPaxInRoom = item.arrs.filter(x => (x.family || '').trim() === (a.family || '').trim()).length;
-                                    const arrTime = getReservationArrivalTime(a, '11:00 AM');
+                                    const arrTime = getReservationArrivalTime(a, SUBVENUE_ARRIVAL_TIME);
                                     return (
                                       <div key={aIdx} className="p-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 shadow-2xs space-y-1.5">
                                         <div className="font-bold text-xs text-stone-900 flex items-center justify-between">
@@ -4536,7 +4549,7 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                                     </span>
                                   </div>
                                   {item.inHouse.map((ih, ihIdx) => {
-                                    const arrTime = getReservationArrivalTime(ih, '11:00 AM');
+                                    const arrTime = getReservationArrivalTime(ih, SUBVENUE_ARRIVAL_TIME);
                                     return (
                                       <div key={ihIdx} className="text-[10px] text-stone-800 bg-white p-1.5 rounded-lg border border-blue-100 flex items-center justify-between gap-2">
                                         <span className="font-semibold truncate">{ih.applicantName}</span>
@@ -4676,8 +4689,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                             <tbody className="divide-y divide-stone-200">
                               {tourGroup.reservations.map((r, i) => {
                                 const paxInfo = getRoomPaxInfo(r);
-                                const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                                const depTime = getReservationDepartureTime(r, '12:00 PM');
+                                const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
+                                const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
                                     <td className="py-2.5 px-3 font-mono font-black text-sm text-brand-700">
@@ -4761,8 +4774,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       {sortedArrivalsList.length > 0 ? (
                         sortedArrivalsList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
-                          const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                          const depTime = getReservationDepartureTime(r, '12:00 PM');
+                          const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
+                          const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
                           return (
                             <tr key={i} className="hover:bg-stone-50">
                               <td className="py-2.5 px-3 font-mono font-black text-sm text-brand-700">
@@ -4866,8 +4879,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                             <tbody className="divide-y divide-stone-200">
                               {tourGroup.reservations.map((r, i) => {
                                 const paxInfo = getRoomPaxInfo(r);
-                                const depTime = getReservationDepartureTime(r, '12:00 PM');
-                                const arrTime = getReservationArrivalTime(r, '11:00 AM');
+                                const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
+                                const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
                                 return (
                                   <tr key={i} className="hover:bg-stone-50">
                                     <td className="py-2.5 px-3 font-mono font-black text-sm text-stone-900">
@@ -4944,8 +4957,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                       {sortedDeparturesList.length > 0 ? (
                         sortedDeparturesList.map((r, i) => {
                           const paxInfo = getRoomPaxInfo(r);
-                          const depTime = getReservationDepartureTime(r, '12:00 PM');
-                          const arrTime = getReservationArrivalTime(r, '11:00 AM');
+                          const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
+                          const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
                           return (
                             <tr key={i} className="hover:bg-stone-50">
                               <td className="py-2.5 px-3 font-mono font-black text-sm text-stone-900">
@@ -5898,8 +5911,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           </span>
                           {/* Tour Timings with Clock Badges */}
                           {(() => {
-                            const arrTimes = tourGroup.reservations.map(r => getReservationArrivalTime(r, '11:00 AM')).filter(Boolean);
-                            const depTimes = tourGroup.reservations.map(r => getReservationDepartureTime(r, '12:00 PM')).filter(Boolean);
+                            const arrTimes = tourGroup.reservations.map(r => getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME)).filter(Boolean);
+                            const depTimes = tourGroup.reservations.map(r => getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME)).filter(Boolean);
                             const earliestArr = arrTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
                             const earliestDep = depTimes.sort((a, b) => timeStringToMinutes(a) - timeStringToMinutes(b))[0];
                             return (
@@ -5981,8 +5994,8 @@ export const ReceptionDailySlipModal: React.FC<ReceptionDailySlipModalProps> = (
                           <tbody className="divide-y divide-stone-200">
                             {tourGroup.reservations.map((r, rIdx) => {
                               const isUploaded = !!(portalUploadedMap[r.id] ?? r.isUploadedToPortal);
-                              const arrTime = getReservationArrivalTime(r, '11:00 AM');
-                              const depTime = getReservationDepartureTime(r, '12:00 PM');
+                              const arrTime = getReservationArrivalTime(r, SUBVENUE_ARRIVAL_TIME);
+                              const depTime = getReservationDepartureTime(r, SUBVENUE_DEPARTURE_TIME);
                               return (
                                 <tr key={r.id || rIdx} className={`hover:bg-stone-50 ${isUploaded ? 'bg-blue-50/40' : ''}`}>
                                   <td className="py-2.5 px-3 text-center text-stone-400 font-mono text-[11px]">

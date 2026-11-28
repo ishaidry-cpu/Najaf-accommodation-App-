@@ -66,10 +66,11 @@ import {
 } from '../services/storage';
 import { normalizeDate } from '../services/excelService';
 import { generateAdministrativePdf } from '../services/pdfExport';
-import { hasDeparturePassed48Hours, getDepartureElapsedHours, extractCleanTime } from '../utils/turnoverTiming';
+import { hasDeparturePassed48Hours, getDepartureElapsedHours } from '../utils/turnoverTiming';
 import { ZairPhoto, photoUrl, type PhotoIndex } from './ZairPhoto';
 import { oneRowPerIts } from '../utils/deduplication';
 import { HiddenStaysModal } from './HiddenStaysModal';
+import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME, normalizeTime, timeOptionsWith } from '../services/stayTimes';
 
 /** Baghdad calendar date. */
 const baghdadDay = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
@@ -110,7 +111,8 @@ const cellInput = `${cellBox} w-full px-1.5 text-[13px]`;
 const cellSelect =
   'block h-8 rounded-md border border-stone-200 bg-white pl-1.5 pr-0 text-[13px] hover:border-stone-400 focus:border-brand-500 cursor-pointer';
 const dateInput = `${cellBox} w-full flex-1 px-1 text-[13px] text-stone-900 tabular-nums cursor-pointer [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60`;
-const timeInput = `${cellBox} w-[86px] shrink-0 px-1 text-[13px] text-stone-700 tabular-nums [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:p-0`;
+/** The arrival and departure time dropdowns in the table. */
+const timeSelect = `${cellBox} w-[98px] shrink-0 px-1 text-[13px] text-stone-700 tabular-nums cursor-pointer`;
 const thCell = 'sticky top-0 border-b border-stone-200 bg-stone-50 p-0 text-xs font-semibold text-stone-600 whitespace-nowrap';
 const tdCell = 'border-b border-stone-200 px-1.5 py-1.5 align-top';
 const iconGhost = 'inline-flex shrink-0 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-900 cursor-pointer';
@@ -264,13 +266,6 @@ interface ReservationsViewProps {
   /** ITS → NKERP photo version, refreshed with every pull. */
   photos?: PhotoIndex;
 }
-
-const STANDARD_TIMES = [
-  '08:00 AM', '09:00 AM', '10:00 AM', '10:45 AM', '11:00 AM', '11:30 AM',
-  '12:00 PM', '12:30 PM', '01:00 PM', '01:15 PM', '02:00 PM', '03:00 PM',
-  '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM', '09:00 PM',
-  '10:00 PM', '11:00 PM', '01:00 AM', '02:00 AM', '03:00 AM', '04:00 AM'
-];
 
 /** Travel note under a date: "SBVN from KARBALA, arrival 11:00". Plain secondary text, one or two lines. */
 function TravelDetails({ legs, date, direction, flush }: {
@@ -862,13 +857,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     if (field === 'arrivalDate') {
       const cleanDate = String(value || '').slice(0, 10);
       updated.arrivalDate = cleanDate;
-      const tPart = updated.arrivalTime || '11:00 AM';
+      const tPart = updated.arrivalTime || SUBVENUE_ARRIVAL_TIME;
       updated.arrivalDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
       updated.rawArrivalStr = `${cleanDate} ${tPart}`;
     } else if (field === 'departureDate') {
       const cleanDate = String(value || '').slice(0, 10);
       updated.departureDate = cleanDate;
-      const tPart = updated.departureTime || '01:00 AM';
+      const tPart = updated.departureTime || SUBVENUE_DEPARTURE_TIME;
       updated.departureDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
       updated.rawDepartureStr = `${cleanDate} ${tPart}`;
     } else if (field === 'arrivalTime') {
@@ -919,7 +914,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       const currentVal =
         field === 'arrivalDate' || field === 'departureDate'
           ? String(target[field] || '').slice(0, 10).trim()
-          : (field === 'arrivalTime' ? (target.arrivalTime || '11:00 AM') : (target.departureTime || '01:00 AM')).trim();
+          : (field === 'arrivalTime' ? (target.arrivalTime || SUBVENUE_ARRIVAL_TIME) : (target.departureTime || SUBVENUE_DEPARTURE_TIME)).trim();
 
       const newVal =
         field === 'arrivalDate' || field === 'departureDate'
@@ -949,6 +944,20 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           return;
         }
       }
+
+      // A time change is always confirmed before it is saved, even for a zair travelling alone.
+      if (field === 'arrivalTime' || field === 'departureTime') {
+        setPendingTourDateChange({
+          reservation: target,
+          field,
+          oldValue: currentVal,
+          newValue: newVal,
+          tourId,
+          otherZaereenCount: 0,
+          allTourZaereen: [target],
+        });
+        return;
+      }
     }
 
     // Default: update single field directly
@@ -971,13 +980,13 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
       if (field === 'arrivalDate') {
         const cleanDate = String(newValue || '').slice(0, 10);
         updated.arrivalDate = cleanDate;
-        const tPart = updated.arrivalTime || '11:00 AM';
+        const tPart = updated.arrivalTime || SUBVENUE_ARRIVAL_TIME;
         updated.arrivalDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
         updated.rawArrivalStr = `${cleanDate} ${tPart}`;
       } else if (field === 'departureDate') {
         const cleanDate = String(newValue || '').slice(0, 10);
         updated.departureDate = cleanDate;
-        const tPart = updated.departureTime || '01:00 AM';
+        const tPart = updated.departureTime || SUBVENUE_DEPARTURE_TIME;
         updated.departureDateTime = `${cleanDate}T${tPart.replace(/\s+/g, '')}`;
         updated.rawDepartureStr = `${cleanDate} ${tPart}`;
       } else if (field === 'arrivalTime') {
@@ -1023,7 +1032,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     applySingleFieldChange(reservation.id, field, newValue);
 
     setToastMessage({
-      text: `Updated ${fieldName(field).toLowerCase()} to ${field.includes('Date') ? longDay(newValue) : newValue} for ${reservation.applicantName} only.`,
+      text: `Updated ${fieldName(field).toLowerCase()} to ${field.includes('Date') ? longDay(newValue) : newValue} for ${reservation.applicantName}${pendingTourDateChange.allTourZaereen.length > 1 ? ' only' : ''}.`,
       type: 'info',
     });
 
@@ -1805,7 +1814,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           <dt className="w-[70px] shrink-0 text-stone-500">Arrival</dt>
                           <dd className="min-w-0 text-stone-800">
                             <span className="font-medium text-stone-900 tabular-nums">
-                              {res.arrivalDate ? stayDay(res.arrivalDate) : '—'}, {res.arrivalTime || '11:00 AM'}
+                              {res.arrivalDate ? stayDay(res.arrivalDate) : '—'}, {res.arrivalTime || SUBVENUE_ARRIVAL_TIME}
                             </span>
                             <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" flush />
                           </dd>
@@ -1814,7 +1823,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                           <dt className="w-[70px] shrink-0 text-stone-500">Departure</dt>
                           <dd className="min-w-0 text-stone-800">
                             <span className="font-medium text-stone-900 tabular-nums">
-                              {res.departureDate ? stayDay(res.departureDate) : '—'}, {res.departureTime || '01:00 AM'}
+                              {res.departureDate ? stayDay(res.departureDate) : '—'}, {res.departureTime || SUBVENUE_DEPARTURE_TIME}
                             </span>
                             <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" flush />
                           </dd>
@@ -2346,21 +2355,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                               aria-label="Arrival date"
                               className={dateInput}
                             />
-                            <input
-                              type="text"
-                              list="portal-standard-times"
-                              value={res.arrivalTime || '11:00 AM'}
+                            <select
+                              value={normalizeTime(res.arrivalTime || SUBVENUE_ARRIVAL_TIME)}
                               onChange={(e) => handleFieldChange(res.id, 'arrivalTime', e.target.value)}
-                              onBlur={(e) => {
-                                const formatted = extractCleanTime(e.target.value, undefined, undefined, e.target.value.trim());
-                                if (formatted && formatted !== res.arrivalTime) {
-                                  handleFieldChange(res.id, 'arrivalTime', formatted);
-                                }
-                              }}
                               aria-label="Arrival time"
-                              title="Exact arrival time (type or pick)"
-                              className={timeInput}
-                            />
+                              title="Arrival time: pick a new time, then confirm the change"
+                              className={timeSelect}
+                            >
+                              {timeOptionsWith(res.arrivalTime || SUBVENUE_ARRIVAL_TIME).map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
                           </div>
                           <TravelDetails legs={res.arrivalTravel} date={res.arrivalDate} direction="arrival" />
                         </td>
@@ -2375,21 +2380,17 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                               aria-label="Departure date"
                               className={dateInput}
                             />
-                            <input
-                              type="text"
-                              list="portal-standard-times"
-                              value={res.departureTime || '01:00 AM'}
+                            <select
+                              value={normalizeTime(res.departureTime || SUBVENUE_DEPARTURE_TIME)}
                               onChange={(e) => handleFieldChange(res.id, 'departureTime', e.target.value)}
-                              onBlur={(e) => {
-                                const formatted = extractCleanTime(e.target.value, undefined, undefined, e.target.value.trim());
-                                if (formatted && formatted !== res.departureTime) {
-                                  handleFieldChange(res.id, 'departureTime', formatted);
-                                }
-                              }}
                               aria-label="Departure time"
-                              title="Exact departure time (type or pick)"
-                              className={timeInput}
-                            />
+                              title="Departure time: pick a new time, then confirm the change"
+                              className={timeSelect}
+                            >
+                              {timeOptionsWith(res.departureTime || SUBVENUE_DEPARTURE_TIME).map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
                           </div>
                           <TravelDetails legs={res.departureTravel} date={res.departureDate} direction="departure" />
                         </td>
@@ -2504,12 +2505,6 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           </div>
         </div>
       )}
-
-      <datalist id="portal-standard-times">
-        {STANDARD_TIMES.map((t) => (
-          <option key={t} value={t} />
-        ))}
-      </datalist>
 
       {/* Receptionist tried to delete a B to A record */}
       {bToABlockedRecord && (
@@ -2870,9 +2865,15 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
           <div className={`${modalCard} max-w-lg`}>
             <div className={modalHeader}>
               <div className="min-w-0">
-                <h3 id="tour-change-title" className={modalTitle}>Update the schedule for the whole tour?</h3>
+                <h3 id="tour-change-title" className={modalTitle}>
+                  {pendingTourDateChange.allTourZaereen.length > 1
+                    ? 'Update the schedule for the whole tour?'
+                    : `Change the ${fieldName(pendingTourDateChange.field).toLowerCase()}?`}
+                </h3>
                 <p className="mt-1 text-sm text-stone-600 tabular-nums">
-                  Tour <span className="font-medium text-stone-900">{shortTour(pendingTourDateChange.tourId)}</span> · {pendingTourDateChange.allTourZaereen.length} zaereen
+                  {pendingTourDateChange.tourId
+                    ? <>Tour <span className="font-medium text-stone-900">{shortTour(pendingTourDateChange.tourId)}</span> · {pendingTourDateChange.allTourZaereen.length} {pendingTourDateChange.allTourZaereen.length === 1 ? 'zair' : 'zaereen'}</>
+                    : pendingTourDateChange.reservation.applicantName}
                 </p>
               </div>
               <button type="button" onClick={handleCancelTourDateChange} className={modalClose} aria-label="Cancel the change" title="Cancel the change">
@@ -2908,6 +2909,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 </div>
               </div>
 
+              {pendingTourDateChange.allTourZaereen.length > 1 ? (<>
               <p className="text-sm leading-relaxed text-stone-700">
                 There are <strong className="font-semibold">{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in this tour. Apply the new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all of them, or change it for <strong className="font-semibold">{pendingTourDateChange.reservation.applicantName}</strong> only?
               </p>
@@ -2936,12 +2938,22 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   })}
                 </ul>
               </div>
+              </>) : (
+                <p className="text-sm leading-relaxed text-stone-700">
+                  Nothing is saved until you confirm. The new time shows on the arrival and departure slips.
+                </p>
+              )}
             </div>
 
             <div className={`${modalFooter} max-sm:flex-col max-sm:items-stretch`}>
               <button type="button" onClick={handleCancelTourDateChange} className={btn.ghost}>
                 Cancel
               </button>
+              {pendingTourDateChange.allTourZaereen.length <= 1 ? (
+                <button type="button" onClick={handleConfirmApplyToSingle} className={btn.primary}>
+                  Confirm change
+                </button>
+              ) : (<>
               <button
                 type="button"
                 onClick={handleConfirmApplyToSingle}
@@ -2960,6 +2972,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <Users className="w-4 h-4" />
                 Update all {pendingTourDateChange.allTourZaereen.length} in tour
               </button>
+              </>)}
             </div>
           </div>
         </div>

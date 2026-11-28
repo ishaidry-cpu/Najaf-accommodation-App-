@@ -36,6 +36,8 @@ export interface PdfExportModalProps {
   rooms: Room[];
   initialReportType?: PdfExportOptions['reportType'];
   initialTourId?: string;
+  /** Receptionist access: only the tour manifest, to view and print. */
+  manifestOnly?: boolean;
 }
 
 export const PdfExportModal: React.FC<PdfExportModalProps> = ({
@@ -45,12 +47,15 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   rooms = [],
   initialReportType,
   initialTourId,
+  manifestOnly = false,
 }) => {
   if (!isOpen) return null;
 
-  const [reportType, setReportType] = useState<PdfExportOptions['reportType']>(
+  const [reportTypeState, setReportType] = useState<PdfExportOptions['reportType']>(
     initialReportType || 'all_reservations'
   );
+  const reportType: PdfExportOptions['reportType'] = manifestOnly ? 'tour_manifest' : reportTypeState;
+  const reports = manifestOnly ? REPORTS.filter((r) => r.value === 'tour_manifest') : REPORTS;
   const [tourIdFilter, setTourIdFilter] = useState<string>(initialTourId || 'ALL');
   const [buildingFilter, setBuildingFilter] = useState<string>('ALL');
   const [arrivalDateFilter, setArrivalDateFilter] = useState<string>('ALL');
@@ -240,9 +245,11 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       <div className={`${modalCard} ${isTourManifest ? 'max-w-5xl' : 'max-w-2xl'}`}>
         <div className={modalHeader}>
           <div className="min-w-0">
-            <h3 id="pdf-export-title" className={modalTitle}>Export PDF reports</h3>
+            <h3 id="pdf-export-title" className={modalTitle}>{manifestOnly ? 'Tour manifest' : 'Export PDF reports'}</h3>
             <p className="mt-1 text-sm text-stone-600">
-              Formal PDF reports for coordinators, bus guides, front-desk records and security desk manifests.
+              {manifestOnly
+                ? 'Pick a Tour ID to view and print its lodging manifest.'
+                : 'Formal PDF reports for coordinators, bus guides, front-desk records and security desk manifests.'}
             </p>
           </div>
           <button type="button" onClick={onClose} className={modalClose} aria-label="Close" title="Close">
@@ -252,10 +259,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-6">
           {/* Which report */}
-          <fieldset>
+          {!manifestOnly && <fieldset>
             <legend className={fieldLabel}>Report type</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {REPORTS.map(({ value, title, detail }) => {
+              {reports.map(({ value, title, detail }) => {
                 const on = reportType === value;
                 return (
                   <label key={value}
@@ -276,7 +283,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 );
               })}
             </div>
-          </fieldset>
+          </fieldset>}
 
           {/* Tour ID: search, pick from the matches, or choose from the list */}
           <div>

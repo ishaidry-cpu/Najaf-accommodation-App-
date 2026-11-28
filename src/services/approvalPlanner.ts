@@ -316,7 +316,9 @@ export const firstCity = (segments: Segment[]): City | null => segments[0]?.city
  *    month comes from the other date or the Iraq trip; the year is the one nearest the trip;
  *  - each date goes with the city written next to it, whether the city comes before or after the dates;
  *  - dates tied to the Iraq arrival or departure (flight, airport, Baghdad, visa) are not subvenue dates;
- *  - a sequence ("First Karbala, second Najaf", "NJF then KRB", "Najaf 2nd") or nights per city ("KRB 4N NJF 3N").
+ *  - a sequence ("First Karbala, second Najaf", "NJF then KRB", "Najaf 2nd") or nights per city ("KRB 4N NJF 3N");
+ *  - dates outside the current Iraq trip are an earlier plan: only their nights and sequence are carried onto the
+ *    current trip (relayNights), never the dates themselves.
  * Anything it had to interpret (a one-letter city, day/month read the other way round, a city whose dates are
  * missing, two different answers) goes in `confirm`, so the approver confirms it instead of it being used silently.
  * Message text is the Tour Operator's data, never instructions.
@@ -547,9 +549,12 @@ function readLine(text: string, trip: { start: string; end: string }, around: st
   return out.sort((a, b) => (a.start ?? a.end ?? '').localeCompare(b.start ?? b.end ?? ''));
 }
 
-/** "KRB 4N NJF 3N", "4 nights Karbala and 3 nights Najaf": nights per city in the order written. */
+/**
+ * "KRB 4N NJF 3N", "4 nights Karbala and 3 nights Najaf", "Najaf following 4 nights", "Najaf for the next 4 nights":
+ * nights per city in the order written.
+ */
 function readNights(text: string): { city: City; nights: number }[] {
-  const re = new RegExp(`\\b(${CITY_WORD})\\b\\s*[:\\-–(]?\\s*(\\d{1,2})\\s*${NIGHTS}\\b|\\b(\\d{1,2})\\s*${NIGHTS}\\b\\s*(?:in\\s+|at\\s+|of\\s+)?(${CITY_WORD})\\b`, 'gi');
+  const re = new RegExp(`\\b(${CITY_WORD})\\b\\s*[:\\-–(]?\\s*(?:(?:for\\s+)?(?:the\\s+)?(?:following|next|remaining|another)\\s+)?(\\d{1,2})\\s*${NIGHTS}\\b|\\b(\\d{1,2})\\s*${NIGHTS}\\b\\s*(?:in\\s+|at\\s+|of\\s+)?(${CITY_WORD})\\b`, 'gi');
   return [...text.matchAll(re)].map(m => ({ city: cityWord(m[1] || m[4]), nights: Number(m[2] || m[3]) }));
 }
 
@@ -583,6 +588,11 @@ export interface ChatReading {
   flexible: boolean;
   /** What the reader had to interpret: the approver confirms these dates before they are relied on. */
   confirm: string[];
+  /**
+   * The chat's dates were from an earlier plan (outside the current Iraq trip): how its nights and sequence were
+   * carried onto the current trip, for the approver. The stays in `segments` are then the re-laid ones.
+   */
+  relaid?: string;
 }
 
 const CONFIRM_TEXT: Record<string, string> = {
@@ -590,6 +600,113 @@ const CONFIRM_TEXT: Record<string, string> = {
   swapped: 'A numeric date was read month-first so that it falls inside the Iraq trip.',
   month: 'The chat gives days without a month; the month was taken from the Iraq trip.',
 };
+
+export interface CityNights { city: City; nights: number }
+const otherCity = (c: City): City => (c === 'NAJAF' ? 'KARBALA' : 'NAJAF');
+
+/**
+ * Carry an earlier plan's nights per city onto a trip of `total` nights, in the original sequence. `nights` is null
+ * for a city whose nights the earlier plan does not give. The rule:
+ *  - the same total: the original nights;
+ *  - more nights: the first subvenue keeps its original nights and the rest go to the second; when the extra is odd
+ *    and Karbala is first, Karbala takes the odd night (K4/N4 on 9 nights: K5/N4; on 10: K4/N6; N3/K3 on 7: N3/K4);
+ *  - fewer nights: Najaf gives up nights first, then Karbala, each keeping at least one (K4/N4 on 7: K4/N3;
+ *    N4/K4 on 7: N3/K4), so Karbala keeps the extra-night priority;
+ *  - one city's nights unknown: the known city keeps its nights (leaving the other at least one) and the other
+ *    takes the rest;
+ *  - one night: only the first city.
+ * `doubt` says why the approver should confirm the result (warnings, never a block).
+ */
+export function relayNights(first: { city: City; nights: number | null }, second: { city: City; nights: number | null }, total: number): { list: CityNights[]; doubt: string[] } {
+  const doubt: string[] = [];
+  if (total <= 0) return { list: [], doubt: ['The current Iraq trip has no nights.'] };
+  if (total === 1) {
+    return { list: [{ city: first.city, nights: 1 }], doubt: [`The current Iraq trip has one night; it was given to ${CITY_NAME[first.city]}, the first city of the earlier plan.`] };
+  }
+  const f = first.nights, s = second.nights;
+  let a: number, b: number;
+  if (f != null && s != null) {
+    const diff = total - (f + s);
+    if (diff >= 0) {
+      a = f; b = s + diff;
+      if (diff % 2 === 1 && first.city === 'KARBALA') { a += 1; b -= 1; }
+    } else {
+      let cut = -diff;
+      const n = { [first.city]: f, [second.city]: s } as Record<City, number>;
+      for (const c of ['NAJAF', 'KARBALA'] as City[]) { const take = Math.min(cut, Math.max(0, n[c] - 1)); n[c] -= take; cut -= take; }
+      a = n[first.city]; b = n[second.city];
+      if (f >= total) doubt.push(`The earlier plan's ${f} ${CITY_NAME[first.city]} nights do not fit the current ${total}-night trip.`);
+    }
+  } else if (f != null || s != null) {
+    const known = f != null ? first : second;
+    const keep = Math.min(known.nights!, total - 1);
+    if (known === first) { a = keep; b = total - keep; } else { b = keep; a = total - keep; }
+    if (known === second) doubt.push(`The earlier plan does not give the ${CITY_NAME[first.city]} nights; it was given the rest of the trip.`);
+    if (known.nights! >= total) doubt.push(`The earlier plan's ${known.nights} ${CITY_NAME[known.city]} nights do not fit the current ${total}-night trip.`);
+  } else {
+    return { list: [], doubt: ['The earlier plan gives no nights per city.'] };
+  }
+  return { list: [{ city: first.city, nights: a }, { city: second.city, nights: b }], doubt };
+}
+
+/** The chat's latest dates lie outside the current trip: lay their nights and sequence onto the current trip instead. */
+function relayEarlierPlan(reading: ChatReading, ranges: Segment[], cluster: Found[], nights: { list: CityNights[] }[],
+  trip: { start: string; end: string }, laterOrder: City | null) {
+  // What the earlier plan says: the dated stays (in date order), then nights stated beside them ("Najaf following 4 nights").
+  const dated = new Map<City, number>();
+  for (const r of ranges) dated.set(r.city, (dated.get(r.city) ?? 0) + nightsOf(r));
+  const stated = new Map<City, number>();
+  for (const n of nights) for (const x of n.list) stated.set(x.city, x.nights);
+  const seen: City[] = [];
+  const mentioned = [...ranges.map(r => ({ city: r.city, d: r.start })), ...cluster.map(f => ({ city: f.city, d: (f.start ?? f.end)! }))]
+    .sort((x, y) => x.d.localeCompare(y.d));
+  for (const m of mentioned) if (!seen.includes(m.city)) seen.push(m.city);
+  for (const n of nights) for (const x of n.list) if (!seen.includes(x.city)) seen.push(x.city);
+  const doubt: string[] = [];
+  if (ranges.length > 2 || ranges.some((r, i) => ranges.findIndex(q => q.city === r.city) !== i)) {
+    doubt.push('The earlier plan visits a city twice; its nights were added together.');
+  }
+  for (const c of CITIES) {
+    if (dated.has(c) && stated.has(c) && dated.get(c) !== stated.get(c)) {
+      doubt.push(`The earlier plan gives ${CITY_NAME[c]} ${dated.get(c)} nights by its dates and ${stated.get(c)} in words; the dates were used.`);
+    }
+  }
+  // Dates fix the sequence only when they give both cities; one dated city leaves the order to the words.
+  const datedCities = new Set(mentioned.map(m => m.city));
+  let firstC: City = (datedCities.size < 2 ? reading.order : null) ?? seen[0] ?? reading.order ?? 'KARBALA';
+  if (reading.order && reading.order !== firstC) {
+    if (laterOrder) {
+      doubt.push(`A later message asks for ${CITY_NAME[laterOrder]} first, unlike the earlier plan; ${CITY_NAME[laterOrder]} first was used.`);
+      firstC = laterOrder;
+    } else doubt.push(`The chat asks for ${CITY_NAME[reading.order]} first, but the earlier plan's dates put ${CITY_NAME[firstC]} first; the dates were used.`);
+  }
+  const nightsFor = (c: City) => dated.get(c) ?? stated.get(c) ?? null;
+  const secondC = otherCity(firstC);
+  const total = daysBetween(trip.start, trip.end);
+  const { list, doubt: relayDoubt } = relayNights({ city: firstC, nights: nightsFor(firstC) }, { city: secondC, nights: nightsFor(secondC) }, total);
+  const old = ranges.length ? fmtSegments(ranges) : cluster.map(f => `${CITY_NAME[f.city]} ${fmtDay((f.start ?? f.end)!)}`).join(', ');
+  const tripText = `${fmtDay(trip.start)}–${fmtDay(trip.end)}`;
+  // The earlier plan's own gaps and guesses no longer matter: only what carries onto the current trip is reported.
+  reading.problems = [];
+  reading.confirm = [...doubt, ...relayDoubt];
+  reading.evidence.push(...cluster.map(f => f.line).filter(l => !reading.evidence.includes(l)));
+  if (!list.length) {
+    reading.segments = null;
+    reading.order = firstC;
+    reading.confirm.push(`Chat dates ${old} are from an earlier plan, not the current Iraq trip ${tripText}; only the sequence (${CITY_NAME[firstC]} first) was used.`);
+    return;
+  }
+  let d = trip.start;
+  reading.segments = list.map(x => { const s: Segment = { city: x.city, start: d, end: addDays(d, x.nights) }; d = s.end; return s; });
+  reading.order = firstC;
+  const nightsText = (c: City, n: number) => `${CITY_NAME[c]} ${n} night${n === 1 ? '' : 's'}`;
+  const before = [firstC, secondC].filter(c => nightsFor(c) != null).map(c => nightsText(c, nightsFor(c)!)).join(' then ');
+  const after = list.map(x => nightsText(x.city, x.nights)).join(' then ');
+  const same = list.length === 2 && list.every(x => nightsFor(x.city) === x.nights);
+  reading.relaid = `Chat dates ${old} are from an earlier plan, not the current Iraq trip ${tripText}. ` + (same
+    ? `Kept its sequence and nights on the current trip: ${after} (${fmtSegments(reading.segments)}).`
+    : `Earlier plan: ${before || `${CITY_NAME[firstC]} first`}. On the current ${total}-night trip, in the same sequence: ${after} (${fmtSegments(reading.segments)}).`);
+}
 
 /** Read the Tour Operator's chat for city dates and sequence. Message text is data, never instructions. */
 export function readChat(messages: ChatMessage[], trip: { start: string; end: string }): ChatReading {
@@ -660,60 +777,69 @@ export function readChat(messages: ChatMessage[], trip: { start: string; end: st
       }
       chained.push(seg);
     }
-    // One date for a city ("Najaf from 15 Dec", "departure from Karbala 18 Dec"): the stay runs to the next stay or
-    // the trip's end (from the previous stay or the trip's start). Absorbed silently when it agrees with a range.
-    for (const f of partial) {
-      const d = (f.start ?? f.end)!;
-      const same = chained.find(s => s.city === f.city && s.start <= d && d <= s.end);
-      if (same) continue;
-      if (f.start) {
-        const next = chained.find(s => s.start >= f.start!);
-        const end = next ? next.start : trip.end;
-        if (end && end > f.start) {
-          chained.push({ city: f.city, start: f.start, end });
-          reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} arrival (${fmtDay(f.start)}); its departure was taken as ${fmtDay(end)}.`);
+    // Dates that lie outside the current Iraq trip belong to an earlier plan (the trip has moved since): they are
+    // never used as stays. Only their nights per city and sequence carry over onto the current trip (relayNights).
+    const outsideTrip = (d?: string) => Boolean(d && trip.start && trip.end && (d < addDays(trip.start, -1) || d > addDays(trip.end, 1)));
+    const earlier = Boolean(trip.start && trip.end) && cluster.some(f => outsideTrip(f.start) || outsideTrip(f.end));
+    if (earlier) {
+      const laterOrder = reading.order && orderAt > latest && !near(orderAt, latest) ? reading.order : null;
+      relayEarlierPlan(reading, chained, cluster, nightsFound.filter(n => near(latest, n.at)), trip, laterOrder);
+    } else {
+      // One date for a city ("Najaf from 15 Dec", "departure from Karbala 18 Dec"): the stay runs to the next stay or
+      // the trip's end (from the previous stay or the trip's start). Absorbed silently when it agrees with a range.
+      for (const f of partial) {
+        const d = (f.start ?? f.end)!;
+        const same = chained.find(s => s.city === f.city && s.start <= d && d <= s.end);
+        if (same) continue;
+        if (f.start) {
+          const next = chained.find(s => s.start >= f.start!);
+          const end = next ? next.start : trip.end;
+          if (end && end > f.start) {
+            chained.push({ city: f.city, start: f.start, end });
+            reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} arrival (${fmtDay(f.start)}); its departure was taken as ${fmtDay(end)}.`);
+          }
+        } else if (f.end) {
+          const prev = [...chained].reverse().find(s => s.end <= f.end!);
+          const start = prev ? prev.end : trip.start;
+          if (start && start < f.end) {
+            chained.push({ city: f.city, start, end: f.end });
+            reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} departure (${fmtDay(f.end)}); its arrival was taken as ${fmtDay(start)}.`);
+          }
         }
-      } else if (f.end) {
-        const prev = [...chained].reverse().find(s => s.end <= f.end!);
-        const start = prev ? prev.end : trip.start;
-        if (start && start < f.end) {
-          chained.push({ city: f.city, start, end: f.end });
-          reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} departure (${fmtDay(f.end)}); its arrival was taken as ${fmtDay(start)}.`);
+        chained.sort((a, b) => a.start.localeCompare(b.start));
+      }
+      // A city the chat leaves out: the rest of the trip, when the stated stays start or end with the trip.
+      if (chained.length && trip.start && trip.end) {
+        const cities = new Set(chained.map(s => s.city));
+        const first = chained[0], last = chained[chained.length - 1];
+        if (cities.size === 1) {
+          const other: City = first.city === 'NAJAF' ? 'KARBALA' : 'NAJAF';
+          if (first.start === trip.start && last.end < trip.end) {
+            chained.push({ city: other, start: last.end, end: trip.end });
+            reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the rest of the trip (${fmtDay(last.end)}–${fmtDay(trip.end)}).`);
+          } else if (last.end === trip.end && first.start > trip.start) {
+            chained.unshift({ city: other, start: trip.start, end: first.start });
+            reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the start of the trip (${fmtDay(trip.start)}–${fmtDay(first.start)}).`);
+          }
         }
       }
-      chained.sort((a, b) => a.start.localeCompare(b.start));
-    }
-    // A city the chat leaves out: the rest of the trip, when the stated stays start or end with the trip.
-    if (chained.length && trip.start && trip.end) {
-      const cities = new Set(chained.map(s => s.city));
-      const first = chained[0], last = chained[chained.length - 1];
-      if (cities.size === 1) {
-        const other: City = first.city === 'NAJAF' ? 'KARBALA' : 'NAJAF';
-        if (first.start === trip.start && last.end < trip.end) {
-          chained.push({ city: other, start: last.end, end: trip.end });
-          reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the rest of the trip (${fmtDay(last.end)}–${fmtDay(trip.end)}).`);
-        } else if (last.end === trip.end && first.start > trip.start) {
-          chained.unshift({ city: other, start: trip.start, end: first.start });
-          reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the start of the trip (${fmtDay(trip.start)}–${fmtDay(first.start)}).`);
+      if (chained.length) {
+        reading.segments = chained;
+        reading.evidence.push(...cluster.map(s => s.line).filter(l => !reading.evidence.includes(l)));
+        const chatOrder = chained[0].city;
+        // Dated stays decide the sequence, unless a later message asked for another order.
+        if (reading.order && reading.order !== chatOrder) {
+          if (orderAt > latest && !near(orderAt, latest)) {
+            reading.confirm.push(`A later message asks for ${CITY_NAME[reading.order]} first, unlike the dated stays (${fmtSegments(chained)}).`);
+          } else {
+            reading.confirm.push(`The chat asks for ${CITY_NAME[reading.order]} first, but its dates put ${CITY_NAME[chatOrder]} first; the dates were used.`);
+            reading.order = chatOrder;
+          }
+        } else reading.order = chatOrder;
+        if (trip.start && trip.end) {
+          const p = segmentProblems(chained, trip.start, trip.end);
+          if (p.length) reading.problems.push(`Chat dates ${fmtSegments(chained)} do not match the Iraq trip ${fmtDay(trip.start)}–${fmtDay(trip.end)}.`);
         }
-      }
-    }
-    if (chained.length) {
-      reading.segments = chained;
-      reading.evidence.push(...cluster.map(s => s.line).filter(l => !reading.evidence.includes(l)));
-      const chatOrder = chained[0].city;
-      // Dated stays decide the sequence, unless a later message asked for another order.
-      if (reading.order && reading.order !== chatOrder) {
-        if (orderAt > latest && !near(orderAt, latest)) {
-          reading.confirm.push(`A later message asks for ${CITY_NAME[reading.order]} first, unlike the dated stays (${fmtSegments(chained)}).`);
-        } else {
-          reading.confirm.push(`The chat asks for ${CITY_NAME[reading.order]} first, but its dates put ${CITY_NAME[chatOrder]} first; the dates were used.`);
-          reading.order = chatOrder;
-        }
-      } else reading.order = chatOrder;
-      if (trip.start && trip.end) {
-        const p = segmentProblems(chained, trip.start, trip.end);
-        if (p.length) reading.problems.push(`Chat dates ${fmtSegments(chained)} do not match the Iraq trip ${fmtDay(trip.start)}–${fmtDay(trip.end)}.`);
       }
     }
   }
@@ -1045,6 +1171,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     if (chat.segments && !chatOk && (kind === 'hotel' || !chat.order) && !edit) problems.push(...chat.problems);
     else if (chat.problems.length) notes.push(...chat.problems);
     if (chat.flexible) notes.push('Tour Operator leaves the city order to the accommodation team.');
+    if (chat.relaid && suggestedSource === 'chat-dates') notes.push(chat.relaid);
     if (acc) notes.push(`Accommodation changed by ${acc.by || 'the approver'}: ${acc.paxFaiz} Faiz / ${acc.paxHotel} hotel (NKERP has ${nk.paxFaiz} / ${nk.paxHotel}).`);
     if (t.itinerarySaved !== true) hard.push(t.itinerarySaved === false ? ITINERARY_MISSING : ITINERARY_UNKNOWN);
     if (kind === 'preferred') hard.push('Accommodation option is "Preferred": confirm Required or Not Required in NKERP before approving.');
@@ -1060,6 +1187,8 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     // What the AI read from the chat (or chose for a group moved from Faiz to hotel) waits for the approver's confirmation.
     const confirm = edit ? [] : [
       ...(source === 'chat-dates' || source === 'chat-order' ? chat.confirm : []),
+      // Hotel stays are booked by the Tour Operator: dates carried over from an earlier plan are confirmed with them.
+      ...(source === 'chat-dates' && chat.relaid && kind === 'hotel' ? ['Hotel tour: the chat\'s dates are from an earlier plan and were moved onto the current trip. Confirm the hotel dates with the Tour Operator.'] : []),
       ...(wasFaiz && source !== 'chat-dates' ? ['Moved from Faiz to hotel: the chat box gives no hotel dates, so the AI\'s split is used. Confirm the dates.'] : []),
     ];
     const segProblems = segments.length ? segmentProblems(segments, start, end) : [];
