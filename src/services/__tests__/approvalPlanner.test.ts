@@ -9,6 +9,7 @@ import {
   type ApprovalSnapshot, type ApprovalTour, approvalPayload, compareWithOriginal, DEFAULT_APPROVAL_SETTINGS, dustbinVisible,
   followUpMessage, fromSubvenueDates, latestPlanSet, needsFollowUp, officeFollowUps, najafReport, normalizeApprovalSettings, planApprovals, readChat, splitInOrder,
   submissionState, suggestion, toSubvenueDates, approvalWarnings, chatTemplates, ITINERARY_MISSING, ITINERARY_UNKNOWN,
+  applicantsMustMatch, reopenPayload,
 } from '../approvalPlanner';
 
 const TODAY = '2026-11-27';
@@ -349,5 +350,158 @@ describe('approval authority: warnings, not restrictions', () => {
     }
     assert.match(list[0].text, /Transport itinerary/);
     assert.equal(chatTemplates(one(tour())).length, 0);
+  });
+});
+
+describe('chat box: every way the Tour Operator writes it', () => {
+  const trip = { start: '2026-12-10', end: '2026-12-17' };
+  const read = (...lines: string[]) => readChat(lines.map((text, i) => msg(text, `2026-11-20T10:0${i}:00`)), trip);
+  const stays = (r: ReturnType<typeof readChat>) => r.segments?.map(s => `${s.city} ${s.start.slice(5)}..${s.end.slice(5)}`).join(' | ');
+  const KN = 'KARBALA 12-10..12-14 | NAJAF 12-14..12-17';
+  const NK = 'NAJAF 12-10..12-13 | KARBALA 12-13..12-17';
+  it('recognises abbreviations, spellings and day/month formats', () => {
+    assert.equal(stays(read('Najaf 10-13 Dec, Karbala 13-17 Dec')), NK);
+    assert.equal(stays(read('10/12 to 13/12 NJF', '13/12 to 17/12 KRB')), NK);
+    assert.equal(stays(read('Dec 10 - Dec 14 Karbala Mualla and Dec 14-17 Najaf Ashraf')), KN);
+    assert.equal(stays(read('Karbala 10th December till 14th December, Najaf 14th to 17th December')), KN);
+    assert.equal(stays(read('Karbala 10.12.2026 - 14.12.2026 / Najaf 14.12.2026 - 17.12.2026')), KN);
+    assert.equal(stays(read('N 10-13, K 13-17')), NK);
+    assert.equal(stays(read('Kerbala: 10 to 14, Najaf: 14 to 17')), KN, 'days without a month take the trip\'s month');
+    assert.deepEqual(read('Najaf 10-13 Dec, Karbala 13-17 Dec').confirm, []);
+  });
+  it('reads the dates beside their city, before or after it, and with arrival / departure words', () => {
+    assert.equal(stays(read('10-13 Dec Najaf, 13-17 Dec Karbala')), NK);
+    assert.equal(stays(read('Najaf arrival 10 Dec departure 13 Dec', 'Karbala check in 13 Dec check out 17 Dec')), NK);
+  });
+  it('does not take the Iraq arrival or departure for a subvenue date', () => {
+    assert.equal(stays(read('Flight lands Baghdad 10 Dec 08:30. KRB 10 Dec - 14 Dec. NJF 14 Dec - 17 Dec. Return flight 17 Dec')), KN);
+    const r = read('Arrival in Iraq 10 Dec, departure 17 Dec. Najaf first please');
+    assert.equal(r.segments, null);
+    assert.equal(r.order, 'NAJAF');
+  });
+  it('reads a sequence without dates, and nights per city', () => {
+    assert.equal(read('KRB first, NJF second').order, 'KARBALA');
+    assert.equal(read('First Karbala, Second Najaf').order, 'KARBALA');
+    assert.equal(read('1st NJF 2nd KRB').order, 'NAJAF');
+    assert.equal(read('Najaf 2nd').order, 'KARBALA');
+    assert.equal(read('Najaf then Karbala').order, 'NAJAF');
+    assert.equal(stays(read('K 4N, N 3N')), KN);
+    assert.equal(stays(read('Karbala 4 nights Najaf 3 nights')), KN);
+    const odd = read('Karbala 3 nights, Najaf 3 nights');
+    assert.equal(odd.segments, null);
+    assert.equal(odd.order, 'KARBALA');
+    assert.match(odd.confirm[0], /only the sequence/);
+  });
+  it('asks the approver to confirm what it had to interpret', () => {
+    const partial = read('Najaf from 13 Dec');
+    assert.equal(stays(partial), 'KARBALA 12-10..12-13 | NAJAF 12-13..12-17');
+    assert.ok(partial.confirm.some(x => /only the Najaf arrival/.test(x)));
+    const swapped = read('Najaf 12/10 to 12/13');
+    assert.equal(stays(swapped), NK);
+    assert.ok(swapped.confirm.some(x => /month-first/.test(x)));
+    const twice = read('Najaf 10-13 Dec', 'Correction: Najaf 10-14 Dec, Karbala 14-17 Dec');
+    assert.equal(stays(twice), 'NAJAF 12-10..12-14 | KARBALA 12-14..12-17');
+    assert.ok(twice.confirm.some(x => /twice/.test(x)));
+  });
+});
+
+describe('sequence only: split, odd day to Karbala, in the requested order', () => {
+  it('7 days, Karbala first: Karbala 4, Najaf 3; reversed: Najaf 3, Karbala 4', () => {
+    const hotel = (text: string) => planApprovals(snap([tour({ option: 3, optionLabel: 'Not Required', paxFaiz: 0, paxHotel: 5, paxTotal: 5, unread: true,
+      messages: [msg(text)] })]), {}, settings(), TODAY).plans[0];
+    const k = hotel('First Karbala, Second Najaf');
+    assert.equal(k.source, 'chat-order');
+    assert.deepEqual(cityNightsOf(k.segments), { KARBALA: 4, NAJAF: 3 });
+    assert.equal(k.segments[0].city, 'KARBALA');
+    const n = hotel('NJF first then KRB');
+    assert.equal(n.segments[0].city, 'NAJAF');
+    assert.deepEqual(cityNightsOf(n.segments), { KARBALA: 4, NAJAF: 3 });
+    assert.equal(n.recommendation, 'approve');
+  });
+});
+const cityNightsOf = (segs: { city: string; start: string; end: string }[]) => Object.fromEntries(['KARBALA', 'NAJAF'].map(c =>
+  [c, segs.filter(s => s.city === c).reduce((n, s) => n + (Date.parse(s.end) - Date.parse(s.start)) / 86_400_000, 0)]));
+
+describe('confirming the AI\'s dates', () => {
+  it('holds interpreted dates for confirmation (a warning, not a block) until the approver confirms them', () => {
+    const t = tour({ option: 3, optionLabel: 'Not Required', paxFaiz: 0, paxHotel: 5, paxTotal: 5, unread: true, messages: [msg('Najaf from 13 Dec')] });
+    const p = planApprovals(snap([t]), {}, settings(), TODAY).plans[0];
+    assert.equal(p.recommendation, 'confirm-dates');
+    assert.equal(p.category, 'awaiting');
+    assert.equal(p.approvable, true);
+    assert.ok(approvalWarnings(p).some(w => /not confirmed/.test(w)));
+    const confirmed = planApprovals(snap([t]), { [t.id]: { id: t.id, ref: t.ref, office: '', status: 'new', firstSeenAt: '', lastSeenAt: '', history: [],
+      edits: { segments: p.segments, at: '', modifiedOn: t.modifiedOn } } }, settings(), TODAY).plans[0];
+    assert.equal(confirmed.recommendation, 'approve');
+    assert.deepEqual(confirmed.confirm, []);
+  });
+});
+
+describe('accommodation requirement changes', () => {
+  const rec = (t: ApprovalTour, faiz: number, hotel: number, modifiedOn = t.modifiedOn) => ({ [t.id]: { id: t.id, ref: t.ref, office: '', status: 'new' as const,
+    firstSeenAt: '', lastSeenAt: '', history: [], accommodation: { paxFaiz: faiz, paxHotel: hotel, at: '', modifiedOn, nkerp: { faiz: t.paxFaiz, hotel: t.paxHotel } } } });
+  it('moves a full Faiz group to hotels when Faiz has no room, keeping NKERP\'s figures beside it', () => {
+    const dashboard = ['2026-12-10', '2026-12-11', '2026-12-12', '2026-12-13', '2026-12-14', '2026-12-15', '2026-12-16', '2026-12-17']
+      .flatMap(date => [{ date, city: 'NAJAF' as const, approved: 290, hotel: 0, occupants: [] }, { date, city: 'KARBALA' as const, approved: 400, hotel: 0, occupants: [] }]);
+    const t = tour({ paxFaiz: 45, paxTotal: 45 });
+    const before = planApprovals(snap([t], dashboard), {}, settings(), TODAY).plans[0];
+    assert.equal(before.recommendation, 'hold-capacity');
+    const after = planApprovals(snap([t], dashboard), rec(t, 0, 45), settings(), TODAY).plans[0];
+    assert.equal(after.tour.paxFaiz, 0);
+    assert.equal(after.tour.paxHotel, 45);
+    assert.deepEqual(after.nkerpPax, { faiz: 45, hotel: 0 });
+    assert.equal(after.kind, 'hotel');
+    assert.equal(after.fits, true);
+    assert.equal(after.impact.length, 0, 'no Faiz capacity used');
+    // No hotel dates in chat: the AI split stays, for the approver to confirm.
+    assert.equal(after.recommendation, 'confirm-dates');
+    assert.equal(after.approvable, true);
+    assert.ok(approvalWarnings(after).some(w => /Accommodation changed/.test(w)));
+    // A change NKERP has since overtaken no longer applies.
+    assert.equal(planApprovals(snap([t], dashboard), rec(t, 0, 45, 'older'), settings(), TODAY).plans[0].tour.paxFaiz, 45);
+  });
+  it('moves hotel pax into Faiz and counts them against capacity', () => {
+    const t = tour({ option: 3, optionLabel: 'Not Required', paxFaiz: 0, paxHotel: 6, paxTotal: 6, unread: true, messages: [msg('Najaf 10-13 Dec, Karbala 13-17 Dec')] });
+    const p = planApprovals(snap([t]), rec(t, 6, 0), settings(), TODAY).plans[0];
+    assert.equal(p.kind, 'faiz');
+    assert.ok(p.impact.every(i => i.after - i.before === 6));
+  });
+  it('sends the new pax with NKERP\'s approval request, the way its approval form does', () => {
+    const detail = { Id: 77, CurrentStatusId: 23, IsActive: true, TimeZone: 3, AccomodationOptionId: 2, PaxCount: 45, PaxRequiredAcc: 45, PaxNotRequiredAcc: 0,
+      StartDate: '2026-11-29T05:00:00', EndDate: '2026-12-02T05:00:00', ModifiedOn: 'm', NoOfDays: 4, IsMawaidRequired: true, PackageId: null };
+    const segs = splitInOrder('2026-11-29', '2026-12-02', 'KARBALA');
+    const body = approvalPayload(detail, segs, { pax: { faiz: 0, hotel: 45 } });
+    assert.deepEqual([body.PaxRequiredAcc, body.PaxNotRequiredAcc, body.IsMawaidRequired, body.IsApprovedWithAccommodation], [0, 45, false, false]);
+    assert.equal(approvalPayload(detail, segs, { pax: { faiz: 45, hotel: 0 } }).PaxRequiredAcc, 45, 'no change: NKERP\'s own figures');
+    assert.throws(() => approvalPayload(detail, segs, { pax: { faiz: 40, hotel: 4 } }), /add up/);
+  });
+  it('follows NKERP\'s rule for when the applicants must be chosen', () => {
+    const base = { muwafiqaState: 31, muwafiqaLocked: true, hasApplicants: true, accommodationCount: 45, faizApplicants: 45, newFaiz: 0 };
+    assert.equal(applicantsMustMatch(base), true);
+    assert.equal(applicantsMustMatch({ ...base, hasApplicants: false }), false);
+    assert.equal(applicantsMustMatch({ ...base, muwafiqaState: 38, muwafiqaLocked: false }), false);
+    assert.equal(applicantsMustMatch({ ...base, muwafiqaState: 37, muwafiqaLocked: false }), true);
+    assert.equal(applicantsMustMatch({ ...base, muwafiqaState: 37, muwafiqaLocked: false, faizApplicants: 0 }), false, 'already all hotel');
+  });
+});
+
+describe('reopening an approved Tour ID', () => {
+  const status = { Id: 9, CurrentStatusId: 2, IsActive: true, TimeZone: 3, AccomodationOptionId: 2, PaxCount: 4, PaxRequiredAcc: 4, PaxNotRequiredAcc: 0,
+    StartDate: '2026-12-10T05:00:00', EndDate: '2026-12-14T05:00:00', NoOfDays: 5, IsMawaidRequired: true, Remarks: '', EntryPortId: 1, ExitPortId: 2,
+    CountryId: 5, CityId: 0, PackageId: null, IsTransportRequired: true, ModifiedOn: 'm',
+    TransportItinerary: [{ ArrivalDateTimeZone: '2026-12-10T08:00:00', DepartureDateTimeZone: '2026-12-14T08:00:00' }],
+    TourSubvenuePlan: [{ Id: 1, SubvenueId: 4, StartDate: '2026-12-09T21:00:00', EndDate: '2026-12-13T21:00:00' }] };
+  it('builds NKERP\'s approved-tour Update with nothing changed', () => {
+    const b = reopenPayload(status);
+    assert.equal(b.ModifiedOn, undefined);
+    assert.equal(b.StartDate, '2026-12-10T05:00:00.000Z');
+    assert.deepEqual([b.CountryId, b.CityId, b.LinkTourId, b.PackageId, b.IsApprovedWithAccommodation], [5, -1, 0, 0, true]);
+    assert.deepEqual((b.TourSubvenuePlan as { planEndDate: string }[])[0].planEndDate, '2026-12-13T21:00:00');
+  });
+  it('refuses what NKERP\'s Update form would stop or ask about', () => {
+    assert.throws(() => reopenPayload({ ...status, CurrentStatusId: 23 }), /not approved/);
+    assert.throws(() => reopenPayload({ ...status, PackageId: 3 }), /Package/);
+    assert.throws(() => reopenPayload({ ...status, TransportItinerary: [] }), /itinerary is not saved/);
+    assert.throws(() => reopenPayload({ ...status, TransportItinerary: [{ ArrivalDateTimeZone: '2026-12-10T10:00:00', DepartureDateTimeZone: '2026-12-14T08:00:00' }] }), /itinerary to be updated/);
   });
 });

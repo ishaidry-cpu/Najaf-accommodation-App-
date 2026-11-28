@@ -9,7 +9,8 @@ import { expiry, guests, localHistory, prune, read, removals, rooms, stayDates, 
 import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
-import { ApprovalError, approvalClient, approveTour, createApprovalRefresh, records as approvalRecords, reloadChat, saveEdit, saveReview, sendChat,
+import { applicantChoice, ApprovalError, approvalClient, approvedList, approvedOpen, approveTour, createApprovalRefresh, openApproved, reapproveApproved,
+  records as approvalRecords, reloadChat, saveAccommodation, saveEdit, saveReview, searchApproved, sendChat,
   settings as approvalSettings, snapshot as approvalSnapshot } from './nkerp-approvals.js';
 import { normalizeApprovalSettings } from '../src/services/approvalPlanner.js';
 import { recordSlip, SlipError, slips } from './slips.js';
@@ -108,7 +109,7 @@ export function accommodationApi(onChange: () => void = () => {}) {
   const pull = createPull(invalidate);
   const approvals = createApprovalRefresh();
   const approvalState = () => ({ snapshot: approvalSnapshot(), records: approvalRecords(), settings: approvalSettings(),
-    refresh: { ...approvals.status } });
+    refresh: { ...approvals.status }, approved: { ...approvedList(), open: approvedOpen() } });
   const deps: HandlerDeps = {
     credentials: credentialStatus,
     readHistory: localHistory.read,
@@ -215,6 +216,26 @@ export function accommodationApi(onChange: () => void = () => {}) {
             return json(approvalState());
           }
           if (action === 'edit') { saveEdit(body as never); invalidate(); return json(approvalState()); }
+          if (action === 'accommodation') { saveAccommodation(body as never); invalidate(); return json(approvalState()); }
+          if (action === 'applicants') {
+            return json(await applicantChoice(approvalClient(false, AbortSignal.timeout(60_000)), body as never));
+          }
+          if (action === 'approved/search') {
+            await searchApproved(approvalClient(false, AbortSignal.timeout(110_000)), body as never);
+            invalidate();
+            return json(approvalState());
+          }
+          if (action === 'approved/open') {
+            await openApproved(approvalClient(false, AbortSignal.timeout(60_000)), body as never);
+            invalidate();
+            return json(approvalState());
+          }
+          if (action === 'approved/reapprove') {
+            if (body.confirm !== true) return json({error:'Confirm the re-approval first.'},400);
+            const record = await reapproveApproved(approvalClient(true), body as never);
+            invalidate();
+            return json({ record, ...approvalState() });
+          }
           if (action === 'review') { saveReview(body as never); invalidate(); return json(approvalState()); }
           if (action === 'settings') {
             const saved = {...read('settings',{}), approvalSettings: normalizeApprovalSettings(body)};

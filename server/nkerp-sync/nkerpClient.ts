@@ -146,7 +146,7 @@ export class NkerpClient implements NkerpApi {
   }
 
   /** One HTTP call. Rejected = NKERP answered and refused (HTTP error or IsError). */
-  private async req(path: string, body?: unknown, signal?: AbortSignal): Promise<NkRecord> {
+  private async req(path: string, body?: unknown, signal?: AbortSignal, anyJson = false): Promise<NkRecord> {
     this.calls[path] = (this.calls[path] ?? 0) + 1;
     const headers: Record<string, string> = {
       Accept: 'application/json', 'Content-Type': 'application/json', Origin: ORIGIN, Referer: `${ORIGIN}/`,
@@ -163,6 +163,8 @@ export class NkerpClient implements NkerpApi {
     }
     this.cookies.absorb(res.headers);
     const obj = res.body;
+    // A count or a list (applicant counts) when the caller asked for any JSON; an IsError object is still refused.
+    if (anyJson && !(obj && typeof obj === 'object' && !Array.isArray(obj) && obj.IsError)) return obj as NkRecord;
     if (!obj || typeof obj !== 'object' || Array.isArray(obj) || obj.IsError) {
       const msg = obj && typeof obj === 'object' && !Array.isArray(obj) ? obj.ReturnMessage : undefined;
       throw new Rejected(`NKERP refused ${path}: ${msg === undefined || msg === null ? 'None' : msg}`);
@@ -206,13 +208,22 @@ export class NkerpClient implements NkerpApi {
 
   /** POST (or GET when body is undefined) to an allow-listed read endpoint, with retries. */
   async read(path: string, body?: unknown): Promise<NkRecord> {
+    return this.readJson(path, body, false);
+  }
+
+  /** Like read, for endpoints that answer with a bare number or list (NKERP's applicant counts). */
+  async readAny(path: string, body?: unknown): Promise<unknown> {
+    return this.readJson(path, body, true);
+  }
+
+  private async readJson(path: string, body: unknown, anyJson: boolean): Promise<NkRecord> {
     if (!(typeof this.reads === 'function' ? this.reads(path) : this.reads.includes(path))) throw new Error('not a read endpoint');
     let relogged = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (this.signal?.aborted) throw new Error('cancelled');
       await this.login();
       try {
-        return await this.req(path, body, this.signal);
+        return await this.req(path, body, this.signal, anyJson);
       } catch (err) {
         if (err instanceof Rejected && err.status === 401 && !relogged) {   // expired session: log in again once
           this.reset();

@@ -79,7 +79,12 @@ export interface ApprovalTour {
   messages: ChatMessage[];
   /** The latest set of city stays NKERP holds for the tour (the previous approval, for re-approvals). */
   previousPlans: Segment[];
+  /** An approved Tour ID opened from the planner to change it (not in the approval queues). */
+  approvedEdit?: boolean;
 }
+
+/** An approved Tour ID opened from the planner to change it: NKERP's tour, its approved city stays and status. */
+export interface ApprovedTour { tour: ApprovalTour; segments: Segment[]; statusId: number; readAt: string }
 
 /** A dashboard day for one city (NKERP Accommodation Status dashboard). */
 export interface DayCell {
@@ -171,10 +176,32 @@ export interface ApprovalRecord {
   approval?: { state: ApprovalState; at: string; message?: string; segments: Segment[]; reapproval: boolean };
   /** Messages the approver sent to the Tour ID's NKERP chat box from the planner (latest last). */
   chats?: ChatSend[];
-  history: { at: string; kind: string; note?: string }[];
+  /**
+   * The approver's accommodation requirement (Faiz / hotel pax), kept until NKERP changes the tour. NKERP's own
+   * figures at the time are kept beside it, so the original and the revised requirement are both on record.
+   */
+  accommodation?: AccommodationChange;
+  /** Every change made from the planner: the original and revised details, who, when, and the approval status. */
+  revisions?: Revision[];
+  /** An approved Tour ID sent back to NKERP's approval queue from the planner (approved-tour Update), never sent twice. */
+  reopen?: { state: 'sending' | 'sent' | 'refused' | 'uncertain'; at: string; modifiedOn: string; message?: string };
+  history: { at: string; kind: string; note?: string; by?: string }[];
+}
+export interface PaxSplit { faiz: number; hotel: number }
+export interface AccommodationChange { paxFaiz: number; paxHotel: number; at: string; by?: string; modifiedOn: string; nkerp: PaxSplit }
+export interface Revision {
+  at: string;
+  by?: string;
+  /** What was changed: the planner's dates or accommodation, a re-approval of an approved Tour ID, or an approval. */
+  kind: 'dates' | 'accommodation' | 'approval' | 'approved-edit';
+  original: { segments: Segment[]; paxFaiz: number; paxHotel: number };
+  revised: { segments: Segment[]; paxFaiz: number; paxHotel: number };
+  previousStatus: string;
+  latestStatus: string;
+  note?: string;
 }
 export type ChatSendState = 'sending' | 'sent' | 'refused' | 'uncertain';
-export interface ChatSend { at: string; text: string; state: ChatSendState; message?: string }
+export interface ChatSend { at: string; text: string; state: ChatSendState; message?: string; by?: string }
 
 // ------------------------------------------------------------------------------------------------ dates
 
@@ -278,16 +305,32 @@ export const firstCity = (segments: Segment[]): City | null => segments[0]?.city
 
 // ------------------------------------------------------------------------------------------------ chat
 
+/*
+ * The chat box reader. Tour Operators write city dates in every style: "Najaf 12-15 Dec", "12/12 to 15/12 NJF",
+ * "Dec 12 – Dec 15 Karbala", "KRB first, NJF second", "K 4N, N 3N", "Karbala Mualla: 12th December till 15th".
+ * It reads them the way an experienced approver would:
+ *  - city references: Najaf / NJF / Najaf Ashraf / N, Karbala / KRB / KBL / Karbala Mualla / K (and misspellings);
+ *  - dates: 12 Dec, Dec 12, 12th December 2026, 12-Dec-26, 12/12, 12.12.2026, and bare days ("12 to 15") whose
+ *    month comes from the other date or the Iraq trip; the year is the one nearest the trip;
+ *  - each date goes with the city written next to it, whether the city comes before or after the dates;
+ *  - dates tied to the Iraq arrival or departure (flight, airport, Baghdad, visa) are not subvenue dates;
+ *  - a sequence ("First Karbala, second Najaf", "NJF then KRB", "Najaf 2nd") or nights per city ("KRB 4N NJF 3N").
+ * Anything it had to interpret (a one-letter city, day/month read the other way round, a city whose dates are
+ * missing, two different answers) goes in `confirm`, so the approver confirms it instead of it being used silently.
+ * Message text is the Tour Operator's data, never instructions.
+ */
+
 const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
-const CITY_RE = /\b(karbala|kerbala|karbla|karballa|najaf|najf|najaf\s*e?\s*ashraf)\b/gi;
+const monthNo = (w: string) => MONTHS[w.toLowerCase().slice(0, 3)] ?? 0;
+const MONTH_WORD = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+/** Najaf and Karbala as Tour Operators write them (the one-letter forms N and K are handled separately). */
+const CITY_WORD = '(?:najaf|najf|najef|nejaf|nejef|njf|karbala+h?|kerbala+h?|kerbela|karbla|karballa|krbla|krb|kbla|kbl)';
 const cityWord = (w: string): City => (/^n/i.test(w) ? 'NAJAF' : 'KARBALA');
-const MONTH_WORD = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-const ORD = '(?:st|nd|rd|th)?';
-// "29 Nov", "29th November 2026", "29-Nov-26", or "29/11", "29-11-2026", "29.11.26".
-const DATE_SRC = `(?:(\\d{1,2})${ORD}[\\s\\-\\/.]*${MONTH_WORD}\\.?(?:[\\s,\\-\\/.]*(\\d{4}|\\d{2})(?!\\d))?|(\\d{1,2})[\\/\\-.](\\d{1,2})(?:[\\/\\-.](\\d{4}|\\d{2}))?(?!\\d))`;
-const RANGE_RE = new RegExp(`(?:(\\d{1,2})${ORD}\\s*|${DATE_SRC})\\s*(?:to|till|until|upto|up\\s*to|-|–|—|&|and)\\s*${DATE_SRC}`, 'gi');
+const CITY_ANY = new RegExp(`\\b${CITY_WORD}\\b`, 'gi');
+const ORDER_WORDS = /\b(first|1st|second|2nd|then|followed\s+by|after\s+that|last|start(?:ing)?\s+(?:with|from)|begin(?:ning)?\s+with)\b|→|->|>/i;
+const NIGHTS = '(?:n|nts?|nights?|days?)';
 
 function pickYear(month: number, dayOfMonth: number, around: string, explicit?: string): string | null {
   if (!(month >= 1 && month <= 12 && dayOfMonth >= 1 && dayOfMonth <= 31)) return null;
@@ -306,11 +349,223 @@ function pickYear(month: number, dayOfMonth: number, around: string, explicit?: 
   return options[0] || null;
 }
 
-function dateFrom(groups: (string | undefined)[], around: string, fallbackMonth?: number): string | null {
-  const [d1, mw, y1, d2, m2, y2] = groups;
-  if (d1 && mw) return pickYear(MONTHS[mw.slice(0, mw.toLowerCase().startsWith('sept') ? 4 : 3).toLowerCase()] ?? 0, Number(d1), around, y1);
-  if (d2 && m2) return pickYear(Number(m2), Number(d2), around, y2);
-  return null;
+/**
+ * The line as the reader sees it: month-first dates turned day-first ("Dec 12" → "12 Dec"), ordinals dropped,
+ * "12-12 to 15-12" written with slashes, and the one-letter city forms spelled out (only on lines that carry
+ * dates or a sequence, and only as capitals standing alone).
+ */
+function normalizeLine(raw: string): { text: string; letters: boolean } {
+  let s = ` ${raw} `;
+  // Ordinals of dates only ("12th Dec", "Dec 12th", "1st to 5th Dec"); "1st"/"2nd" alone are a sequence.
+  s = s.replace(new RegExp(`(\\d{1,2})\\s*(?:st|nd|rd|th)\\b(?:\\s+of)?(?=\\s*[\\-\\/.]?\\s*${MONTH_WORD}\\b)`, 'gi'), '$1');
+  s = s.replace(new RegExp(`(\\b${MONTH_WORD}\\b\\.?\\s*\\d{1,2})\\s*(?:st|nd|rd|th)\\b`, 'gi'), '$1');
+  s = s.replace(/(\d{1,2})\s*(?:st|nd|rd|th)\b(?=\s*(?:-|–|—|to|till|until|upto)\s*\d)/gi, '$1');
+  // "Dec 12-15" / "Dec 12 to 15": the month belongs to both days.
+  s = s.replace(new RegExp(`(?<![\\d][\\s\\-\\/.]*)\\b(${MONTH_WORD})\\b\\.?\\s*(\\d{1,2})\\s*(-|–|—|to|till|until|upto)\\s*(\\d{1,2})\\b(?!\\s*[\\/.:]\\d)(?!\\s*${MONTH_WORD}\\b)`, 'gi'),
+    (_m, mon, a, sep, b) => `${a} ${mon} ${sep} ${b} ${mon}`);
+  // "Dec 12, 2026" → "12 Dec 2026" (not when a day already stands before the month: "12 Dec 15 Dec").
+  s = s.replace(new RegExp(`(?<![\\d][\\s\\-\\/.]*)\\b(${MONTH_WORD})\\b\\.?\\s*(\\d{1,2})\\b(?!\\s*[\\/.:]\\d)(?:,?\\s*(\\d{4})\\b)?`, 'gi'),
+    (_m, mon, d, y) => `${d} ${mon}${y ? ' ' + y : ''}`);
+  // "12-12 to 15-12" and "12-12-2026": numeric dates written with dashes.
+  s = s.replace(/\b(\d{1,2})-(\d{1,2})-(\d{4}|\d{2})\b/g, '$1/$2/$3');
+  s = s.replace(/\b(\d{1,2})-(\d{1,2})(\s*(?:to|till|until|upto|–|—)\s*)(\d{1,2})-(\d{1,2})\b/gi, '$1/$2$3$4/$5');
+  let letters = false;
+  const datedOrOrdered = /\d/.test(s) || ORDER_WORDS.test(s);
+  if (datedOrOrdered) {
+    s = s.replace(/(?<![A-Za-z0-9'’])([NK])(?![A-Za-z0-9'’]|\/[A-Za-z])/g, (_m, c) => { letters = true; return c === 'N' ? 'Najaf' : 'Karbala'; });
+  }
+  return { text: s, letters };
+}
+
+type Tok =
+  | { kind: 'date'; day: number; month: number | null; year?: string; alt?: { day: number; month: number }; num: boolean }
+  | { kind: 'bare'; day: number }
+  | { kind: 'sep' }
+  | { kind: 'city'; city: City }
+  | { kind: 'iraq' }
+  | { kind: 'role'; role: 'start' | 'end' };
+
+const TOKEN_RE = new RegExp([
+  // 12 Dec, 12-Dec-26, 12 December 2026
+  `(?<dmD>\\b\\d{1,2})[\\s\\-\\/.]*(?<dmM>${MONTH_WORD})\\b\\.?(?:[\\s,\\-\\/.']*(?<dmY>\\d{4})(?!\\d)|['\\-\\/.](?<dmY2>\\d{2})(?!\\d)(?!\\s*${MONTH_WORD}\\b))?`,
+  // 12/12, 12.12.2026
+  `(?<nD>\\b\\d{1,2})(?<nS>[\\/.])(?<nM>\\d{1,2})(?:\\k<nS>(?<nY>\\d{4}|\\d{2}))?(?!\\d)(?!\\s*(?:am|pm|hrs?|hours)\\b)`,
+  `(?<city>\\b${CITY_WORD}\\b)`,
+  `(?<iraq>\\b(?:iraq|baghdad|bgw|flights?|airport|landing|visa)\\b)`,
+  `(?<roleS>\\b(?:from|arriv\\w*|check\\s*-?\\s*in|reach\\w*|start\\w*)\\b)`,
+  `(?<roleE>\\b(?:depart\\w*|check\\s*-?\\s*out|leav\\w*|vacat\\w*)\\b)`,
+  `(?<sep>\\b(?:to|till|until|upto|up\\s+to|thru|through|and)\\b|–|—|-|~|&)`,
+  `(?<bare>\\b\\d{1,2}\\b)(?!\\s*(?:pax|nights?|nts?|days?|n|d|people|persons|members|adults?|kids|child(?:ren)?|infants?|am|pm|hrs?|hours)\\b)(?![:.]\\d)`,
+].join('|'), 'gi');
+
+function tokenize(text: string): Tok[] {
+  const out: Tok[] = [];
+  for (const m of text.matchAll(TOKEN_RE)) {
+    const g = m.groups!;
+    if (g.dmD) out.push({ kind: 'date', day: Number(g.dmD), month: monthNo(g.dmM), year: g.dmY || g.dmY2, num: false });
+    else if (g.nD) {
+      const a = Number(g.nD), b = Number(g.nM);
+      out.push({ kind: 'date', day: a, month: b, year: g.nY, num: true, alt: a <= 12 && b <= 31 && a !== b ? { day: b, month: a } : undefined });
+    } else if (g.city) out.push({ kind: 'city', city: cityWord(g.city) });
+    else if (g.iraq) out.push({ kind: 'iraq' });
+    else if (g.roleS) out.push({ kind: 'role', role: 'start' });
+    else if (g.roleE) out.push({ kind: 'role', role: 'end' });
+    else if (g.sep) out.push({ kind: 'sep' });
+    else if (g.bare) out.push({ kind: 'bare', day: Number(g.bare) });
+  }
+  return out;
+}
+
+const within = (d: string, trip: { start: string; end: string }) => !trip.start || !trip.end || (d >= addDays(trip.start, -1) && d <= addDays(trip.end, 1));
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const validDay = (s: string) => /^\d{4}-\d\d-\d\d$/.test(s) && iso(Date.parse(s + 'T00:00:00Z')) === s;
+/** Day `day` of the month `k` months after the month of `d`. */
+function monthDay(d: string, k: number, day: number): string | null {
+  const [y, mo] = d.split('-').map(Number);
+  const idx = mo - 1 + k;
+  const s = `${y + Math.floor(idx / 12)}-${pad2(((idx % 12) + 12) % 12 + 1)}-${pad2(day)}`;
+  return validDay(s) ? s : null;
+}
+
+/** A full date from a token, the year nearest the trip. */
+function resolveDate(t: Tok, around: string, trip: { start: string; end: string }, flags: Set<string>): string | null {
+  if (t.kind !== 'date' || !t.month) return null;
+  const direct = pickYear(t.month, t.day, around, t.year);
+  if (t.num && t.alt) {
+    // 12/15 can only be December 15; 03/12 is normally 3 December, and is read 12 March only if the trip says so.
+    const swapped = pickYear(t.alt.month, t.alt.day, around, t.year);
+    if ((!direct || !within(direct, trip)) && swapped && within(swapped, trip)) {
+      if (direct) flags.add('swapped');
+      return swapped;
+    }
+  }
+  return direct;
+}
+/** A bare day ("12" in "12 to 15") in the trip: the month that puts it inside the trip, else the nearest. */
+function bareInTrip(day: number, trip: { start: string; end: string }, around: string): string | null {
+  const base = trip.start || around;
+  const opts = [-1, 0, 1, 2].map(k => monthDay(base, k, day)).filter((x): x is string => Boolean(x));
+  const inside = opts.filter(d => within(d, trip));
+  const pool = inside.length ? inside : opts;
+  pool.sort((a, b) => Math.abs(daysBetween(base, a)) - Math.abs(daysBetween(base, b)));
+  return pool[0] ?? null;
+}
+/** The end day of a range written with a bare day ("12 Dec to 15"): the same month, else the next. */
+const endAfter = (start: string, day: number) => (day > Number(start.slice(8)) ? monthDay(start, 0, day) : null) ?? monthDay(start, 1, day);
+/** The start day of a range written with a bare day ("12 to 15 Dec"): the same month, else the one before. */
+const startBefore = (end: string, day: number) => (day < Number(end.slice(8)) ? monthDay(end, 0, day) : null) ?? monthDay(end, -1, day);
+
+interface Item { start?: string; end?: string; role?: 'start' | 'end'; at: number }
+interface Found { city: City; start?: string; end?: string; at: string; line: string }
+
+/** The city stays one line states, each date with the city written beside it. */
+function readLine(text: string, trip: { start: string; end: string }, around: string, flags: Set<string>): { city: City; start?: string; end?: string }[] {
+  const toks = tokenize(text);
+  const items: Item[] = [];
+  const isDate = (t?: Tok) => t?.kind === 'date' || t?.kind === 'bare';
+  /** "arrival 12 Dec", "12 Dec (departure)": the nearest role word beside the date, not past a city. */
+  const roleAt = (i: number): 'start' | 'end' | undefined => {
+    const stop = (t: Tok) => t.kind === 'city' || t.kind === 'date' || t.kind === 'bare';
+    for (let j = i - 1; j >= Math.max(0, i - 2); j--) { const t = toks[j]; if (t.kind === 'role') return t.role; if (stop(t)) break; }
+    for (let j = i + 1; j <= Math.min(toks.length - 1, i + 3); j++) { const t = toks[j]; if (t.kind === 'role') return t.role; if (stop(t)) break; }
+    return undefined;
+  };
+  for (let i = 0; i < toks.length; i++) {
+    const a = toks[i];
+    if (!isDate(a)) continue;
+    if (toks[i + 1]?.kind === 'sep' && isDate(toks[i + 2])) {
+      const b = toks[i + 2];
+      let end = b.kind === 'date' ? resolveDate(b, around, trip, flags) : null;
+      let start = a.kind === 'date' ? resolveDate(a, end ?? around, trip, flags) : null;
+      if (!end && start && b.kind === 'bare') end = endAfter(start, b.day);
+      if (!start && end && a.kind === 'bare') start = startBefore(end, a.day);
+      if (!start && !end && a.kind === 'bare' && b.kind === 'bare') {
+        start = bareInTrip(a.day, trip, around);
+        end = start ? endAfter(start, b.day) : null;
+        if (start && end) flags.add('month');
+      }
+      if (start && end && end > start) items.push({ start, end, at: i });
+      i += 2;
+      continue;
+    }
+    if (a.kind !== 'date') continue;
+    const d = resolveDate(a, around, trip, flags);
+    if (d) items.push({ start: d, role: roleAt(i), at: i });
+  }
+  if (!items.length) return [];
+  const cities = toks.map((t, i) => (t.kind === 'city' ? { city: t.city, at: i } : null)).filter((x): x is { city: City; at: number } => Boolean(x));
+  if (!cities.length) return [];
+  /** A date written beside a flight, airport, Baghdad, Iraq or visa word is the Iraq arrival/departure, not a stay. */
+  const iraqDate = (at: number) => {
+    for (let j = at - 1; j >= Math.max(0, at - 4); j--) { if (toks[j].kind === 'city') break; if (toks[j].kind === 'iraq') return true; }
+    for (let j = at + 1; j <= Math.min(toks.length - 1, at + 3); j++) { if (toks[j].kind === 'city' || toks[j].kind === 'date') break; if (toks[j].kind === 'iraq') return true; }
+    return false;
+  };
+  const iraqAt = toks.map((t, i) => (t.kind === 'iraq' ? i : -1)).filter(i => i >= 0);
+  const between = (a: number, b: number) => iraqAt.some(x => x > Math.min(a, b) && x < Math.max(a, b));
+  // The city stands before its dates ("Najaf 12-15 Dec, Karbala 15-18 Dec") or after them ("12-15 Dec Najaf").
+  const cityFirst = cities[0].at < items[0].at;
+  const owner = (it: Item) => {
+    if (iraqDate(it.at)) return null;
+    if (new Set(cities.map(c => c.city)).size === 1) {
+      const c = cities.reduce((m, x) => (Math.abs(x.at - it.at) < Math.abs(m.at - it.at) ? x : m), cities[0]);
+      return between(c.at, it.at) ? null : c;
+    }
+    const before = [...cities].reverse().find(c => c.at < it.at);
+    const after = cities.find(c => c.at > it.at);
+    const c = cityFirst ? before : after ?? before;
+    if (!c) return null;
+    return between(c.at, it.at) ? null : c;
+  };
+  const byCity = new Map<City, Item[]>();
+  for (const it of items) {
+    const c = owner(it);
+    if (!c) continue;
+    byCity.set(c.city, [...(byCity.get(c.city) ?? []), it]);
+  }
+  const out: { city: City; start?: string; end?: string }[] = [];
+  // Cities in the order they stand on the line (a repeated visit on one line keeps its own dates).
+  for (const [city, list] of byCity) {
+    const ranges = list.filter(x => x.end);
+    const singles = list.filter(x => !x.end);
+    let start = ranges.length ? ranges.map(x => x.start!).sort()[0] : undefined;
+    let end = ranges.length ? ranges.map(x => x.end!).sort().slice(-1)[0] : undefined;
+    for (const s of singles) {
+      const d = s.start!;
+      if (s.role === 'end') end = !end || d > end ? d : end;
+      else if (s.role === 'start') start = !start || d < start ? d : start;
+      else if (!start) start = d;
+      else if (!end && d > start) end = d;
+      else if (d < start) start = d;
+      else if (end && d > end) end = d;
+    }
+    if (start && end && end <= start) { if (end === start) end = undefined; else [start, end] = [end, start]; }
+    out.push({ city, start, end });
+  }
+  return out.sort((a, b) => (a.start ?? a.end ?? '').localeCompare(b.start ?? b.end ?? ''));
+}
+
+/** "KRB 4N NJF 3N", "4 nights Karbala and 3 nights Najaf": nights per city in the order written. */
+function readNights(text: string): { city: City; nights: number }[] {
+  const re = new RegExp(`\\b(${CITY_WORD})\\b\\s*[:\\-–(]?\\s*(\\d{1,2})\\s*${NIGHTS}\\b|\\b(\\d{1,2})\\s*${NIGHTS}\\b\\s*(?:in\\s+|at\\s+|of\\s+)?(${CITY_WORD})\\b`, 'gi');
+  return [...text.matchAll(re)].map(m => ({ city: cityWord(m[1] || m[4]), nights: Number(m[2] || m[3]) }));
+}
+
+/** A sequence in words: "Karbala first", "first NJF", "Najaf then Karbala", "Najaf second", "start with KRB". */
+function readOrder(text: string): City | null {
+  const C = `(${CITY_WORD})`;
+  const tests: [RegExp, (m: RegExpExecArray) => City][] = [
+    [new RegExp(`\\b${C}\\b\\s*[:\\-–]?\\s*(?:first|1st|1)\\b(?!\\s*(?:${MONTH_WORD}|\\/|-\\d))`, 'i'), m => cityWord(m[1])],
+    [new RegExp(`\\b(?:first|1st)\\b\\s*(?:sub\\s*-?\\s*venue\\s*)?[:\\-–]?\\s*(?:in\\s+|to\\s+|go\\s+to\\s+|visit\\s+|stay\\s+in\\s+)?${C}\\b`, 'i'), m => cityWord(m[1])],
+    [new RegExp(`\\b(?:start(?:ing)?\\s+(?:with|from|in)|begin(?:ning)?\\s+(?:with|in))\\s+${C}\\b`, 'i'), m => cityWord(m[1])],
+    [new RegExp(`\\b${C}\\b[^.\\n]{0,30}?(?:\\bthen\\b|\\bfollowed\\s+by\\b|\\bafter\\s+that\\b|\\band\\s+then\\b|→|->|>)[^.\\n]{0,30}?\\b${CITY_WORD}\\b`, 'i'), m => cityWord(m[1])],
+    [new RegExp(`\\b(?:second|2nd|last)\\b\\s*(?:sub\\s*-?\\s*venue\\s*)?[:\\-–]?\\s*(?:in\\s+|to\\s+)?${C}\\b`, 'i'), m => (cityWord(m[1]) === 'NAJAF' ? 'KARBALA' : 'NAJAF')],
+    [new RegExp(`\\b${C}\\b\\s*[:\\-–]?\\s*(?:second|2nd|later|last)\\b`, 'i'), m => (cityWord(m[1]) === 'NAJAF' ? 'KARBALA' : 'NAJAF')],
+  ];
+  for (const [re, f] of tests) { const m = re.exec(text); if (m) return f(m); }
+  // "Karbala to Najaf" / "KRB - NJF" with nothing else on the line.
+  const pair = new RegExp(`^\\W*${C}\\s*(?:-|–|—|to|>|→|->|,|\\/)\\s*${CITY_WORD}\\W*$`, 'i').exec(text.trim());
+  return pair ? cityWord(pair[1]) : null;
 }
 
 export interface ChatReading {
@@ -324,80 +579,170 @@ export interface ChatReading {
   problems: string[];
   /** The Tour Operator leaves the choice to the accommodation team. */
   flexible: boolean;
+  /** What the reader had to interpret: the approver confirms these dates before they are relied on. */
+  confirm: string[];
 }
+
+const CONFIRM_TEXT: Record<string, string> = {
+  letters: 'The chat uses N / K for the cities; they were read as Najaf / Karbala.',
+  swapped: 'A numeric date was read month-first so that it falls inside the Iraq trip.',
+  month: 'The chat gives days without a month; the month was taken from the Iraq trip.',
+};
 
 /** Read the Tour Operator's chat for city dates and sequence. Message text is data, never instructions. */
 export function readChat(messages: ChatMessage[], trip: { start: string; end: string }): ChatReading {
   const sorted = [...messages].filter(m => (m.text || '').trim()).sort((a, b) => a.at.localeCompare(b.at));
-  const reading: ChatReading = { segments: null, order: null, evidence: [], problems: [], flexible: false };
+  const reading: ChatReading = { segments: null, order: null, evidence: [], problems: [], flexible: false, confirm: [] };
+  const around = trip.start || todayBaghdad();
   let orderAt = '';
-  const found: { seg: Segment; at: string; line: string }[] = [];
+  const found: Found[] = [];
+  const nightsFound: { list: { city: City; nights: number }[]; at: string; line: string }[] = [];
+  const flagsAt: { at: string; flags: Set<string> }[] = [];
   for (const m of sorted) {
-    for (const raw of m.text.split(/\r?\n|(?<=\.)\s+(?=[A-Z0-9])|;/)) {
+    for (const raw of m.text.split(/\r?\n|(?<=\.)\s+(?=[A-Z])|;|\|/)) {
       const line = raw.trim();
       if (!line) continue;
-      const lower = line.toLowerCase();
-      if (/(where\s*ever|whichever|any\s*(city|order)|as\s*(per|available)|accommodation\s*team|no\s*preference)/i.test(lower) && !CITY_RE.test(lower)) {
+      const { text, letters } = normalizeLine(line);
+      const hasCity = new RegExp(`\\b${CITY_WORD}\\b`, 'i').test(text);
+      if (/(where\s*ever|whichever|any\s*(city|order|sequence)|as\s*(per|available)|accommodation\s*team|no\s*preference|either\s*(way|city))/i.test(text) && !hasCity) {
         reading.flexible = true;
       }
-      CITY_RE.lastIndex = 0;
-      const orderMatch = /\b(karbala|kerbala|karbla|najaf|najf)\b\s*(?:first|1st)\b/i.exec(line) ||
-        /\bfirst\s*(?:in\s*|to\s*|go\s*to\s*)?(karbala|kerbala|karbla|najaf|najf)\b/i.exec(line) ||
-        /\b(karbala|kerbala|karbla|najaf|najf)\b[^.\n]{0,25}\b(?:then|followed\s*by|after\s*that|and\s*then)\b[^.\n]{0,25}\b(?:karbala|kerbala|najaf|najf)\b/i.exec(line);
-      if (orderMatch) {
-        reading.order = cityWord(orderMatch[1]);
-        orderAt = m.at;
-        reading.evidence.push(line);
-      }
-      const cities = [...line.matchAll(CITY_RE)].map(x => cityWord(x[1]));
-      CITY_RE.lastIndex = 0;
-      if (new Set(cities).size !== 1 || /\bdepart|\bflight\b|\barriv(al|e|ing)\s+(in\s+)?iraq/i.test(lower) && !/\bto\b|\btill\b|–|-/.test(lower)) continue;
-      RANGE_RE.lastIndex = 0;
-      for (const r of line.matchAll(RANGE_RE)) {
-        const g = r.slice(1);
-        // g[0]: bare start day ("29 to 1 Dec"); g[1..6]: full start date; g[7..12]: end date.
-        const end = dateFrom(g.slice(7, 13), trip.start || todayBaghdad());
-        if (!end) continue;
-        let start = dateFrom(g.slice(1, 7), end);
-        if (!start && g[0]) {
-          const dd = Number(g[0]);
-          const sameMonth = `${end.slice(0, 8)}${String(dd).padStart(2, '0')}`;
-          start = dd <= Number(end.slice(8)) ? sameMonth : pickYear(((Number(end.slice(5, 7)) + 10) % 12) + 1, dd, end);
-        }
-        if (!start) continue;
-        found.push({ seg: { city: cities[0], start, end }, at: m.at, line });
-      }
+      if (!hasCity) continue;
+      const flags = new Set<string>();
+      if (letters) flags.add('letters');
+      const order = readOrder(text);
+      if (order) { reading.order = order; orderAt = m.at; reading.evidence.push(line); }
+      const nights = readNights(text);
+      if (nights.length) nightsFound.push({ list: nights, at: m.at, line });
+      const stays = readLine(text, trip, around, flags);
+      for (const s of stays) found.push({ ...s, at: m.at, line });
+      if (stays.length || order || nights.length) flagsAt.push({ at: m.at, flags });
     }
   }
+
+  const latestOf = (list: { at: string }[]) => list.length ? list[list.length - 1].at : '';
+  const near = (a: string, b: string) => Math.abs(instantMs(a) - instantMs(b)) <= 6 * 3_600_000;
+  let latest = '';
   if (found.length) {
     // The latest set: the last dated message and the dated messages sent shortly before it.
-    const latest = found[found.length - 1].at;
-    const cluster = found.filter(f => Math.abs(instantMs(latest) - instantMs(f.at)) <= 6 * 3_600_000);
-    const unique = new Map<string, { seg: Segment; line: string }>();
-    for (const f of cluster) unique.set(`${f.seg.city}|${f.seg.start}`, f);
-    const segs = [...unique.values()].sort((a, b) => a.seg.start.localeCompare(b.seg.start));
+    latest = latestOf(found);
+    const cluster = found.filter(f => near(latest, f.at));
+    const full = cluster.filter(f => f.start && f.end);
+    const partial = cluster.filter(f => !(f.start && f.end));
+    // The same city with two different answers in one set: the later one stands, and the approver confirms.
+    const unique = new Map<string, Found>();
+    for (const f of full) {
+      const clash = [...unique.values()].find(u => u.city === f.city && u.start !== f.start && u.end !== f.end &&
+        !(u.end! <= f.start! || f.end! <= u.start!));
+      if (clash) {
+        unique.delete(`${clash.city}|${clash.start}`);
+        reading.confirm.push(`The chat gives ${CITY_NAME[f.city]} twice (${fmtDay(clash.start!)}–${fmtDay(clash.end!)} and ${fmtDay(f.start!)}–${fmtDay(f.end!)}); the later message was used.`);
+      }
+      const same = unique.get(`${f.city}|${f.start}`);
+      if (same && same.end !== f.end) {
+        reading.confirm.push(`The chat gives ${CITY_NAME[f.city]} twice (${fmtDay(same.start!)}–${fmtDay(same.end!)} and ${fmtDay(f.start!)}–${fmtDay(f.end!)}); the later message was used.`);
+      }
+      unique.set(`${f.city}|${f.start}`, f);
+    }
+    const segs = [...unique.values()].sort((a, b) => a.start!.localeCompare(b.start!));
     // "2 to 4 Dec Karbala, 5 to 7 Dec Najaf": NKERP needs one shared transfer date, so the later date is it.
     const chained: Segment[] = [];
-    for (const { seg } of segs) {
+    for (const f of segs) {
+      const seg: Segment = { city: f.city, start: f.start!, end: f.end! };
       const prev = chained[chained.length - 1];
       if (prev && prev.city === seg.city && prev.end >= seg.start) { prev.end = seg.end > prev.end ? seg.end : prev.end; continue; }
       if (prev && daysBetween(prev.end, seg.start) === 1) {
         reading.problems.push(`Chat leaves a day between ${CITY_NAME[prev.city]} (until ${fmtDay(prev.end)}) and ${CITY_NAME[seg.city]} (from ${fmtDay(seg.start)}); the transfer is taken as ${fmtDay(seg.start)}.`);
+        reading.confirm.push(`The transfer day between ${CITY_NAME[prev.city]} and ${CITY_NAME[seg.city]} is not stated; ${fmtDay(seg.start)} was used.`);
         prev.end = seg.start;
       }
-      chained.push({ ...seg });
+      chained.push(seg);
     }
-    reading.segments = chained;
-    reading.evidence.push(...segs.map(s => s.line).filter(l => !reading.evidence.includes(l)));
-    const chatOrder = chained[0]?.city ?? null;
-    // Dated stays decide the sequence, unless a later message asked for another order.
-    if (!reading.order || !orderAt || orderAt <= latest) reading.order = chatOrder;
-    if (trip.start && trip.end) {
-      const p = segmentProblems(chained, trip.start, trip.end);
-      if (p.length) reading.problems.push(`Chat dates ${fmtSegments(chained)} do not match the Iraq trip ${fmtDay(trip.start)}–${fmtDay(trip.end)}.`);
+    // One date for a city ("Najaf from 15 Dec", "departure from Karbala 18 Dec"): the stay runs to the next stay or
+    // the trip's end (from the previous stay or the trip's start). Absorbed silently when it agrees with a range.
+    for (const f of partial) {
+      const d = (f.start ?? f.end)!;
+      const same = chained.find(s => s.city === f.city && s.start <= d && d <= s.end);
+      if (same) continue;
+      if (f.start) {
+        const next = chained.find(s => s.start >= f.start!);
+        const end = next ? next.start : trip.end;
+        if (end && end > f.start) {
+          chained.push({ city: f.city, start: f.start, end });
+          reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} arrival (${fmtDay(f.start)}); its departure was taken as ${fmtDay(end)}.`);
+        }
+      } else if (f.end) {
+        const prev = [...chained].reverse().find(s => s.end <= f.end!);
+        const start = prev ? prev.end : trip.start;
+        if (start && start < f.end) {
+          chained.push({ city: f.city, start, end: f.end });
+          reading.confirm.push(`The chat gives only the ${CITY_NAME[f.city]} departure (${fmtDay(f.end)}); its arrival was taken as ${fmtDay(start)}.`);
+        }
+      }
+      chained.sort((a, b) => a.start.localeCompare(b.start));
+    }
+    // A city the chat leaves out: the rest of the trip, when the stated stays start or end with the trip.
+    if (chained.length && trip.start && trip.end) {
+      const cities = new Set(chained.map(s => s.city));
+      const first = chained[0], last = chained[chained.length - 1];
+      if (cities.size === 1) {
+        const other: City = first.city === 'NAJAF' ? 'KARBALA' : 'NAJAF';
+        if (first.start === trip.start && last.end < trip.end) {
+          chained.push({ city: other, start: last.end, end: trip.end });
+          reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the rest of the trip (${fmtDay(last.end)}–${fmtDay(trip.end)}).`);
+        } else if (last.end === trip.end && first.start > trip.start) {
+          chained.unshift({ city: other, start: trip.start, end: first.start });
+          reading.confirm.push(`The chat gives only ${CITY_NAME[first.city]}; ${CITY_NAME[other]} was taken as the start of the trip (${fmtDay(trip.start)}–${fmtDay(first.start)}).`);
+        }
+      }
+    }
+    if (chained.length) {
+      reading.segments = chained;
+      reading.evidence.push(...cluster.map(s => s.line).filter(l => !reading.evidence.includes(l)));
+      const chatOrder = chained[0].city;
+      // Dated stays decide the sequence, unless a later message asked for another order.
+      if (reading.order && reading.order !== chatOrder) {
+        if (orderAt > latest && !near(orderAt, latest)) {
+          reading.confirm.push(`A later message asks for ${CITY_NAME[reading.order]} first, unlike the dated stays (${fmtSegments(chained)}).`);
+        } else {
+          reading.confirm.push(`The chat asks for ${CITY_NAME[reading.order]} first, but its dates put ${CITY_NAME[chatOrder]} first; the dates were used.`);
+          reading.order = chatOrder;
+        }
+      } else reading.order = chatOrder;
+      if (trip.start && trip.end) {
+        const p = segmentProblems(chained, trip.start, trip.end);
+        if (p.length) reading.problems.push(`Chat dates ${fmtSegments(chained)} do not match the Iraq trip ${fmtDay(trip.start)}–${fmtDay(trip.end)}.`);
+      }
     }
   }
+  // Nights per city with no dates: exact stays when they add up to the trip, else only the sequence.
+  if (!reading.segments && nightsFound.length && trip.start && trip.end) {
+    const n = nightsFound[nightsFound.length - 1];
+    const cities = n.list.map(x => x.city);
+    if (new Set(cities).size === cities.length && (!orderAt || n.at >= orderAt)) {
+      const total = n.list.reduce((s, x) => s + x.nights, 0);
+      const tripNights = daysBetween(trip.start, trip.end);
+      reading.evidence.push(n.line);
+      if (total === tripNights && n.list.length <= 2) {
+        let d = trip.start;
+        reading.segments = n.list.map(x => { const s = { city: x.city, start: d, end: addDays(d, x.nights) }; d = s.end; return s; });
+        reading.order = n.list[0].city;
+        latest = n.at;
+      } else {
+        reading.order = n.list[0].city;
+        orderAt = n.at;
+        reading.confirm.push(`The chat gives ${n.list.map(x => `${CITY_NAME[x.city]} ${x.nights}`).join(' + ')} nights, but the Iraq trip has ${tripNights}; only the sequence (${CITY_NAME[n.list[0].city]} first) was used.`);
+      }
+    }
+  }
+  const usedAt = latest || orderAt;
+  const flags = new Set(flagsAt.filter(f => usedAt && near(usedAt, f.at)).flatMap(f => [...f.flags]));
+  // N / K and days without a month are normal ways of writing; they need confirming only when the result is in doubt.
+  const doubtful = !reading.segments || reading.problems.length > 0 || reading.confirm.length > 0 ||
+    (trip.start && trip.end ? segmentProblems(reading.segments, trip.start, trip.end).length > 0 : true);
+  for (const k of ['swapped', ...(doubtful ? ['letters', 'month'] : [])]) if (flags.has(k)) reading.confirm.push(CONFIRM_TEXT[k]);
   if (reading.order) reading.flexible = false;
+  reading.confirm = [...new Set(reading.confirm)];
   return reading;
 }
 
@@ -500,7 +845,7 @@ function addExpected(load: Load, start: string, end: string, pax: number) {
 const at = (load: Load, city: City, d: string) => load[city][d] ?? 0;
 
 export type Category = 'ready' | 'awaiting' | 'pending-submission' | 'reapproval';
-export type Recommendation = 'approve' | 'hold-capacity' | 'wait' | 'follow-up' | 'needs-chat' | 'needs-itinerary' | 'resolve' | 'review-changes' | 'done';
+export type Recommendation = 'approve' | 'confirm-dates' | 'hold-capacity' | 'wait' | 'follow-up' | 'needs-chat' | 'needs-itinerary' | 'resolve' | 'review-changes' | 'done';
 export type SegmentSource = 'edited' | 'chat-dates' | 'chat-order' | 'balanced' | 'previous' | 'none';
 
 /** One city-day a tour touches. `present`: approved in NKERP now; `before`/`after`: the expected count without/with this tour. */
@@ -529,6 +874,10 @@ export interface TourPlan {
   approvable: boolean;
   /** Dustbin sign inside the cut-off: flagged for urgent follow-up with the Tour Operator. */
   urgent: boolean;
+  /** What the AI interpreted in the chat box: the approver confirms these dates (warnings, never a block). */
+  confirm: string[];
+  /** NKERP's own Faiz / hotel pax when the approver changed the accommodation requirement (`tour` has the revised). */
+  nkerpPax?: PaxSplit;
   notes: string[];
   category: Category;
   recommendation: Recommendation;
@@ -592,8 +941,15 @@ export const ITINERARY_UNKNOWN = 'NKERP has not said whether the itinerary is sa
 const sentAlready = (p: Pick<TourPlan, 'tour' | 'record'>) => Boolean(p.record?.approval &&
   ['api_reported_approved', 'attempting', 'uncertain_no_retry'].includes(p.record.approval.state) && p.record.approval.reapproval === p.tour.reapproval);
 
-const kindOf = (t: ApprovalTour): TourPlan['kind'] =>
-  t.option === 1 ? 'preferred' : t.option === 3 ? 'hotel' : t.paxHotel > 0 && t.paxFaiz > 0 ? 'mixed' : t.paxFaiz > 0 ? 'faiz' : 'hotel';
+const kindOf = (t: ApprovalTour, revised = false): TourPlan['kind'] =>
+  t.option === 1 ? 'preferred' : t.option === 3 && !revised ? 'hotel' : t.paxHotel > 0 && t.paxFaiz > 0 ? 'mixed' : t.paxFaiz > 0 ? 'faiz' : 'hotel';
+
+/** The approver's accommodation change, while it still applies to the tour as NKERP holds it. */
+export const accommodationOf = (t: Pick<ApprovalTour, 'modifiedOn' | 'paxTotal' | 'paxFaiz' | 'paxHotel'>, record?: ApprovalRecord): AccommodationChange | null => {
+  const a = record?.accommodation;
+  if (!a || a.modifiedOn !== t.modifiedOn || a.paxFaiz + a.paxHotel !== t.paxTotal) return null;
+  return a.paxFaiz === t.paxFaiz && a.paxHotel === t.paxHotel ? null : a;
+};
 
 function impactOf(segments: Segment[], pax: number, base: Load, limits: Record<City, number>, present: Load = emptyLoad()): { impact: DayImpact[]; over: DayImpact[] } {
   const add = emptyLoad();
@@ -652,11 +1008,15 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
   const buffer = emptyLoad();
   const hotelPending = emptyLoad();
   const plans: TourPlan[] = [];
-  for (const t of tours) {
-    const start = tripStart(t), end = tripEnd(t);
-    const record = records[String(t.id)];
+  for (const nk of tours) {
+    const start = tripStart(nk), end = tripEnd(nk);
+    const record = records[String(nk.id)];
+    // The approver's Faiz / hotel split replaces NKERP's in the plan (capacity, kind, approval); NKERP's stays on record.
+    const acc = accommodationOf(nk, record);
+    const t: ApprovalTour = acc ? { ...nk, paxFaiz: acc.paxFaiz, paxHotel: acc.paxHotel } : nk;
     const chat = readChat(t.messages, { start, end });
-    const kind = kindOf(t);
+    const kind = kindOf(t, Boolean(acc));
+    const wasFaiz = Boolean(acc) && nk.paxFaiz > 0 && t.paxFaiz === 0;
     const submission = submissionState(t, settings.cutoffDays, today);
     const problems: string[] = [];
     /** Problems NKERP cannot accept from the planner (a subset of problems). */
@@ -668,9 +1028,11 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     let suggestedSource: SegmentSource = 'none';
     let flexible = false;
     const chatOk = chat.segments && !segmentProblems(chat.segments, start, end).length;
-    if (chatOk) { suggested = chat.segments!; suggestedSource = 'chat-dates'; }
+    // An approved Tour ID being changed starts from what NKERP approved; the approver edits from there.
+    if (t.approvedEdit && t.previousPlans.length && !segmentProblems(t.previousPlans, start, end).length) { suggested = t.previousPlans; suggestedSource = 'previous'; }
+    else if (chatOk) { suggested = chat.segments!; suggestedSource = 'chat-dates'; }
     else if (chat.order) { suggested = splitInOrder(start, end, chat.order); suggestedSource = 'chat-order'; }
-    else if (kind === 'hotel') {
+    else if (kind === 'hotel' && !wasFaiz) {
       if (edit) notes.push('Chat box has no city dates or sequence: the city dates were entered by the approver.');
       else problems.push('Chat box has no city dates or sequence: hotel stays are approved only on the dates the Tour Operator gives.');
     } else if (t.reapproval && t.previousPlans.length && !segmentProblems(t.previousPlans, start, end).length) {
@@ -681,6 +1043,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     if (chat.segments && !chatOk && (kind === 'hotel' || !chat.order) && !edit) problems.push(...chat.problems);
     else if (chat.problems.length) notes.push(...chat.problems);
     if (chat.flexible) notes.push('Tour Operator leaves the city order to the accommodation team.');
+    if (acc) notes.push(`Accommodation changed by ${acc.by || 'the approver'}: ${acc.paxFaiz} Faiz / ${acc.paxHotel} hotel (NKERP has ${nk.paxFaiz} / ${nk.paxHotel}).`);
     if (t.itinerarySaved !== true) hard.push(t.itinerarySaved === false ? ITINERARY_MISSING : ITINERARY_UNKNOWN);
     if (kind === 'preferred') hard.push('Accommodation option is "Preferred": confirm Required or Not Required in NKERP before approving.');
     if (t.linkedTourId) hard.push(`Linked to tour ${t.linkedTourId}: approve it in NKERP so the link is kept.`);
@@ -692,6 +1055,11 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const segments = edit ?? suggested;
     const source: SegmentSource = edit ? 'edited' : suggestedSource;
     if (edit) flexible = false;
+    // What the AI read from the chat (or chose for a group moved from Faiz to hotel) waits for the approver's confirmation.
+    const confirm = edit ? [] : [
+      ...(source === 'chat-dates' || source === 'chat-order' ? chat.confirm : []),
+      ...(wasFaiz && source !== 'chat-dates' ? ['Moved from Faiz to hotel: the chat box gives no hotel dates, so the AI\'s split is used. Confirm the dates.'] : []),
+    ];
     const segProblems = segments.length ? segmentProblems(segments, start, end) : [];
     hard.push(...segProblems);
     problems.unshift(...hard);
@@ -712,7 +1080,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const changes = t.reapproval && original ? compareWithOriginal(t, original, chatOk ? chat.segments : segments, t.events, record?.approvedAt) : [];
     plans.push({
       tour: t, record, kind, submission, chat, suggested, suggestedSource, segments, source, flexible, problems, notes,
-      blockers: hard, approvable: false, urgent: false,
+      blockers: hard, approvable: false, urgent: false, confirm, ...(acc ? { nkerpPax: { faiz: nk.paxFaiz, hotel: nk.paxHotel } } : {}),
       category: 'awaiting', recommendation: 'resolve', fits: true, over: [], impact: [], original, originalSource, changes,
       oldFaiz: oldFaiz.get(t.id) ?? [],
       priority: (t.reapproval ? 0 : 2) + (isFaizOffice(t.office) ? 0 : 1),
@@ -723,7 +1091,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const t = p.tour;
     if (p.submission.state === 'complete' && !t.reapproval) continue;
     if (t.reapproval) continue;
-    const pax = t.option === 3 ? 0 : t.paxFaiz || (t.option === 1 ? t.paxTotal : 0);
+    const pax = p.nkerpPax ? t.paxFaiz : t.option === 3 ? 0 : t.paxFaiz || (t.option === 1 ? t.paxTotal : 0);
     if (p.source === 'chat-dates' || p.source === 'chat-order' || p.source === 'edited') addLoad(buffer, p.segments, pax);
     else addExpected(buffer, tripStart(t), tripEnd(t), pax);
   }
@@ -780,13 +1148,14 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     }
     for (const s of p.segments) if (t.paxHotel) addLoad(hotelPending, [s], t.paxHotel);
     const blocked = p.problems.some(x => !/^Over the /.test(x));
-    p.category = t.reapproval ? 'reapproval' : !blocked && p.fits ? 'ready' : 'awaiting';
+    p.category = t.reapproval ? 'reapproval' : !blocked && p.fits && !p.confirm.length ? 'ready' : 'awaiting';
     const reviewed = p.record?.status === 'reapproval-reviewed' && p.record.reviewedModifiedOn === t.modifiedOn;
     p.recommendation = done ? 'done'
       : t.itinerarySaved !== true ? 'needs-itinerary'
       : !p.segments.length && p.kind === 'hotel' ? 'needs-chat'
       : blocked ? 'resolve'
       : !p.fits ? 'hold-capacity'
+      : p.confirm.length ? 'confirm-dates'
       : t.reapproval && p.changes.length && !reviewed ? 'review-changes'
       : 'approve';
   }
@@ -899,7 +1268,7 @@ export const FORM_FIELDS = ['NoOfDays', 'PaxRequiredAcc', 'PaxNotRequiredAcc', '
  * NKERP's Approve request (the UI's approval form and city-date serializer), built from the tour's current
  * detail. It keeps the trip instants and every other field as they are and only adds the city stays.
  */
-export function approvalPayload(detail: Record<string, any>, segments: Segment[], opts: { linkedTourId?: number } = {}) {
+export function approvalPayload(detail: Record<string, any>, segments: Segment[], opts: { linkedTourId?: number; pax?: PaxSplit | null } = {}) {
   const t = detail;
   if (t.CurrentStatusId !== 23 || !t.IsActive || t.TimeZone !== 3) throw new Error('The tour is no longer pending approval in NKERP.');
   if (![2, 3].includes(t.AccomodationOptionId)) throw new Error('Accommodation option "Preferred" must be resolved in NKERP first.');
@@ -907,7 +1276,8 @@ export function approvalPayload(detail: Record<string, any>, segments: Segment[]
     if (!Number.isInteger(t[k]) || t[k] < 0) throw new Error('NKERP pax figures are missing.');
   }
   if (t.PaxCount <= 0 || t.PaxRequiredAcc + t.PaxNotRequiredAcc !== t.PaxCount) throw new Error('Pax breakup does not add up in NKERP.');
-  if ((t.AccomodationOptionId === 2 && t.PaxRequiredAcc === 0) || (t.AccomodationOptionId === 3 && t.PaxRequiredAcc !== 0)) {
+  const pax = paxChange(t, opts.pax);
+  if (!pax && ((t.AccomodationOptionId === 2 && t.PaxRequiredAcc === 0) || (t.AccomodationOptionId === 3 && t.PaxRequiredAcc !== 0))) {
     throw new Error('Accommodation option and Faiz pax disagree in NKERP.');
   }
   if (opts.linkedTourId) throw new Error('Linked tour: approve it in NKERP so the link is kept.');
@@ -928,8 +1298,85 @@ export function approvalPayload(detail: Record<string, any>, segments: Segment[]
     TourId: t.Id, ModifiedOn: t.ModifiedOn, ActionId: 1, IsTourConverted: 0, LinkTourId: 0, LinkWithTour: false,
     isDST: false, IsApprovedWithAccommodation: t.PaxRequiredAcc > 0, TourSubvenuePlan,
   });
+  // The approver changed the Faiz / hotel split: NKERP's approval form sends the new pax figures, and switches
+  // Mawaid on when there are Faiz pax and off when there are none (the form's own rule for the Faiz pax field).
+  if (pax) Object.assign(body, { PaxRequiredAcc: pax.faiz, PaxNotRequiredAcc: pax.hotel, IsMawaidRequired: pax.faiz > 0, IsApprovedWithAccommodation: pax.faiz > 0 });
   return body;
 }
+
+/** The approver's Faiz / hotel split when it differs from NKERP's, checked against NKERP's total pax. */
+export function paxChange(detail: Record<string, any>, pax?: PaxSplit | null): PaxSplit | null {
+  if (!pax) return null;
+  const faiz = Number(pax.faiz), hotel = Number(pax.hotel);
+  if (!Number.isInteger(faiz) || !Number.isInteger(hotel) || faiz < 0 || hotel < 0) throw new Error('Enter whole numbers of Faiz and hotel pax.');
+  if (faiz + hotel !== detail.PaxCount) throw new Error(`Faiz and hotel pax must add up to the tour's ${detail.PaxCount} pax (now ${faiz} + ${hotel}).`);
+  return faiz === detail.PaxRequiredAcc && hotel === detail.PaxNotRequiredAcc ? null : { faiz, hotel };
+}
+
+/** An NKERP applicant as the approval form's "Applicant Details" list shows it. */
+export interface Applicant { id: number; its: string; name: string; age: number | null; faiz: boolean; counted: boolean; infant: boolean }
+
+/**
+ * Whether NKERP's approval form asks for each applicant's "Accommodation Required" before approving a new Faiz
+ * pax count (the form's own rule): once applicants are added, the applicants marked for accommodation must match
+ * the new Faiz pax, except while the Muwafiqa is in states 29, 30, 38 or (unlocked) 31.
+ */
+export function applicantsMustMatch(o: { muwafiqaState: number | null; muwafiqaLocked: boolean; hasApplicants: boolean;
+  accommodationCount: number; faizApplicants: number; newFaiz: number }): boolean {
+  const { muwafiqaState: pt, muwafiqaLocked, hasApplicants, accommodationCount: wt, faizApplicants: ki, newFaiz } = o;
+  if (!hasApplicants) return false;
+  if (muwafiqaLocked && pt === 31) return wt !== newFaiz && ki !== newFaiz;
+  if (pt === 38 || pt === 31 || pt === 29 || pt === 30) return false;
+  if (newFaiz > 0 && wt !== newFaiz) return ki !== newFaiz;
+  if (newFaiz === 0 && wt > 0) return ki > 0;
+  if (newFaiz > 0 && wt === 0) return ki === 0;
+  return false;
+}
+
+/** NKERP's Hv: an itinerary time after the tour time, or more than a day from it, makes NKERP ask for an itinerary update. */
+const itineraryOff = (a: string, b: string) => {
+  const x = Date.parse(a.slice(0, 16) + ':00Z'), y = Date.parse(b.slice(0, 16) + ':00Z');
+  return Number.isFinite(x) && Number.isFinite(y) && (x > y || Math.abs(x - y) > 86_400_000);
+};
+/** Baghdad wall-clock time of an NKERP instant, as "YYYY-MM-DDTHH:mm". */
+const localStamp = (v: string) => { const ms = instantMs(v); return Number.isFinite(ms) ? new Date(ms + OFFSET).toISOString().slice(0, 16) : ''; };
+
+/**
+ * NKERP's approved-tour Update request (Tour Admin → Approved → Update), with nothing changed: it returns the
+ * Tour ID to NKERP's approval queue, where the planner then approves it again with the new dates and pax.
+ * Built like the Update form: the form's values (less the fields the form drops, ModifiedOn among them), the
+ * trip instants as they are, no reset of Ziyarat, transport, accommodation or Mawaid, and the current city stays.
+ */
+export function reopenPayload(status: Record<string, any>, opts: { linkedTourId?: number } = {}) {
+  const t = status;
+  if (t.CurrentStatusId !== 2 || !t.IsActive || t.TimeZone !== 3) throw new Error('The tour is not approved in NKERP (or no longer active), so it cannot be reopened from the planner.');
+  if (opts.linkedTourId || t.LinkTourId) throw new Error('Linked tour: change it in NKERP so the link is kept.');
+  if (t.PackageId) throw new Error('Package tour: change it in NKERP so the package rules are kept.');
+  if (![2, 3].includes(t.AccomodationOptionId)) throw new Error('Accommodation option "Preferred" must be resolved in NKERP first.');
+  for (const k of ['PaxCount', 'PaxRequiredAcc', 'PaxNotRequiredAcc']) if (!Number.isInteger(t[k]) || t[k] < 0) throw new Error('NKERP pax figures are missing.');
+  const start = instantMs(t.StartDate), end = instantMs(t.EndDate);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) throw new Error('NKERP trip dates are missing.');
+  const itinerary = Array.isArray(t.TransportItinerary) ? t.TransportItinerary : null;
+  if (itinerary && !itinerary.length) throw new Error('The itinerary is not saved in NKERP (the fly mark is not red).');
+  const leg = itinerary?.[0];
+  if (leg && (itineraryOff(str0(leg.ArrivalDateTimeZone), localStamp(t.StartDate)) || itineraryOff(localStamp(t.EndDate), str0(leg.DepartureDateTimeZone)))) {
+    throw new Error('NKERP would ask for the transport itinerary to be updated first (its times do not match the tour dates). Update it in NKERP, then try again.');
+  }
+  const body: Record<string, unknown> = {};
+  for (const k of ['NoOfDays', 'PaxRequiredAcc', 'PaxNotRequiredAcc', 'IsMawaidRequired', 'IsPublic', 'IsMuwafiqaRequired',
+    'IsArrDepTransportRequired', 'IsSubVenueTransportRequired', 'IsOtherTransportRequired', 'Remarks', 'EntryPortId', 'ExitPortId']) body[k] = t[k];
+  Object.assign(body, {
+    StartDate: new Date(start).toISOString(), EndDate: new Date(end).toISOString(),
+    CountryId: Number(t.CountryId) > 0 ? t.CountryId : -1, CityId: Number(t.CityId) > 0 ? t.CityId : -1,
+    IsTourConverted: 0, PackageId: 0, TourId: t.Id, LinkTourId: 0, AccomodationOptionId: t.AccomodationOptionId,
+    IsZiyaratCreated: false, IsTransportChanged: false, IsZiyaratGroupReset: false, IsAccommodationChanged: false, IsMawaidChanged: false,
+    TimeZone: 3, IsApprovedWithAccommodation: t.AccomodationOptionId === 2 ? true : t.PaxRequiredAcc > 0, IsTransportRequired: t.IsTransportRequired,
+  });
+  const plans = Array.isArray(t.TourSubvenuePlan) ? t.TourSubvenuePlan : [];
+  if (plans.length) body.TourSubvenuePlan = plans.map((r: Record<string, unknown>) => ({ ...r, planEndDate: r.EndDate }));
+  return body;
+}
+const str0 = (v: unknown) => String(v ?? '');
 
 /** The latest city-stay set in an NKERP TourSubvenuePlan list (rows repeat with every earlier approval). */
 export function latestPlanSet(rows: Record<string, any>[]): Segment[] {
@@ -989,6 +1436,7 @@ export function suggestion(p: TourPlan, plan?: ApprovalPlan): { issue: string; n
       next: shift ? `Shift the whole of ${shift.move.tour.ref} to ${CITY_NAME[shift.to[0].city]} first, then approve.`
         : p.alternative?.fits ? `Ask the Tour Operator to accept ${fmtSegments(p.alternative.segments)} (fits).`
         : 'Hold on the waitlist until space frees on those dates; do not split the group.' };
+    case 'confirm-dates': return { issue: p.confirm[0] ?? 'The AI interpreted the chat dates.', next: 'Check the chat box, then press Confirm dates (or correct them) and approve.' };
     case 'review-changes': return { issue: `${p.changes.length} change${p.changes.length === 1 ? '' : 's'} since the last approval.`, next: 'Review the highlighted changes, then approve.' };
     case 'done': return { issue: p.record?.approval?.state === 'api_reported_approved' ? 'Approved from the planner.' : 'Approval sent; NKERP\'s answer is unknown.',
       next: p.record?.approval?.state === 'api_reported_approved' ? 'Nothing.' : 'Check the tour in NKERP. It is not sent again.' };
@@ -1022,6 +1470,8 @@ export function approvalWarnings(p: TourPlan): string[] {
     out.push(worst ? `Over the ${CITY_NAME[worst.city]} limit on ${fmtDay(worst.date)} (${worst.after}/${worst.limit}).` : 'Does not fit capacity.');
   }
   if (p.source === 'edited' && !p.chat.segments && p.kind === 'hotel') out.push('Hotel stay on the approver\'s dates: the chat box has none.');
+  for (const x of p.confirm) out.push(`Dates not confirmed yet: ${x}`);
+  if (p.nkerpPax) out.push(`Accommodation changed: ${p.tour.paxFaiz} Faiz / ${p.tour.paxHotel} hotel instead of NKERP's ${p.nkerpPax.faiz} / ${p.nkerpPax.hotel}; NKERP's figures are updated with the approval.`);
   for (const x of p.problems) if (!p.blockers.includes(x) && !/^Over the /.test(x) && !out.includes(x)) out.push(x);
   if (p.tour.unread) out.push('Unread message from the Tour Operator in the NKERP chat box.');
   return out;

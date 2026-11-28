@@ -1,30 +1,32 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, BadgeCheck, Ban, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Flag, Hotel, Info,
-  Copy, Loader2, MessageSquare, Navigation, NavigationOff, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2, X,
+  AlertTriangle, ArrowRight, BadgeCheck, Ban, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Flag, FolderOpen,
+  History, Hotel, Info, Copy, Loader2, MessageSquare, Navigation, NavigationOff, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2,
+  Users, X,
 } from 'lucide-react';
 import {
   btn, btnSm, card, chip, type ChipTone, field, fieldLabel, fieldSm, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle,
   PageHeader,
 } from './ui';
 import {
-  type ApprovalPlan, type ApprovalRecord, type ApprovalSettings, approvalWarnings, CHANGE_CATEGORIES, chatTemplates, CITY_NAME, type City, cityNights,
-  fmtDay, fmtSegments, followUpMessage, fromSubvenueDates, inProposal, needsFollowUp, officeFollowUps, localDay, localTime, najafReport, planApprovals, reapprovalStatus,
-  type Segment, type SegmentSource, segmentProblems, type SubvenueDates, suggestion, toSubvenueDates, type TourPlan, tripEnd,
+  type Applicant, type ApprovalPlan, type ApprovalRecord, type ApprovalSettings, type ApprovalTour, approvalWarnings, CHANGE_CATEGORIES, chatTemplates, CITY_NAME, type City, cityNights,
+  fmtDay, fmtSegments, followUpMessage, fromSubvenueDates, inProposal, needsFollowUp, officeFollowUps, localDay, localTime, najafReport, type PaxSplit, planApprovals, reapprovalStatus,
+  type Revision, type Segment, type SegmentSource, segmentProblems, type SubvenueDates, suggestion, toSubvenueDates, type TourPlan, tripEnd,
   tripStart,
 } from '../services/approvalPlanner';
 import {
-  type ApprovalState, approveInNkerp, loadApprovals, refreshApprovals, reloadTourChat, saveApprovalEdit, saveApprovalReview, saveApprovalSettings,
-  sendChatToNkerp,
+  type ApprovalState, approveInNkerp, loadApplicants, loadApprovals, openApprovedTour, reapproveApprovedTour, refreshApprovals, reloadTourChat,
+  saveApprovalAccommodation, saveApprovalEdit, saveApprovalReview, saveApprovalSettings, searchApprovedTours, sendChatToNkerp,
 } from '../services/approvalsApi';
 
-type Section = 'proposal' | 'reapproval' | 'awaiting' | 'pending' | 'capacity' | 'najaf' | 'remaining' | 'all';
+type Section = 'proposal' | 'reapproval' | 'awaiting' | 'pending' | 'approved' | 'capacity' | 'najaf' | 'remaining' | 'all';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'proposal', label: 'Ready to approve' },
   { id: 'reapproval', label: 'Re-approvals' },
   { id: 'awaiting', label: 'Awaiting' },
   { id: 'pending', label: 'Pending submission' },
+  { id: 'approved', label: 'Approved Tour IDs' },
   { id: 'capacity', label: 'Capacity' },
   { id: 'najaf', label: 'Najaf report' },
   { id: 'remaining', label: 'Remaining tours' },
@@ -37,6 +39,7 @@ const SOURCE_LABEL: Record<SegmentSource, string> = {
 };
 const REC_STYLE: Record<TourPlan['recommendation'], { label: string; tone: ChipTone }> = {
   approve: { label: 'Approve', tone: 'ok' },
+  'confirm-dates': { label: 'Confirm dates', tone: 'wait' },
   'review-changes': { label: 'Review changes', tone: 'wait' },
   'hold-capacity': { label: 'Hold: capacity', tone: 'bad' },
   wait: { label: 'Wait for TO', tone: 'neutral' },
@@ -329,17 +332,146 @@ const ImpactTable: React.FC<{ plan: TourPlan }> = ({ plan }) => {
   );
 };
 
+/** The approver's choice of applicants for Faiz accommodation, as NKERP's approval form asks for it. */
+export interface ApplicantPick { loading: boolean; error?: string; list?: Applicant[]; mustMatch?: boolean; chosen: number[]; forFaiz: number }
+
+const REVISION_KIND: Record<Revision['kind'], string> = {
+  dates: 'City dates', accommodation: 'Accommodation', approval: 'Approval', 'approved-edit': 'Change to an approved Tour ID',
+};
+const paxText = (x: { paxFaiz: number; paxHotel: number }) => `${x.paxFaiz} Faiz / ${x.paxHotel} hotel`;
+
+/** Every change made from the planner, latest first: original and revised details, who, when and the status. */
+const ChangeHistory: React.FC<{ record?: ApprovalRecord }> = ({ record }) => {
+  const revisions = [...(record?.revisions ?? [])].reverse();
+  const log = [...(record?.history ?? [])].reverse();
+  if (!revisions.length && !log.length) return null;
+  return (
+    <div>
+      <h3 className={`${subhead} mb-2 flex items-center gap-2`}><History className="w-4 h-4 text-stone-500" />Change and approval history</h3>
+      {revisions.length > 0 ? (
+        <ol className="rounded-lg bg-white ring-1 ring-inset ring-stone-200 divide-y divide-stone-200 max-h-80 overflow-y-auto text-[13px] leading-relaxed">
+          {revisions.map((r, i) => (
+            <li key={i} className="px-3.5 py-2.5">
+              <span className="block text-xs text-stone-500 tabular-nums">{when(r.at)} · {r.by || 'name not given'} · <span className="font-medium text-stone-700">{REVISION_KIND[r.kind]}</span></span>
+              <span className="block text-stone-700"><span className="text-stone-500">Original: </span>{fmtSegments(r.original.segments)} · {paxText(r.original)}</span>
+              <span className="block text-stone-950"><span className="text-stone-500">Revised: </span>{fmtSegments(r.revised.segments)} · {paxText(r.revised)}</span>
+              <span className="block text-stone-700"><span className="text-stone-500">Status: </span>{r.previousStatus} <ArrowRight className="inline w-3 h-3 -mt-0.5 text-stone-500" /> <span className="font-medium text-stone-900">{r.latestStatus}</span></span>
+              {r.note && <span className="block text-stone-600">{r.note}</span>}
+            </li>
+          ))}
+        </ol>
+      ) : <p className="text-[13px] text-stone-600">No change from the planner yet.</p>}
+      {log.length > 0 && (
+        <details className="mt-2 text-[13px]">
+          <summary className="cursor-pointer text-stone-600 hover:text-stone-950">Full log ({log.length})</summary>
+          <ul className="mt-1.5 space-y-0.5 text-stone-600 max-h-48 overflow-y-auto">
+            {log.map((h, i) => <li key={i} className="tabular-nums"><span className="text-stone-500">{when(h.at)}</span> · {h.kind.replace(/-/g, ' ')}{h.by ? ` · ${h.by}` : ''}{h.note ? `: ${h.note}` : ''}</li>)}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+};
+
+/** Faiz ↔ hotel: how many of the tour's pax get Faiz accommodation. NKERP is updated with the approval. */
+const AccommodationEditor: React.FC<{
+  plan: TourPlan;
+  draft?: PaxSplit;
+  onDraft: (v: PaxSplit | undefined) => void;
+  onSave: (v: PaxSplit | null) => Promise<void>;
+  pick?: ApplicantPick;
+  onLoadApplicants: () => void;
+  onPick: (ids: number[]) => void;
+  busy: boolean;
+}> = ({ plan: p, draft, onDraft, onSave, pick, onLoadApplicants, onPick, busy }) => {
+  const t = p.tour;
+  const nk = p.nkerpPax ?? { faiz: t.paxFaiz, hotel: t.paxHotel };
+  const cur = draft ?? { faiz: t.paxFaiz, hotel: t.paxHotel };
+  const locked = p.recommendation === 'done' || t.option === 1;
+  const set = (faiz: number) => { const f = Math.max(0, Math.min(t.paxTotal, Math.round(faiz) || 0)); onDraft({ faiz: f, hotel: t.paxTotal - f }); };
+  const acc = p.record?.accommodation;
+  const chosen = new Set(pick?.chosen ?? []);
+  const countedChosen = (pick?.list ?? []).filter(a => a.counted && chosen.has(a.id)).length;
+  return (
+    <div>
+      <h3 className={`${subhead} mb-2 flex items-center gap-2`}><Hotel className="w-4 h-4 text-stone-500" />Accommodation requirement</h3>
+      <div className="rounded-lg bg-white ring-1 ring-inset ring-stone-200 p-3 space-y-3">
+        <p className="text-[13px] text-stone-600 tabular-nums">NKERP: <span className="font-semibold text-stone-900">{paxText({ paxFaiz: nk.faiz, paxHotel: nk.hotel })}</span> of {t.paxTotal} pax · {t.optionLabel || '—'}
+          {p.nkerpPax && acc && <> · <span className="text-amber-800">changed to {paxText(acc)} by {acc.by || 'the approver'} {ago(acc.at)}</span></>}</p>
+        {t.option === 1 ? <p className="text-[13px] text-amber-800">Accommodation option is "Preferred": confirm Required or Not Required in NKERP first.</p> : (
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2.5">
+            <label className="block"><span className={fieldLabel}>Faiz pax</span>
+              <input type="number" min={0} max={t.paxTotal} value={cur.faiz} disabled={locked || busy} onChange={e => set(Number(e.target.value))} className={`${fieldSm} max-md:h-10 w-20 tabular-nums`} /></label>
+            <label className="block"><span className={fieldLabel}>Hotel pax</span>
+              <input type="number" min={0} max={t.paxTotal} value={cur.hotel} disabled={locked || busy} onChange={e => set(t.paxTotal - Number(e.target.value))} className={`${fieldSm} max-md:h-10 w-20 tabular-nums`} /></label>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className={`${btnSm.secondary} max-md:h-10`} disabled={locked || busy || cur.faiz === 0} onClick={() => set(0)}>All {t.paxTotal} to hotel</button>
+              <button type="button" className={`${btnSm.secondary} max-md:h-10`} disabled={locked || busy || cur.faiz === t.paxTotal} onClick={() => set(t.paxTotal)}>All {t.paxTotal} to Faiz</button>
+            </div>
+          </div>
+        )}
+        {(draft || p.nkerpPax) && !locked && (
+          <div className="flex flex-wrap gap-2">
+            {draft && <button type="button" className={btn.secondary} disabled={busy} onClick={() => onSave(draft)}><Save className="w-4 h-4 text-brand-700" />Save accommodation</button>}
+            <button type="button" className={btn.secondary} disabled={busy} onClick={() => { onDraft(undefined); if (p.nkerpPax) void onSave(null); }}><RotateCcw className="w-4 h-4" />Back to NKERP's {nk.faiz} / {nk.hotel}</button>
+          </div>
+        )}
+        {draft && <p className="text-xs text-amber-800">Not saved yet: the capacity below already shows the change.</p>}
+        {p.nkerpPax && !draft && (
+          <div className="border-t border-stone-200 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[13px] text-stone-700 max-w-[60ch]">NKERP's approval form may ask which applicants get Faiz accommodation when the Faiz pax change. {pick?.list ? '' : 'Load them to check.'}</p>
+              <button type="button" className={`${btnSm.secondary} max-md:h-10`} disabled={busy || pick?.loading} onClick={onLoadApplicants}>
+                {pick?.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}{pick?.list ? 'Reload applicants' : 'Load applicants'}</button>
+            </div>
+            {pick?.error && <p className="mt-2 text-[13px] text-rose-700">{pick.error}</p>}
+            {pick?.list && !pick.mustMatch && <p className="mt-2 text-[13px] text-emerald-800">NKERP does not need the applicants chosen for this change; the new pax figures go with the approval.</p>}
+            {pick?.list && pick.mustMatch && (
+              <div className="mt-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <p className={`text-[13px] tabular-nums ${countedChosen === t.paxFaiz ? 'text-emerald-800' : 'text-amber-800'}`}>{countedChosen} of {t.paxFaiz} Faiz pax chosen (infants are not counted)</p>
+                  <span className="flex gap-1.5">
+                    <button type="button" className={`${btnSm.ghost} max-md:h-10`} onClick={() => onPick(pick.list!.map(a => a.id))}>All</button>
+                    <button type="button" className={`${btnSm.ghost} max-md:h-10`} onClick={() => onPick([])}>None</button>
+                  </span>
+                </div>
+                <ul className="max-h-60 overflow-y-auto rounded-lg ring-1 ring-inset ring-stone-200 divide-y divide-stone-200 text-[13px]">
+                  {pick.list.map(a => (
+                    <li key={a.id}><label className="flex items-center gap-2.5 px-3 min-h-10 cursor-pointer hover:bg-stone-50">
+                      <input type="checkbox" className={check} checked={chosen.has(a.id)} onChange={() => onPick(chosen.has(a.id) ? [...chosen].filter(x => x !== a.id) : [...chosen, a.id])} />
+                      <span className="flex-1 min-w-0 truncate text-stone-900">{a.name || '—'}</span>
+                      <span className="text-stone-500 tabular-nums">{a.its}{a.age !== null ? ` · ${a.age}y` : ''}{a.infant ? ' · infant' : ''}{!a.counted && !a.infant ? ' · not counted' : ''}</span>
+                    </label></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const TourDetail: React.FC<{
   plan: TourPlan;
   draft: Segment[] | undefined;
   onDraft: (segments: Segment[] | undefined) => void;
-  onSave: (segments: Segment[] | null) => Promise<void>;
+  onSave: (segments: Segment[] | null, confirmed?: boolean) => Promise<void>;
   onReview: (reviewed: boolean) => Promise<void>;
   onApprove: () => void;
   onSendChat: (text: string) => Promise<boolean>;
   onReloadChat: () => Promise<void>;
+  accDraft?: PaxSplit;
+  onAccDraft: (v: PaxSplit | undefined) => void;
+  onSaveAcc: (v: PaxSplit | null) => Promise<void>;
+  pick?: ApplicantPick;
+  onLoadApplicants: () => void;
+  onPick: (ids: number[]) => void;
+  /** An approved Tour ID opened to change it: the action re-approves it in NKERP. */
+  approved?: { segments: Segment[] };
   busy: boolean;
-}> = ({ plan: p, draft, onDraft, onSave, onReview, onApprove, onSendChat, onReloadChat, busy }) => {
+}> = ({ plan: p, draft, onDraft, onSave, onReview, onApprove, onSendChat, onReloadChat, accDraft, onAccDraft, onSaveAcc, pick, onLoadApplicants, onPick, approved, busy }) => {
   const t = p.tour;
   const fields = toSubvenueDates(p.segments);
   const multi = p.segments.filter(s => s.city === 'KARBALA').length > 1 || p.segments.filter(s => s.city === 'NAJAF').length > 1;
@@ -352,7 +484,7 @@ const TourDetail: React.FC<{
   const followUp = chatTemplates(p)[0];
   const writeFollowUp = () => { if (followUp) setChatText(followUp.text); window.setTimeout(() => { composerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); composerRef.current?.focus(); }, 0); };
   const attention = p.problems.filter(x => !p.blockers.includes(x));
-  const unsaved = draft !== undefined;
+  const unsaved = draft !== undefined || accDraft !== undefined;
   const sentState = p.record?.approval;
   const overDays = p.impact.filter(i => i.after > i.limit).length;
   return (
@@ -379,6 +511,16 @@ const TourDetail: React.FC<{
           )}
         </div>
       ) : null}
+      {p.confirm.length > 0 && p.recommendation !== 'done' && draft === undefined && (
+        <div role="status" className="mb-5 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-900"><CalendarCheck className="w-4 h-4 shrink-0" />Confirm the subvenue dates: {fmtSegments(p.segments)}</p>
+            <ul className="mt-1 space-y-0.5 text-[13px] leading-relaxed text-amber-900 list-disc pl-10">{p.confirm.map((x, i) => <li key={i}>{x}</li>)}</ul>
+            <p className="mt-1 text-xs text-amber-900/80">The lines the AI read are highlighted in the chat box. Correct the dates below if they are wrong.</p>
+          </div>
+          <button type="button" className={`${btn.secondary} shrink-0`} disabled={busy || segmentProblems(p.segments, tripStart(t), tripEnd(t)).length > 0} onClick={() => void onSave(p.segments, true)}><CheckCircle2 className="w-4 h-4 text-emerald-700" />Confirm dates</button>
+        </div>
+      )}
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {/* Left: details, dates, capacity */}
         <div className="space-y-6 min-w-0">
@@ -439,6 +581,8 @@ const TourDetail: React.FC<{
             )}
           </div>
 
+          <AccommodationEditor plan={p} draft={accDraft} onDraft={onAccDraft} onSave={onSaveAcc} pick={pick} onLoadApplicants={onLoadApplicants} onPick={onPick} busy={busy} />
+
           {(attention.length > 0 || p.notes.length > 0) && (
             <div className="space-y-1.5 text-sm leading-relaxed">
               {attention.map((x, i) => <p key={'p' + i} className="flex gap-2 text-amber-800"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{x}</p>)}
@@ -474,8 +618,8 @@ const TourDetail: React.FC<{
           {t.reapproval && (
             <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-amber-900 flex flex-wrap items-center gap-2">Re-approval required {status && <span className={chip(REAPPROVAL_TONE[status])}>{status}</span>}</h3>
-                {status !== 'Approved' && (
+                <h3 className="text-sm font-semibold text-amber-900 flex flex-wrap items-center gap-2">{approved ? 'Changes to the approved Tour ID' : <>Re-approval required {status && <span className={chip(REAPPROVAL_TONE[status])}>{status}</span>}</>}</h3>
+                {status !== 'Approved' && !approved && (
                   <button type="button" className={`${btnSm.secondary} max-md:h-10 max-md:px-3.5`} disabled={busy} onClick={() => onReview(status !== 'Reviewed')}>
                     <BadgeCheck className="w-4 h-4" />{status === 'Reviewed' ? 'Undo reviewed' : 'Mark reviewed'}
                   </button>
@@ -510,18 +654,21 @@ const TourDetail: React.FC<{
 
           <ChatPanel plan={p} text={chatText} onText={setChatText} onSend={onSendChat} onReload={onReloadChat} busy={busy} composerRef={composerRef} />
 
+          <ChangeHistory record={p.record} />
+
           {needsFollowUp(p) && <WhatsAppBox title="WhatsApp message to the Tour Operator" message={followUpMessage(p)} note="Copy it into the Tour Operator's WhatsApp chat; WhatsApp is not sent from the app." />}
         </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 border-t border-stone-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-[13px] leading-relaxed text-stone-600">
-          {sentState ? <>Last approval: <span className="font-semibold text-stone-900">{sentState.state === 'api_reported_approved' ? 'accepted by NKERP' : sentState.state === 'api_rejected' ? 'refused by NKERP' : sentState.state === 'attempting' ? 'sending' : 'result unknown (not resent)'}</span> {ago(sentState.at)}{sentState.message ? ` · ${sentState.message}` : ''}</> : 'Not approved from the planner yet.'}
+          {approved ? <>Approved in NKERP: <span className="font-semibold text-stone-900">{fmtSegments(approved.segments)}</span>. Re-approving sends NKERP's approved-tour Update (it returns the Tour ID to the approval queue), then approves it with these dates and pax.</>
+            : sentState ? <>Last approval: <span className="font-semibold text-stone-900">{sentState.state === 'api_reported_approved' ? 'accepted by NKERP' : sentState.state === 'api_rejected' ? 'refused by NKERP' : sentState.state === 'attempting' ? 'sending' : 'result unknown (not resent)'}</span> {ago(sentState.at)}{sentState.message ? ` · ${sentState.message}` : ''}</> : 'Not approved from the planner yet.'}
         </div>
         <button type="button" className={`${btn.primary} shrink-0`} onClick={onApprove}
           disabled={busy || !p.approvable || unsaved}
-          title={unsaved ? 'Save the dates first' : p.recommendation === 'done' ? 'Already sent to NKERP' : p.blockers[0] ?? ''}>
-          <Send className="w-4 h-4" />Approve in NKERP
+          title={unsaved ? 'Save the dates and accommodation first' : p.recommendation === 'done' ? 'Already sent to NKERP' : p.blockers[0] ?? ''}>
+          <Send className="w-4 h-4" />{approved ? 'Re-approve in NKERP' : 'Approve in NKERP'}
         </button>
       </div>
     </div>
@@ -537,6 +684,36 @@ const Caret: React.FC<{ open: boolean; label: string }> = ({ open, label }) => (
 );
 const check = 'w-4 h-4 accent-brand-700 cursor-pointer';
 
+const DATE_FIELDS: [keyof SubvenueDates, string][] = [['karbalaArrival', 'Karbala arrival'], ['karbalaDeparture', 'Karbala departure'], ['najafArrival', 'Najaf arrival'], ['najafDeparture', 'Najaf departure']];
+/** Dates as a pair of city stays the four fields can show (one Karbala and one Najaf stay at most). */
+const fourFields = (segments: Segment[]) => segments.filter(s => s.city === 'KARBALA').length <= 1 && segments.filter(s => s.city === 'NAJAF').length <= 1;
+
+/** The four editable subvenue date columns of a list row: changing one recalculates the plan at once. */
+const DateCells: React.FC<{ plan: TourPlan; draft?: Segment[]; onDates: (segments: Segment[] | undefined) => void; onSave: () => void; busy: boolean }> = ({ plan: p, draft, onDates, onSave, busy }) => {
+  const t = p.tour;
+  const locked = p.recommendation === 'done';
+  if (!fourFields(p.segments)) {
+    return <td colSpan={4} className="px-3 py-3 text-[13px]"><Stays segments={p.segments} /><span className="block text-xs text-stone-500">Repeated city visit: open the Tour ID to see it.</span></td>;
+  }
+  const f = toSubvenueDates(p.segments);
+  const bad = segmentProblems(p.segments, tripStart(t), tripEnd(t)).length > 0;
+  return <>
+    {DATE_FIELDS.map(([key, label], i) => (
+      <td key={key} className={`px-1.5 py-2 ${i === 0 ? 'pl-3' : ''}`} onClick={e => e.stopPropagation()}>
+        <input type="date" aria-label={`${label} for ${t.ref}`} value={f[key]} min={tripStart(t)} max={tripEnd(t)} disabled={locked || busy}
+          onChange={e => onDates(fromSubvenueDates({ ...f, [key]: e.target.value }))}
+          className={`${fieldSm} !w-[8.6rem] !px-2 tabular-nums ${draft ? '!border-amber-400 bg-amber-50/60' : ''} ${draft && bad ? '!border-rose-400' : ''}`} />
+        {i === 3 && draft && (
+          <span className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
+            <button type="button" className={`${btnSm.secondary} !h-7 !px-2`} disabled={busy || bad} onClick={onSave}><Save className="w-3.5 h-3.5 text-brand-700" />Save</button>
+            <button type="button" className={`${btnSm.ghost} !h-7 !px-2`} disabled={busy} onClick={() => onDates(undefined)} aria-label={`Undo the date change for ${t.ref}`}><RotateCcw className="w-3.5 h-3.5" /></button>
+          </span>
+        )}
+      </td>
+    ))}
+  </>;
+};
+
 const TourTable: React.FC<{
   plans: TourPlan[];
   selectable?: boolean;
@@ -547,7 +724,9 @@ const TourTable: React.FC<{
   onExpand: (id: number | null) => void;
   renderDetail: (p: TourPlan) => React.ReactNode;
   empty: string;
-}> = ({ plans, selectable, selected, onToggle, onToggleAll, expanded, onExpand, renderDetail, empty }) => {
+  /** Show the four subvenue dates as editable columns. */
+  dates?: { drafts: Record<string, Segment[]>; onDates: (p: TourPlan, segments: Segment[] | undefined) => void; onSave: (p: TourPlan) => void; busy: boolean };
+}> = ({ plans, selectable, selected, onToggle, onToggleAll, expanded, onExpand, renderDetail, empty, dates }) => {
   const narrow = useNarrow();
   if (!plans.length) return <p className="px-4 sm:px-5 py-8 text-sm text-stone-600">{empty}</p>;
   const ids = plans.filter(p => p.approvable).map(p => p.tour.id);
@@ -604,10 +783,10 @@ const TourTable: React.FC<{
             {selectable && <th className="pl-4 sm:pl-5 pr-1 py-2.5 w-8"><input type="checkbox" className={`${check} block disabled:opacity-40`} aria-label="Select all that can be approved" title="Select all that can be approved" disabled={!ids.length} checked={Boolean(all)} onChange={e => onToggleAll?.(ids, e.target.checked)} /></th>}
             <th className="w-10" />
             <th className={`${th} !pl-1`}>Tour ID</th>
-            <th className={th}>Office</th>
-            <th className={th}>Arrival → Departure</th>
+            {dates ? <th className={th}>Office · trip</th> : <th className={th}>Office</th>}
+            {!dates && <th className={th}>Arrival → Departure</th>}
             <th className={thR}>Pax <span className="font-normal text-stone-500">(Faiz / hotel)</span></th>
-            <th className={th}>City stays</th>
+            {dates ? DATE_FIELDS.map(([k, label], i) => <th key={k} className={`${th} !px-1.5 ${i === 0 ? '!pl-3' : ''}`}>{label}</th>) : <th className={th}>City stays</th>}
             <th className={th}>Status</th>
           </tr>
         </thead>
@@ -625,13 +804,19 @@ const TourTable: React.FC<{
                     <span className="font-semibold text-stone-950 tabular-nums">{tourLabel(t.ref)}</span>
                     <TourMarks plan={p} />
                   </td>
-                  <td className="px-3 py-3 max-w-[220px] truncate text-stone-800" title={t.office}>{t.office || '—'}</td>
-                  <td className="px-3 py-3 whitespace-nowrap text-stone-700 tabular-nums">{fmtDay(tripStart(t))} → {fmtDay(tripEnd(t))}</td>
-                  <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-stone-900">{t.paxTotal} <span className="text-stone-500 text-[13px]">({t.paxFaiz} / {t.paxHotel})</span></td>
-                  <td className="px-3 py-3 text-[13px]"><span className="block text-xs text-stone-500">{KIND_LABEL[p.kind]}</span><Stays segments={p.segments} /></td>
+                  {dates ? (
+                    <td className="px-3 py-3 max-w-[200px]">
+                      <span className="block truncate text-stone-800" title={t.office}>{t.office || '—'}</span>
+                      <span className="block text-[13px] text-stone-600 tabular-nums whitespace-nowrap">{fmtDay(tripStart(t))} → {fmtDay(tripEnd(t))} · {KIND_LABEL[p.kind]}</span>
+                    </td>
+                  ) : <td className="px-3 py-3 max-w-[220px] truncate text-stone-800" title={t.office}>{t.office || '—'}</td>}
+                  {!dates && <td className="px-3 py-3 whitespace-nowrap text-stone-700 tabular-nums">{fmtDay(tripStart(t))} → {fmtDay(tripEnd(t))}</td>}
+                  <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap text-stone-900">{t.paxTotal} <span className="text-stone-500 text-[13px]">({t.paxFaiz} / {t.paxHotel})</span>{p.nkerpPax && <span className="block text-xs text-amber-800" title={`NKERP has ${p.nkerpPax.faiz} Faiz / ${p.nkerpPax.hotel} hotel`}>changed</span>}</td>
+                  {dates ? <DateCells plan={p} draft={dates.drafts[String(t.id)]} busy={dates.busy} onDates={segs => dates.onDates(p, segs)} onSave={() => dates.onSave(p)} />
+                    : <td className="px-3 py-3 text-[13px]"><span className="block text-xs text-stone-500">{KIND_LABEL[p.kind]}</span><Stays segments={p.segments} /></td>}
                   <td className="px-3 py-3"><RecChip plan={p} /></td>
                 </tr>
-                {open && <tr><td colSpan={selectable ? 8 : 7} className="p-0">{renderDetail(p)}</td></tr>}
+                {open && <tr><td colSpan={(selectable ? 8 : 7) + (dates ? 2 : 0)} className="p-0">{renderDetail(p)}</td></tr>}
               </React.Fragment>
             );
           })}
@@ -831,6 +1016,16 @@ export const ApprovalsView: React.FC = () => {
   const [settingsDraft, setSettingsDraft] = useState<ApprovalSettings | null>(null);
   const [followUps, setFollowUps] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [accDrafts, setAccDrafts] = useState<Record<string, PaxSplit>>({});
+  // Tour IDs edited in the Awaiting list stay there while you work on them, even once they become ready.
+  const [stay, setStay] = useState<Set<number>>(new Set());
+  const [picks, setPicks] = useState<Record<string, ApplicantPick>>({});
+  const [approvedQuery, setApprovedQuery] = useState('');
+  const [approvedBusy, setApprovedBusy] = useState<'search' | number | null>(null);
+  // The approver's name for the change history: kept in this browser only.
+  const [adminName, setAdminName] = useState(() => { try { return localStorage.getItem('approvals-admin-name') ?? ''; } catch { return ''; } });
+  useEffect(() => { try { localStorage.setItem('approvals-admin-name', adminName); } catch { /* private window */ } }, [adminName]);
+  const by = adminName.trim() || undefined;
   const autoRefreshed = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -850,18 +1045,35 @@ export const ApprovalsView: React.FC = () => {
   }, [refresh]);
   useEffect(() => { if (state) setSettingsDraft(state.settings); }, [state?.settings]);
 
-  // The approver's unsaved dates recalculate the whole plan at once.
-  const plan = useMemo(() => {
-    if (!state) return null;
+  const opened = useMemo(() => Object.values(state?.approved?.open ?? {}).sort((a, b) => b.readAt.localeCompare(a.readAt)), [state?.approved?.open]);
+  /** The planner's records with the approver's unsaved dates and accommodation in them, so the plan recalculates at once. */
+  const draftRecords = useMemo(() => {
+    if (!state) return {};
     const records: Record<string, ApprovalRecord> = { ...state.records };
+    const tourOf = (id: string): ApprovalTour | undefined => state.snapshot.tours.find(t => String(t.id) === id) ?? state.approved?.open[id]?.tour;
+    const base = (id: string, tour: ApprovalTour) => records[id] ?? { id: tour.id, ref: tour.ref, office: tour.office, status: 'new', firstSeenAt: '', lastSeenAt: '', history: [] } as ApprovalRecord;
     for (const [id, segments] of Object.entries(drafts)) {
-      const tour = state.snapshot.tours.find(t => String(t.id) === id);
-      if (!tour) continue;
-      const base = records[id] ?? { id: tour.id, ref: tour.ref, office: tour.office, status: 'new', firstSeenAt: '', lastSeenAt: '', history: [] } as ApprovalRecord;
-      records[id] = { ...base, edits: { segments, at: '', modifiedOn: tour.modifiedOn } };
+      const tour = tourOf(id);
+      if (tour) records[id] = { ...base(id, tour), edits: { segments, at: '', modifiedOn: tour.modifiedOn } };
     }
-    return planApprovals(state.snapshot, records, settingsDraft ?? state.settings);
-  }, [state, drafts, settingsDraft]);
+    for (const [id, v] of Object.entries(accDrafts)) {
+      const tour = tourOf(id);
+      if (!tour) continue;
+      const nk = records[id]?.accommodation?.nkerp ?? { faiz: tour.paxFaiz, hotel: tour.paxHotel };
+      records[id] = { ...base(id, tour), accommodation: { paxFaiz: v.faiz, paxHotel: v.hotel, at: '', modifiedOn: tour.modifiedOn, nkerp: nk } };
+    }
+    return records;
+  }, [state, drafts, accDrafts]);
+  const plan = useMemo(() => state ? planApprovals(state.snapshot, draftRecords, settingsDraft ?? state.settings) : null, [state, draftRecords, settingsDraft]);
+  // Approved Tour IDs opened for a change, planned with the queues: their old stays come out and the new ones go in.
+  const approvedPlans = useMemo(() => {
+    if (!state || !opened.length) return [] as TourPlan[];
+    const records: Record<string, ApprovalRecord> = { ...draftRecords };
+    for (const o of opened) { const r = records[String(o.tour.id)]; if (r) records[String(o.tour.id)] = { ...r, approval: undefined }; }
+    const inQueue = new Set(state.snapshot.tours.map(t => t.id));
+    const snap = { ...state.snapshot, tours: [...state.snapshot.tours, ...opened.map(o => o.tour).filter(t => !inQueue.has(t.id))] };
+    return planApprovals(snap, records, settingsDraft ?? state.settings).plans.filter(p => p.tour.approvedEdit);
+  }, [state, opened, draftRecords, settingsDraft]);
 
   const q = search.trim().toLowerCase();
   const filter = (list: TourPlan[]) => q ? list.filter(p => `${p.tour.ref} ${p.tour.office}`.toLowerCase().includes(q)) : list;
@@ -870,19 +1082,58 @@ export const ApprovalsView: React.FC = () => {
     return {
       proposal: plans.filter(p => !p.tour.reapproval && p.recommendation === 'approve').concat(plans.filter(p => p.tour.reapproval && p.recommendation === 'approve')),
       reapproval: plans.filter(p => p.tour.reapproval),
-      awaiting: plans.filter(p => p.category === 'awaiting'),
+      awaiting: plans.filter(p => p.category === 'awaiting' || (stay.has(p.tour.id) && p.category === 'ready')),
       pending: plans.filter(p => p.category === 'pending-submission').sort((a, b) => a.submission.daysToArrival - b.submission.daysToArrival),
       all: plans,
     };
-  }, [plan]);
+  }, [plan, stay]);
 
-  const persistEdit = async (p: TourPlan, segments: Segment[] | null) => {
+  const persistEdit = async (p: TourPlan, segments: Segment[] | null, confirmed = false) => {
     setBusy(true);
     try {
-      setState(await saveApprovalEdit(p.tour.id, segments, p.tour.modifiedOn));
+      setState(await saveApprovalEdit(p.tour.id, segments, p.tour.modifiedOn, by, confirmed));
       setDrafts(d => { const n = { ...d }; delete n[String(p.tour.id)]; return n; });
+      if (confirmed) setNotice(`Dates confirmed for ${p.tour.ref}: ${fmtSegments(segments ?? [])}.`);
     } catch (e) { setError(e instanceof Error ? e.message : 'The dates could not be saved.'); }
     finally { setBusy(false); }
+  };
+  const setDraft = (p: TourPlan, segments: Segment[] | undefined) =>
+    setDrafts(d => { const n = { ...d }; if (segments) n[String(p.tour.id)] = segments; else delete n[String(p.tour.id)]; return n; });
+  const persistAcc = async (p: TourPlan, v: PaxSplit | null) => {
+    setBusy(true);
+    try {
+      setState(await saveApprovalAccommodation(p.tour.id, v ? v.faiz : null, v ? v.hotel : null, by));
+      setAccDrafts(d => { const n = { ...d }; delete n[String(p.tour.id)]; return n; });
+      setPicks(x => { const n = { ...x }; delete n[String(p.tour.id)]; return n; });
+    } catch (e) { setError(e instanceof Error ? e.message : 'The accommodation could not be saved.'); }
+    finally { setBusy(false); }
+  };
+  /** Read the applicants and NKERP's rule; preselect who keeps or gets Faiz accommodation. */
+  const loadPick = async (p: TourPlan): Promise<ApplicantPick> => {
+    const id = String(p.tour.id);
+    setPicks(x => ({ ...x, [id]: { ...(x[id] ?? { chosen: [], forFaiz: p.tour.paxFaiz }), loading: true, error: undefined } }));
+    try {
+      const r = await loadApplicants(p.tour.id, p.tour.paxFaiz);
+      const counted = r.applicants.filter(a => a.counted);
+      // Everyone, nobody, or those already marked Faiz first: the approver adjusts the rest.
+      const chosen = p.tour.paxFaiz === 0 ? [] : p.tour.paxFaiz >= counted.length ? r.applicants.map(a => a.id)
+        : [...counted.filter(a => a.faiz), ...counted.filter(a => !a.faiz)].slice(0, p.tour.paxFaiz).map(a => a.id);
+      const pick: ApplicantPick = { loading: false, list: r.applicants, mustMatch: r.mustMatch, chosen, forFaiz: p.tour.paxFaiz };
+      setPicks(x => ({ ...x, [id]: pick }));
+      return pick;
+    } catch (e) {
+      const pick: ApplicantPick = { loading: false, error: e instanceof Error ? e.message : 'The applicants could not be read.', chosen: [], forFaiz: p.tour.paxFaiz };
+      setPicks(x => ({ ...x, [id]: pick }));
+      return pick;
+    }
+  };
+  /** The applicants chosen for Faiz accommodation to send with the approval, when NKERP needs them. */
+  const faizApplicantsFor = async (p: TourPlan): Promise<number[] | undefined> => {
+    if (!p.nkerpPax) return undefined;
+    let pick = picks[String(p.tour.id)];
+    if (!pick?.list || pick.forFaiz !== p.tour.paxFaiz) pick = await loadPick(p);
+    if (pick.error) throw new Error(pick.error);
+    return pick.mustMatch ? pick.chosen : undefined;
   };
   const review = async (p: TourPlan, reviewed: boolean) => {
     setBusy(true);
@@ -893,7 +1144,7 @@ export const ApprovalsView: React.FC = () => {
 
   const sendChat = async (p: TourPlan, text: string) => {
     try {
-      const r = await sendChatToNkerp(p.tour.id, text);
+      const r = await sendChatToNkerp(p.tour.id, text, by);
       setState(r);
       setNotice(r.visible === false ? `Sent to the NKERP chat box of ${p.tour.ref}; NKERP's list does not show it yet. Reload the chat in a minute.` : `Sent to the NKERP chat box of ${p.tour.ref}.`);
       return true;
@@ -914,7 +1165,12 @@ export const ApprovalsView: React.FC = () => {
     for (const p of items) {
       let result: { ref: string; state: string; message?: string };
       try {
-        const s = await approveInNkerp(p.tour.id, p.segments, p.tour.modifiedOn);
+        const id = String(p.tour.id);
+        // Dates typed in the list are saved with the Tour ID's history before they are sent.
+        if (drafts[id]) { setState(await saveApprovalEdit(p.tour.id, drafts[id], p.tour.modifiedOn, by)); setDrafts(d => { const n = { ...d }; delete n[id]; return n; }); }
+        if (accDrafts[id]) throw new Error('Save the accommodation change first.');
+        const faizApplicants = await faizApplicantsFor(p);
+        const s = await approveInNkerp(p.tour.id, p.segments, p.tour.modifiedOn, by, faizApplicants);
         setState(s);
         result = { ref: p.tour.ref, state: s.record.approval?.state ?? 'unknown', message: s.record.approval?.message };
       } catch (e) {
@@ -924,6 +1180,35 @@ export const ApprovalsView: React.FC = () => {
     }
     setSelected(new Set());
     setBusy(false);
+  };
+  const askReapprove = (p: TourPlan) => {
+    const o = state?.approved?.open[String(p.tour.id)];
+    if (!o) return;
+    const warnings = approvalWarnings(p).filter(w => !/^Re-approval:/.test(w));
+    setConfirm({
+      title: `Re-approve ${p.tour.ref} in NKERP?`,
+      action: 'Re-approve in NKERP',
+      body: <>
+        <p>The app sends NKERP's approved-tour Update (nothing else changed), which returns this Tour ID to NKERP's approval queue, then approves it with:</p>
+        <ul className="rounded-lg bg-stone-50 ring-1 ring-inset ring-stone-200 divide-y divide-stone-200 text-[13px] leading-relaxed">
+          <li className="px-3.5 py-2"><span className="text-stone-500">Approved now: </span>{fmtSegments(o.segments)} · {paxText({ paxFaiz: p.nkerpPax?.faiz ?? p.tour.paxFaiz, paxHotel: p.nkerpPax?.hotel ?? p.tour.paxHotel })}</li>
+          <li className="px-3.5 py-2"><span className="text-stone-500">New: </span><span className="font-semibold text-stone-950">{fmtSegments(p.segments)} · {paxText(p.tour)}</span></li>
+        </ul>
+        {warnings.length > 0 && <ul className="space-y-0.5 text-[13px] text-amber-800">{warnings.map((w, i) => <li key={i} className="flex gap-1.5"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{w}</li>)}</ul>}
+        <p className="text-[13px] text-stone-600">Each step is sent once. If NKERP refuses a step or does not answer, the rest is not sent and the Tour ID's history says where it stopped. Recorded as changed by <span className="font-semibold text-stone-900">{by || 'name not given'}</span>.</p>
+      </>,
+      onConfirm: async () => {
+        setBusy(true);
+        try {
+          const faizApplicants = await faizApplicantsFor(p);
+          const r = await reapproveApprovedTour(p.tour.id, p.segments, p.tour.modifiedOn, by, faizApplicants);
+          setState(r);
+          const last = r.record.revisions?.[r.record.revisions.length - 1];
+          setNotice(`${p.tour.ref}: ${last?.latestStatus ?? 'sent'}${last?.note ? ` · ${last.note}` : ''}`);
+        } catch (e) { setError(e instanceof Error ? e.message : 'The Tour ID could not be re-approved.'); }
+        finally { setBusy(false); }
+      },
+    });
   };
   const askApprove = (items: TourPlan[]) => {
     const faiz = items.reduce((s, p) => s + p.tour.paxFaiz, 0);
@@ -940,6 +1225,7 @@ export const ApprovalsView: React.FC = () => {
         </ul>
         <p className="text-[13px] text-stone-600 tabular-nums">{faiz} Faiz pax in total.</p>
         {withWarnings > 0 && <p className="flex gap-2 text-amber-800"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{withWarnings} of these carry warnings (above). They do not block approval; approving them is your decision.</p>}
+        <p className="text-[13px] text-stone-600">Recorded as approved by <span className="font-semibold text-stone-900">{by || 'name not given'}</span>{by ? '' : ' (enter your name under Planning settings)'}.</p>
       </>,
       onConfirm: () => void sendApprovals(items),
     });
@@ -951,12 +1237,36 @@ export const ApprovalsView: React.FC = () => {
     catch (e) { setError(e instanceof Error ? e.message : 'Settings could not be saved.'); }
   };
 
-  const detail = (p: TourPlan) => (
-    <TourDetail plan={p} draft={drafts[String(p.tour.id)]} busy={busy}
-      onDraft={segments => setDrafts(d => { const n = { ...d }; if (segments) n[String(p.tour.id)] = segments; else delete n[String(p.tour.id)]; return n; })}
-      onSave={segments => persistEdit(p, segments)} onReview={reviewed => review(p, reviewed)} onApprove={() => askApprove([p])}
-      onSendChat={text => sendChat(p, text)} onReloadChat={() => reloadChat(p)} />
-  );
+  const detail = (p: TourPlan) => {
+    const id = String(p.tour.id);
+    const approvedOpen = p.tour.approvedEdit ? state?.approved?.open[id] : undefined;
+    return (
+      <TourDetail plan={p} draft={drafts[id]} busy={busy} approved={approvedOpen ? { segments: approvedOpen.segments } : undefined}
+        onDraft={segments => setDraft(p, segments)}
+        onSave={(segments, confirmed) => persistEdit(p, segments, confirmed)} onReview={reviewed => review(p, reviewed)}
+        onApprove={() => (approvedOpen ? askReapprove(p) : askApprove([p]))}
+        onSendChat={text => sendChat(p, text)} onReloadChat={() => reloadChat(p)}
+        accDraft={accDrafts[id]} onAccDraft={v => setAccDrafts(d => { const n = { ...d }; if (v) n[id] = v; else delete n[id]; return n; })}
+        onSaveAcc={v => persistAcc(p, v)} pick={picks[id]} onLoadApplicants={() => void loadPick(p)}
+        onPick={ids => setPicks(x => ({ ...x, [id]: { ...(x[id] ?? { loading: false, forFaiz: p.tour.paxFaiz }), chosen: ids } }))} />
+    );
+  };
+  const dateColumns = { drafts, busy, onDates: (p: TourPlan, segs: Segment[] | undefined) => {
+    if (section === 'awaiting') setStay(x => (x.has(p.tour.id) ? x : new Set(x).add(p.tour.id)));
+    setDraft(p, segs);
+  }, onSave: (p: TourPlan) => void persistEdit(p, drafts[String(p.tour.id)] ?? null) };
+  const searchApproved = async (fresh: boolean) => {
+    setApprovedBusy('search');
+    try { setState(await searchApprovedTours(fresh)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'NKERP\'s approved Tour IDs could not be read.'); }
+    finally { setApprovedBusy(null); }
+  };
+  const openApproved = async (id: number) => {
+    setApprovedBusy(id);
+    try { setState(await openApprovedTour(id)); setExpanded(id); }
+    catch (e) { setError(e instanceof Error ? e.message : 'The Tour ID could not be opened.'); }
+    finally { setApprovedBusy(null); }
+  };
 
   if (!state || !plan) {
     return (
@@ -1088,6 +1398,8 @@ export const ApprovalsView: React.FC = () => {
           <label className="block"><span className={fieldLabel}>Plan arrivals ahead</span>
             <span className="flex items-center gap-2"><input type="number" min={7} max={120} value={s.horizonDays} onChange={e => setSettingsDraft({ ...s, horizonDays: Number(e.target.value) || s.horizonDays })}
               onBlur={() => void saveSettings(s)} className={numField} /><span className={unit}>days</span></span></label>
+          <label className="block"><span className={fieldLabel}>Your name <span className="font-normal text-stone-500">(for the change history)</span></span>
+            <input value={adminName} onChange={e => setAdminName(e.target.value)} maxLength={80} placeholder="Approver's name" className={`${fieldSm} max-md:h-10 w-48`} /></label>
         </div>
       </section>
 
@@ -1095,7 +1407,7 @@ export const ApprovalsView: React.FC = () => {
       <div className="border-b border-stone-300 overflow-x-auto overflow-y-hidden" role="tablist" aria-label="Approval lists">
         <div className="flex min-w-max gap-1 xl:max-[1439px]:gap-0">
           {SECTIONS.map(x => {
-            const n = x.id === 'proposal' ? lists.proposal.length : x.id === 'reapproval' ? lists.reapproval.length : x.id === 'awaiting' ? lists.awaiting.length : x.id === 'pending' ? lists.pending.length : x.id === 'all' ? lists.all.length : null;
+            const n = x.id === 'proposal' ? lists.proposal.length : x.id === 'reapproval' ? lists.reapproval.length : x.id === 'awaiting' ? lists.awaiting.length : x.id === 'pending' ? lists.pending.length : x.id === 'all' ? lists.all.length : x.id === 'approved' && opened.length ? opened.length : null;
             const on = section === x.id;
             return (
               <button key={x.id} type="button" role="tab" aria-selected={on} onClick={() => setSection(x.id)}
@@ -1140,7 +1452,7 @@ export const ApprovalsView: React.FC = () => {
           right={<>{searchBox}{approveSelected}</>}>
           <CardNote>Submitted (no dustbin), fly mark red, city stays resolved, and within the limits after keeping the buffer. Order: re-approvals, then Faiz Husaini offices, then the rest, by arrival. Open a Tour ID to check its chat and dates before approving. Awaiting, re-approval and pending-submission Tour IDs can be selected from their own lists too; the selection is shared.</CardNote>
           <TourTable plans={filter(lists.proposal)} selectable selected={selected} expanded={expanded} onExpand={setExpanded} renderDetail={detail}
-            onToggle={toggle} onToggleAll={toggleAll}
+            onToggle={toggle} onToggleAll={toggleAll} dates={dateColumns}
             empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is ready to approve right now. Tour IDs appear here once they are submitted and fit the limits.'} />
         </Card>
       )}
@@ -1154,8 +1466,8 @@ export const ApprovalsView: React.FC = () => {
 
       {section === 'awaiting' && (
         <Card title={`Submitted, awaiting approval · ${lists.awaiting.length}`} right={<>{searchBox}{approveSelected}</>}>
-          <CardNote>Complete submissions held back: over capacity, missing chat dates, itinerary not saved, or something to resolve. The reason shows on each row. Awaiting status does not stop approval: select a Tour ID once you have checked it. Only Tour IDs whose itinerary is not saved (fly mark not red), or that NKERP cannot take from the planner, cannot be selected.</CardNote>
-          <TourTable plans={filter(lists.awaiting)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is waiting.'} />
+          <CardNote>Complete submissions held back: over capacity, dates the AI read from the chat that need your confirmation, missing chat dates, itinerary not saved, or something to resolve. The reason shows on each row. Edit the Karbala and Najaf dates in the row (the plan and capacity recalculate at once), tick the Tour IDs and approve them together. Awaiting status does not stop approval. Only Tour IDs whose itinerary is not saved (fly mark not red), or that NKERP cannot take from the planner, cannot be selected; a hotel tour becomes selectable once its dates are entered.</CardNote>
+          <TourTable plans={filter(lists.awaiting)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} dates={dateColumns} empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is waiting.'} />
         </Card>
       )}
 
@@ -1163,16 +1475,71 @@ export const ApprovalsView: React.FC = () => {
         <Card title={`Pending submission (dustbin sign) · ${lists.pending.length}`}
           right={<>{searchBox}<button type="button" className={`${btn.secondary} max-md:w-full`} onClick={() => setFollowUps(true)}><MessageSquare className="w-4 h-4" />WhatsApp follow-ups ({plan.plans.filter(needsFollowUp).length})</button>{approveSelected}</>}>
           <CardNote><span className="font-semibold text-stone-800 tabular-nums">Cut-off: {s.cutoffDays} days before arrival.</span> Outside the cut-off: wait for the Tour Operator. Inside it: the Tour ID is flagged for urgent follow-up; contact the Tour Operator from its NKERP chat box (or WhatsApp) until the dustbin sign disappears. The dustbin sign is a warning, not a restriction: you can still select and approve a Tour ID if required. Once it disappears the Tour ID moves to the normal approval lists. Their Faiz pax are kept free as buffer.</CardNote>
-          <TourTable plans={filter(lists.pending)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Every Tour ID in the window has completed its submission.'} />
+          <TourTable plans={filter(lists.pending)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} dates={dateColumns} empty={q ? 'No Tour ID or office matches the search.' : 'Every Tour ID in the window has completed its submission.'} />
         </Card>
       )}
 
       {section === 'all' && (
         <Card title={`All Tour IDs · ${lists.all.length}`} right={<>{searchBox}{approveSelected}</>}>
           <CardNote>New approvals, re-approvals, awaiting and pending-submission Tour IDs together. Select the ones you want to approve; nothing is selected for you.</CardNote>
-          <TourTable plans={filter(lists.all)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'No Tour IDs in the queues.'} />
+          <TourTable plans={filter(lists.all)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} dates={dateColumns} empty={q ? 'No Tour ID or office matches the search.' : 'No Tour IDs in the queues.'} />
         </Card>
       )}
+
+      {section === 'approved' && (() => {
+        const list = state.approved?.tours ?? [];
+        const aq = approvedQuery.trim().toLowerCase();
+        const found = aq ? list.filter(t => `${t.ref} ${t.office} ${t.toName}`.toLowerCase().includes(aq)) : list;
+        const openIds = new Set(opened.map(o => o.tour.id));
+        return (
+          <div className="space-y-6">
+            <Card title="Approved Tour IDs: change and re-approve" right={<>
+              <label className="relative block w-full md:w-64">
+                <span className="sr-only">Search approved Tour IDs by Tour ID or office</span>
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input value={approvedQuery} onChange={e => setApprovedQuery(e.target.value)} placeholder="Tour ID or office" className={`${field} pl-9`} />
+              </label>
+              <button type="button" className={`${btn.secondary} max-md:w-full`} disabled={approvedBusy !== null} onClick={() => void searchApproved(true)}>
+                {approvedBusy === 'search' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}{state.approved?.at ? 'Read again from NKERP' : 'Read approved Tour IDs from NKERP'}</button>
+            </>}>
+              <CardNote>Open an approved Tour ID to change its Najaf and Karbala dates or move pax between Faiz and hotel accommodation, see the capacity impact, and re-approve it in NKERP from here. The app sends NKERP's approved-tour Update, which returns the Tour ID to the approval queue, then approves it with your changes. The original and the revised details, who changed them and when are kept in its history. {state.approved?.at ? <>Read from NKERP {ago(state.approved.at)}{state.approved.window ? ` · arrivals ${fmtDay(state.approved.window.from)}–${fmtDay(state.approved.window.to, true)}` : ''}.</> : 'Nothing read yet.'}</CardNote>
+              {list.length ? (
+                <div className="overflow-x-auto max-h-[420px]">
+                  <table className="min-w-full text-sm">
+                    <thead className={`${thead} sticky top-0`}><tr>
+                      <th className={`${th} !pl-4 sm:!pl-5`}>Tour ID</th><th className={th}>Office</th><th className={th}>Trip</th>
+                      <th className={thR}>Pax <span className="font-normal text-stone-500">(Faiz / hotel)</span></th><th className={th}>Approved stays</th><th className="px-3 py-2.5" />
+                    </tr></thead>
+                    <tbody>
+                      {found.slice(0, 200).map(t => (
+                        <tr key={t.id} className="border-t border-stone-200 hover:bg-stone-50">
+                          <td className="pl-4 sm:pl-5 pr-3 py-2.5 font-semibold text-stone-950 tabular-nums whitespace-nowrap">{tourLabel(t.ref)}{state.records[String(t.id)]?.revisions?.length ? <span title="Changed from the planner before"><History className="inline w-3.5 h-3.5 ml-1.5 -mt-0.5 text-stone-500" /></span> : null}</td>
+                          <td className="px-3 py-2.5 text-stone-800 max-w-[220px] truncate" title={t.office}>{t.office || '—'}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-stone-700">{fmtDay(tripStart(t))} → {fmtDay(tripEnd(t))}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-stone-900">{t.paxTotal} <span className="text-stone-500 text-[13px]">({t.paxFaiz} / {t.paxHotel})</span></td>
+                          <td className="px-3 py-2.5 text-[13px]"><Stays segments={t.previousPlans} /></td>
+                          <td className="px-3 py-2 text-right">
+                            <button type="button" className={`${btnSm.secondary} max-md:h-10`} disabled={approvedBusy !== null} onClick={() => void openApproved(t.id)}>
+                              {approvedBusy === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}{openIds.has(t.id) ? 'Open again' : 'Open'}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!found.length && <p className="px-4 sm:px-5 py-6 text-sm text-stone-600">No approved Tour ID or office matches the search.</p>}
+                  {found.length > 200 && <p className="px-4 sm:px-5 py-3 text-[13px] text-stone-600">Showing 200 of {found.length}; narrow the search.</p>}
+                </div>
+              ) : <p className="px-4 sm:px-5 py-8 text-sm text-stone-600">{state.approved?.at ? 'NKERP lists no approved Tour IDs in this window.' : 'Read the approved Tour IDs from NKERP to search them.'}</p>}
+            </Card>
+
+            <Card title={`Opened for a change · ${approvedPlans.length}`}>
+              <CardNote>Each opened Tour ID is planned with the queues: its approved stays come out of the capacity and your new dates and pax go in. Unsaved dates and accommodation show in the capacity at once; save them, then Re-approve in NKERP.</CardNote>
+              <TourTable plans={approvedPlans} expanded={expanded} onExpand={setExpanded} renderDetail={detail} dates={dateColumns}
+                empty="No approved Tour ID is open. Search above and open one to change it." />
+            </Card>
+          </div>
+        );
+      })()}
 
       {section === 'capacity' && <CapacitySection plan={plan} />}
 

@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withStore, type StorageDriver } from '../../accommodation-store.js';
-import { approveTour, collectApprovals, mergeRecords, records, type ApprovalApi, APPROVE, approvalReads, SAVE_CHAT, sendChat, snapshot } from '../../nkerp-approvals.js';
+import { approveTour, collectApprovals, mergeRecords, records, type ApprovalApi, APPROVE, approvalReads, SAVE_CHAT, sendChat, snapshot,
+  saveAccommodation, UPDATE_APPLICANTS, UPDATE_TOUR, searchApproved, openApproved, reapproveApproved, saveEdit } from '../../nkerp-approvals.js';
 import { Rejected } from '../nkerpClient.js';
 import type { NkRecord } from '../types.js';
 
@@ -43,6 +44,7 @@ class FakeNkerp implements ApprovalApi {
     if (path.startsWith('api/tours/getTourDetail/')) return { Tour: { Id: this.detail.Id, LinkTourId: 0 } };
     throw new Error('unknown');
   }
+  async readAny(path: string, body?: NkRecord): Promise<unknown> { return this.read(path, body); }
   chatWrites: NkRecord[] = [];
   async write(path: string, body: unknown): Promise<NkRecord> {
     if (path === SAVE_CHAT) { this.chatWrites.push(body as NkRecord); return this.chatAnswer(body as NkRecord); }
@@ -177,3 +179,126 @@ test('records each B→A slip once and counts reprints', async () => {
     assert.throws(() => recordSlip({ slipNo: '', reservationIds: ['a'] }), SlipError);
   });
 });
+
+/** A fake NKERP that also answers the applicant reads, the applicants' Faiz save and the approved-tour Update. */
+class FullFake extends FakeNkerp {
+  applicants: NkRecord[] = [1, 2, 3, 4].map(i => ({ Id: 500 + i, AccomodationOptionId: 2, IsActive: true, IsInfant: false, IsDummy: false, IsCancellation: false,
+    User: { ITSId: String(40000 + i), FirstName: `Zair${i}` } }));
+  applicantAnswer: () => NkRecord = () => ({ ReturnStatus: true });
+  updateAnswer: () => NkRecord = () => { this.detail = { ...this.detail, CurrentStatusId: 23, IsReApproval: true, ModifiedOn: '2026-11-28T09:00:00' }; return { ReturnStatus: true }; };
+  approvedRows: NkRecord[] = [];
+  order: string[] = [];
+  override async read(path: string, body?: NkRecord): Promise<NkRecord> {
+    if (path.startsWith('api/tours/getApplicants/')) { this.calls.push(path); return { Applicants: this.applicants }; }
+    if (path.startsWith('api/tours/getTourStatus/')) { this.calls.push(path); return { TourPlan: this.detail }; }
+    if (path === 'api/tours/getpendingtours' && body?.StateId === 2) { this.calls.push('approved-list'); return { Tours: this.approvedRows, TotalRows: this.approvedRows.length }; }
+    return super.read(path, body);
+  }
+  override async readAny(path: string, body?: NkRecord): Promise<unknown> {
+    assert.ok(approvalReads(path), `unexpected read ${path}`);
+    if (path.startsWith('api/tours/getApplicantCountForAccommodation/')) return this.applicants.filter(a => a.AccomodationOptionId === 2).length;
+    if (path.startsWith('api/tours/getApplicantCount/')) return this.applicants.length;
+    return super.readAny(path, body);
+  }
+  override async write(path: string, body: unknown): Promise<NkRecord> {
+    this.order.push(path);
+    if (path === UPDATE_APPLICANTS) { this.writes.push(body); return this.applicantAnswer(); }
+    if (path === UPDATE_TOUR) { this.writes.push(body); return this.updateAnswer(); }
+    return super.write(path, body);
+  }
+}
+const SEGS = [{ city: 'KARBALA' as const, start: '2026-12-10', end: '2026-12-12' }, { city: 'NAJAF' as const, start: '2026-12-12', end: '2026-12-14' }];
+
+test('moves Faiz pax to hotel: the applicants\' Faiz flags first, as NKERP\'s form asks, then one approval with the new pax', () => withStore(memory(), async () => {
+  const nk = new FullFake();
+  nk.queues.new = [row({ MuwaficaStateId: 38, IsMuwaficaLocked: false })];
+  await collectApprovals(nk, now);
+  assert.throws(() => saveAccommodation({ id: 101, paxFaiz: 3, paxHotel: 3 }), /add up to the tour's 4 pax/);
+  saveAccommodation({ id: 101, paxFaiz: 0, paxHotel: 4, by: 'Admin A' });
+  const rec = records()['101'];
+  assert.deepEqual(rec.accommodation?.nkerp, { faiz: 4, hotel: 0 }, 'NKERP\'s original requirement is kept');
+  assert.equal(rec.revisions?.at(-1)?.kind, 'accommodation');
+  assert.equal(rec.revisions?.at(-1)?.by, 'Admin A');
+  // Muwafiqa state 38: NKERP's form does not ask for the applicants, so only the approval is sent.
+  let out = await approveTour(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-20T10:00:00', by: 'Admin A' }, now);
+  assert.equal(out.approval?.state, 'api_reported_approved');
+  assert.deepEqual(nk.order, [APPROVE]);
+  const body = nk.writes[0] as NkRecord;
+  assert.equal(body.PaxRequiredAcc, 0);
+  assert.equal(body.PaxNotRequiredAcc, 4);
+  assert.equal(body.IsApprovedWithAccommodation, false);
+  assert.equal(body.IsMawaidRequired, false);
+  assert.equal(out.approvedFacts?.paxHotel, 4);
+  const rev = out.revisions?.at(-1)!;
+  assert.deepEqual([rev.original.paxFaiz, rev.revised.paxFaiz, rev.previousStatus, rev.latestStatus], [4, 0, 'Awaiting approval', 'Approved']);
+}));
+
+test('a partial Faiz change needs the applicants chosen, and a refused applicant update stops before the approval', () => withStore(memory(), async () => {
+  const nk = new FullFake();
+  await collectApprovals(nk, now); // Muwafiqa state 31 and locked: NKERP asks for the applicants
+  saveAccommodation({ id: 101, paxFaiz: 2, paxHotel: 2 });
+  await assert.rejects(approveTour(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-20T10:00:00' }, now), /choose 2 applicants/);
+  await assert.rejects(approveTour(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-20T10:00:00', faizApplicants: [501] }, now), /select 2 pax/);
+  assert.equal(nk.writes.length, 0);
+  nk.applicantAnswer = () => ({ ReturnStatus: false, ReturnMessage: 'Locked' });
+  let out = await approveTour(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-20T10:00:00', faizApplicants: [501, 502] }, now);
+  assert.equal(out.approval?.state, 'api_rejected');
+  assert.match(out.approval?.message ?? '', /Nothing was approved/);
+  assert.deepEqual(nk.order, [UPDATE_APPLICANTS]);
+  const sent = nk.writes[0] as NkRecord[];
+  assert.deepEqual(sent.map(a => [a.Id, a.IsAccRequired, a.AccomodationOptionId]), [[501, true, 2], [502, true, 2], [503, false, 3], [504, false, 3]]);
+  nk.applicantAnswer = () => ({ ReturnStatus: true });
+  out = await approveTour(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-20T10:00:00', faizApplicants: [501, 502] }, now);
+  assert.equal(out.approval?.state, 'api_reported_approved');
+  assert.deepEqual(nk.order, [UPDATE_APPLICANTS, UPDATE_APPLICANTS, APPROVE]);
+  assert.equal((nk.writes[2] as NkRecord).PaxRequiredAcc, 2);
+}));
+
+test('re-approves an approved Tour ID from the app: Update returns it to the queue, then one approval with the changes', () => withStore(memory(), async () => {
+  const nk = new FullFake();
+  const approvedRow = row({ CurrentStatusId: 2, IsReApproval: false, ModifiedOn: '2026-11-25T10:00:00', IsRead: true,
+    TourSubvenuePlan: [{ Id: 9, SubvenueId: 4, StartDate: '2026-12-09T21:00:00', EndDate: '2026-12-13T21:00:00', IsActive: true }] });
+  nk.approvedRows = [approvedRow];
+  nk.detail = { ...approvedRow, NoOfDays: 5, Remarks: 'R', PackageId: null, EntryPortId: 1, ExitPortId: 1, CountryId: 0, CityId: 0, IsTransportRequired: true,
+    TourSubvenuePlan: approvedRow.TourSubvenuePlan, TransportItinerary: approvedRow.TransportItinerary };
+  await searchApproved(nk, { refresh: true }, now);
+  const opened = await openApproved(nk, { id: 101 }, now);
+  assert.deepEqual(opened.segments, [{ city: 'KARBALA', start: '2026-12-10', end: '2026-12-14' }]);
+  saveEdit({ id: 101, segments: SEGS, modifiedOn: opened.tour.modifiedOn, by: 'Admin B' });
+  saveAccommodation({ id: 101, paxFaiz: 0, paxHotel: 4, by: 'Admin B' });
+  nk.applicants = nk.applicants.map(a => ({ ...a, AccomodationOptionId: 3 })); // already hotel: no applicant update needed
+  await assert.rejects(reapproveApproved(nk, { id: 101, segments: SEGS, modifiedOn: 'older' }, now), /changed this tour/);
+  const out = await reapproveApproved(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-25T10:00:00', by: 'Admin B' }, now);
+  assert.deepEqual(nk.order, [UPDATE_TOUR, APPROVE]);
+  const update = nk.writes[0] as NkRecord;
+  assert.equal(update.TourId, 101);
+  assert.equal(update.ModifiedOn, undefined, 'the Update form does not send ModifiedOn');
+  assert.equal(update.StartDate, '2026-12-10T05:00:00.000Z');
+  assert.deepEqual([update.IsZiyaratCreated, update.IsTransportChanged, update.IsAccommodationChanged, update.CountryId], [false, false, false, -1]);
+  assert.equal(update.TourSubvenuePlan[0].planEndDate, '2026-12-13T21:00:00');
+  const approve = nk.writes[1] as NkRecord;
+  assert.equal(approve.ModifiedOn, '2026-11-28T09:00:00', 'the approval carries the reopened tour\'s ModifiedOn');
+  assert.equal(approve.PaxRequiredAcc, 0);
+  assert.equal(approve.TourSubvenuePlan.length, 2);
+  assert.equal(out.status, 're-approved');
+  const rev = out.revisions?.at(-1)!;
+  assert.equal(rev.kind, 'approved-edit');
+  assert.deepEqual([rev.previousStatus, rev.latestStatus, rev.by], ['Approved', 'Re-approved', 'Admin B']);
+  assert.equal(rev.original.segments[0].city, 'KARBALA');
+  assert.equal(rev.revised.paxHotel, 4);
+}));
+
+test('an approved-tour Update that gets no answer is never followed by an approval or sent again', () => withStore(memory(), async () => {
+  const nk = new FullFake();
+  const approvedRow = row({ CurrentStatusId: 2, ModifiedOn: '2026-11-25T10:00:00', TourSubvenuePlan: [] });
+  nk.approvedRows = [approvedRow];
+  nk.detail = { ...approvedRow, NoOfDays: 5, PackageId: null, EntryPortId: 1, ExitPortId: 1, TransportItinerary: approvedRow.TransportItinerary };
+  await searchApproved(nk, { refresh: true }, now);
+  await openApproved(nk, { id: 101 }, now);
+  nk.updateAnswer = () => { throw new Error('socket hang up'); };
+  const out = await reapproveApproved(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-25T10:00:00' }, now);
+  assert.equal(out.reopen?.state, 'uncertain');
+  assert.deepEqual(nk.order, [UPDATE_TOUR]);
+  await assert.rejects(reapproveApproved(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-25T10:00:00' }, now), /not sent twice/);
+  assert.deepEqual(nk.order, [UPDATE_TOUR]);
+}));
