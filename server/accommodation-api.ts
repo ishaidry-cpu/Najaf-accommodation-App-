@@ -10,7 +10,7 @@ import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
 import { applicantChoice, ApprovalError, approvalClient, approvedList, approvedOpen, approveTour, createApprovalRefresh, openApproved, reapproveApproved,
-  records as approvalRecords, reloadChat, saveAccommodation, saveEdit, saveReview, searchApproved, sendChat,
+  records as approvalRecords, reloadChat, saveAccommodation, saveEdit, saveReview, saveRemarks, searchApproved, sendChat,
   settings as approvalSettings, snapshot as approvalSnapshot } from './nkerp-approvals.js';
 import { normalizeApprovalSettings } from '../src/services/approvalPlanner.js';
 import { recordSlip, SlipError, slips } from './slips.js';
@@ -237,6 +237,7 @@ export function accommodationApi(onChange: () => void = () => {}) {
             return json({ record, ...approvalState() });
           }
           if (action === 'review') { saveReview(body as never); invalidate(); return json(approvalState()); }
+          if (action === 'remarks') { saveRemarks(body as never); invalidate(); return json(approvalState()); }
           if (action === 'settings') {
             const saved = {...read('settings',{}), approvalSettings: normalizeApprovalSettings(body)};
             write('settings', saved);

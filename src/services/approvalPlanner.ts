@@ -185,6 +185,8 @@ export interface ApprovalRecord {
   revisions?: Revision[];
   /** An approved Tour ID sent back to NKERP's approval queue from the planner (approved-tour Update), never sent twice. */
   reopen?: { state: 'sending' | 'sent' | 'refused' | 'uncertain'; at: string; modifiedOn: string; message?: string };
+  /** The approver's remarks and observations, printed on the awaiting-approvals report for the Idara. */
+  remarks?: { text: string; at: string; by?: string };
   history: { at: string; kind: string; note?: string; by?: string }[];
 }
 export interface PaxSplit { faiz: number; hotel: number }
@@ -823,8 +825,8 @@ export function compareWithOriginal(t: ApprovalTour, original: Partial<TourFacts
 // ------------------------------------------------------------------------------------------------ capacity
 
 export type Load = Record<City, Record<string, number>>;
-const emptyLoad = (): Load => ({ NAJAF: {}, KARBALA: {} });
-function addLoad(load: Load, segments: Segment[], pax: number) {
+export const emptyLoad = (): Load => ({ NAJAF: {}, KARBALA: {} });
+export function addLoad(load: Load, segments: Segment[], pax: number) {
   if (!pax) return;
   // A same-city visit on the same day counts once; a transfer day counts in both cities (conservative).
   for (const city of CITIES) {

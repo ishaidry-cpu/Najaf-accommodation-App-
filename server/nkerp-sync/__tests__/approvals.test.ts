@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withStore, type StorageDriver } from '../../accommodation-store.js';
 import { approveTour, collectApprovals, mergeRecords, records, type ApprovalApi, APPROVE, approvalReads, SAVE_CHAT, sendChat, snapshot,
-  saveAccommodation, UPDATE_APPLICANTS, UPDATE_TOUR, searchApproved, openApproved, reapproveApproved, saveEdit } from '../../nkerp-approvals.js';
+  saveAccommodation, UPDATE_APPLICANTS, UPDATE_TOUR, searchApproved, openApproved, reapproveApproved, saveEdit, saveRemarks } from '../../nkerp-approvals.js';
 import { Rejected } from '../nkerpClient.js';
 import type { NkRecord } from '../types.js';
 
@@ -301,4 +301,22 @@ test('an approved-tour Update that gets no answer is never followed by an approv
   assert.deepEqual(nk.order, [UPDATE_TOUR]);
   await assert.rejects(reapproveApproved(nk, { id: 101, segments: SEGS, modifiedOn: '2026-11-25T10:00:00' }, now), /not sent twice/);
   assert.deepEqual(nk.order, [UPDATE_TOUR]);
+}));
+
+test('keeps the approver\'s remarks with the Tour ID for the awaiting-approvals report, through a refresh', () => withStore(memory(), async () => {
+  const nk = new FakeNkerp();
+  await collectApprovals(nk, now);
+  const rec = saveRemarks({ id: 101, remarks: '  Najaf full on 12 Dec: suggest Karbala first.\r\n', by: 'Admin A' });
+  assert.equal(rec.remarks?.text, 'Najaf full on 12 Dec: suggest Karbala first.');
+  assert.equal(rec.remarks?.by, 'Admin A');
+  assert.equal(records()['101'].history.at(-1)?.kind, 'remarks');
+  // Saving the same text again changes nothing.
+  const n = records()['101'].history.length;
+  saveRemarks({ id: 101, remarks: 'Najaf full on 12 Dec: suggest Karbala first.', by: 'Admin A' });
+  assert.equal(records()['101'].history.length, n);
+  await collectApprovals(nk, now + 60_000);
+  assert.equal(records()['101'].remarks?.text, 'Najaf full on 12 Dec: suggest Karbala first.');
+  saveRemarks({ id: 101, remarks: '' });
+  assert.equal(records()['101'].remarks, undefined);
+  assert.throws(() => saveRemarks({ id: 999, remarks: 'x' }), /not in the latest approval queues/);
 }));

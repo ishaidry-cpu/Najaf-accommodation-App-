@@ -686,6 +686,28 @@ export function saveReview(input: { id: number; reviewed: boolean }) {
   });
 }
 
+/** The approver's remarks on a Tour ID, for the awaiting-approvals report shared with the Idara. Empty text clears them. */
+export function saveRemarks(input: { id: number; remarks: string; by?: string }) {
+  return transaction(() => {
+    const all = records();
+    const id = String(int(input.id));
+    const tour = snapshot().tours.find(t => String(t.id) === id);
+    if (!tour && !all[id]) throw new ApprovalError('This Tour ID is not in the latest approval queues. Refresh and try again.', 404);
+    const text = String(input.remarks ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 2000);
+    const by = typeof input.by === 'string' && input.by.trim() ? input.by.trim().slice(0, 80) : undefined;
+    const stamp = new Date().toISOString();
+    const rec: ApprovalRecord = all[id] ?? { id: tour!.id, ref: tour!.ref, office: tour!.office, status: tour!.reapproval ? 'reapproval-pending' : 'new',
+      firstSeenAt: stamp, lastSeenAt: stamp, history: [], ...(tour!.reapproval ? { reapprovalSince: stamp } : {}) };
+    if ((rec.remarks?.text ?? '') === text) return rec;
+    if (text) rec.remarks = { text, at: stamp, ...(by ? { by } : {}) };
+    else delete rec.remarks;
+    rec.history = [...rec.history, { at: stamp, kind: text ? 'remarks' : 'remarks-cleared', ...(text ? { note: text } : {}), ...(by ? { by } : {}) }];
+    all[id] = rec;
+    write('approval-records', all);
+    return rec;
+  });
+}
+
 const normText = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 /** Read one Tour ID's NKERP chat box again and keep it in the snapshot and the chat cache. */

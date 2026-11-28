@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, BadgeCheck, Ban, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Flag, FolderOpen,
+  AlertTriangle, ArrowRight, Download, BadgeCheck, Ban, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Flag, FolderOpen,
   History, Hotel, Info, Copy, Loader2, MessageSquare, Navigation, NavigationOff, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2,
   Users, X,
 } from 'lucide-react';
@@ -16,8 +16,10 @@ import {
 } from '../services/approvalPlanner';
 import {
   type ApprovalState, approveInNkerp, loadApplicants, loadApprovals, openApprovedTour, reapproveApprovedTour, refreshApprovals, reloadTourChat,
-  saveApprovalAccommodation, saveApprovalEdit, saveApprovalReview, saveApprovalSettings, searchApprovedTours, sendChatToNkerp,
+  saveApprovalAccommodation, saveApprovalEdit, saveApprovalRemarks, saveApprovalReview, saveApprovalSettings, searchApprovedTours, sendChatToNkerp,
 } from '../services/approvalsApi';
+import { ApprovalExportDialog } from './ApprovalExportDialog';
+import { awaitingApproval } from '../services/approvalExport';
 
 type Section = 'proposal' | 'reapproval' | 'awaiting' | 'pending' | 'approved' | 'capacity' | 'najaf' | 'remaining' | 'all';
 
@@ -1015,6 +1017,7 @@ export const ApprovalsView: React.FC = () => {
   const [batch, setBatch] = useState<{ total: number; done: number; results: { ref: string; state: string; message?: string }[] } | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ApprovalSettings | null>(null);
   const [followUps, setFollowUps] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [accDrafts, setAccDrafts] = useState<Record<string, PaxSplit>>({});
   // Tour IDs edited in the Awaiting list stay there while you work on them, even once they become ready.
@@ -1312,8 +1315,15 @@ export const ApprovalsView: React.FC = () => {
       <PageHeader title="Tour approvals"
         description="Nizam approvals for Najaf and Karbala from NKERP's Tour Admin queues: exact chat dates, whole-tour capacity planning, re-approval checks and the submission cut-off."
         meta={<p className="text-[13px] text-stone-600 tabular-nums">Read from NKERP {ago(state.snapshot.collectedAt)}{state.snapshot.window ? ` · arrivals ${fmtDay(state.snapshot.window.from)}–${fmtDay(state.snapshot.window.to, true)} plus every re-approval` : ''}{state.snapshot.errors.length ? ` · ${state.snapshot.errors.length} read problem${state.snapshot.errors.length === 1 ? '' : 's'}` : ''}</p>}
-        actions={<button type="button" className={btn.secondary} onClick={refresh} disabled={refreshing}>
-          {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}{refreshing ? 'Reading NKERP…' : 'Refresh from NKERP'}</button>} />
+        actions={<>
+          <button type="button" className={btn.secondary} onClick={() => setExporting(true)} title="Download the Tour IDs awaiting approval as Excel or PDF for Idara officials">
+            <Download className="w-4 h-4" />Export awaiting ({awaitingApproval(plan).length})</button>
+          <button type="button" className={btn.secondary} onClick={refresh} disabled={refreshing}>
+            {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}{refreshing ? 'Reading NKERP…' : 'Refresh from NKERP'}</button>
+        </>} />
+
+      {exporting && <ApprovalExportDialog plan={plan} readAt={state.snapshot.collectedAt} preparedBy={by} preselect={selected} onClose={() => setExporting(false)}
+        onSaveRemarks={async (id, text) => { setState(await saveApprovalRemarks(id, text, by)); }} />}
 
       {error && (
         <div role="alert" className="rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 pl-4 pr-2 py-2 text-sm text-rose-700 flex items-center gap-2.5">

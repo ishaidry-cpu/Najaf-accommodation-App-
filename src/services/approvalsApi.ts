@@ -26,6 +26,7 @@ export const saveApprovalAccommodation = (id: number, paxFaiz: number | null, pa
   call<ApprovalState>('/accommodation', { id, paxFaiz, paxHotel, by });
 export const loadApplicants = (id: number, paxFaiz: number) =>
   call<{ applicants: Applicant[]; mustMatch: boolean; hasApplicants: boolean }>('/applicants', { id, paxFaiz });
+export const saveApprovalRemarks = (id: number, remarks: string, by?: string) => call<ApprovalState>('/remarks', { id, remarks, by });
 export const saveApprovalReview = (id: number, reviewed: boolean) => call<ApprovalState>('/review', { id, reviewed });
 export const saveApprovalSettings = (settings: ApprovalSettings) => call<ApprovalState>('/settings', settings);
 export const approveInNkerp = (id: number, segments: Segment[], modifiedOn: string, by?: string, faizApplicants?: number[]) =>
