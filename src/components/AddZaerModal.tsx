@@ -9,7 +9,7 @@ import { btn, btnSm, field, fieldLabel, modalScrim, modalCard, modalHeader, moda
 const groupTitle = 'text-[15px] font-semibold text-stone-950 pb-2 border-b border-stone-200';
 const helpText = 'mt-1.5 text-xs text-stone-500';
 const errorText = 'mt-1.5 text-xs text-rose-700';
-const fieldBad = ' border-rose-400';
+const fieldBad = ' aria-invalid:border-rose-400';
 const pick = (on: boolean) =>
   `inline-flex items-center h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium tabular-nums ring-1 ring-inset cursor-pointer ${
     on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50'

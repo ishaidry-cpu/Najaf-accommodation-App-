@@ -718,7 +718,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     value={tourRefNo}
                     onChange={(e) => handleSelectTour(e.target.value)}
                     aria-invalid={tourMissing}
-                    className={`${field} tabular-nums${tourMissing ? ' border-rose-400' : ''}`}
+                    className={`${field} tabular-nums${tourMissing ? ' aria-invalid:border-rose-400' : ''}`}
                   />
                   <datalist id="existing-tour-ids-list">
                     {existingTourIds.map((t) => (
@@ -797,7 +797,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     value={departureDate}
                     onChange={(e) => setDepartureDate(e.target.value)}
                     aria-invalid={datesWrong}
-                    className={`${field} tabular-nums cursor-pointer${datesWrong ? ' border-rose-400' : ''}`}
+                    className={`${field} tabular-nums cursor-pointer${datesWrong ? ' aria-invalid:border-rose-400' : ''}`}
                   />
                   {datesWrong && <p className={errorText}>Cannot be before the arrival date.</p>}
                 </div>
@@ -1209,7 +1209,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                               value={row.itsId}
                               onChange={(e) => handleUpdateRow(row.id, 'itsId', e.target.value)}
                               onPaste={(e) => handleRowItsPaste(e, idx, row.id)}
-                              className={`${cell} tabular-nums${batchErr || tourConflict ? ' border-rose-400' : ''}`}
+                              className={`${cell} tabular-nums${batchErr || tourConflict ? ' aria-invalid:border-rose-400' : ''}`}
                               title="Enter an 8-digit ITS, or paste several ITS numbers here"
                             />
                             {(batchErr || tourConflict) && (
