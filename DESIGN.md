@@ -81,6 +81,11 @@ Rules:
 - **Tables** header row `bg-stone-50 text-xs font-semibold text-stone-600`; body rows at least 44px, divided by
   `border-stone-200`, `hover:bg-stone-50`; the key column `font-semibold text-stone-950`; no zebra.
 - **Empty states** say what will appear here and how to make it appear, in one or two lines, with the action.
+- **Segmented controls** (building tabs, day ranges, Everything / One date / Date range): `segTrack` and
+  `segBtn`, currently exported from `RoomSpecFields.tsx`; the sync scope picker has its own copy of the same look.
+- **Buildings today** (`BuildingBoard.tsx`): the Overview's floor-by-floor board. Its cell states are the
+  timeline's language: free (emerald ring on white), occupied (stone), leaving (amber), arriving (blue),
+  turnover (purple), blocked (hatched).
 
 ## Shell
 
