@@ -110,7 +110,7 @@ const cellInput = `${cellBox} w-full px-1.5 text-[13px]`;
 const cellSelect =
   'block h-8 rounded-md border border-stone-200 bg-white pl-1.5 pr-0 text-[13px] hover:border-stone-400 focus:border-brand-500 cursor-pointer';
 const dateInput = `${cellBox} w-full flex-1 px-1 text-[13px] text-stone-900 tabular-nums cursor-pointer [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60`;
-const timeInput = `${cellBox} w-[82px] shrink-0 px-1 text-[13px] text-stone-700 tabular-nums`;
+const timeInput = `${cellBox} w-[86px] shrink-0 px-1 text-[13px] text-stone-700 tabular-nums [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:p-0`;
 const thCell = 'sticky top-0 border-b border-stone-200 bg-stone-50 p-0 text-xs font-semibold text-stone-600 whitespace-nowrap';
 const tdCell = 'border-b border-stone-200 px-1.5 py-1.5 align-top';
 const iconGhost = 'inline-flex shrink-0 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-900 cursor-pointer';
@@ -1162,7 +1162,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
   // Column widths in px. "Fit to screen" squeezes the text columns; "Wide" gives every column room.
   const pageHasPhoto = pageRows.some((r) => Boolean(photoUrl(photos, r.itsId)));
   const columnWidths = fitColumnsToScreen
-    ? [56, pageHasPhoto ? 108 : 60, 88, 196, 60, 78, 96, 96, 98, 224, 80, 92, 192, 192, 100, 80, 72]
+    ? [56, pageHasPhoto ? 108 : 60, 88, 196, 60, 78, 96, 96, 98, 224, 80, 92, 200, 200, 100, 80, 72]
     : [64, pageHasPhoto ? 108 : 60, 112, 250, 64, 84, 200, 190, 124, 232, 84, 190, 204, 204, 150, 96, 80];
   const tableMinWidth = columnWidths.reduce((sum, w) => sum + w, 0);
   const nameColumnLeft = columnWidths[0] + columnWidths[1] + columnWidths[2];

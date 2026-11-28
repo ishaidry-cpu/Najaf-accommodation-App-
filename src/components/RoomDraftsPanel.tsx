@@ -178,7 +178,7 @@ export const RoomDraftsPanel: React.FC<{
                                 <td className="pr-3 py-1.5 text-stone-700 leading-snug">{u.members.map(m => m.name).join(', ')}</td>
                                 <td className={`py-1.5 sm:whitespace-nowrap ${a ? 'font-semibold text-stone-950 tabular-nums' : 'text-rose-700'}`}>
                                   {a ? `${a.building} ${a.roomNumber}` : t.unplaced[u.key] || 'No room yet'}
-                                  {a?.warnings.length ? <span className="block whitespace-normal font-normal text-amber-800">{a.warnings.join('; ')}</span> : null}
+                                  {a?.warnings.length ? <span className="block whitespace-normal font-normal text-amber-800">{[...new Set(a.warnings)].join('; ')}</span> : null}
                                 </td>
                               </tr>
                             );

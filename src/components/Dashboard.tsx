@@ -1176,7 +1176,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => setTourArrivalDateFilter('')}
-                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer"
+                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer max-lg:-my-3 max-lg:py-3"
                   title="Clear arrival date filter"
                 >
                   Clear
@@ -1202,7 +1202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => setTourDepartureDateFilter('')}
-                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer"
+                  className="text-xs font-medium text-brand-700 hover:underline cursor-pointer max-lg:-my-3 max-lg:py-3"
                   title="Clear departure date filter"
                 >
                   Clear
@@ -1710,7 +1710,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         setSpecialGuestModalTarget(m);
                                         setSpecialGuestInitialScope('guest');
                                       }}
-                                      className="mt-0.5 text-left text-xs font-medium text-amber-800 hover:underline cursor-pointer"
+                                      className="mt-0.5 text-left text-xs font-medium text-amber-800 hover:underline cursor-pointer max-lg:py-2"
                                       title="Edit this special lodging requirement"
                                     >
                                       Requirement: {m.specialRemarks}
@@ -2171,8 +2171,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {res.roomNumber ? `${res.building} ${res.roomNumber}` : '—'}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex items-center justify-between gap-3 text-[13px] text-stone-500">
-                    <span className="flex min-w-0 items-baseline">
+                  <div className="mt-0.5 flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 text-[13px] text-stone-500">
+                    <span className="flex min-w-0 max-w-full items-baseline">
                       <span className="w-[4.5rem] shrink-0 font-medium text-stone-800 tabular-nums">{formatTime(res.departureTime || '01:00 AM')}</span>
                       <span className="truncate tabular-nums" title={`Tour ${res.tourRefNo || res.tourId || '—'}${res.officeName ? ` · ${res.officeName}` : ''}`}>
                         {res.family} · Tour {shortTour(res.tourRefNo || res.tourId) || '—'}

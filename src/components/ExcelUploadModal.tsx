@@ -265,7 +265,7 @@ export const ExcelUploadModal: React.FC<ExcelUploadModalProps> = ({
                           </td>
                           <td className="text-stone-700 tabular-nums whitespace-nowrap">{row.family}</td>
                           <td className="text-stone-700 tabular-nums whitespace-nowrap">{row.tourRefNo}</td>
-                          <td className="text-stone-700">{row.officeName}</td>
+                          <td className="text-stone-700 min-w-[11rem]">{row.officeName}</td>
                           <td className="whitespace-nowrap tabular-nums">
                             <div className="text-stone-900">{previewDate(row.arrivalDate)}</div>
                             {row.arrivalTime && <div className="text-xs text-stone-500">{row.arrivalTime}</div>}

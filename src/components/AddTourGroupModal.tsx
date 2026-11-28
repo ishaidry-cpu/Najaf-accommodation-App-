@@ -35,6 +35,8 @@ const cell = `${fieldSm} w-full max-md:h-10`;
 const cellLabel = 'md:hidden block mb-1 text-xs font-medium text-stone-600';
 const iconBtn =
   'w-9 h-9 max-md:w-10 max-md:h-10 rounded-lg flex items-center justify-center text-stone-500 hover:text-stone-900 hover:bg-stone-100 cursor-pointer';
+const MSG_TOUR = 'Enter a Tour ID.';
+const MSG_DATES = 'The departure date cannot be before the arrival date.';
 const Required = () => (
   <span className="text-rose-600" aria-hidden="true">
     {' '}*
@@ -567,7 +569,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
 
     const cleanTour = tourRefNo.trim();
     if (!cleanTour) {
-      setErrorMsg('Enter a Tour ID.');
+      setErrorMsg(MSG_TOUR);
       return;
     }
 
@@ -577,7 +579,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
     }
 
     if (departureDate < arrivalDate) {
-      setErrorMsg('The departure date cannot be before the arrival date.');
+      setErrorMsg(MSG_DATES);
       return;
     }
 
@@ -674,7 +676,10 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
   // After a failed save, point at the fields that caused it.
   const tourMissing = !!errorMsg && !tourRefNo.trim();
   const datesWrong = !!errorMsg && !!arrivalDate && !!departureDate && departureDate < arrivalDate;
-  const hasProblems = !!errorMsg || rowChecks.duplicateRowCount > 0 || rowChecks.sameTourConflictCount > 0;
+  // A message about one field goes away once that field is put right; the next save checks again.
+  const shownError =
+    (errorMsg === MSG_TOUR && tourRefNo.trim()) || (errorMsg === MSG_DATES && !datesWrong) ? '' : errorMsg;
+  const hasProblems = !!shownError || rowChecks.duplicateRowCount > 0 || rowChecks.sameTourConflictCount > 0;
 
   return (
     <div className={modalScrim}>
@@ -688,7 +693,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
               Enter the Tour ID and dates once, then paste everyone’s ITS numbers or add them row by row.
             </p>
           </div>
-          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+          <button type="button" onClick={onClose} className={`${modalClose} max-sm:w-10 max-sm:h-10`} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -721,7 +726,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                     ))}
                   </datalist>
                   {tourMissing ? (
-                    <p className={errorText}>Enter a Tour ID.</p>
+                    <p className={errorText}>{MSG_TOUR}</p>
                   ) : (
                     existingTourIds.length > 0 && (
                       <p className={helpText}>
@@ -1010,7 +1015,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
                               placeholder="101"
                               aria-label="Family ID for all pasted rows"
                               title="Family ID assigned to all pasted rows"
-                              className={`${field} w-20 tabular-nums`}
+                              className={`${field.replace('w-full', 'w-20')} tabular-nums`}
                             />
                           )}
                         </div>
@@ -1359,7 +1364,7 @@ export const AddTourGroupModal: React.FC<AddTourGroupModalProps> = ({
             >
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
               <ul className="min-w-0 flex-1 space-y-1">
-                {errorMsg && <li className="font-medium">{errorMsg}</li>}
+                {shownError && <li className="font-medium">{shownError}</li>}
                 {rowChecks.duplicateRowCount > 0 && (
                   <li>
                     {rowChecks.duplicateRowCount} duplicate ITS in the list. Remove {rowChecks.duplicateRowCount === 1 ? 'it' : 'them'} or

@@ -14,6 +14,8 @@ const pick = (on: boolean) =>
   `inline-flex items-center h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium tabular-nums ring-1 ring-inset cursor-pointer ${
     on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50'
   }`;
+const MSG_NAME = 'Enter the zair’s full name.';
+const MSG_TOUR = 'Enter a Tour ID.';
 const Required = () => (
   <span className="text-rose-600" aria-hidden="true">
     {' '}*
@@ -183,12 +185,12 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
     setErrorMsg('');
 
     if (!applicantName.trim()) {
-      setErrorMsg('Enter the zair’s full name.');
+      setErrorMsg(MSG_NAME);
       return;
     }
 
     if (!tourRefNo.trim()) {
-      setErrorMsg('Enter a Tour ID.');
+      setErrorMsg(MSG_TOUR);
       return;
     }
 
@@ -248,6 +250,9 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
   const nameMissing = !!errorMsg && !applicantName.trim();
   const tourMissing = !!errorMsg && !tourRefNo.trim();
   const itsChecked = !duplicateMatch && itsId.trim().length >= 7;
+  // A message about an empty field goes away once the field is filled; the next save checks again.
+  const shownError =
+    (errorMsg === MSG_NAME && applicantName.trim()) || (errorMsg === MSG_TOUR && tourRefNo.trim()) ? '' : errorMsg;
 
   return (
     <div className={modalScrim}>
@@ -261,7 +266,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
               Enter one zair’s details. The ITS and name are checked against the list so nobody is added twice.
             </p>
           </div>
-          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+          <button type="button" onClick={onClose} className={`${modalClose} max-sm:w-10 max-sm:h-10`} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -349,7 +354,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   aria-invalid={nameMissing}
                   className={`${field}${nameMissing ? fieldBad : ''}`}
                 />
-                {nameMissing && <p className={errorText}>Enter the zair’s full name.</p>}
+                {nameMissing && <p className={errorText}>{MSG_NAME}</p>}
               </div>
 
               <div>
@@ -445,7 +450,7 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
                   aria-invalid={tourMissing}
                   className={`${field} tabular-nums${tourMissing ? fieldBad : ''}`}
                 />
-                {tourMissing && <p className={errorText}>Enter a Tour ID.</p>}
+                {tourMissing && <p className={errorText}>{MSG_TOUR}</p>}
                 {existingTourIds.length > 0 && (
                   <>
                     <p className={helpText}>Or pick a tour already in the list:</p>
@@ -695,13 +700,13 @@ export const AddZaerModal: React.FC<AddZaerModalProps> = ({
           </section>
         </form>
 
-        {errorMsg && (
+        {shownError && (
           <div
             role="alert"
             className="flex items-start gap-2 px-5 sm:px-6 py-3 border-t border-rose-200 bg-rose-50 text-[13px] text-rose-800"
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-            <span>{errorMsg}</span>
+            <span>{shownError}</span>
           </div>
         )}
 

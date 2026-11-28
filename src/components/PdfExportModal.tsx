@@ -562,7 +562,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         </div>
 
         <div className={modalFooter}>
-          <span className="mr-auto min-w-0 text-[13px] text-stone-600">
+          <span className="mr-auto min-w-0 max-sm:basis-full text-[13px] text-stone-600">
             {isTourManifest && tourIdFilter !== 'ALL' ? (
               <>Tour <span className="font-semibold text-stone-950 tabular-nums">{tourIdFilter}</span> · <span className="tabular-nums">{selectedTourReservations.length}</span> zaereen with names</>
             ) : (
@@ -589,7 +589,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           >
             Burhani only
           </button>
-          <button type="button" onClick={() => handleExport()} disabled={isGenerating} className={`${btn.primary} max-w-full`}>
+          <button type="button" onClick={() => handleExport()} disabled={isGenerating} className={`${btn.primary} max-w-full max-sm:basis-full`}>
             <Download className="w-4 h-4 shrink-0" />
             <span className="truncate">
               {isGenerating

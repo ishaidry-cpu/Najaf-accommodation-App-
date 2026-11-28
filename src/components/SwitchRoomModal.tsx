@@ -57,7 +57,7 @@ const segBtn = (on: boolean) =>
       : 'font-medium text-stone-600 hover:text-stone-950'
   }`;
 const pick = (on: boolean) =>
-  `inline-flex items-center h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium ring-1 ring-inset cursor-pointer ${
+  `inline-flex items-center shrink-0 h-8 max-sm:h-10 px-2.5 rounded-lg text-xs font-medium whitespace-nowrap ring-1 ring-inset cursor-pointer ${
     on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50'
   }`;
 
@@ -433,16 +433,25 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
               {' · '}
               <span className="tabular-nums">Tour {tourLabel}</span>
               {primary.officeName && <span className="max-sm:hidden"> · {primary.officeName}</span>}
+              <span className="block tabular-nums">
+                Stay {showDate(arrivalDate)}
+                {primary.arrivalTime ? `, ${showTime(primary.arrivalTime)}` : ''}
+                <ArrowRight className="inline w-3.5 h-3.5 mx-1 -mt-0.5 text-stone-500" aria-label="to" />
+                {showDate(departureDate)}
+                {primary.departureTime ? `, ${showTime(primary.departureTime)}` : ''}
+                {' · '}
+                {requestedPax} bed{requestedPax === 1 ? '' : 's'} needed
+              </span>
             </p>
           </div>
-          <button type="button" onClick={onClose} className={modalClose} aria-label="Close switch room dialog">
+          <button type="button" onClick={onClose} className={`${modalClose} max-sm:w-10 max-sm:h-10`} aria-label="Close switch room dialog">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex lg:flex-col">
           {/* From → to */}
-          <div className="lg:shrink-0 border-b border-stone-200 px-5 sm:px-6 py-4 space-y-3">
+          <div className="lg:shrink-0 border-b border-stone-200 px-5 sm:px-6 py-4">
             <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-2 sm:gap-4">
               <div className={`${panel} px-3.5 py-3 min-w-0`}>
                 <p className="text-xs font-medium text-stone-500">From</p>
@@ -458,7 +467,9 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     <span className="text-base font-semibold text-stone-950">Unallotted</span>
                   )}
                 </p>
-                <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2">{nameList(activeSourceList)}</p>
+                <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2 lg:line-clamp-1">
+                  {nameList(activeSourceList)}
+                </p>
                 <p className="mt-0.5 text-xs text-stone-600">
                   {chosen?.isSwap
                     ? `Move${movingCount === 1 ? 's' : ''} out. ${nameList(chosen.targetOccupants, 2)} move${
@@ -508,7 +519,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                       </span>
                       <span className="text-[13px] text-stone-600 truncate">{chosen.room.building}</span>
                     </p>
-                    <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2">
+                    <p className="mt-2 text-[13px] font-medium text-stone-900 line-clamp-2 lg:line-clamp-1">
                       {chosen.isSwap
                         ? `${movers} move${movingCount === 1 ? 's' : ''} in`
                         : chosen.targetOccupants.length > 0
@@ -533,23 +544,13 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                     <p className="mt-2 text-xs text-stone-600">
                       {mode === 'swap'
                         ? 'Choose the occupied room to swap with. Both groups change places.'
-                        : `Choose a room below. ${requestedPax} bed${requestedPax === 1 ? '' : 's'} needed.`}
+                        : 'Choose a room below.'}
                     </p>
                   </>
                 )}
               </div>
             </div>
 
-            <p className="text-[13px] text-stone-600 tabular-nums">
-              Stay:{' '}
-              <span className="font-medium text-stone-900">
-                {showDate(arrivalDate)}
-                {primary.arrivalTime ? `, ${showTime(primary.arrivalTime)}` : ''}
-                <ArrowRight className="inline w-3.5 h-3.5 mx-1 -mt-0.5 text-stone-500" aria-label="to" />
-                {showDate(departureDate)}
-                {primary.departureTime ? `, ${showTime(primary.departureTime)}` : ''}
-              </span>
-            </p>
 
           </div>
 
@@ -636,7 +637,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                   placeholder="Ground floor needed for senior"
                   className={field}
                 />
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 flex gap-1.5 app-scroll-x max-lg:overflow-x-auto -mx-5 px-5 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap">
                   {QUICK_REASONS.map((preset) => (
                     <button
                       key={preset}
@@ -764,6 +765,9 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex items-baseline gap-2">
+                              {isChosen && (
+                                <CheckCircle2 className="w-[18px] h-[18px] shrink-0 self-center text-brand-600" aria-hidden="true" />
+                              )}
                               <span className="font-display text-[22px] leading-none font-semibold text-stone-950 tabular-nums">
                                 {room.roomNumber}
                               </span>
@@ -772,11 +776,7 @@ export const SwitchRoomModal: React.FC<SwitchRoomModalProps> = ({
                               </span>
                             </div>
                             <span className={`${chip(state.tone)} shrink-0`}>
-                              {isChosen ? (
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                              ) : (
-                                isBlocked && mode !== 'swap' && <Lock className="w-3 h-3" />
-                              )}
+                              {isBlocked && mode !== 'swap' && <Lock className="w-3 h-3" />}
                               {state.label}
                             </span>
                           </div>

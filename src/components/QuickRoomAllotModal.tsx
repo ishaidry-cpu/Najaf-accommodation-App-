@@ -402,7 +402,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
               Choose a room for the stay, then confirm. Nothing is allotted until you do.
             </p>
           </div>
-          <button type="button" onClick={onClose} className={modalClose} aria-label="Close">
+          <button type="button" onClick={onClose} className={`${modalClose} max-sm:w-10 max-sm:h-10`} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -651,6 +651,9 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                       <>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex items-baseline gap-2">
+                            {isSelected && (
+                              <CheckCircle2 className="w-[18px] h-[18px] shrink-0 self-center text-brand-600" aria-hidden="true" />
+                            )}
                             <span className="font-display text-[22px] leading-none font-semibold text-stone-950 tabular-nums">
                               {room.roomNumber}
                             </span>
@@ -658,10 +661,7 @@ export const QuickRoomAllotModal: React.FC<QuickRoomAllotModalProps> = ({
                               {room.building} · {room.floorLabel || `Floor ${room.floor}`}
                             </span>
                           </div>
-                          <span className={`${chip(state.tone)} shrink-0`}>
-                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                            {state.label}
-                          </span>
+                          <span className={`${chip(state.tone)} shrink-0`}>{state.label}</span>
                         </div>
 
                         <div className="mt-2 text-[13px] text-stone-800">

@@ -73,6 +73,8 @@ const shortDate = (d: string) => {
   return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 };
 const tourLabel = (ref: string) => ref.replace(/^NKERP\/TOUR\//i, '');
+/** Shows the `2026-12-02` dates inside a planner message as `2 Dec`. Display only. */
+const prettyDates = (text: string) => text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (d) => shortDate(d));
 
 /** Drops members who got a room elsewhere, shifted A→B or left, so an old draft never overwrites newer work. */
 function freshen(plan: AllocationPlan, reservations: Reservation[]): AllocationPlan {
@@ -529,7 +531,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                   <span className="w-4 border-t border-dashed border-stone-500" />{nightly[0].beds} beds (without buffer)
                 </span>
               </div>
-              <div className="overflow-x-auto pb-1">
+              <div className="overflow-x-auto pt-2 pb-1">
                 <div className="flex items-end gap-1 h-28 min-w-max relative">
                   {nightly.map((d) => {
                     const total = d.saved + d.planned + d.waiting;
@@ -663,7 +665,7 @@ export const AllocationPlannerView: React.FC<Props> = ({ reservations, rooms, us
                 ) : (
                   <span>
                     <span className="font-semibold text-stone-950">{plural(included.people, 'zair', 'zaereen')}</span> ready to allocate to {plural(included.rooms, 'room')}
-                    <span className="text-stone-500"> · {plural(tours.filter((t) => !excluded.has(t.ref)).length, 'tour')}</span>
+                    <span className="text-stone-500"> · {plural(new Set(included.units.map((u) => u.tourRefNo)).size, 'tour')}</span>
                     {excluded.size > 0 && <span className="text-stone-500"> · {excluded.size} unticked</span>}
                     {!isAdmin && <span className="text-stone-600"> · <Lock className="inline w-3.5 h-3.5 -mt-0.5" /> Only an administrator can allocate</span>}
                   </span>
@@ -772,7 +774,7 @@ const UnitRow: React.FC<{
         ) : (
           <div className="mt-2 flex items-start gap-2">
             <span className={`${chip('bad')} shrink-0`}><AlertTriangle className="w-3 h-3" />No room</span>
-            <span className="text-[13px] leading-snug text-rose-700">{why || 'No room yet'}{why !== LEFT_EMPTY && <span className="block text-stone-600">Shift A→B to an external hotel, or free a room and refresh.</span>}</span>
+            <span className="text-[13px] leading-snug text-rose-700">{why ? prettyDates(why) : 'No room yet'}{why !== LEFT_EMPTY && <span className="block text-stone-600">Shift A→B to an external hotel, or free a room and refresh.</span>}</span>
           </div>
         )}
         {picking && (

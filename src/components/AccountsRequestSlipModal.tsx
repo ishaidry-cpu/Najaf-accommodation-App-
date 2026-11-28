@@ -1059,13 +1059,16 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
             <h3 id="accounts-slip-title" className={modalTitle}>
               {isAToB ? 'A→B refund receipt' : 'B→A shift slip for Accounts'}
             </h3>
-            <p className="mt-1 text-[13px] text-stone-600 tabular-nums">
+            <p
+              className="mt-1 text-[13px] text-stone-600 tabular-nums truncate"
+              title={isAToB ? undefined : selectedTourFilter !== 'ALL' ? selectedTourFilter : tourIdVal || 'Individual Allotment'}
+            >
               {isAToB ? (
-                'Choose the zaereen shifting from Category A to B. The receipt lists name, ITS and age for the Accounts refund check.'
+                'Zaereen shifting from Category A to B, with name, ITS and age for the Accounts refund check.'
               ) : (
                 <>
                   Tour reference:{' '}
-                  <span className="font-semibold text-stone-900 break-all">
+                  <span className="font-semibold text-stone-900">
                     {selectedTourFilter !== 'ALL' ? selectedTourFilter : tourIdVal || 'Individual Allotment'}
                   </span>
                 </>
@@ -1084,7 +1087,8 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
 
         <div className="accounts-slip-body flex-1 lg:min-h-0 flex flex-col lg:flex-row">
           {/* Left: who and what goes on the slip (hidden in print) */}
-          <div className="print-hidden lg:w-[400px] lg:shrink-0 lg:min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-stone-200">
+          <div className="print-hidden lg:w-[420px] lg:shrink-0 lg:min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-stone-200">
+            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="px-4 sm:px-5 pt-4 pb-3 space-y-3.5">
               {/* Direction: B -> A vs A -> B */}
               <div role="group" aria-label="Shift direction" className={segWrap}>
@@ -1187,14 +1191,19 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
             </div>
 
             {/* Pax selection: name, ITS, age, family, room */}
-            <div className="border-t border-stone-200 px-4 sm:px-5 pt-3.5 pb-2 space-y-2.5">
-              <div className="flex items-baseline justify-between gap-3">
+            <div className="border-t border-stone-200 bg-white px-4 sm:px-5 pt-3.5 pb-2.5 space-y-2.5 lg:sticky lg:top-0 lg:z-10">
+              <div className="flex items-center justify-between gap-3">
                 <h4 className="text-[15px] font-semibold text-stone-950">
                   {isAToB ? 'Pax shifting A→B' : 'Pax shifting B→A'}
                 </h4>
-                <span className="text-[13px] text-stone-600 tabular-nums whitespace-nowrap">
-                  {selectedMemberIds.length} of {filteredPoolMembers.length} selected
-                </span>
+                <div className="flex items-center gap-1 -mr-2">
+                  <span className="text-[13px] text-stone-600 tabular-nums whitespace-nowrap">
+                    {selectedMemberIds.length} of {filteredPoolMembers.length} selected
+                  </span>
+                  <button type="button" onClick={handleClearSelection} className={`${btnSm.ghost} max-sm:h-10 px-2`}>
+                    Clear
+                  </button>
+                </div>
               </div>
 
               <div className="relative">
@@ -1238,14 +1247,11 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     Family #{anchorReservation.family}
                   </button>
                 )}
-                <button type="button" onClick={handleClearSelection} className={`${btnSm.ghost} max-sm:h-10`}>
-                  Clear
-                </button>
               </div>
             </div>
 
             {/* Checklist of pax */}
-            <div className="lg:flex-1 lg:min-h-0 max-lg:max-h-80 overflow-y-auto px-2 sm:px-3 pb-2">
+            <div className="max-lg:max-h-80 max-lg:overflow-y-auto px-2 sm:px-3 pb-2">
               {filteredPoolMembers.length > 0 ? (
                 <ul className="divide-y divide-stone-100">
                   {filteredPoolMembers.map((member) => {
@@ -1273,7 +1279,9 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                             <span className="block text-xs text-stone-600 tabular-nums leading-snug">
                               ITS {member.itsId || '—'} · {member.age || '—'}y {member.gender === 'Female' ? 'F' : 'M'} · Fam #
                               {member.family || '—'} ·{' '}
-                              {member.roomNumber ? `Rm ${member.roomNumber} (${member.building})` : 'Room pending'}
+                              <span className="whitespace-nowrap">
+                                {member.roomNumber ? `Rm ${member.roomNumber} (${member.building})` : 'Room pending'}
+                              </span>
                             </span>
                           </span>
                         </label>
@@ -1310,7 +1318,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                             className="inline-flex items-center h-10 sm:h-8 px-1 rounded-lg cursor-pointer hover:bg-stone-100"
                           >
                             <span className={chip(isSettled ? 'ok' : 'wait')}>
-                              {isAToB ? (isSettled ? 'Refunded' : 'Refund pending') : isSettled ? 'Paid' : 'Pending'}
+                              {isSettled ? (isAToB ? 'Refunded' : 'Paid') : 'Pending'}
                             </span>
                           </button>
                         </div>
@@ -1323,6 +1331,8 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   No zaereen match this search. Clear the search or choose another Tour ID.
                 </div>
               )}
+            </div>
+
             </div>
 
             {/* Record the shift in the portal */}
@@ -1366,7 +1376,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                   disabled={selectedMemberIds.length === 0}
                   className={`${btnSm.secondary} max-sm:h-10`}
                 >
-                  {isAToB ? 'Shift A→B, refund pending' : 'Shift as pending'}
+                  {isAToB ? 'Shift, refund pending' : 'Shift as pending'}
                 </button>
               </div>
             </div>
@@ -1375,7 +1385,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
           {/* Right: the slip itself, with the output actions above it */}
           <div className="accounts-slip-preview flex-1 min-w-0 lg:min-h-0 flex flex-col">
             <div className="print-hidden shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-stone-200">
-              <div className="min-w-0 text-[13px] text-stone-600">
+              <div className="min-w-0 text-[13px] text-stone-600 whitespace-nowrap max-sm:sr-only">
                 <span className="font-semibold text-stone-900">Slip preview</span>
                 <span className="max-sm:hidden tabular-nums">
                   {' '}
@@ -1385,7 +1395,7 @@ export const AccountsRequestSlipModal: React.FC<AccountsRequestSlipModalProps> =
                     : `${effectiveSlipPaxList.length} pax`}
                 </span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 max-sm:flex-1 max-sm:[&>button]:flex-1">
                 <button type="button" onClick={handlePrint} className={btn.secondary}>
                   <Printer className="w-4 h-4" />
                   <span>{isAToB ? 'Print receipt' : 'Print slip'}</span>

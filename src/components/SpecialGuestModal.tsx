@@ -148,7 +148,7 @@ export const SpecialGuestModal: React.FC<SpecialGuestModalProps> = ({
   };
 
   const scopes: { value: SpecialGuestScope; icon: React.ElementType; label: string; sub: string; title?: string }[] = [
-    { value: 'guest', icon: User, label: 'Only this zair', sub: '1 zair', title: targetReservation.applicantName },
+    { value: 'guest', icon: User, label: 'This zair only', sub: '1 zair', title: targetReservation.applicantName },
     { value: 'family', icon: Users, label: 'Whole family', sub: `Family ${targetReservation.family || '—'} · ${familyMembers.length} ${familyMembers.length > 1 ? 'members' : 'member'}` },
     { value: 'tour', icon: Sparkles, label: 'Whole Tour ID', sub: `All ${tourMembers.length} zaereen`, title: targetReservation.tourRefNo },
   ];
