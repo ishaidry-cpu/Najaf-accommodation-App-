@@ -56,7 +56,7 @@ const cellTone = {
   turnover: 'bg-purple-50 ring-purple-200 text-purple-800',
   late: 'bg-amber-50 ring-amber-300 text-amber-900',
   severe: 'bg-rose-50 ring-rose-300 text-rose-800',
-  blocked: 'ring-stone-200 bg-[repeating-linear-gradient(135deg,var(--color-stone-200)_0_5px,var(--color-stone-50)_5px_10px)]',
+  blocked: 'ring-stone-200 bg-[repeating-linear-gradient(135deg,var(--color-stone-200)_0_3px,var(--color-stone-50)_3px_9px)]',
 } as const;
 
 /** "06:00 PM" reads as "6 PM" inside a narrow turnover cell; the tooltip keeps the full times. */
