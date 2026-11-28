@@ -34,7 +34,7 @@ import {
   ArrowRightLeft,
   RotateCcw
 } from 'lucide-react';
-import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole, type TravelLeg } from '../types';
+import { Reservation, Room, DEFAULT_ZAEREEN_CATEGORIES, UserRole } from '../types';
 import { SpecialGuestModal } from './SpecialGuestModal';
 import {
   PageHeader,
@@ -71,14 +71,10 @@ import { ZairPhoto, photoUrl, type PhotoIndex } from './ZairPhoto';
 import { oneRowPerIts } from '../utils/deduplication';
 import { HiddenStaysModal } from './HiddenStaysModal';
 import { SUBVENUE_ARRIVAL_TIME, SUBVENUE_DEPARTURE_TIME, normalizeTime, timeOptionsWith } from '../services/stayTimes';
+import { TravelDetails, stayDay } from './TravelDetails';
 
 /** Baghdad calendar date. */
 const baghdadDay = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
-const stayDay = (v?: string) => {
-  const d = String(v || '').slice(0, 10);
-  const date = new Date(d + 'T00:00:00Z');
-  return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-};
 /** "3 Dec – 6 Dec · Burhani 203" for each other record of the same ITS. */
 const describeOtherStays = (others: Reservation[]) => others.map((o) =>
   `${stayDay(o.arrivalDate)} – ${stayDay(o.departureDate)}${o.roomNumber ? ` · ${o.building} ${o.roomNumber}` : o.building ? ` · ${o.building}` : ' · no room'}${o.tourRefNo ? ` · ${String(o.tourRefNo).replace(/^NKERP\/TOUR\//i, '')}` : ''}`).join('\n');
@@ -267,40 +263,6 @@ interface ReservationsViewProps {
   photos?: PhotoIndex;
 }
 
-/** Travel note under a date: "SBVN from KARBALA, arrival 11:00". Plain secondary text, one or two lines. */
-function TravelDetails({ legs, date, direction, flush }: {
-  legs?: TravelLeg[];
-  date: string;
-  direction: 'arrival' | 'departure';
-  /** No side padding (the phone list, where it sits under plain text rather than under an input). */
-  flush?: boolean;
-}) {
-  const visible = legs?.filter(leg => leg.serviceDate === String(date || '').slice(0, 10));
-  if (!visible?.length) return null;
-  const incoming = direction === 'arrival';
-  return (
-    <ul className={`mt-0.5 space-y-0.5 text-xs leading-snug text-stone-600 ${flush ? '' : 'px-1.5'}`}>
-      {visible.map(leg => {
-        const kind = leg.kind === 'subvenue' ? 'SBVN' : leg.kind === 'flight' ? 'Flight' : leg.kind === 'land' ? 'Land' : '';
-        const route = leg.location && `${incoming ? 'from' : 'to'} ${leg.location}`;
-        const time = leg.localTime?.slice(11, 16);
-        const eventDate = leg.localTime?.slice(0, 10);
-        const event = leg.kind === 'flight' ? (incoming ? 'lands' : 'takes off') : (incoming ? 'arrival' : 'departure');
-        return (
-          <li key={JSON.stringify(leg)} className="break-words">
-            <span className="text-stone-700">{[kind, leg.flightCode, route].filter(Boolean).join(' ')}</span>
-            {time && (
-              <span title="Baghdad time" className="tabular-nums">
-                , {event} {eventDate !== leg.serviceDate && `${stayDay(eventDate)} `}{time}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 export const ReservationsView: React.FC<ReservationsViewProps> = ({
   reservations,
   rooms,
@@ -408,6 +370,8 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
     tourId: string;
     otherZaereenCount: number;
     allTourZaereen: Reservation[];
+    /** A tour's departure time is changed for the whole Tour ID only, never for one zair. */
+    tourWideOnly?: boolean;
   } | null>(null);
 
   // User feedback toast
@@ -940,6 +904,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             tourId,
             otherZaereenCount: tourMembers.length - 1,
             allTourZaereen: tourMembers,
+            tourWideOnly: field === 'departureTime',
           });
           return;
         }
@@ -2866,7 +2831,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <div className={modalHeader}>
               <div className="min-w-0">
                 <h3 id="tour-change-title" className={modalTitle}>
-                  {pendingTourDateChange.allTourZaereen.length > 1
+                  {pendingTourDateChange.tourWideOnly
+                    ? 'Change the departure time for the whole tour?'
+                    : pendingTourDateChange.allTourZaereen.length > 1
                     ? 'Update the schedule for the whole tour?'
                     : `Change the ${fieldName(pendingTourDateChange.field).toLowerCase()}?`}
                 </h3>
@@ -2884,9 +2851,18 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
             <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
               <div className={`${panel} p-3.5`}>
                 <div className="text-[13px] text-stone-600">
-                  {fieldName(pendingTourDateChange.field)} changed for{' '}
-                  <span className="font-medium text-stone-900">{pendingTourDateChange.reservation.applicantName}</span>{' '}
-                  <span className="tabular-nums">(ITS {pendingTourDateChange.reservation.itsId})</span>
+                  {pendingTourDateChange.tourWideOnly ? (
+                    <>
+                      Departure time for Tour ID{' '}
+                      <span className="font-medium text-stone-900 tabular-nums">{shortTour(pendingTourDateChange.tourId)}</span>
+                    </>
+                  ) : (
+                    <>
+                      {fieldName(pendingTourDateChange.field)} changed for{' '}
+                      <span className="font-medium text-stone-900">{pendingTourDateChange.reservation.applicantName}</span>{' '}
+                      <span className="tabular-nums">(ITS {pendingTourDateChange.reservation.itsId})</span>
+                    </>
+                  )}
                 </div>
                 <div className="mt-3 flex items-end gap-4 tabular-nums">
                   <div>
@@ -2909,15 +2885,28 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 </div>
               </div>
 
+              {pendingTourDateChange.tourWideOnly && (
+                <div role="alert" className="flex gap-2.5 rounded-xl bg-amber-50 px-3.5 py-3 text-sm leading-relaxed text-amber-900 ring-1 ring-inset ring-amber-200">
+                  <AlertCircle className="mt-0.5 w-4 h-4 shrink-0 text-amber-700" />
+                  <p>
+                    The departure time will change for <strong className="font-semibold">all {pendingTourDateChange.allTourZaereen.length} zaereen (PAX)</strong> under
+                    Tour ID <strong className="font-semibold tabular-nums">{pendingTourDateChange.tourId}</strong>, not only for{' '}
+                    {pendingTourDateChange.reservation.applicantName}. Nothing is saved until you confirm.
+                  </p>
+                </div>
+              )}
+
               {pendingTourDateChange.allTourZaereen.length > 1 ? (<>
+              {!pendingTourDateChange.tourWideOnly && (
               <p className="text-sm leading-relaxed text-stone-700">
                 There are <strong className="font-semibold">{pendingTourDateChange.allTourZaereen.length} zaereen</strong> in this tour. Apply the new {pendingTourDateChange.field.includes('Date') ? 'date' : 'time'} to all of them, or change it for <strong className="font-semibold">{pendingTourDateChange.reservation.applicantName}</strong> only?
               </p>
+              )}
 
               {/* Everyone in the tour */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between px-1 text-xs font-medium text-stone-500">
-                  <span>Zaereen in the tour ({pendingTourDateChange.allTourZaereen.length})</span>
+                  <span>{pendingTourDateChange.tourWideOnly ? 'Will change' : 'Zaereen in the tour'} ({pendingTourDateChange.allTourZaereen.length})</span>
                   <span>Family and room</span>
                 </div>
                 <ul className={`${panel} max-h-40 divide-y divide-stone-200 overflow-y-auto text-[13px]`}>
@@ -2954,6 +2943,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                   Confirm change
                 </button>
               ) : (<>
+              {!pendingTourDateChange.tourWideOnly && (
               <button
                 type="button"
                 onClick={handleConfirmApplyToSingle}
@@ -2963,6 +2953,7 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 <User className="w-4 h-4 text-stone-500" />
                 This zair only
               </button>
+              )}
               <button
                 type="button"
                 onClick={handleConfirmApplyToAllTour}
@@ -2970,7 +2961,9 @@ export const ReservationsView: React.FC<ReservationsViewProps> = ({
                 title={`Apply ${pendingTourDateChange.newValue} to all ${pendingTourDateChange.allTourZaereen.length} zaereen in tour ${pendingTourDateChange.tourId}`}
               >
                 <Users className="w-4 h-4" />
-                Update all {pendingTourDateChange.allTourZaereen.length} in tour
+                {pendingTourDateChange.tourWideOnly
+                  ? `Confirm for all ${pendingTourDateChange.allTourZaereen.length} in tour`
+                  : `Update all ${pendingTourDateChange.allTourZaereen.length} in tour`}
               </button>
               </>)}
             </div>

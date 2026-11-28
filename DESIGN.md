@@ -24,10 +24,10 @@ Every Tailwind colour family is retuned in `@theme`; use the family names, never
 | `gold` | Gilding | Crest rim, current-place marker, starred zaereen. Never a content fill or a warning. |
 | `emerald` | Good / settled | Room allotted, vacant and ready, sent, approved, done. |
 | `amber` | Waiting / look here | Departing, pending, room changed, needs a room, warnings. |
-| `rose` | Problem | Errors, conflicts, destructive actions. (`red` maps to the same scale.) |
+| `rose` | Problem / full | Errors, conflicts, destructive actions; a full room (Overview rooms). (`red` maps to the same scale.) |
 | `blue` | Arriving / information | New arrivals, informational notes. (`sky`, `cyan`, `indigo` map here.) |
 | `purple` | Special handling | Same-day turnover. (`violet`, `fuchsia` map here.) |
-| `orange` | Late / overdue | Rare. |
+| `orange` | Has space / late | A room occupied with places left (Overview rooms). Otherwise rare: late, overdue. |
 
 Rules:
 - Surfaces: page ground is `bg-canvas`; cards are `bg-white`; an inset inside a card is `bg-stone-50`. `white`
@@ -83,9 +83,11 @@ Rules:
 - **Empty states** say what will appear here and how to make it appear, in one or two lines, with the action.
 - **Segmented controls** (building tabs, day ranges, Everything / One date / Date range): `segTrack` and
   `segBtn`, currently exported from `RoomSpecFields.tsx`; the sync scope picker has its own copy of the same look.
-- **Buildings today** (`BuildingBoard.tsx`): the Overview's floor-by-floor board. Its cell states are the
-  timeline's language: free (emerald ring on white), occupied (stone), leaving (amber), arriving (blue),
-  turnover (purple), blocked (hatched).
+- **Room occupancy colours** (`ROOM_LOOK` and `RoomSwatch` in `BuildingBoard.tsx`), used by the Overview's
+  **Buildings today** board, its room grid and the KPI swatches: vacant (emerald fill, emerald ring), has space
+  (orange fill, orange ring), full (solid rose with white text), blocked (hatched stone). The fills step from
+  light to dark so they read without colour. Vacant rooms carry no mark. On the board, a small lucide icon in
+  the cell's corner marks leaving (LogOut), arriving (LogIn) or same-day turnover (ArrowLeftRight).
 
 ## Shell
 

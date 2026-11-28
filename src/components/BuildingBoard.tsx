@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Reservation, Room } from '../types';
 import { getDistinctBuildings, normalizeBuildingName } from '../services/storage';
+import { LogIn, LogOut, ArrowLeftRight } from 'lucide-react';
 import { card } from './ui';
 
 /* ------------------------------------------------------------------ */
@@ -28,19 +29,40 @@ export interface BoardRoomState {
   remainingSlots: number;
 }
 
-type CellKind = 'free' | 'occupied' | 'leaving' | 'arriving' | 'turnover' | 'blocked';
+/** How full a room is on the chosen day. The cell colour says this and nothing else. */
+type Occupancy = BoardRoomState['status'];
+/** Movement on the chosen day, shown as a small mark in the cell's corner. */
+type Movement = 'leaving' | 'arriving' | 'turnover';
 
 export const HATCH: React.CSSProperties = {
   backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 4px, var(--color-stone-300) 4px 5px)',
 };
 
-const CELL_STYLE: Record<CellKind, string> = {
-  free: 'bg-white text-emerald-800 font-bold ring-2 ring-inset ring-emerald-500',
-  occupied: 'bg-stone-200 text-stone-600 font-medium',
-  leaving: 'bg-amber-100 text-amber-900 font-medium ring-1 ring-inset ring-amber-400',
-  arriving: 'bg-blue-100 text-blue-900 font-medium ring-1 ring-inset ring-blue-400',
-  turnover: 'bg-purple-100 text-purple-900 font-medium ring-1 ring-inset ring-purple-400',
+/**
+ * Room colours shared by the Buildings board and the Overview room grid:
+ * green = vacant, orange = occupied with space, red = full, hatched grey = blocked.
+ * The fills also step from light to dark (vacant lightest, full darkest) so they read without colour.
+ */
+export const ROOM_LOOK: Record<Occupancy, string> = {
+  available: 'bg-emerald-100 text-emerald-900 font-bold ring-2 ring-inset ring-emerald-500',
+  partial: 'bg-orange-200 text-orange-950 font-semibold ring-2 ring-inset ring-orange-500',
+  full: 'bg-rose-600 text-white font-semibold ring-2 ring-inset ring-rose-700',
   blocked: 'bg-stone-100 text-stone-500 font-medium',
+};
+
+/** A legend swatch in the room colours. */
+export const RoomSwatch: React.FC<{ status: Occupancy; className?: string }> = ({ status, className = 'w-3.5 h-3.5 rounded-[4px]' }) => (
+  <span
+    aria-hidden="true"
+    className={`shrink-0 ${className} ${ROOM_LOOK[status].replace(/ring-2/, 'ring-[1.5px]')}`}
+    style={status === 'blocked' ? HATCH : undefined}
+  />
+);
+
+const MOVEMENT_ICON: Record<Movement, React.FC<{ className?: string; 'aria-hidden'?: boolean }>> = {
+  leaving: LogOut,
+  arriving: LogIn,
+  turnover: ArrowLeftRight,
 };
 
 const dayOf = (v?: string) => (v || '').slice(0, 10);
@@ -60,7 +82,8 @@ const floorLabelOf = (r: Room) =>
 
 interface BoardCell {
   room: Room;
-  kind: CellKind;
+  occupancy: Occupancy;
+  movement: Movement | null;
   name: string;
 }
 
@@ -86,8 +109,9 @@ interface BuildingBoardProps {
 export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomState, date, isToday, onSelectRoom }) => {
   const dayWord = isToday ? 'today' : `on ${formatDay(date)}`;
 
-  const { buildings, totals } = useMemo(() => {
-    const totals: Record<CellKind, number> = { free: 0, occupied: 0, leaving: 0, arriving: 0, turnover: 0, blocked: 0 };
+  const { buildings, totals, moves } = useMemo(() => {
+    const totals: Record<Occupancy, number> = { available: 0, partial: 0, full: 0, blocked: 0 };
+    const moves: Record<Movement, number> = { leaving: 0, arriving: 0, turnover: 0 };
     const when = isToday ? 'today' : `on ${formatDay(date)}`;
 
     const toCell = (room: Room, buildingName: string): BoardCell => {
@@ -95,44 +119,40 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
       const who = st.occupants;
       const leavers = who.filter((o) => dayOf(o.departureDate) === date);
       const arrivers = who.filter((o) => dayOf(o.arrivalDate) === date && dayOf(o.departureDate) !== date);
-      const staying = who.length - leavers.length - arrivers.length;
       const lastOut = who.reduce((max, o) => (dayOf(o.departureDate) > max ? dayOf(o.departureDate) : max), '');
 
-      let kind: CellKind;
-      let detail: string;
-      if (st.status === 'blocked') {
-        kind = 'blocked';
-        detail = `blocked${room.blockedReason ? `, ${room.blockedReason}` : ''}`;
-      } else if (st.status === 'available') {
-        // Counted as vacant by the Overview (nobody who takes a bed is in the room).
-        kind = 'free';
-        const base = room.capacity || room.pax || 2;
-        detail = `free, sleeps ${base}${room.buffer ? ` plus ${room.buffer}` : ''}`;
-        if (who.length > 0) detail += `, ${people(who.length)} not taking a bed`;
-      } else if (staying > 0) {
-        kind = 'occupied';
-        detail = ['occupied', people(who.length), tourList(who), lastOut ? `leaves ${formatDay(lastOut)}` : '']
-          .filter(Boolean)
-          .join(', ');
-        if (leavers.length > 0) detail += `, ${people(leavers.length)} leaving ${when}`;
-        if (arrivers.length > 0) detail += `, ${people(arrivers.length)} arriving ${when}`;
-        if (st.remainingSlots > 0) detail += `, room for ${st.remainingSlots} more`;
-      } else if (leavers.length > 0 && arrivers.length > 0) {
-        kind = 'turnover';
-        detail = `turnover ${when}, ${people(leavers.length)} leaving${tourList(leavers) ? ` (${tourList(leavers)})` : ''}, ${people(arrivers.length)} arriving${tourList(arrivers) ? ` (${tourList(arrivers)})` : ''}`;
-      } else if (leavers.length > 0) {
-        kind = 'leaving';
-        detail = [`leaving ${when}`, people(leavers.length), tourList(leavers)].filter(Boolean).join(', ');
-      } else {
-        kind = 'arriving';
-        detail = [`arriving ${when}`, people(arrivers.length), tourList(arrivers), lastOut ? `leaves ${formatDay(lastOut)}` : '']
-          .filter(Boolean)
-          .join(', ');
-      }
-      totals[kind] += 1;
-      return { room, kind, name: `${buildingName} ${room.roomNumber}, ${detail}` };
-    };
+      const occupancy: Occupancy = st.status;
+      const movement: Movement | null =
+        occupancy === 'blocked' || who.length === 0
+          ? null
+          : leavers.length > 0 && arrivers.length > 0
+          ? 'turnover'
+          : leavers.length > 0
+          ? 'leaving'
+          : arrivers.length > 0
+          ? 'arriving'
+          : null;
 
+      const parts: string[] = [];
+      if (occupancy === 'blocked') {
+        parts.push(`blocked${room.blockedReason ? `, ${room.blockedReason}` : ''}`);
+      } else if (occupancy === 'available') {
+        const base = room.capacity || room.pax || 2;
+        parts.push(`vacant, sleeps ${base}${room.buffer ? ` plus ${room.buffer}` : ''}`);
+        if (who.length > 0) parts.push(`${people(who.length)} not taking a bed`);
+      } else {
+        parts.push(occupancy === 'full' ? 'full' : `has space for ${st.remainingSlots} more`);
+        parts.push(people(who.length));
+        if (tourList(who)) parts.push(tourList(who));
+        if (lastOut) parts.push(`leaves ${formatDay(lastOut)}`);
+      }
+      if (leavers.length > 0) parts.push(`${people(leavers.length)} leaving ${when}`);
+      if (arrivers.length > 0) parts.push(`${people(arrivers.length)} arriving ${when}`);
+
+      totals[occupancy] += 1;
+      if (movement) moves[movement] += 1;
+      return { room, occupancy, movement, name: `${buildingName} ${room.roomNumber}, ${parts.join(', ')}` };
+    };
     // Buildings in the order the rest of the app lists them, keeping only those that have rooms.
     const byBuilding = new Map<string, Room[]>();
     rooms.forEach((r) => {
@@ -168,23 +188,26 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
       buildings.push({
         name,
         total: list.length,
-        free: floors.reduce((n, f) => n + f.cells.filter((c) => c.kind === 'free').length, 0),
+        free: floors.reduce((n, f) => n + f.cells.filter((c) => c.occupancy === 'available').length, 0),
         columns: Math.min(10, Math.max(1, ...floors.map((f) => f.cells.length))),
         floors,
       });
     });
 
-    return { buildings, totals };
+    return { buildings, totals, moves };
   }, [rooms, getRoomState, date, isToday]);
 
-  const legend: { kind: CellKind; label: string }[] = [
-    { kind: 'free', label: 'Free' },
-    { kind: 'occupied', label: 'Occupied' },
+  const legend: { status: Occupancy; label: string }[] = [
+    { status: 'available', label: 'Vacant' },
+    { status: 'partial', label: 'Has space' },
+    { status: 'full', label: 'Full' },
+    { status: 'blocked', label: 'Blocked' },
+  ];
+  const movementLegend: { kind: Movement; label: string }[] = [
     { kind: 'leaving', label: `Leaving ${dayWord}` },
     { kind: 'arriving', label: `Arriving ${dayWord}` },
     // Same-day turnover only earns a place in the legend on days that have one.
-    ...(totals.turnover > 0 ? [{ kind: 'turnover' as CellKind, label: `Turnover ${dayWord}` }] : []),
-    { kind: 'blocked', label: 'Blocked' },
+    ...(moves.turnover > 0 ? [{ kind: 'turnover' as Movement, label: `Turnover ${dayWord}` }] : []),
   ];
 
   if (buildings.length === 0) return null;
@@ -194,20 +217,26 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
       <div className="grid grid-cols-1 xl:grid-cols-[auto_minmax(0,1fr)] gap-x-6">
         <h2 className="text-lg font-semibold leading-tight text-stone-950">Buildings {dayWord}</h2>
         <p className="mt-1 text-[13px] text-stone-600 xl:order-3 xl:col-span-2">
-          Every room, floor by floor.{onSelectRoom ? ' Choose a room to see who is in it.' : ''}
+          Every room, floor by floor.{onSelectRoom ? ' Choose a room to see who is in it and when they depart.' : ''}
         </p>
         <ul className="mt-3 xl:mt-0 flex flex-wrap items-center gap-x-4 gap-y-1.5 xl:order-2 xl:justify-end" aria-label="Room states">
           {legend.map((l) => (
-            <li key={l.kind} className="flex items-center gap-1.5 text-[13px] text-stone-700">
-              <span
-                aria-hidden="true"
-                className={`w-3.5 h-3.5 rounded-[4px] shrink-0 ${CELL_STYLE[l.kind]}`}
-                style={l.kind === 'blocked' ? HATCH : undefined}
-              />
+            <li key={l.status} className="flex items-center gap-1.5 text-[13px] text-stone-700">
+              <RoomSwatch status={l.status} />
               <span>{l.label}</span>
-              <span className="tabular-nums text-stone-500">{totals[l.kind]}</span>
+              <span className="tabular-nums text-stone-500">{totals[l.status]}</span>
             </li>
           ))}
+          {movementLegend.map((l) => {
+            const Icon = MOVEMENT_ICON[l.kind];
+            return (
+              <li key={l.kind} className="flex items-center gap-1.5 text-[13px] text-stone-700">
+                <Icon aria-hidden className="w-3.5 h-3.5 shrink-0 text-stone-600" />
+                <span>{l.label}</span>
+                <span className="tabular-nums text-stone-500">{moves[l.kind]}</span>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
@@ -217,7 +246,7 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
             <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-[15px] font-semibold text-stone-950">{b.name}</h3>
               <p className="text-[13px] text-stone-600 tabular-nums">
-                <span className={b.free > 0 ? 'font-semibold text-emerald-800' : 'font-medium text-stone-700'}>{b.free} free</span> of {b.total}
+                <span className={b.free > 0 ? 'font-semibold text-emerald-800' : 'font-medium text-stone-700'}>{b.free} vacant</span> of {b.total}
               </p>
             </div>
 
@@ -233,8 +262,15 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
                     style={{ '--board-cols': b.columns } as React.CSSProperties}
                   >
                     {f.cells.map((c) => {
-                      const cls = `h-10 sm:h-8 rounded-md flex items-center justify-center text-xs tabular-nums ${CELL_STYLE[c.kind]}`;
-                      const style = c.kind === 'blocked' ? HATCH : undefined;
+                      const cls = `relative h-10 sm:h-8 rounded-md flex items-center justify-center text-xs tabular-nums ${ROOM_LOOK[c.occupancy]}`;
+                      const style = c.occupancy === 'blocked' ? HATCH : undefined;
+                      const Mark = c.movement ? MOVEMENT_ICON[c.movement] : null;
+                      const content = (
+                        <>
+                          {c.room.roomNumber}
+                          {Mark && <Mark aria-hidden className="absolute top-0.5 right-0.5 w-2.5 h-2.5 opacity-90" />}
+                        </>
+                      );
                       return onSelectRoom ? (
                         <button
                           key={c.room.id}
@@ -245,11 +281,11 @@ export const BuildingBoard: React.FC<BuildingBoardProps> = ({ rooms, getRoomStat
                           style={style}
                           className={`${cls} cursor-pointer hover:outline-2 hover:outline-offset-1 hover:outline-brand-500/70`}
                         >
-                          {c.room.roomNumber}
+                          {content}
                         </button>
                       ) : (
                         <div key={c.room.id} role="img" title={c.name} aria-label={c.name} style={style} className={cls}>
-                          {c.room.roomNumber}
+                          {content}
                         </div>
                       );
                     })}

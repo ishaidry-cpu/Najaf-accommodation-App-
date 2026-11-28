@@ -36,7 +36,8 @@ import { extractCleanTime } from '../utils/turnoverTiming';
 import { RoomTimelineView } from './RoomTimelineView';
 import { SpecialGuestModal, SpecialGuestScope } from './SpecialGuestModal';
 import type { SwitchRoomTarget } from './SwitchRoomModal';
-import { BuildingBoard, formatDay, HATCH } from './BuildingBoard';
+import { BuildingBoard, formatDay, HATCH, ROOM_LOOK, RoomSwatch } from './BuildingBoard';
+import { TravelDetails, travelLegsOn } from './TravelDetails';
 import {
   CountUp,
   PageHeader,
@@ -79,6 +80,60 @@ const formatStay = (date?: string | null, time?: string | null): string => {
 
 /** Tour IDs all start `NKERP/TOUR/`; tight lists show the part that differs (the full ID stays in the tooltip). */
 const shortTour = (id?: string | null): string => String(id ?? '').trim().replace(/^NKERP\/TOUR\//i, '');
+
+/** Occupants by departure, earliest first, then by family, so a room's departures read in order. */
+const sortByDeparture = (list: Reservation[]): Reservation[] =>
+  [...list].sort(
+    (a, b) =>
+      (a.departureDate || '').slice(0, 10).localeCompare((b.departureDate || '').slice(0, 10)) ||
+      String(a.family || '').localeCompare(String(b.family || ''), undefined, { numeric: true }) ||
+      a.applicantName.localeCompare(b.applicantName)
+  );
+
+/**
+ * A room's departures at a glance: one line per departure date, time and tour, with how many zaereen leave
+ * and the travel NKERP holds for it. The same details the Zaereen list shows, gathered room by room.
+ */
+const RoomDepartures: React.FC<{ occupants: Reservation[]; selectedDate: string; isToday: boolean }> = ({ occupants, selectedDate, isToday }) => {
+  const groups = new Map<string, { date: string; time: string; tour: string; people: Reservation[] }>();
+  sortByDeparture(occupants).forEach((o) => {
+    const date = (o.departureDate || '').slice(0, 10);
+    const time = o.departureTime || SUBVENUE_DEPARTURE_TIME;
+    const tour = (o.tourRefNo || o.tourId || '').trim();
+    const key = `${date}|${formatTime(time)}|${tour.toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, { date, time, tour, people: [] });
+    groups.get(key)!.people.push(o);
+  });
+  const list = Array.from(groups.values());
+  if (list.length === 0) return null;
+  return (
+    <div className={`${panel} mt-2 px-3.5 py-3`}>
+      <h5 className="text-[13px] font-medium text-stone-700">Departures from this room</h5>
+      <ul className="mt-1.5 space-y-2">
+        {list.map((g) => {
+          const leavingNow = g.date === selectedDate;
+          // Everyone in a group shares the date, so the first zair with travel legs for that day speaks for it.
+          const withTravel = g.people.find((p) => travelLegsOn(p.departureTravel, p.departureDate).length > 0);
+          return (
+            <li key={`${g.date}|${g.time}|${g.tour}`} className="text-[13px] leading-snug">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                <span className="font-semibold text-stone-950">{formatStay(g.date, g.time)}</span>
+                {leavingNow && <span className={chip('wait')}>Leaving {isToday ? 'today' : 'this day'}</span>}
+                <span className="text-stone-600">
+                  {g.people.length} {g.people.length === 1 ? 'zair' : 'zaereen'}
+                  {g.tour ? ` · Tour ${shortTour(g.tour)}` : ''}
+                </span>
+              </div>
+              {withTravel && (
+                <TravelDetails legs={withTravel.departureTravel} date={withTravel.departureDate} direction="departure" flush />
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
 
 /** A saved timestamp: `27 Nov, 3:15 PM`. */
 const formatWhen = (iso?: string): string => {
@@ -638,18 +693,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // One room in the grid. The look matches the "Buildings today" board:
-  // free = white with an emerald ring, occupied = stone, blocked = hatched.
-  // A room that is occupied but still has space carries a small emerald dot; a VIP tour a small gold "v".
+  // vacant = green, occupied with space = orange, full = red, blocked = hatched. A VIP tour adds a small gold "v".
   const renderMatrixRoomButton = (room: Room) => {
     const state = getMatrixState(room);
     if (!matchesStatusFilter(state)) return null;
 
-    let look = 'bg-white text-emerald-800 font-bold ring-2 ring-inset ring-emerald-500';
-    if (state.status === 'full' || state.status === 'partial') {
-      look = 'bg-stone-200 text-stone-600 font-medium';
-    } else if (state.status === 'blocked') {
-      look = 'bg-stone-100 text-stone-500 font-medium';
-    }
+    const look = ROOM_LOOK[state.status];
 
     const statusLine =
       state.status === 'blocked'
@@ -658,7 +707,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ? 'Full, no space'
         : state.status === 'partial'
         ? `Occupied, ${state.remainingSlots} ${state.remainingSlots === 1 ? 'place' : 'places'} free`
-        : 'Free';
+        : 'Vacant';
 
     const tooltipLines = [
       `${room.building} ${room.roomNumber}: ${statusLine}`,
@@ -692,9 +741,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }`}
       >
         <span>{room.roomNumber}</span>
-        {state.status === 'partial' && (
-          <span aria-hidden="true" className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />
-        )}
         {state.status === 'blocked' && <Lock aria-hidden="true" className="w-2.5 h-2.5 text-stone-500 absolute bottom-0.5 right-0.5" />}
         {state.isVip && (
           <span
@@ -731,7 +777,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span className="ml-2 text-[13px] font-normal text-stone-500">{detail}</span>
           </h4>
           <p className="text-[13px] text-stone-600 tabular-nums">
-            <span className={counts.available > 0 ? 'font-semibold text-emerald-800' : ''}>{counts.available} free</span>
+            <span className={counts.available > 0 ? 'font-semibold text-emerald-800' : ''}>{counts.available} vacant</span>
             {' · '}
             {counts.partial} with space
             {' · '}
@@ -1057,10 +1103,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {
                 label: 'Vacant rooms',
                 value: vacantCount,
-                swatch: 'bg-white ring-[1.5px] ring-inset ring-emerald-500',
+                swatch: 'bg-emerald-100 ring-[1.5px] ring-inset ring-emerald-500',
                 foot: 'Ready to allot',
               },
-              { label: 'Occupied rooms', value: occupiedCount, swatch: 'bg-stone-300', foot: 'Zaereen in house' },
+              {
+                label: 'Occupied rooms',
+                value: occupiedCount,
+                swatch: 'bg-linear-to-r from-orange-300 from-50% to-rose-600 to-50%',
+                foot: <span className="tabular-nums">{partialOccupiedCount} with space, {fullOccupiedCount} full</span>,
+              },
               { label: 'Blocked rooms', value: blockedCount, swatch: 'bg-stone-100 ring-1 ring-inset ring-stone-300', hatch: true, foot: 'Maintenance or VIP' },
               {
                 label: 'B→A shifts',
@@ -1982,35 +2033,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   { id: 'all', label: 'All', count: filteredRooms.length, title: 'Every room' },
                   {
                     id: 'available',
-                    label: 'Free',
+                    label: 'Vacant',
                     count: completelyAvailableCount,
                     title: 'Nobody in the room, the whole room is free',
-                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-white ring-[1.5px] ring-inset ring-emerald-500" />,
+                    swatch: <RoomSwatch status="available" className="w-3 h-3 rounded-[3px]" />,
                   },
                   {
                     id: 'partial',
                     label: 'Has space',
                     count: partialOccupiedCount,
                     title: 'Occupied, with places still open for a zair',
-                    swatch: (
-                      <span aria-hidden="true" className="relative w-3 h-3 rounded-[3px] bg-stone-300">
-                        <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-emerald-500" />
-                      </span>
-                    ),
+                    swatch: <RoomSwatch status="partial" className="w-3 h-3 rounded-[3px]" />,
                   },
                   {
                     id: 'full',
                     label: 'Full',
                     count: fullOccupiedCount,
                     title: 'Occupied, no space left',
-                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-stone-300" />,
+                    swatch: <RoomSwatch status="full" className="w-3 h-3 rounded-[3px]" />,
                   },
                   {
                     id: 'blocked',
                     label: 'Blocked',
                     count: blockedCount,
                     title: 'Blocked for maintenance or on hold',
-                    swatch: <span aria-hidden="true" className="w-3 h-3 rounded-[3px] bg-stone-100 ring-1 ring-inset ring-stone-300" style={HATCH} />,
+                    swatch: <RoomSwatch status="blocked" className="w-3 h-3 rounded-[3px] ring-1 ring-inset ring-stone-300" />,
                   },
                   {
                     id: 'vip',
@@ -2256,7 +2303,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </span>
                     ) : state.occupants.length > 0 ? (
                       <>
-                        <span className={chip(isFull ? 'neutral' : 'ok')}>
+                        <span className={chip(isFull ? 'bad' : 'wait')}>
                           {isFull
                             ? 'Full, no space'
                             : `Occupied, ${state.remainingSlots} ${state.remainingSlots === 1 ? 'place' : 'places'} free`}
@@ -2309,10 +2356,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </button>
                         )}
                       </div>
-                      <ul className="mt-2 divide-y divide-stone-200 border-y border-stone-200">
-                        {state.occupants.map((booking: Reservation) => (
+                      <RoomDepartures occupants={state.occupants} selectedDate={selectedDate} isToday={isToday} />
+                      <ul className="mt-3 divide-y divide-stone-200 border-y border-stone-200">
+                        {sortByDeparture(state.occupants).map((booking: Reservation) => (
                           <li key={booking.id} className="py-2.5 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="text-sm font-medium text-stone-950">
                                 {booking.applicantName}
                                 <span className="font-normal text-stone-500">
@@ -2323,11 +2371,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <div className="mt-0.5 text-[13px] text-stone-600 tabular-nums">
                                 Family {booking.family} · ITS {booking.itsId} · Tour {booking.tourRefNo || booking.tourId || '—'}
                                 {booking.officeName ? ` · ${booking.officeName}` : ''}
-                              </div>
-                              <div className="mt-0.5 text-[13px] text-stone-500 tabular-nums">
-                                {formatStay(booking.arrivalDate, booking.arrivalTime || SUBVENUE_ARRIVAL_TIME)} → {formatStay(booking.departureDate, booking.departureTime || SUBVENUE_DEPARTURE_TIME)}
                                 {booking.category ? ` · ${booking.category}` : ''}
                               </div>
+                              <dl className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[13px] leading-snug">
+                                <div className="min-w-0">
+                                  <dt className="text-xs text-stone-500">Arrival</dt>
+                                  <dd className="text-stone-800 tabular-nums">
+                                    {formatStay(booking.arrivalDate, booking.arrivalTime || SUBVENUE_ARRIVAL_TIME)}
+                                    <TravelDetails legs={booking.arrivalTravel} date={booking.arrivalDate} direction="arrival" flush />
+                                  </dd>
+                                </div>
+                                <div className="min-w-0">
+                                  <dt className="flex items-center gap-1.5 text-xs text-stone-500">
+                                    Departure
+                                    {(booking.departureDate || '').slice(0, 10) === selectedDate && (
+                                      <span className={chip('wait')}>Leaving {isToday ? 'today' : 'this day'}</span>
+                                    )}
+                                  </dt>
+                                  <dd className="font-semibold text-stone-950 tabular-nums">
+                                    {formatStay(booking.departureDate, booking.departureTime || SUBVENUE_DEPARTURE_TIME)}
+                                    <span className="font-normal">
+                                      <TravelDetails legs={booking.departureTravel} date={booking.departureDate} direction="departure" flush />
+                                    </span>
+                                  </dd>
+                                </div>
+                              </dl>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {onOpenSwitchRoomModal && (
