@@ -331,7 +331,7 @@ const Problems: React.FC<{ emails: NajafEmailsState }> = ({ emails }) => {
       <ul className="max-h-56 overflow-y-auto divide-y divide-stone-200">
         {list.map((r) => (
           <li key={envKey(r.stay, r.to)} className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 sm:px-5 py-3 text-[13px] leading-relaxed">
-            <span className={`${chip(OUTCOME[r.outcome]?.[0] ?? 'neutral')} self-center`}>{OUTCOME[r.outcome]?.[1] ?? r.outcome}</span>
+            <span className={`${chip(OUTCOME[r.outcome]?.[0] ?? 'neutral')} shrink-0`}>{OUTCOME[r.outcome]?.[1] ?? r.outcome}</span>
             <span className="min-w-0 flex-1 basis-56">
               <span className="font-semibold text-stone-950 tabular-nums">{r.ref || r.stay}</span>
               <span className="text-stone-600"> ({WHO[r.to].toLowerCase()}, Najaf {dayLabel(r.najafStart)}): </span>
