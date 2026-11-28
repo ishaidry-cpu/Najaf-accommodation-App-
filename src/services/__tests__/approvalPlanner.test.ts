@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 import {
   type ApprovalSnapshot, type ApprovalTour, approvalPayload, compareWithOriginal, DEFAULT_APPROVAL_SETTINGS, dustbinVisible,
   followUpMessage, fromSubvenueDates, latestPlanSet, needsFollowUp, officeFollowUps, najafReport, normalizeApprovalSettings, planApprovals, readChat, splitInOrder,
-  submissionState, suggestion, toSubvenueDates,
+  submissionState, suggestion, toSubvenueDates, approvalWarnings, chatTemplates, ITINERARY_MISSING, ITINERARY_UNKNOWN,
 } from '../approvalPlanner';
 
 const TODAY = '2026-11-27';
@@ -17,7 +17,7 @@ const tour = (o: Partial<ApprovalTour> = {}): ApprovalTour => ({
   id: nextId++, ref: `NKERP/TOUR/2026/${9000 + nextId}`, office: 'Test Travels', toName: 'TO', toId: 7, reapproval: false,
   arrivalAt: '2026-12-10T05:00:00', departureAt: '2026-12-17T05:00:00', paxTotal: 10, paxFaiz: 10, paxHotel: 0,
   option: 2, optionLabel: 'Required', venue: 'IRAQ', unread: false, dustbin: false, muwafiqaState: 31, locked: false,
-  muwafiqaLocked: true, packageId: 0, linkedTourId: 0, modifiedOn: '2026-11-20T10:00:00', entryPort: 'Najaf Airport',
+  muwafiqaLocked: true, itinerarySaved: true, packageId: 0, linkedTourId: 0, modifiedOn: '2026-11-20T10:00:00', entryPort: 'Najaf Airport',
   exitPort: 'Najaf Airport', mawaid: true, transport: true, cutOffDays: 15, remarks: '', events: [], messages: [],
   previousPlans: [], ...o,
 });
@@ -252,5 +252,102 @@ describe('WhatsApp follow-ups', () => {
     const r = readChat([msg('First Subvenue: 29 November to 1 December (Najaf)'), msg('Second Subvenue: 1 December to 2 December (Karbala)')],
       { start: '2026-11-29', end: '2026-12-02' });
     assert.deepEqual(r.segments, [{ city: 'NAJAF', start: '2026-11-29', end: '2026-12-01' }, { city: 'KARBALA', start: '2026-12-01', end: '2026-12-02' }]);
+  });
+});
+
+describe('approval authority: warnings, not restrictions', () => {
+  const one = (t: ApprovalTour, records = {}, o: Partial<typeof DEFAULT_APPROVAL_SETTINGS> = {}) =>
+    planApprovals(snap([t]), records, settings(o), TODAY).plans[0];
+
+  it('flags a dustbin tour inside the cut-off for urgent follow-up and still lets the approver approve it', () => {
+    const p = one(tour({ dustbin: true, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' })); // 8 days away
+    assert.equal(p.recommendation, 'follow-up');
+    assert.equal(p.urgent, true);
+    assert.equal(p.approvable, true);
+    assert.deepEqual(p.blockers, []);
+    assert.ok(needsFollowUp(p));
+    assert.match(approvalWarnings(p)[0], /inside the 15-day cut-off/);
+    assert.match(suggestion(p).next, /still approve/);
+  });
+  it('waits outside the cut-off without blocking, and follows the 30-day setting in rush periods', () => {
+    const t = tour({ dustbin: true, arrivalAt: '2026-12-17T05:00:00', departureAt: '2026-12-21T05:00:00' }); // 20 days away
+    const p = one(t);
+    assert.equal(p.recommendation, 'wait');
+    assert.equal(p.urgent, false);
+    assert.equal(p.approvable, true);
+    assert.match(approvalWarnings(p)[0], /beyond the 15-day cut-off/);
+    const rush = one(t, {}, { cutoffDays: 30 });
+    assert.equal(rush.recommendation, 'follow-up');
+    assert.equal(rush.urgent, true);
+    assert.equal(rush.approvable, true);
+  });
+  it('moves a tour into the normal approval once the dustbin sign disappears', () => {
+    const p = one(tour({ dustbin: false, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' }));
+    assert.equal(p.category, 'ready');
+    assert.equal(p.recommendation, 'approve');
+    assert.equal(p.urgent, false);
+  });
+  it('blocks approval only when the itinerary is not saved (fly mark not red)', () => {
+    const p = one(tour({ itinerarySaved: false }));
+    assert.equal(p.approvable, false);
+    assert.deepEqual(p.blockers, [ITINERARY_MISSING]);
+    assert.equal(p.recommendation, 'needs-itinerary');
+    assert.equal(p.category, 'awaiting');
+    assert.ok(p.impact.length, 'capacity is still worked out so the approver sees where it lands');
+    assert.equal(one(tour({ itinerarySaved: undefined })).blockers[0], ITINERARY_UNKNOWN);
+    // A dustbin tour without an itinerary is followed up and stays blocked.
+    const d = one(tour({ itinerarySaved: false, dustbin: true, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' }));
+    assert.equal(d.recommendation, 'follow-up');
+    assert.equal(d.approvable, false);
+    // Inside the cut-off, a missing itinerary is followed up on its own too.
+    const near = one(tour({ itinerarySaved: false, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' }));
+    assert.ok(needsFollowUp(near));
+    assert.match(followUpMessage(near), /Transport itinerary/);
+  });
+  it('lets a re-approval, an over-capacity tour and an awaiting tour be approved with warnings', () => {
+    const previous = splitInOrder('2026-12-10', '2026-12-17', 'KARBALA');
+    const re = one(tour({ reapproval: true, paxFaiz: 12, paxTotal: 12, departureAt: '2026-12-18T05:00:00', previousPlans: previous }));
+    assert.equal(re.recommendation, 'review-changes');
+    assert.equal(re.approvable, true);
+    assert.ok(approvalWarnings(re).some(w => /not marked reviewed/.test(w)));
+
+    const dashboard = ['2026-12-10', '2026-12-11', '2026-12-12', '2026-12-13', '2026-12-14', '2026-12-15', '2026-12-16', '2026-12-17']
+      .flatMap(date => [{ date, city: 'NAJAF' as const, approved: 289, hotel: 0, occupants: [] }, { date, city: 'KARBALA' as const, approved: 399, hotel: 0, occupants: [] }]);
+    const full = planApprovals(snap([tour()], dashboard), {}, settings(), TODAY).plans[0];
+    assert.equal(full.recommendation, 'hold-capacity');
+    assert.equal(full.category, 'awaiting');
+    assert.equal(full.approvable, true);
+    assert.ok(approvalWarnings(full).some(w => /Over the/.test(w)));
+  });
+  it('lets the approver enter a hotel tour\'s dates when the chat box has none, then approve', () => {
+    const t = tour({ option: 3, optionLabel: 'Not Required', paxFaiz: 0, paxHotel: 4, paxTotal: 4 });
+    const before = one(t);
+    assert.equal(before.recommendation, 'needs-chat');
+    assert.equal(before.approvable, false, 'there are no dates to send yet');
+    const segments = splitInOrder('2026-12-10', '2026-12-17', 'NAJAF');
+    const after = one(t, { [t.id]: { id: t.id, ref: t.ref, office: '', status: 'new', firstSeenAt: '', lastSeenAt: '', history: [],
+      edits: { segments, at: '', modifiedOn: t.modifiedOn } } });
+    assert.equal(after.approvable, true);
+    assert.equal(after.recommendation, 'approve');
+    assert.ok(approvalWarnings(after).some(w => /approver's dates/.test(w)));
+  });
+  it('still refuses what NKERP cannot take from the planner, and never resends', () => {
+    assert.equal(one(tour({ option: 1, optionLabel: 'Preferred' })).approvable, false);
+    const t = tour();
+    const sent = one(t, { [t.id]: { id: t.id, ref: t.ref, office: '', status: 'approved', firstSeenAt: '', lastSeenAt: '', history: [],
+      approval: { state: 'api_reported_approved', at: '', segments: [], reapproval: false } } });
+    assert.equal(sent.recommendation, 'done');
+    assert.equal(sent.approvable, false);
+  });
+  it('drafts plain-text follow-ups for the NKERP chat box', () => {
+    const p = one(tour({ itinerarySaved: false, dustbin: true, option: 3, paxFaiz: 0, paxHotel: 10, arrivalAt: '2026-12-05T05:00:00', departureAt: '2026-12-09T05:00:00' }));
+    const list = chatTemplates(p);
+    assert.deepEqual(list.map(x => x.label), ['All pending details', 'Itinerary', 'Subvenue dates', 'Submission']);
+    for (const x of list) {
+      assert.ok(!x.text.includes('*'), 'no WhatsApp bold marks in NKERP');
+      assert.match(x.text, new RegExp(p.tour.ref));
+    }
+    assert.match(list[0].text, /Transport itinerary/);
+    assert.equal(chatTemplates(one(tour())).length, 0);
   });
 });

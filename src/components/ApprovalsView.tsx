@@ -1,20 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, BadgeCheck, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Hotel, Info,
-  Copy, Loader2, MessageSquare, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2, X,
+  AlertTriangle, ArrowRight, BadgeCheck, Ban, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Flag, Hotel, Info,
+  Copy, Loader2, MessageSquare, Navigation, NavigationOff, RefreshCw, Repeat2, RotateCcw, Save, Search, Send, Trash2, X,
 } from 'lucide-react';
 import {
   btn, btnSm, card, chip, type ChipTone, field, fieldLabel, fieldSm, modalCard, modalClose, modalFooter, modalHeader, modalScrim, modalTitle,
   PageHeader,
 } from './ui';
 import {
-  type ApprovalPlan, type ApprovalRecord, type ApprovalSettings, CHANGE_CATEGORIES, CITY_NAME, type City, cityNights,
+  type ApprovalPlan, type ApprovalRecord, type ApprovalSettings, approvalWarnings, CHANGE_CATEGORIES, chatTemplates, CITY_NAME, type City, cityNights,
   fmtDay, fmtSegments, followUpMessage, fromSubvenueDates, inProposal, needsFollowUp, officeFollowUps, localDay, localTime, najafReport, planApprovals, reapprovalStatus,
   type Segment, type SegmentSource, segmentProblems, type SubvenueDates, suggestion, toSubvenueDates, type TourPlan, tripEnd,
   tripStart,
 } from '../services/approvalPlanner';
 import {
-  type ApprovalState, approveInNkerp, loadApprovals, refreshApprovals, saveApprovalEdit, saveApprovalReview, saveApprovalSettings,
+  type ApprovalState, approveInNkerp, loadApprovals, refreshApprovals, reloadTourChat, saveApprovalEdit, saveApprovalReview, saveApprovalSettings,
+  sendChatToNkerp,
 } from '../services/approvalsApi';
 
 type Section = 'proposal' | 'reapproval' | 'awaiting' | 'pending' | 'capacity' | 'najaf' | 'remaining' | 'all';
@@ -41,6 +42,7 @@ const REC_STYLE: Record<TourPlan['recommendation'], { label: string; tone: ChipT
   wait: { label: 'Wait for TO', tone: 'neutral' },
   'follow-up': { label: 'Follow up now', tone: 'bad' },
   'needs-chat': { label: 'Needs chat dates', tone: 'wait' },
+  'needs-itinerary': { label: 'Blocked: itinerary', tone: 'bad' },
   resolve: { label: 'Resolve', tone: 'bad' },
   done: { label: 'Sent to NKERP', tone: 'neutral' },
 };
@@ -107,15 +109,23 @@ const Stays: React.FC<{ segments: Segment[] }> = ({ segments }) => (segments.len
   </span>
 ) : <span className="text-stone-400">—</span>);
 
-/** Small marks beside a Tour ID: came for re-approval, dustbin sign, unread chat. */
-const TourMarks: React.FC<{ plan: TourPlan }> = ({ plan: { tour: t } }) => (
-  (t.reapproval || t.dustbin || t.unread) ? (
-    <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+/** NKERP's fly mark: red once the Tour Operator has saved the transport itinerary. */
+const FlyMark: React.FC<{ saved: boolean | null | undefined }> = ({ saved }) => (saved
+  ? <span title="Itinerary saved (fly mark red)"><Navigation className="w-4 h-4 text-rose-600 fill-rose-600" aria-label="Itinerary saved (fly mark red)" /></span>
+  : <span title={saved === false ? 'Itinerary not saved (fly mark not red): approval blocked' : 'Itinerary status not read yet: refresh from NKERP'}>
+    <NavigationOff className="w-4 h-4 text-stone-500" aria-label="Itinerary not saved: approval blocked" /></span>);
+
+/** Small marks beside a Tour ID: fly mark, urgent follow-up, came for re-approval, dustbin sign, unread chat. */
+const TourMarks: React.FC<{ plan: TourPlan }> = ({ plan: { tour: t, urgent } }) => (
+  <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+    <FlyMark saved={t.itinerarySaved} />
+    {urgent && <span title="Urgent follow-up: details pending inside the cut-off"><Flag className="w-4 h-4 text-rose-700 fill-rose-100" aria-label="Urgent follow-up" /></span>}
+    {(t.reapproval || t.dustbin || t.unread) && <>
       {t.reapproval && <span title="Came for re-approval"><Repeat2 className="w-4 h-4 text-amber-700" aria-label="Re-approval" /></span>}
       {t.dustbin && <span title="Dustbin sign: submission incomplete"><Trash2 className="w-4 h-4 text-amber-700" aria-label="Dustbin sign: submission incomplete" /></span>}
       {t.unread && <span title="Unread chat in NKERP"><MessageSquare className="w-4 h-4 text-blue-700" aria-label="Unread chat in NKERP" /></span>}
-    </span>
-  ) : null
+    </>}
+  </span>
 );
 
 // ------------------------------------------------------------------------------------------------ confirm
@@ -189,6 +199,92 @@ const FollowUpsDialog: React.FC<{ plans: TourPlan[]; onClose: () => void }> = ({
   );
 };
 
+// ------------------------------------------------------------------------------------------------ NKERP chat
+
+const SEND_STATE: Record<string, { label: string; tone: string }> = {
+  sent: { label: 'Sent to NKERP', tone: 'text-emerald-800' }, sending: { label: 'Sending…', tone: 'text-stone-600' },
+  refused: { label: 'Refused by NKERP', tone: 'text-rose-700' }, uncertain: { label: 'No answer from NKERP: check before resending', tone: 'text-amber-800' },
+};
+
+/** The Tour ID's NKERP chat box: its history, and a composer that sends to the real chat box in NKERP. */
+const ChatPanel: React.FC<{
+  plan: TourPlan;
+  text: string;
+  onText: (text: string) => void;
+  onSend: (text: string) => Promise<boolean>;
+  onReload: () => Promise<void>;
+  busy: boolean;
+  composerRef: React.RefObject<HTMLTextAreaElement | null>;
+}> = ({ plan: p, text, onText, onSend, onReload, busy, composerRef }) => {
+  const t = p.tour;
+  const [sending, setSending] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const evidence = new Set(p.chat.evidence);
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const sentHere = p.record?.chats ?? [];
+  const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+  // Messages the planner sent that NKERP's list does not show yet (or whose answer was lost).
+  const pending = sentHere.filter(c => c.state !== 'refused' && !t.messages.some(m => norm(m.text) === norm(c.text)));
+  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [t.messages.length, pending.length]);
+  const templates = chatTemplates(p);
+  const last = sentHere[sentHere.length - 1];
+  const send = async () => {
+    setSending(true);
+    try { if (await onSend(text)) onText(''); }
+    finally { setSending(false); }
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <h3 className={`${subhead} flex flex-wrap items-center gap-2`}>
+          <MessageSquare className="w-4 h-4 text-stone-500" />NKERP chat box {t.unread && <span className={chip('info')}>Unread in NKERP</span>}
+        </h3>
+        <button type="button" className={`${btnSm.ghost} max-md:h-10`} disabled={reloading || busy} onClick={async () => { setReloading(true); try { await onReload(); } finally { setReloading(false); } }}>
+          {reloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}Reload chat</button>
+      </div>
+      {t.messages.length || pending.length ? (
+        <ol ref={listRef} className="max-h-72 overflow-y-auto rounded-lg bg-white ring-1 ring-inset ring-stone-200 divide-y divide-stone-200" aria-label={`Chat history for ${t.ref}`}>
+          {[...t.messages].sort((a, b) => a.at.localeCompare(b.at)).map((m, i) => {
+            const hit = m.text.split(/\r?\n/).some(l => evidence.has(l.trim())) || evidence.has(m.text.trim());
+            return (
+              <li key={i} className={`px-3.5 py-2.5 ${hit ? 'bg-emerald-50' : m.fromOperator ? '' : 'bg-stone-50'}`}>
+                <span className="block text-xs text-stone-500 tabular-nums">{when(m.at)} · <span className={m.fromOperator ? 'font-medium text-stone-700' : ''}>{m.sender || (m.fromOperator ? 'Tour Operator' : 'NKERP')}</span>{m.fromOperator ? '' : ' · Faiz'}</span>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-stone-900 whitespace-pre-wrap break-words">{m.text}</p>
+              </li>
+            );
+          })}
+          {pending.map((c, i) => (
+            <li key={'s' + i} className="px-3.5 py-2.5 bg-stone-50">
+              <span className="block text-xs text-stone-500 tabular-nums">{ago(c.at)} · from this planner · <span className={SEND_STATE[c.state]?.tone}>{c.state === 'sent' ? 'sent, not in NKERP\'s list yet' : SEND_STATE[c.state]?.label}</span></span>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-stone-900 whitespace-pre-wrap break-words">{c.text}</p>
+            </li>
+          ))}
+        </ol>
+      ) : <p className="text-[13px] text-stone-600">No messages yet.</p>}
+
+      <div className="mt-3 rounded-lg bg-white ring-1 ring-inset ring-stone-200 p-3">
+        <label className="block">
+          <span className={fieldLabel}>Message to {t.toName || 'the Tour Operator'} ({t.office || 'office'})</span>
+          <textarea ref={composerRef} value={text} onChange={e => onText(e.target.value)} rows={4} maxLength={2000}
+            placeholder="Type a message for this Tour ID's chat box"
+            className={`${field} !h-auto py-2 leading-relaxed resize-y`} />
+        </label>
+        {templates.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-stone-600">Follow-up:</span>
+            {templates.map(x => <button key={x.label} type="button" className={`${btnSm.secondary} max-md:h-10`} onClick={() => { onText(x.text); composerRef.current?.focus(); }}>{x.label}</button>)}
+          </div>
+        )}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-stone-500 max-w-[46ch]">Sends to this Tour ID's chat box in NKERP; the Tour Operator sees it there.{last ? <> Last sent {ago(last.at)}: <span className={SEND_STATE[last.state]?.tone}>{SEND_STATE[last.state]?.label}</span>{last.message ? ` (${last.message})` : ''}.</> : ''}</p>
+          <button type="button" className={btn.primary} disabled={!text.trim() || sending || busy} onClick={send}>
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{sending ? 'Sending…' : 'Send to NKERP chat'}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ------------------------------------------------------------------------------------------------ tour detail
 
 const ImpactTable: React.FC<{ plan: TourPlan }> = ({ plan }) => {
@@ -240,22 +336,49 @@ const TourDetail: React.FC<{
   onSave: (segments: Segment[] | null) => Promise<void>;
   onReview: (reviewed: boolean) => Promise<void>;
   onApprove: () => void;
+  onSendChat: (text: string) => Promise<boolean>;
+  onReloadChat: () => Promise<void>;
   busy: boolean;
-}> = ({ plan: p, draft, onDraft, onSave, onReview, onApprove, busy }) => {
+}> = ({ plan: p, draft, onDraft, onSave, onReview, onApprove, onSendChat, onReloadChat, busy }) => {
   const t = p.tour;
   const fields = toSubvenueDates(p.segments);
   const multi = p.segments.filter(s => s.city === 'KARBALA').length > 1 || p.segments.filter(s => s.city === 'NAJAF').length > 1;
   const set = (key: keyof SubvenueDates, value: string) => onDraft(fromSubvenueDates({ ...fields, [key]: value }));
   const nights = cityNights(p.segments);
   const status = t.reapproval ? reapprovalStatus(p) : null;
-  const blocked = p.problems.some(x => !x.startsWith('Over the'));
-  const evidence = new Set(p.chat.evidence);
   const saved = p.record?.edits?.segments;
+  const [chatText, setChatText] = useState('');
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const followUp = chatTemplates(p)[0];
+  const writeFollowUp = () => { if (followUp) setChatText(followUp.text); window.setTimeout(() => { composerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); composerRef.current?.focus(); }, 0); };
+  const attention = p.problems.filter(x => !p.blockers.includes(x));
   const unsaved = draft !== undefined;
   const sentState = p.record?.approval;
   const overDays = p.impact.filter(i => i.after > i.limit).length;
   return (
     <div className="bg-stone-50 border-t border-stone-200 px-4 sm:px-5 py-5 text-left">
+      {(p.blockers.length > 0 && p.recommendation !== 'done') || p.urgent || (t.dustbin && !p.urgent && p.recommendation !== 'done') ? (
+        <div className="mb-5 space-y-2.5">
+          {p.blockers.length > 0 && p.recommendation !== 'done' && (
+            <div role="alert" className="rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 px-4 py-3">
+              <p className="flex items-center gap-2 text-sm font-semibold text-rose-800"><Ban className="w-4 h-4 shrink-0" />Approval blocked</p>
+              <ul className="mt-1 space-y-0.5 text-[13px] leading-relaxed text-rose-800 list-disc pl-10">{p.blockers.map((x, i) => <li key={i}>{x}</li>)}</ul>
+            </div>
+          )}
+          {p.urgent && (
+            <div role="alert" className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-4 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-semibold text-amber-900"><Flag className="w-4 h-4 shrink-0" />Urgent follow-up: some details are still pending</p>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-amber-900">Dustbin sign visible with {p.submission.daysToArrival} days to arrival, inside the {p.submission.cutoffDays}-day cut-off. Contact {t.toName || 'the Tour Operator'} ({t.office || 'office'}).{p.approvable ? ' You can still approve if required.' : ''}</p>
+              </div>
+              <button type="button" className={`${btn.secondary} shrink-0`} onClick={writeFollowUp}><MessageSquare className="w-4 h-4" />Write follow-up</button>
+            </div>
+          )}
+          {t.dustbin && !p.urgent && p.recommendation !== 'done' && (
+            <p className="flex gap-2 text-[13px] leading-relaxed text-stone-700"><Trash2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />Dustbin sign visible, {p.submission.daysToArrival} days to arrival: beyond the {p.submission.cutoffDays}-day cut-off, so wait for the Tour Operator to complete the submission. It is a warning only; you can approve if required.</p>
+          )}
+        </div>
+      ) : null}
       <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {/* Left: details, dates, capacity */}
         <div className="space-y-6 min-w-0">
@@ -316,9 +439,9 @@ const TourDetail: React.FC<{
             )}
           </div>
 
-          {(p.problems.length > 0 || p.notes.length > 0) && (
+          {(attention.length > 0 || p.notes.length > 0) && (
             <div className="space-y-1.5 text-sm leading-relaxed">
-              {p.problems.map((x, i) => <p key={'p' + i} className="flex gap-2 text-rose-700"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{x}</p>)}
+              {attention.map((x, i) => <p key={'p' + i} className="flex gap-2 text-amber-800"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{x}</p>)}
               {p.notes.map((x, i) => <p key={'n' + i} className="flex gap-2 text-stone-600"><Info className="w-4 h-4 mt-1 shrink-0 text-stone-400" />{x}</p>)}
             </div>
           )}
@@ -338,6 +461,9 @@ const TourDetail: React.FC<{
           </div>
 
           <dl className="text-[13px] leading-relaxed text-stone-600 space-y-1">
+            <div><dt className="inline font-semibold text-stone-800">Itinerary (fly mark): </dt><dd className="inline">{t.itinerarySaved
+              ? <span className="text-stone-800"><Navigation className="inline w-3.5 h-3.5 -mt-0.5 text-rose-600 fill-rose-600" /> Saved{t.itinerary ? ` · arrives ${t.itinerary.arrivalCode || '—'} ${when(t.itinerary.arrivalAt)} · departs ${t.itinerary.departureCode || '—'} ${when(t.itinerary.departureAt)}` : ''}</span>
+              : <span className="font-semibold text-rose-700">{t.itinerarySaved === false ? 'Not saved: approval blocked until the Tour Operator saves it' : 'Not read yet: refresh from NKERP'}</span>}</dd></div>
             <div><dt className="inline font-semibold text-stone-800">Submission: </dt><dd className="inline">{t.dustbin ? <span className="text-amber-800"><Trash2 className="inline w-3.5 h-3.5 -mt-0.5" /> Dustbin sign visible: something is still pending</span> : 'Complete (no dustbin sign)'} · {p.submission.daysToArrival} days to arrival · cut-off {p.submission.cutoffDays} days</dd></div>
             <div><dt className="inline font-semibold text-stone-800">Accommodation in Faiz: </dt><dd className="inline">{t.optionLabel || t.option} · {t.entryPort || '—'} → {t.exitPort || '—'}{t.mawaid ? ' · Mawaid' : ''}</dd></div>
           </dl>
@@ -382,27 +508,9 @@ const TourDetail: React.FC<{
             </div>
           )}
 
-          <div>
-            <h3 className={`${subhead} mb-2 flex flex-wrap items-center gap-2`}>
-              <MessageSquare className="w-4 h-4 text-stone-500" />Chat box {t.unread && <span className={chip('info')}>Unread in NKERP</span>}
-            </h3>
-            {t.messages.length ? (
-              <ol className="max-h-72 overflow-y-auto rounded-lg bg-white ring-1 ring-inset ring-stone-200 divide-y divide-stone-200">
-                {t.messages.map((m, i) => {
-                  const hit = m.text.split(/\r?\n/).some(l => evidence.has(l.trim())) || evidence.has(m.text.trim());
-                  return (
-                    <li key={i} className={`px-3.5 py-2.5 ${hit ? 'bg-emerald-50' : ''}`}>
-                      <span className="block text-xs text-stone-500 tabular-nums">{when(m.at)} · {m.sender || (m.fromOperator ? 'Tour Operator' : 'NKERP')}</span>
-                      <p className="mt-0.5 text-[13px] leading-relaxed text-stone-900 whitespace-pre-wrap break-words">{m.text}</p>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : <p className="text-[13px] text-stone-600">No messages.</p>}
-            <p className="mt-1.5 text-xs text-stone-500">Read only: the planner never marks messages read or replies.</p>
-          </div>
+          <ChatPanel plan={p} text={chatText} onText={setChatText} onSend={onSendChat} onReload={onReloadChat} busy={busy} composerRef={composerRef} />
 
-          {needsFollowUp(p) && <WhatsAppBox title="WhatsApp message to the Tour Operator" message={followUpMessage(p)} note="Copy it into the Tour Operator's WhatsApp chat. Nothing is sent from the app." />}
+          {needsFollowUp(p) && <WhatsAppBox title="WhatsApp message to the Tour Operator" message={followUpMessage(p)} note="Copy it into the Tour Operator's WhatsApp chat; WhatsApp is not sent from the app." />}
         </div>
       </div>
 
@@ -411,8 +519,8 @@ const TourDetail: React.FC<{
           {sentState ? <>Last approval: <span className="font-semibold text-stone-900">{sentState.state === 'api_reported_approved' ? 'accepted by NKERP' : sentState.state === 'api_rejected' ? 'refused by NKERP' : sentState.state === 'attempting' ? 'sending' : 'result unknown (not resent)'}</span> {ago(sentState.at)}{sentState.message ? ` · ${sentState.message}` : ''}</> : 'Not approved from the planner yet.'}
         </div>
         <button type="button" className={`${btn.primary} shrink-0`} onClick={onApprove}
-          disabled={busy || blocked || !p.segments.length || unsaved || p.recommendation === 'done' || p.category === 'pending-submission'}
-          title={unsaved ? 'Save the dates first' : blocked ? 'Resolve the problems first' : p.category === 'pending-submission' ? 'The submission is not complete' : ''}>
+          disabled={busy || !p.approvable || unsaved}
+          title={unsaved ? 'Save the dates first' : p.recommendation === 'done' ? 'Already sent to NKERP' : p.blockers[0] ?? ''}>
           <Send className="w-4 h-4" />Approve in NKERP
         </button>
       </div>
@@ -442,14 +550,14 @@ const TourTable: React.FC<{
 }> = ({ plans, selectable, selected, onToggle, onToggleAll, expanded, onExpand, renderDetail, empty }) => {
   const narrow = useNarrow();
   if (!plans.length) return <p className="px-4 sm:px-5 py-8 text-sm text-stone-600">{empty}</p>;
-  const ids = plans.map(p => p.tour.id);
-  const all = selectable && ids.every(id => selected?.has(id));
+  const ids = plans.filter(p => p.approvable).map(p => p.tour.id);
+  const all = selectable && ids.length > 0 && ids.every(id => selected?.has(id));
   if (narrow) {
     return (
       <div>
         {selectable && (
           <label className="flex items-center gap-3 px-4 min-h-11 border-b border-stone-200 bg-stone-50 text-[13px] font-medium text-stone-700 cursor-pointer">
-            <input type="checkbox" className={check} checked={Boolean(all)} onChange={e => onToggleAll?.(ids, e.target.checked)} />Select all
+            <input type="checkbox" className={check} checked={Boolean(all)} disabled={!ids.length} onChange={e => onToggleAll?.(ids, e.target.checked)} />Select all that can be approved ({ids.length})
           </label>
         )}
         <ul className="divide-y divide-stone-200">
@@ -461,7 +569,7 @@ const TourTable: React.FC<{
                 <div className={`flex items-start gap-1 pl-2 pr-4 py-2.5 ${open ? 'bg-stone-50' : ''}`}>
                   {selectable && (
                     <label className="flex h-10 w-9 shrink-0 items-center justify-center cursor-pointer">
-                      <input type="checkbox" className={check} aria-label={`Select ${t.ref}`} checked={selected?.has(t.id) ?? false} onChange={() => onToggle?.(t.id)} />
+                      <input type="checkbox" className={`${check} disabled:cursor-not-allowed disabled:opacity-40`} aria-label={`Select ${t.ref}`} disabled={!p.approvable} title={p.approvable ? '' : p.blockers[0] ?? 'Already sent to NKERP'} checked={p.approvable && (selected?.has(t.id) ?? false)} onChange={() => onToggle?.(t.id)} />
                     </label>
                   )}
                   <button type="button" className={`flex-1 min-w-0 text-left cursor-pointer rounded-lg py-1 ${selectable ? '' : 'pl-2'}`} aria-expanded={open} onClick={() => onExpand(open ? null : t.id)}>
@@ -493,7 +601,7 @@ const TourTable: React.FC<{
       <table className="min-w-full text-sm">
         <thead className={thead}>
           <tr>
-            {selectable && <th className="pl-4 sm:pl-5 pr-1 py-2.5 w-8"><input type="checkbox" className={`${check} block`} aria-label="Select all" checked={Boolean(all)} onChange={e => onToggleAll?.(ids, e.target.checked)} /></th>}
+            {selectable && <th className="pl-4 sm:pl-5 pr-1 py-2.5 w-8"><input type="checkbox" className={`${check} block disabled:opacity-40`} aria-label="Select all that can be approved" title="Select all that can be approved" disabled={!ids.length} checked={Boolean(all)} onChange={e => onToggleAll?.(ids, e.target.checked)} /></th>}
             <th className="w-10" />
             <th className={`${th} !pl-1`}>Tour ID</th>
             <th className={th}>Office</th>
@@ -511,7 +619,7 @@ const TourTable: React.FC<{
               <React.Fragment key={t.id}>
                 <tr className={`border-t border-stone-200 hover:bg-stone-50 cursor-pointer ${open ? 'bg-stone-50' : ''}`} onClick={() => onExpand(open ? null : t.id)}>
                   {selectable && <td className="pl-4 sm:pl-5 pr-1 py-3" onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" className={`${check} block`} aria-label={`Select ${t.ref}`} checked={selected?.has(t.id) ?? false} onChange={() => onToggle?.(t.id)} /></td>}
+                    <input type="checkbox" className={`${check} block disabled:cursor-not-allowed disabled:opacity-40`} aria-label={`Select ${t.ref}`} disabled={!p.approvable} title={p.approvable ? '' : p.blockers[0] ?? 'Already sent to NKERP'} checked={p.approvable && (selected?.has(t.id) ?? false)} onChange={() => onToggle?.(t.id)} /></td>}
                   <td className="pl-2"><Caret open={open} label={t.ref} /></td>
                   <td className="pl-1 pr-3 py-3 whitespace-nowrap">
                     <span className="font-semibold text-stone-950 tabular-nums">{tourLabel(t.ref)}</span>
@@ -539,7 +647,13 @@ const ReapprovalTable: React.FC<{
   expanded: number | null;
   onExpand: (id: number | null) => void;
   renderDetail: (p: TourPlan) => React.ReactNode;
-}> = ({ plans, expanded, onExpand, renderDetail }) => {
+  selected: Set<number>;
+  onToggle: (id: number) => void;
+}> = ({ plans, expanded, onExpand, renderDetail, selected, onToggle }) => {
+  const box = (p: TourPlan, extra = '') => (
+    <input type="checkbox" className={`${check} ${extra} disabled:cursor-not-allowed disabled:opacity-40`} aria-label={`Select ${p.tour.ref}`} disabled={!p.approvable}
+      title={p.approvable ? '' : p.blockers[0] ?? 'Already sent to NKERP'} checked={p.approvable && selected.has(p.tour.id)} onChange={() => onToggle(p.tour.id)} />
+  );
   const narrow = useNarrow();
   if (!plans.length) return <p className="px-4 sm:px-5 py-8 text-sm text-stone-600">No Tour ID has come for re-approval. Tours submitted again after an approval appear here with what changed.</p>;
   const changed = (p: TourPlan) => [...new Set(p.changes.map(x => x.category))];
@@ -551,9 +665,11 @@ const ReapprovalTable: React.FC<{
           const st = reapprovalStatus(p);
           return (
             <li key={p.tour.id}>
-              <button type="button" className={`w-full text-left px-4 py-3 cursor-pointer ${open ? 'bg-stone-50' : ''}`} aria-expanded={open} onClick={() => onExpand(open ? null : p.tour.id)}>
+              <div className={`flex items-start gap-1 pl-2 ${open ? 'bg-stone-50' : ''}`}>
+              <label className="flex h-12 w-9 shrink-0 items-center justify-center cursor-pointer">{box(p)}</label>
+              <button type="button" className="flex-1 min-w-0 text-left pr-4 py-3 cursor-pointer" aria-expanded={open} onClick={() => onExpand(open ? null : p.tour.id)}>
                 <span className="flex items-start justify-between gap-2">
-                  <span className="text-[15px] font-semibold text-stone-950 tabular-nums">{tourLabel(p.tour.ref)}</span>
+                  <span className="text-[15px] font-semibold text-stone-950 tabular-nums">{tourLabel(p.tour.ref)}<TourMarks plan={p} /></span>
                   <span className="inline-flex items-center gap-1.5 shrink-0">
                     <span className={chip(REAPPROVAL_TONE[st])}>{st}</span>
                     {open ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
@@ -564,6 +680,7 @@ const ReapprovalTable: React.FC<{
                 <span className="block mt-0.5 text-[13px] text-stone-800"><span className="text-stone-500">Changed: </span>{changed(p).join(' · ') || 'No change found'}</span>
                 <span className="block mt-0.5 text-[13px] text-stone-600">{REC_STYLE[p.recommendation].label}</span>
               </button>
+              </div>
               {open && renderDetail(p)}
             </li>
           );
@@ -575,7 +692,8 @@ const ReapprovalTable: React.FC<{
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead className={thead}><tr>
-          <th className="w-12" />
+          <th className="pl-4 sm:pl-5 pr-1 py-2.5 w-8"><span className="sr-only">Select</span></th>
+          <th className="w-10" />
           <th className={`${th} !pl-1`}>Tour ID</th><th className={th}>Office</th>
           <th className={th}>Original approval</th><th className={th}>Latest requested changes</th>
           <th className={th}>Re-approval status</th>
@@ -587,8 +705,9 @@ const ReapprovalTable: React.FC<{
             return (
               <React.Fragment key={p.tour.id}>
                 <tr className={`border-t border-stone-200 align-top hover:bg-stone-50 cursor-pointer ${open ? 'bg-stone-50' : ''}`} onClick={() => onExpand(open ? null : p.tour.id)}>
-                  <td className="pl-3 sm:pl-4 py-1.5"><Caret open={open} label={p.tour.ref} /></td>
-                  <td className="pl-1 pr-3 py-3 font-semibold text-stone-950 tabular-nums whitespace-nowrap">{tourLabel(p.tour.ref)}</td>
+                  <td className="pl-4 sm:pl-5 pr-1 py-3" onClick={e => e.stopPropagation()}>{box(p, 'block')}</td>
+                  <td className="pl-2 py-1.5"><Caret open={open} label={p.tour.ref} /></td>
+                  <td className="pl-1 pr-3 py-3 font-semibold text-stone-950 tabular-nums whitespace-nowrap">{tourLabel(p.tour.ref)}<TourMarks plan={p} /></td>
                   <td className="px-3 py-3 text-stone-800">{p.tour.office}</td>
                   <td className="px-3 py-3 text-[13px] text-stone-700"><Stays segments={p.original?.segments ?? []} />{p.original?.paxFaiz !== undefined ? <span className="block text-stone-600 tabular-nums">{p.original.paxFaiz} Faiz</span> : null}</td>
                   <td className="px-3 py-3 text-[13px] text-stone-800">{changed(p).join(' · ') || <span className="text-stone-500">No change found</span>}</td>
@@ -597,7 +716,7 @@ const ReapprovalTable: React.FC<{
                     <span className="ml-2 text-[13px] text-stone-600">{REC_STYLE[p.recommendation].label}</span>
                   </td>
                 </tr>
-                {open && <tr><td colSpan={6} className="p-0">{renderDetail(p)}</td></tr>}
+                {open && <tr><td colSpan={7} className="p-0">{renderDetail(p)}</td></tr>}
               </React.Fragment>
             );
           })}
@@ -711,6 +830,7 @@ export const ApprovalsView: React.FC = () => {
   const [batch, setBatch] = useState<{ total: number; done: number; results: { ref: string; state: string; message?: string }[] } | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ApprovalSettings | null>(null);
   const [followUps, setFollowUps] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const autoRefreshed = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -771,6 +891,23 @@ export const ApprovalsView: React.FC = () => {
     finally { setBusy(false); }
   };
 
+  const sendChat = async (p: TourPlan, text: string) => {
+    try {
+      const r = await sendChatToNkerp(p.tour.id, text);
+      setState(r);
+      setNotice(r.visible === false ? `Sent to the NKERP chat box of ${p.tour.ref}; NKERP's list does not show it yet. Reload the chat in a minute.` : `Sent to the NKERP chat box of ${p.tour.ref}.`);
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The message could not be sent.');
+      try { setState(await loadApprovals()); } catch { /* keep the current view */ }
+      return false;
+    }
+  };
+  const reloadChat = async (p: TourPlan) => {
+    try { setState(await reloadTourChat(p.tour.id)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'The chat could not be read.'); }
+  };
+
   const sendApprovals = async (items: TourPlan[]) => {
     setBusy(true);
     setBatch({ total: items.length, done: 0, results: [] });
@@ -789,18 +926,20 @@ export const ApprovalsView: React.FC = () => {
     setBusy(false);
   };
   const askApprove = (items: TourPlan[]) => {
-    const over = items.filter(p => !p.fits);
     const faiz = items.reduce((s, p) => s + p.tour.paxFaiz, 0);
+    const warned = items.map(p => ({ p, warnings: approvalWarnings(p) }));
+    const withWarnings = warned.filter(x => x.warnings.length).length;
     setConfirm({
       title: items.length === 1 ? `Approve ${items[0].tour.ref} in NKERP?` : `Approve ${items.length} Tour IDs in NKERP?`,
       action: items.length === 1 ? 'Approve in NKERP' : `Approve ${items.length} in NKERP`,
       body: <>
         <p>Each Tour ID is sent once, with these city stays. A result that does not come back is never sent again automatically.</p>
-        <ul className="max-h-52 overflow-y-auto rounded-lg bg-stone-50 ring-1 ring-inset ring-stone-200 divide-y divide-stone-200 text-[13px] leading-relaxed">
-          {items.map(p => <li key={p.tour.id} className="px-3.5 py-2"><span className="font-semibold text-stone-950 tabular-nums">{p.tour.ref}</span> · {p.tour.office} · {p.tour.paxFaiz} Faiz / {p.tour.paxHotel} hotel<br />{fmtSegments(p.segments)}{p.tour.reapproval ? ' · re-approval' : ''}</li>)}
+        <ul className="max-h-72 overflow-y-auto rounded-lg bg-stone-50 ring-1 ring-inset ring-stone-200 divide-y divide-stone-200 text-[13px] leading-relaxed">
+          {warned.map(({ p, warnings }) => <li key={p.tour.id} className="px-3.5 py-2"><span className="font-semibold text-stone-950 tabular-nums">{p.tour.ref}</span> · {p.tour.office} · {p.tour.paxFaiz} Faiz / {p.tour.paxHotel} hotel<br />{fmtSegments(p.segments)}{p.tour.reapproval ? ' · re-approval' : ''}{p.category === 'awaiting' ? ' · awaiting' : ''}
+            {warnings.length > 0 && <ul className="mt-1 space-y-0.5 text-amber-800">{warnings.map((w, i) => <li key={i} className="flex gap-1.5"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{w}</li>)}</ul>}</li>)}
         </ul>
         <p className="text-[13px] text-stone-600 tabular-nums">{faiz} Faiz pax in total.</p>
-        {over.length > 0 && <p className="flex gap-2 text-rose-700"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{over.length} of these go over a city limit: {over.map(p => p.tour.ref).join(', ')}. Approving them is your exception.</p>}
+        {withWarnings > 0 && <p className="flex gap-2 text-amber-800"><AlertTriangle className="w-4 h-4 mt-1 shrink-0" />{withWarnings} of these carry warnings (above). They do not block approval; approving them is your decision.</p>}
       </>,
       onConfirm: () => void sendApprovals(items),
     });
@@ -815,7 +954,8 @@ export const ApprovalsView: React.FC = () => {
   const detail = (p: TourPlan) => (
     <TourDetail plan={p} draft={drafts[String(p.tour.id)]} busy={busy}
       onDraft={segments => setDrafts(d => { const n = { ...d }; if (segments) n[String(p.tour.id)] = segments; else delete n[String(p.tour.id)]; return n; })}
-      onSave={segments => persistEdit(p, segments)} onReview={reviewed => review(p, reviewed)} onApprove={() => askApprove([p])} />
+      onSave={segments => persistEdit(p, segments)} onReview={reviewed => review(p, reviewed)} onApprove={() => askApprove([p])}
+      onSendChat={text => sendChat(p, text)} onReloadChat={() => reloadChat(p)} />
   );
 
   if (!state || !plan) {
@@ -828,14 +968,23 @@ export const ApprovalsView: React.FC = () => {
   const c = plan.counts;
   const s = settingsDraft ?? state.settings;
   const reasons = CHANGE_CATEGORIES.map(cat => ({ cat, n: lists.reapproval.filter(p => p.changes.some(x => x.category === cat)).length })).filter(x => x.n);
-  const selectedPlans = lists.proposal.filter(p => selected.has(p.tour.id));
+  // One selection across every list (ready, re-approvals, awaiting, pending submission); only approvable Tour IDs count.
+  const selectedPlans = plan.plans.filter(p => p.approvable && selected.has(p.tour.id));
+  const toggle = (id: number) => setSelected(sel => { const n = new Set(sel); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleAll = (ids: number[], on: boolean) => setSelected(sel => { const n = new Set(sel); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; });
+  const approveSelected = (
+    <button type="button" className={`${btn.primary} max-md:w-full`} disabled={busy || !selectedPlans.length} onClick={() => askApprove(selectedPlans)}>
+      <Send className="w-4 h-4" />Approve selected ({selectedPlans.length})</button>
+  );
   const tiles: { label: string; value: number; tone: string; go: Section; hint: string }[] = [
     { label: 'New approvals', value: c.newApprovals, tone: 'text-stone-950', go: 'all', hint: 'Awaiting first approval' },
     { label: 'Re-approval pending', value: c.reapprovalPending, tone: c.reapprovalPending ? 'text-amber-700' : 'text-stone-950', go: 'reapproval', hint: 'Submitted again' },
     { label: 'Re-approval reviewed', value: c.reapprovalReviewed, tone: 'text-stone-950', go: 'reapproval', hint: 'Changes checked' },
     { label: 'Re-approved', value: c.reApproved, tone: 'text-stone-950', go: 'reapproval', hint: 'From this planner' },
     { label: 'Ready to approve', value: c.ready, tone: c.ready ? 'text-emerald-700' : 'text-stone-950', go: 'proposal', hint: 'Submitted, fits capacity' },
-    { label: 'Follow up now', value: c.followUp, tone: c.followUp ? 'text-rose-700' : 'text-stone-950', go: 'pending', hint: `Dustbin sign inside ${s.cutoffDays} days` },
+    { label: 'Awaiting', value: c.awaiting, tone: 'text-stone-950', go: 'awaiting', hint: 'Can be selected and approved' },
+    { label: 'Follow up now', value: c.urgent, tone: c.urgent ? 'text-rose-700' : 'text-stone-950', go: 'pending', hint: `Dustbin sign inside ${s.cutoffDays} days` },
+    { label: 'Itinerary not saved', value: c.itineraryMissing, tone: c.itineraryMissing ? 'text-rose-700' : 'text-stone-950', go: 'awaiting', hint: 'Fly mark not red: blocked' },
   ];
   const sectionLabel = (id: Section) => SECTIONS.find(x => x.id === id)?.label ?? '';
   const searchBox = (
@@ -864,11 +1013,30 @@ export const ApprovalsView: React.FC = () => {
         </div>
       )}
 
+      {notice && (
+        <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 pl-4 pr-2 py-2 text-sm text-emerald-900 flex items-center gap-2.5">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="min-w-0 flex-1 py-1 break-words">{notice}</span>
+          <button type="button" className="shrink-0 w-9 h-9 max-md:w-10 max-md:h-10 rounded-lg flex items-center justify-center hover:bg-emerald-100 cursor-pointer" onClick={() => setNotice(null)} aria-label="Dismiss"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {c.urgent > 0 && (
+        <button type="button" onClick={() => setSection('pending')} className="group w-full text-left rounded-xl bg-rose-50 ring-1 ring-inset ring-rose-200 px-4 py-3 hover:bg-rose-100/70 transition cursor-pointer flex items-center gap-3">
+          <Flag className="w-4 h-4 shrink-0 text-rose-700" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-rose-800 tabular-nums">{c.urgent} Tour ID{c.urgent === 1 ? ' is' : 's are'} flagged for urgent follow-up: details still pending inside the {s.cutoffDays}-day cut-off</span>
+            <span className="block text-[13px] text-rose-800 mt-0.5">Contact the Tour Operators from each Tour ID's NKERP chat box. You can still approve them if required.</span>
+          </span>
+          <span className="shrink-0 inline-flex items-center gap-1 text-[13px] font-medium text-rose-800"><span className="max-sm:hidden">Follow up</span><ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" /></span>
+        </button>
+      )}
+
       {lists.reapproval.length > 0 && (
         <button type="button" onClick={() => setSection('reapproval')} className="group w-full text-left rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 hover:bg-amber-100/70 transition cursor-pointer flex items-center gap-3">
           <Repeat2 className="w-4 h-4 shrink-0 text-amber-700" />
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-amber-900 tabular-nums">{lists.reapproval.length} Tour ID{lists.reapproval.length === 1 ? ' has' : 's have'} come for re-approval ({c.reapprovalPending} pending, {c.reapprovalReviewed} reviewed)</span>
+            <span className="block text-sm font-semibold text-amber-900 tabular-nums">{lists.reapproval.length} Tour ID{lists.reapproval.length === 1 ? ' has' : 's have'} come for re-approval and {lists.reapproval.length === 1 ? 'is' : 'are'} on your review list ({c.reapprovalPending} pending, {c.reapprovalReviewed} reviewed)</span>
             {reasons.length > 0 && <span className="block text-[13px] text-amber-800 mt-0.5 tabular-nums">{reasons.map(r => `${r.cat}: ${r.n}`).join(' · ')}</span>}
           </span>
           <span className="shrink-0 inline-flex items-center gap-1 text-[13px] font-medium text-amber-900"><span className="max-sm:hidden">Review</span><ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" /></span>
@@ -876,7 +1044,7 @@ export const ApprovalsView: React.FC = () => {
       )}
 
       <section className={`${card} overflow-hidden`} aria-label="Approval counts">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-px bg-stone-200">
+        <div className="grid grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8 gap-px bg-stone-200">
           {tiles.map(t => (
             <button key={t.label} type="button" onClick={() => setSection(t.go)} title={`Open ${sectionLabel(t.go)}`}
               className="group relative text-left bg-white px-4 py-3.5 hover:bg-stone-50 transition cursor-pointer">
@@ -953,42 +1121,56 @@ export const ApprovalsView: React.FC = () => {
         </div>
       )}
 
+      {selectedPlans.length > 0 && (
+        <div className={`${card} sticky top-2 z-20 px-4 sm:px-5 py-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between`} role="region" aria-label="Selected Tour IDs">
+          <p className="text-sm text-stone-800 tabular-nums"><span className="font-semibold text-stone-950">{selectedPlans.length} selected</span> · {selectedPlans.reduce((n, p) => n + p.tour.paxFaiz, 0)} Faiz pax
+            {(['ready', 'reapproval', 'awaiting', 'pending-submission'] as const).map(cat => {
+              const n = selectedPlans.filter(p => p.category === cat).length;
+              return n ? <span key={cat} className="text-stone-600"> · {n} {cat === 'ready' ? 'ready' : cat === 'reapproval' ? 're-approval' : cat === 'awaiting' ? 'awaiting' : 'pending submission'}</span> : null;
+            })}</p>
+          <div className="flex gap-2">
+            <button type="button" className={btn.secondary} onClick={() => setSelected(new Set())}>Clear</button>
+            {approveSelected}
+          </div>
+        </div>
+      )}
+
       {section === 'proposal' && (
         <Card title={`Proposal · ${lists.proposal.length} Tour IDs ready (${lists.proposal.reduce((n, p) => n + p.tour.paxFaiz, 0)} Faiz pax)`}
-          right={<>{searchBox}<button type="button" className={`${btn.primary} max-md:w-full`} disabled={busy || !selectedPlans.length} onClick={() => askApprove(selectedPlans)}>
-            <Send className="w-4 h-4" />Approve selected ({selectedPlans.length})</button></>}>
-          <CardNote>Submitted (no dustbin), city stays resolved, and within the limits after keeping the buffer. Order: re-approvals, then Faiz Husaini offices, then the rest, by arrival. Open a Tour ID to check its chat and dates before approving.</CardNote>
+          right={<>{searchBox}{approveSelected}</>}>
+          <CardNote>Submitted (no dustbin), fly mark red, city stays resolved, and within the limits after keeping the buffer. Order: re-approvals, then Faiz Husaini offices, then the rest, by arrival. Open a Tour ID to check its chat and dates before approving. Awaiting, re-approval and pending-submission Tour IDs can be selected from their own lists too; the selection is shared.</CardNote>
           <TourTable plans={filter(lists.proposal)} selectable selected={selected} expanded={expanded} onExpand={setExpanded} renderDetail={detail}
-            onToggle={id => setSelected(sel => { const n = new Set(sel); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
-            onToggleAll={(ids, on) => setSelected(sel => { const n = new Set(sel); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; })}
+            onToggle={toggle} onToggleAll={toggleAll}
             empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is ready to approve right now. Tour IDs appear here once they are submitted and fit the limits.'} />
         </Card>
       )}
 
       {section === 'reapproval' && (
-        <Card title={`Re-approval dashboard · ${lists.reapproval.length}`} right={searchBox}>
-          <ReapprovalTable plans={filter(lists.reapproval)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} />
+        <Card title={`Re-approval review list · ${lists.reapproval.length}`} right={<>{searchBox}{approveSelected}</>}>
+          <CardNote>Every Tour ID that comes for re-approval is flagged here for your review, with what changed since the previous approval (venue, subvenue, departure dates, hotel and Faiz accommodation). Marking it reviewed is optional: you can approve it once you have checked the changes. Only an unsaved itinerary (fly mark not red) blocks approval.</CardNote>
+          <ReapprovalTable plans={filter(lists.reapproval)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} selected={selected} onToggle={toggle} />
         </Card>
       )}
 
       {section === 'awaiting' && (
-        <Card title={`Submitted, awaiting approval · ${lists.awaiting.length}`} right={searchBox}>
-          <CardNote>Complete submissions held back: over capacity, missing chat dates, or something to resolve. The reason shows on each row.</CardNote>
-          <TourTable plans={filter(lists.awaiting)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is waiting.'} />
+        <Card title={`Submitted, awaiting approval · ${lists.awaiting.length}`} right={<>{searchBox}{approveSelected}</>}>
+          <CardNote>Complete submissions held back: over capacity, missing chat dates, itinerary not saved, or something to resolve. The reason shows on each row. Awaiting status does not stop approval: select a Tour ID once you have checked it. Only Tour IDs whose itinerary is not saved (fly mark not red), or that NKERP cannot take from the planner, cannot be selected.</CardNote>
+          <TourTable plans={filter(lists.awaiting)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Nothing is waiting.'} />
         </Card>
       )}
 
       {section === 'pending' && (
         <Card title={`Pending submission (dustbin sign) · ${lists.pending.length}`}
-          right={<>{searchBox}<button type="button" className={`${btn.secondary} max-md:w-full`} onClick={() => setFollowUps(true)}><MessageSquare className="w-4 h-4" />WhatsApp follow-ups ({plan.plans.filter(needsFollowUp).length})</button></>}>
-          <CardNote><span className="font-semibold text-stone-800 tabular-nums">Cut-off: {s.cutoffDays} days before arrival.</span> Outside the cut-off: wait for the Tour Operator. Inside it: contact the Tour Operator now and follow up until the dustbin sign disappears. Their Faiz pax are kept free as buffer.</CardNote>
-          <TourTable plans={filter(lists.pending)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Every Tour ID in the window has completed its submission.'} />
+          right={<>{searchBox}<button type="button" className={`${btn.secondary} max-md:w-full`} onClick={() => setFollowUps(true)}><MessageSquare className="w-4 h-4" />WhatsApp follow-ups ({plan.plans.filter(needsFollowUp).length})</button>{approveSelected}</>}>
+          <CardNote><span className="font-semibold text-stone-800 tabular-nums">Cut-off: {s.cutoffDays} days before arrival.</span> Outside the cut-off: wait for the Tour Operator. Inside it: the Tour ID is flagged for urgent follow-up; contact the Tour Operator from its NKERP chat box (or WhatsApp) until the dustbin sign disappears. The dustbin sign is a warning, not a restriction: you can still select and approve a Tour ID if required. Once it disappears the Tour ID moves to the normal approval lists. Their Faiz pax are kept free as buffer.</CardNote>
+          <TourTable plans={filter(lists.pending)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'Every Tour ID in the window has completed its submission.'} />
         </Card>
       )}
 
       {section === 'all' && (
-        <Card title={`All Tour IDs · ${lists.all.length}`} right={searchBox}>
-          <TourTable plans={filter(lists.all)} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'No Tour IDs in the queues.'} />
+        <Card title={`All Tour IDs · ${lists.all.length}`} right={<>{searchBox}{approveSelected}</>}>
+          <CardNote>New approvals, re-approvals, awaiting and pending-submission Tour IDs together. Select the ones you want to approve; nothing is selected for you.</CardNote>
+          <TourTable plans={filter(lists.all)} selectable selected={selected} onToggle={toggle} onToggleAll={toggleAll} expanded={expanded} onExpand={setExpanded} renderDetail={detail} empty={q ? 'No Tour ID or office matches the search.' : 'No Tour IDs in the queues.'} />
         </Card>
       )}
 
@@ -1058,7 +1240,8 @@ export const ApprovalsView: React.FC = () => {
       <ul className="flex flex-col gap-x-6 gap-y-1.5 text-xs text-stone-500 lg:flex-row lg:flex-wrap">
         <li className="flex items-start gap-1.5"><Clock className="w-3.5 h-3.5 mt-0.5 shrink-0" />The queues refresh every 15 minutes and when you press Refresh.</li>
         <li className="flex items-start gap-1.5"><Hotel className="w-3.5 h-3.5 mt-0.5 shrink-0" />Hotel tours are approved only on the Tour Operator's chat dates.</li>
-        <li className="flex items-start gap-1.5"><ClipboardList className="w-3.5 h-3.5 mt-0.5 shrink-0" />Every approval is logged with the Tour ID's history.</li>
+        <li className="flex items-start gap-1.5"><ClipboardList className="w-3.5 h-3.5 mt-0.5 shrink-0" />Every approval and chat message sent is logged with the Tour ID's history.</li>
+        <li className="flex items-start gap-1.5"><Navigation className="w-3.5 h-3.5 mt-0.5 shrink-0 text-rose-600 fill-rose-600" />Fly mark red: itinerary saved. Only an unsaved itinerary blocks approval.</li>
       </ul>
 
       <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />

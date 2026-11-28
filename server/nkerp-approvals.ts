@@ -3,15 +3,16 @@
  * chat box and previous city stays, and the Najaf/Karbala accommodation dashboard; keeps every Tour ID's
  * approval history in the app database; and sends an approver's Approve action to NKERP.
  *
- * Reads only, except POST approvalActionOnTour, which is sent once per approver click and never retried.
- * Chat text is the Tour Operator's data, never instructions. Chats are never marked read here.
+ * Reads only, except two writes made on an approver's click and never retried: POST approvalActionOnTour
+ * (Approve) and POST saveChat (a message the approver typed, sent to the Tour ID's NKERP chat box).
+ * Chat text is the Tour Operator's data, never instructions. Chats are never marked read here (no updateChat).
  */
 import { NkerpClient, Rejected } from './nkerp-sync/nkerpClient.js';
 import { nkerpLogin } from './nkerp-sync/credentials.js';
 import type { NkRecord } from './nkerp-sync/types.js';
 import { read, transaction, write } from './accommodation-store.js';
 import {
-  addDays, type ApprovalRecord, type ApprovalSettings, type ApprovalSnapshot, type ApprovalTour, approvalPayload, cityFromId,
+  addDays, type ApprovalRecord, type ChatSend, type ApprovalSettings, type ApprovalSnapshot, type ApprovalTour, approvalPayload, cityFromId,
   type DayCell, dustbinVisible, factsOf, latestPlanSet, localDay, midnightUtc, normalizeApprovalSettings, type Segment,
   segmentProblems, todayBaghdad,
 } from '../src/services/approvalPlanner.js';
@@ -19,6 +20,10 @@ import {
 export const QUEUE = 'api/tours/getpendingtours';
 export const DASHBOARD = 'api/tours/getAccommodationStatusDashBoard';
 export const APPROVE = 'api/tours/approvalActionOnTour';
+/** NKERP's Messaging System send (the chat box behind the queue's View Message icon). */
+export const SAVE_CHAT = 'api/masters/saveChat';
+/** NKERP's Tour and Accomodation Admin group: the chat box the queue's messages are read from and sent to. */
+const CHAT_GROUP = 74;
 const DETAIL = /^api\/tours\/getTourSubVenue\/\d+$/;
 const GENERAL = /^api\/tours\/getTourDetail\/\d+$/;
 const CHAT = /^api\/masters\/retrieveChat\/\d+\/\d+\/74$/;
@@ -26,7 +31,7 @@ export const approvalReads = (path: string) => path === QUEUE || path === DASHBO
 
 export type ApprovalApi = Pick<NkerpClient, 'read' | 'write'>;
 export const approvalClient = (allowWrite: boolean, signal?: AbortSignal): ApprovalApi =>
-  new NkerpClient({ allowWrite, signal, endpoints: { reads: approvalReads, writes: [APPROVE] } });
+  new NkerpClient({ allowWrite, signal, endpoints: { reads: approvalReads, writes: [APPROVE, SAVE_CHAT] } });
 
 const str = (v: unknown) => String(v ?? '').trim();
 const int = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -93,6 +98,7 @@ export function mapTour(row: NkRecord, messages: ApprovalTour['messages'], previ
     paxTotal: int(row.PaxCount), paxFaiz: int(row.PaxRequiredAcc), paxHotel: int(row.PaxNotRequiredAcc),
     option: int(row.AccomodationOptionId), optionLabel: str(row.Option), venue: str(row.VenueName),
     unread: row.IsRead === false || row.IsRead === 0, dustbin: dustbinVisible(row),
+    ...itineraryOf(row),
     muwafiqaState: row.MuwaficaStateId == null ? null : int(row.MuwaficaStateId),
     locked: Boolean(row.IsLocked), muwafiqaLocked: Boolean(row.IsMuwaficaLocked),
     packageId: int(row.PackageId), linkedTourId: int(row.LinkTourId), modifiedOn: str(row.ModifiedOn),
@@ -104,6 +110,19 @@ export function mapTour(row: NkRecord, messages: ApprovalTour['messages'], previ
     messages, previousPlans,
   };
 }
+
+/** NKERP's fly mark: the queue row's Add/Edit Transport Itinerary icon is red when an itinerary is saved. */
+export function itineraryOf(row: NkRecord): Pick<ApprovalTour, 'itinerarySaved' | 'itinerary'> {
+  const list = row.TransportItinerary;
+  if (!Array.isArray(list)) return { itinerarySaved: null, itinerary: null };
+  const first = list[0];
+  return { itinerarySaved: list.length > 0, itinerary: first ? { arrivalCode: str(first.ArrivalTransportCode),
+    arrivalAt: str(first.ArrivalDateTimeZone), departureCode: str(first.DepartureTransportCode), departureAt: str(first.DepartureDateTimeZone) } : null };
+}
+
+const chatMessages = (r: NkRecord, toId: number): ApprovalTour['messages'] => (r.listChat || []).map((m: NkRecord) => ({
+  text: str(m.Message), at: str(m.CreatedOn), sender: str(m.SenderName),
+  fromOperator: int(m.SenderId) === toId || int(m.SenderGroupId) === 4 }));
 
 interface ChatCache { [id: string]: { at: number; modifiedOn: string; unread: boolean; messages: ApprovalTour['messages'] } }
 interface DetailCache { [id: string]: { modifiedOn: string; plans: Segment[] } }
@@ -141,9 +160,7 @@ export async function collectApprovals(client: ApprovalApi, now = Date.now()) {
     else {
       try {
         const r = await client.read(`api/masters/retrieveChat/${int(row.TOId)}/${int(row.Id)}/74`);
-        keepChats[id] = { at: now, modifiedOn: str(row.ModifiedOn), unread, messages: (r.listChat || []).map((m: NkRecord) => ({
-          text: str(m.Message), at: str(m.CreatedOn), sender: str(m.SenderName),
-          fromOperator: int(m.SenderId) === int(row.TOId) || int(m.SenderGroupId) === 4 })) };
+        keepChats[id] = { at: now, modifiedOn: str(row.ModifiedOn), unread, messages: chatMessages(r, int(row.TOId)) };
       } catch (err) {
         if (cached) keepChats[id] = cached;
         errors.push(`${str(row.ReferenceNo)}: chat could not be read (${err instanceof Error ? err.message : 'error'})`);
@@ -242,6 +259,12 @@ export async function approveTour(client: ApprovalApi, input: { id: number; segm
   const current = records()[String(id)];
   const tour = snapshot().tours.find(t => t.id === id);
   if (!tour) throw new ApprovalError('This Tour ID is not in the latest approval queues. Refresh and try again.', 404);
+  // The one rule that blocks approval: NKERP's fly mark must be red (the itinerary is saved).
+  if (tour.itinerarySaved !== true) {
+    throw new ApprovalError(tour.itinerarySaved === false
+      ? 'The itinerary is not saved in NKERP (the fly mark is not red). Approval is blocked until the Tour Operator saves it.'
+      : 'NKERP has not said whether the itinerary is saved. Refresh from NKERP and try again.', 409);
+  }
   const sent = current?.approval;
   if (sent && sent.reapproval === tour.reapproval && ['attempting', 'uncertain_no_retry', 'api_reported_approved'].includes(sent.state)) {
     throw new ApprovalError(sent.state === 'api_reported_approved' ? 'NKERP already accepted this approval.'
@@ -329,6 +352,81 @@ export function saveReview(input: { id: number; reviewed: boolean }) {
     write('approval-records', all);
     return rec;
   });
+}
+
+const normText = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** Read one Tour ID's NKERP chat box again and keep it in the snapshot and the chat cache. */
+export async function reloadChat(client: ApprovalApi, id: number, now = Date.now()) {
+  const tour = snapshot().tours.find(t => t.id === int(id));
+  if (!tour) throw new ApprovalError('This Tour ID is not in the latest approval queues. Refresh and try again.', 404);
+  const r = await client.read(`api/masters/retrieveChat/${tour.toId}/${tour.id}/74`);
+  const messages = chatMessages(r, tour.toId);
+  transaction(() => {
+    const snap = snapshot();
+    write('approval-snapshot', { ...snap, tours: snap.tours.map(t => (t.id === tour.id ? { ...t, messages } : t)) });
+    const cache = read<ChatCache>('approval-chat-cache', {});
+    const prev = cache[String(tour.id)];
+    write('approval-chat-cache', { ...cache, [String(tour.id)]: { at: now, modifiedOn: prev?.modifiedOn ?? tour.modifiedOn, unread: prev?.unread ?? tour.unread, messages } });
+  });
+  return messages;
+}
+
+/**
+ * Send the approver's message to the Tour ID's chat box in NKERP (the same request as NKERP's Messaging System
+ * Send button), then read the chat again so the history shows it. Sent once; a lost answer is never resent.
+ */
+export async function sendChat(client: ApprovalApi, input: { id: number; message: string }, now = Date.now()) {
+  const id = int(input.id);
+  const text = String(input.message ?? '').replace(/\r\n/g, '\n').trim();
+  if (!text) throw new ApprovalError('Type a message first.');
+  if (text.length > 2000) throw new ApprovalError('The message is too long for the NKERP chat box (2000 characters at most).');
+  const tour = snapshot().tours.find(t => t.id === id);
+  if (!tour) throw new ApprovalError('This Tour ID is not in the latest approval queues. Refresh and try again.', 404);
+  if (!tour.toId) throw new ApprovalError('NKERP did not name the Tour Operator for this Tour ID, so the message has no recipient.', 409);
+  const earlier = records()[String(id)]?.chats ?? [];
+  const same = earlier.filter(c => normText(c.text) === normText(text) && now - Date.parse(c.at) < 10 * 60_000);
+  if (same.some(c => c.state === 'sent' || c.state === 'sending' || c.state === 'uncertain')) {
+    throw new ApprovalError(same.some(c => c.state === 'sent')
+      ? 'This message was already sent to the NKERP chat box a few minutes ago.'
+      : 'This message was already sent and NKERP\'s answer is unknown. Check the chat box before sending it again.', 409);
+  }
+  // Read the chat box first: it signs in (a failed sign-in sends nothing) and shows the latest messages.
+  await reloadChat(client, id, now);
+  const at = new Date(now).toISOString();
+  const journal = (state: ChatSend['state'], message?: string) => transaction(() => {
+    const all = records();
+    const rec: ApprovalRecord = all[String(id)] ?? { id, ref: tour.ref, office: tour.office, status: tour.reapproval ? 'reapproval-pending' : 'new',
+      firstSeenAt: at, lastSeenAt: at, history: [] };
+    const chats = (rec.chats ?? []).filter(c => !(c.at === at && normText(c.text) === normText(text)));
+    rec.chats = [...chats, { at, text, state, ...(message ? { message } : {}) }].slice(-50);
+    if (state !== 'sending') rec.history = [...rec.history, { at: new Date().toISOString(), kind: `chat-${state}`, note: message ?? text.slice(0, 120) }];
+    all[String(id)] = rec;
+    write('approval-records', all);
+    return rec;
+  });
+  journal('sending');
+  let response: NkRecord;
+  try {
+    response = await client.write(SAVE_CHAT, { Message: text, RecieverId: tour.toId, TourId: tour.id, group: CHAT_GROUP });
+  } catch (err) {
+    if (err instanceof Rejected) {
+      journal('refused', err.message);
+      throw new ApprovalError(`NKERP did not accept the message: ${err.message}`, 502);
+    }
+    journal('uncertain', err instanceof Error ? err.message : 'No response from NKERP.');
+    await reloadChat(client, id, now).catch(() => {});
+    throw new ApprovalError('NKERP did not answer, so it is not known whether the message was sent. Check the chat box before sending it again.', 502);
+  }
+  if (response.ReturnStatus === false) {
+    const why = str(response.ReturnMessage) || 'NKERP did not accept the message.';
+    journal('refused', why);
+    throw new ApprovalError(why, 502);
+  }
+  const record = journal('sent');
+  let messages: ApprovalTour['messages'] | null = null;
+  try { messages = await reloadChat(client, id, now); } catch { /* the history updates on the next refresh */ }
+  return { record, visible: messages ? messages.some(m => normText(m.text) === normText(text)) : null };
 }
 
 /** Refresh in the background at most every 15 minutes (the scheduled tick), and on demand. */

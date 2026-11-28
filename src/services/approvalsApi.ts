@@ -24,3 +24,6 @@ export const saveApprovalReview = (id: number, reviewed: boolean) => call<Approv
 export const saveApprovalSettings = (settings: ApprovalSettings) => call<ApprovalState>('/settings', settings);
 export const approveInNkerp = (id: number, segments: Segment[], modifiedOn: string) =>
   call<ApprovalState & { record: ApprovalRecord }>('/approve', { id, segments, modifiedOn, confirm: true });
+export const sendChatToNkerp = (id: number, message: string) =>
+  call<ApprovalState & { record: ApprovalRecord; visible: boolean | null }>('/chat', { id, message, confirm: true });
+export const reloadTourChat = (id: number) => call<ApprovalState>('/chat-read', { id });

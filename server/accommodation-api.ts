@@ -9,7 +9,7 @@ import { expiry, guests, localHistory, prune, read, removals, rooms, stayDates, 
 import { normalizeRules } from '../src/services/allocationRules.js';
 import { generateSaifeeBurhani114Rooms, generateBadriRooms, reconcileOfficialSaifeeBurhaniRooms, pruneLegacyBadriRooms, deduplicateRooms } from '../src/services/storage.js';
 import type { Room } from '../src/types/index.js';
-import { ApprovalError, approvalClient, approveTour, createApprovalRefresh, records as approvalRecords, saveEdit, saveReview,
+import { ApprovalError, approvalClient, approveTour, createApprovalRefresh, records as approvalRecords, reloadChat, saveEdit, saveReview, sendChat,
   settings as approvalSettings, snapshot as approvalSnapshot } from './nkerp-approvals.js';
 import { normalizeApprovalSettings } from '../src/services/approvalPlanner.js';
 import { recordSlip, SlipError, slips } from './slips.js';
@@ -219,6 +219,17 @@ export function accommodationApi(onChange: () => void = () => {}) {
           if (action === 'settings') {
             const saved = {...read('settings',{}), approvalSettings: normalizeApprovalSettings(body)};
             write('settings', saved);
+            invalidate();
+            return json(approvalState());
+          }
+          if (action === 'chat') {
+            if (body.confirm !== true) return json({error:'Confirm the message first.'},400);
+            const sent = await sendChat(approvalClient(true), body as never);
+            invalidate();
+            return json({ ...sent, ...approvalState() });
+          }
+          if (action === 'chat-read') {
+            await reloadChat(approvalClient(false, AbortSignal.timeout(60_000)), Number(body.id));
             invalidate();
             return json(approvalState());
           }

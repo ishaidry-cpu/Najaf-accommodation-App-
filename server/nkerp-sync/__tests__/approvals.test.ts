@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { withStore, type StorageDriver } from '../../accommodation-store.js';
-import { approveTour, collectApprovals, mergeRecords, records, type ApprovalApi, APPROVE, approvalReads } from '../../nkerp-approvals.js';
+import { approveTour, collectApprovals, mergeRecords, records, type ApprovalApi, APPROVE, approvalReads, SAVE_CHAT, sendChat, snapshot } from '../../nkerp-approvals.js';
 import { Rejected } from '../nkerpClient.js';
 import type { NkRecord } from '../types.js';
 
@@ -16,7 +16,7 @@ const row = (o: NkRecord = {}): NkRecord => ({
   StartDate: '2026-12-10T05:00:00', EndDate: '2026-12-14T05:00:00', PaxCount: 4, PaxRequiredAcc: 4, PaxNotRequiredAcc: 0,
   AccomodationOptionId: 2, Option: 'Required', VenueName: 'IRAQ', IsRead: false, IsActive: true, IsLocked: false,
   IsMuwaficaLocked: true, MuwaficaStateId: 31, ModifiedOn: '2026-11-20T10:00:00', CurrentStatusId: 23, TimeZone: 3,
-  TourEventHistory: [], ...o,
+  TourEventHistory: [], TransportItinerary: [{ ArrivalTransportCode: 'IA 123', ArrivalDateTimeZone: '2026-12-10T08:00:00', DepartureTransportCode: 'IA 124', DepartureDateTimeZone: '2026-12-14T09:00:00' }], ...o,
 });
 
 class FakeNkerp implements ApprovalApi {
@@ -25,6 +25,11 @@ class FakeNkerp implements ApprovalApi {
   queues: Record<'new' | 're', NkRecord[]> = { new: [row()], re: [] };
   detail: NkRecord = { ...row(), NoOfDays: 5, Remarks: '', PackageId: null, EntryPortId: 1, ExitPortId: 1, TourSubvenuePlan: [] };
   answer: () => NkRecord = () => ({ ReturnStatus: true });
+  chat: NkRecord[] = [{ Message: 'Najaf first please', CreatedOn: '2026-11-20T10:00:00', SenderGroupId: 4 }];
+  chatAnswer: (body: NkRecord) => NkRecord = body => {
+    this.chat.push({ Message: body.Message, CreatedOn: '2026-11-27T07:00:00', SenderName: 'Faiz Admin', SenderGroupId: 74 });
+    return { ReturnStatus: true, Chat: [{ Message: body.Message }] };
+  };
   async read(path: string, body?: NkRecord): Promise<NkRecord> {
     assert.ok(approvalReads(path), `unexpected read ${path}`);
     this.calls.push(path);
@@ -33,12 +38,14 @@ class FakeNkerp implements ApprovalApi {
       return { Tours: list, TotalRows: list.length };
     }
     if (path === 'api/tours/getAccommodationStatusDashBoard') return { AccommodationStatusSubVenueDetails: [] };
-    if (path.startsWith('api/masters/retrieveChat/')) return { listChat: [{ Message: 'Najaf first please', CreatedOn: '2026-11-20T10:00:00', SenderGroupId: 4 }] };
+    if (path.startsWith('api/masters/retrieveChat/')) return { listChat: this.chat.map(m => ({ ...m })) };
     if (path.startsWith('api/tours/getTourSubVenue/')) return { TourPlan: this.detail };
     if (path.startsWith('api/tours/getTourDetail/')) return { Tour: { Id: this.detail.Id, LinkTourId: 0 } };
     throw new Error('unknown');
   }
+  chatWrites: NkRecord[] = [];
   async write(path: string, body: unknown): Promise<NkRecord> {
+    if (path === SAVE_CHAT) { this.chatWrites.push(body as NkRecord); return this.chatAnswer(body as NkRecord); }
     assert.equal(path, APPROVE);
     this.writes.push(body);
     return this.answer();
@@ -75,6 +82,47 @@ test('collects the queues and chats, then approves once with the approver\'s dat
   // Never sent twice.
   await assert.rejects(approveTour(nk, { id: 101, segments, modifiedOn: '2026-11-20T10:00:00' }, now), /already accepted/);
   assert.equal(nk.writes.length, 1);
+}));
+
+test('reads the fly mark and blocks approval only while the itinerary is not saved', () => withStore(memory(), async () => {
+  const nk = new FakeNkerp();
+  nk.queues.new = [row({ TransportItinerary: [] })];
+  let snap = await collectApprovals(nk, now);
+  assert.equal(snap.tours[0].itinerarySaved, false);
+  const segments = [{ city: 'NAJAF' as const, start: '2026-12-10', end: '2026-12-12' }, { city: 'KARBALA' as const, start: '2026-12-12', end: '2026-12-14' }];
+  await assert.rejects(approveTour(nk, { id: 101, segments, modifiedOn: '2026-11-20T10:00:00' }, now), /itinerary is not saved/);
+  assert.equal(nk.writes.length, 0);
+  // A dustbin sign does not block: once the itinerary is saved the approval goes through.
+  nk.queues.new = [row({ IsMuwaficaLocked: false, MuwaficaStateId: 38 })];
+  snap = await collectApprovals(nk, now + 60_000);
+  assert.equal(snap.tours[0].dustbin, true);
+  assert.equal(snap.tours[0].itinerarySaved, true);
+  assert.equal(snap.tours[0].itinerary?.arrivalCode, 'IA 123');
+  const rec = await approveTour(nk, { id: 101, segments, modifiedOn: '2026-11-20T10:00:00' }, now + 60_000);
+  assert.equal(rec.approval?.state, 'api_reported_approved');
+}));
+
+test('sends the approver\'s message to the Tour ID\'s NKERP chat box once and refreshes its history', () => withStore(memory(), async () => {
+  const nk = new FakeNkerp();
+  await collectApprovals(nk, now);
+  await assert.rejects(sendChat(nk, { id: 101, message: '   ' }, now), /Type a message/);
+  const out = await sendChat(nk, { id: 101, message: 'Kindly save the itinerary.' }, now);
+  assert.deepEqual(nk.chatWrites, [{ Message: 'Kindly save the itinerary.', RecieverId: 9, TourId: 101, group: 74 }]);
+  assert.equal(out.visible, true);
+  assert.equal(out.record.chats?.at(-1)?.state, 'sent');
+  assert.ok(snapshot().tours[0].messages.some(m => m.text === 'Kindly save the itinerary.' && !m.fromOperator));
+  assert.ok(records()['101'].history.some(h => h.kind === 'chat-sent'));
+  // The same text a moment later is not sent twice.
+  await assert.rejects(sendChat(nk, { id: 101, message: 'Kindly  save the itinerary.' }, now + 30_000), /already sent/);
+  assert.equal(nk.chatWrites.length, 1);
+  // Refused and lost answers are recorded; a lost answer is not resent.
+  nk.chatAnswer = () => { throw new Rejected('NKERP refused api/masters/saveChat: Not allowed'); };
+  await assert.rejects(sendChat(nk, { id: 101, message: 'Second note' }, now + 60_000), /did not accept/);
+  nk.chatAnswer = () => { throw new Error('socket hang up'); };
+  await assert.rejects(sendChat(nk, { id: 101, message: 'Third note' }, now + 90_000), /not known whether/);
+  await assert.rejects(sendChat(nk, { id: 101, message: 'Third note' }, now + 120_000), /answer is unknown/);
+  assert.equal(nk.chatWrites.length, 3);
+  assert.deepEqual(records()['101'].chats?.map(c => c.state), ['sent', 'refused', 'uncertain']);
 }));
 
 test('records a refusal and an unknown result; an unknown result is never resent', () => withStore(memory(), async () => {

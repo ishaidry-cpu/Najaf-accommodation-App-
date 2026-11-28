@@ -11,9 +11,15 @@
  *  - Faiz tours follow a chat request when there is one, otherwise the balanced split (Karbala +1 when odd),
  *    and only the order is chosen for capacity. A Tour ID always moves as a whole.
  *  - The dustbin sign (NKERP's Delete Tour icon) means the submission is incomplete: wait outside the
- *    cut-off, follow up with the Tour Operator inside it. The cut-off is a setting (15 or 30 days).
+ *    cut-off, flag for urgent follow-up with the Tour Operator inside it. The cut-off is a setting (15 or 30
+ *    days). The dustbin sign is a warning only: the approver may still approve.
  *  - Capacity: Najaf 290 and Karbala 400 Faiz pax at a time, keeping a buffer for unsubmitted tours.
- *  - A re-approval is never a new approval: it is compared with what was approved before.
+ *  - A re-approval is never a new approval: it is compared with what was approved before and goes to the
+ *    admin's review list, but review is not required before approving.
+ *  - The only rule that blocks approval is an unsaved itinerary: NKERP's fly mark (Add/Edit Transport
+ *    Itinerary icon) is red once the itinerary is saved. Re-approval status, awaiting status, pending chat
+ *    details, the dustbin sign and capacity are warnings. (A request NKERP cannot accept from the planner,
+ *    such as missing or invalid city dates, a Preferred option, a linked or package tour, still cannot be sent.)
  */
 
 export type City = 'KARBALA' | 'NAJAF';
@@ -50,6 +56,13 @@ export interface ApprovalTour {
   unread: boolean;
   /** NKERP shows the Delete Tour (dustbin) icon: active, unlocked, Muwafiqa not submitted/under approval/approved. */
   dustbin: boolean;
+  /**
+   * NKERP's fly mark (Add/Edit Transport Itinerary icon) is red: the queue row has a saved TransportItinerary.
+   * null when NKERP did not say (an older snapshot): treated as not saved until the next refresh.
+   */
+  itinerarySaved?: boolean | null;
+  /** The first saved itinerary leg, as NKERP's queue shows it. */
+  itinerary?: { arrivalCode: string; arrivalAt: string; departureCode: string; departureAt: string } | null;
   muwafiqaState: number | null;
   locked: boolean;
   muwafiqaLocked: boolean;
@@ -156,8 +169,12 @@ export interface ApprovalRecord {
   /** The approver's own city dates, kept until NKERP changes the tour. */
   edits?: { segments: Segment[]; at: string; modifiedOn: string };
   approval?: { state: ApprovalState; at: string; message?: string; segments: Segment[]; reapproval: boolean };
+  /** Messages the approver sent to the Tour ID's NKERP chat box from the planner (latest last). */
+  chats?: ChatSend[];
   history: { at: string; kind: string; note?: string }[];
 }
+export type ChatSendState = 'sending' | 'sent' | 'refused' | 'uncertain';
+export interface ChatSend { at: string; text: string; state: ChatSendState; message?: string }
 
 // ------------------------------------------------------------------------------------------------ dates
 
@@ -483,7 +500,7 @@ function addExpected(load: Load, start: string, end: string, pax: number) {
 const at = (load: Load, city: City, d: string) => load[city][d] ?? 0;
 
 export type Category = 'ready' | 'awaiting' | 'pending-submission' | 'reapproval';
-export type Recommendation = 'approve' | 'hold-capacity' | 'wait' | 'follow-up' | 'needs-chat' | 'resolve' | 'review-changes' | 'done';
+export type Recommendation = 'approve' | 'hold-capacity' | 'wait' | 'follow-up' | 'needs-chat' | 'needs-itinerary' | 'resolve' | 'review-changes' | 'done';
 export type SegmentSource = 'edited' | 'chat-dates' | 'chat-order' | 'balanced' | 'previous' | 'none';
 
 /** One city-day a tour touches. `present`: approved in NKERP now; `before`/`after`: the expected count without/with this tour. */
@@ -504,7 +521,14 @@ export interface TourPlan {
   source: SegmentSource;
   /** The sequence may be chosen for capacity (Faiz tour with no chat request and no edit). */
   flexible: boolean;
+  /** Everything that needs the approver's attention (warnings and blockers). */
   problems: string[];
+  /** The part of `problems` that stops the approval being sent: an unsaved itinerary, or a request NKERP can't take. */
+  blockers: string[];
+  /** The approver may select and approve this Tour ID now (it may still carry warnings). */
+  approvable: boolean;
+  /** Dustbin sign inside the cut-off: flagged for urgent follow-up with the Tour Operator. */
+  urgent: boolean;
   notes: string[];
   category: Category;
   recommendation: Recommendation;
@@ -556,10 +580,17 @@ export interface ApprovalPlan {
   counts: {
     newApprovals: number; reapprovalPending: number; reapprovalReviewed: number; reApproved: number;
     ready: number; awaiting: number; pendingSubmission: number; followUp: number;
+    urgent: number; itineraryMissing: number; approvable: number;
   };
   settings: ApprovalSettings;
   today: string;
 }
+
+export const ITINERARY_MISSING = 'Itinerary not saved in NKERP (the fly mark is not red): approval stays blocked until it is saved.';
+export const ITINERARY_UNKNOWN = 'NKERP has not said whether the itinerary is saved (fly mark): refresh from NKERP before approving.';
+/** An approval for this Tour ID (and this round of approval) was sent already; it is never sent twice. */
+const sentAlready = (p: Pick<TourPlan, 'tour' | 'record'>) => Boolean(p.record?.approval &&
+  ['api_reported_approved', 'attempting', 'uncertain_no_retry'].includes(p.record.approval.state) && p.record.approval.reapproval === p.tour.reapproval);
 
 const kindOf = (t: ApprovalTour): TourPlan['kind'] =>
   t.option === 1 ? 'preferred' : t.option === 3 ? 'hotel' : t.paxHotel > 0 && t.paxFaiz > 0 ? 'mixed' : t.paxFaiz > 0 ? 'faiz' : 'hotel';
@@ -628,7 +659,11 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const kind = kindOf(t);
     const submission = submissionState(t, settings.cutoffDays, today);
     const problems: string[] = [];
+    /** Problems NKERP cannot accept from the planner (a subset of problems). */
+    const hard: string[] = [];
     const notes: string[] = [];
+    // The approver's edits stand until NKERP changes the tour.
+    const edit = record?.edits && record.edits.modifiedOn === t.modifiedOn ? record.edits.segments : null;
     let suggested: Segment[] = [];
     let suggestedSource: SegmentSource = 'none';
     let flexible = false;
@@ -636,29 +671,30 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     if (chatOk) { suggested = chat.segments!; suggestedSource = 'chat-dates'; }
     else if (chat.order) { suggested = splitInOrder(start, end, chat.order); suggestedSource = 'chat-order'; }
     else if (kind === 'hotel') {
-      problems.push('Chat box has no city dates or sequence: hotel stays are approved only on the dates the Tour Operator gives.');
+      if (edit) notes.push('Chat box has no city dates or sequence: the city dates were entered by the approver.');
+      else problems.push('Chat box has no city dates or sequence: hotel stays are approved only on the dates the Tour Operator gives.');
     } else if (t.reapproval && t.previousPlans.length && !segmentProblems(t.previousPlans, start, end).length) {
       suggested = t.previousPlans; suggestedSource = 'previous';
       notes.push('Keeps the previously approved city stays (they still fit the trip).');
     } else { suggested = splitInOrder(start, end, 'KARBALA'); suggestedSource = 'balanced'; flexible = true; }
     // Hotel stays need the exact dates; a Faiz tour can follow the requested sequence instead.
-    if (chat.segments && !chatOk && (kind === 'hotel' || !chat.order)) problems.push(...chat.problems);
+    if (chat.segments && !chatOk && (kind === 'hotel' || !chat.order) && !edit) problems.push(...chat.problems);
     else if (chat.problems.length) notes.push(...chat.problems);
     if (chat.flexible) notes.push('Tour Operator leaves the city order to the accommodation team.');
-    if (kind === 'preferred') problems.push('Accommodation option is "Preferred": confirm Required or Not Required in NKERP before approving.');
-    if (t.linkedTourId) problems.push(`Linked to tour ${t.linkedTourId}: approve it in NKERP so the link is kept.`);
-    if (t.packageId) problems.push('Package tour: approve it in NKERP so the package rules are kept.');
-    if (t.paxFaiz + t.paxHotel !== t.paxTotal) problems.push(`Pax do not add up (${t.paxFaiz} Faiz + ${t.paxHotel} hotel ≠ ${t.paxTotal}).`);
-    if (daysBetween(start, end) < 1) problems.push('The Iraq arrival and departure fall on the same day.');
+    if (t.itinerarySaved !== true) hard.push(t.itinerarySaved === false ? ITINERARY_MISSING : ITINERARY_UNKNOWN);
+    if (kind === 'preferred') hard.push('Accommodation option is "Preferred": confirm Required or Not Required in NKERP before approving.');
+    if (t.linkedTourId) hard.push(`Linked to tour ${t.linkedTourId}: approve it in NKERP so the link is kept.`);
+    if (t.packageId) hard.push('Package tour: approve it in NKERP so the package rules are kept.');
+    if (t.paxFaiz + t.paxHotel !== t.paxTotal) hard.push(`Pax do not add up (${t.paxFaiz} Faiz + ${t.paxHotel} hotel ≠ ${t.paxTotal}).`);
+    if (daysBetween(start, end) < 1) hard.push('The Iraq arrival and departure fall on the same day.');
     if (kind === 'hotel' && !t.unread && !t.reapproval) notes.push('No unread (red) message in NKERP for this hotel tour.');
 
-    // The approver's edits stand until NKERP changes the tour.
-    const edit = record?.edits && record.edits.modifiedOn === t.modifiedOn ? record.edits.segments : null;
     const segments = edit ?? suggested;
     const source: SegmentSource = edit ? 'edited' : suggestedSource;
     if (edit) flexible = false;
     const segProblems = segments.length ? segmentProblems(segments, start, end) : [];
-    problems.push(...segProblems);
+    hard.push(...segProblems);
+    problems.unshift(...hard);
 
     // Original approval for re-approvals: the app's record first, else what NKERP still holds.
     let original: Partial<TourFacts> | undefined;
@@ -676,6 +712,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     const changes = t.reapproval && original ? compareWithOriginal(t, original, chatOk ? chat.segments : segments, t.events, record?.approvedAt) : [];
     plans.push({
       tour: t, record, kind, submission, chat, suggested, suggestedSource, segments, source, flexible, problems, notes,
+      blockers: hard, approvable: false, urgent: false,
       category: 'awaiting', recommendation: 'resolve', fits: true, over: [], impact: [], original, originalSource, changes,
       oldFaiz: oldFaiz.get(t.id) ?? [],
       priority: (t.reapproval ? 0 : 2) + (isFaizOffice(t.office) ? 0 : 1),
@@ -706,9 +743,9 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     .sort((a, b) => a.priority - b.priority || a.tour.arrivalAt.localeCompare(b.tour.arrivalAt) || a.tour.id - b.tour.id);
   for (const p of queue) {
     const t = p.tour;
-    const done = p.record?.approval && ['api_reported_approved', 'attempting', 'uncertain_no_retry'].includes(p.record.approval.state) &&
-      p.record.approval.reapproval === t.reapproval;
-    if (p.segments.length && !p.problems.length) {
+    const done = sentAlready(p);
+    // Capacity is checked for every resolvable plan: an unsaved itinerary blocks the approval, not the planning.
+    if (p.segments.length && !p.problems.some(x => x !== ITINERARY_MISSING && x !== ITINERARY_UNKNOWN)) {
       const b = base();
       const pax = t.paxFaiz;
       let { impact, over } = impactOf(p.segments, pax, b, limits, present);
@@ -746,6 +783,7 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     p.category = t.reapproval ? 'reapproval' : !blocked && p.fits ? 'ready' : 'awaiting';
     const reviewed = p.record?.status === 'reapproval-reviewed' && p.record.reviewedModifiedOn === t.modifiedOn;
     p.recommendation = done ? 'done'
+      : t.itinerarySaved !== true ? 'needs-itinerary'
       : !p.segments.length && p.kind === 'hotel' ? 'needs-chat'
       : blocked ? 'resolve'
       : !p.fits ? 'hold-capacity'
@@ -754,12 +792,22 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
   }
   for (const p of plans) if (p.submission.state !== 'complete' && !p.tour.reapproval) {
     p.category = 'pending-submission';
-    p.recommendation = p.submission.state === 'follow-up' ? 'follow-up' : 'wait';
+    p.recommendation = sentAlready(p) ? 'done' : p.submission.state === 'follow-up' ? 'follow-up' : 'wait';
     // Show where the tour would land, without reserving it.
     if (p.segments.length && !segmentProblems(p.segments, tripStart(p.tour), tripEnd(p.tour)).length) {
       const r = impactOf(p.segments, p.tour.paxFaiz, base(), limits, present);
       p.impact = r.impact; p.over = r.over; p.fits = !r.over.length;
     }
+  }
+
+  // Only an unsaved itinerary (or a request NKERP can't take) stops an approval; the rest are warnings.
+  for (const p of plans) {
+    const done = sentAlready(p);
+    if (!p.segments.length) {
+      p.blockers.push(p.kind === 'hotel' ? 'Enter the Karbala and Najaf dates the Tour Operator gives to approve.' : 'No city stays yet.');
+    }
+    p.approvable = !done && !p.blockers.length;
+    p.urgent = !done && p.tour.dustbin && p.submission.state === 'follow-up';
   }
 
   // Whole-tour shifts: flip a flexible planned tour's order if that lets a held tour fit.
@@ -827,6 +875,9 @@ export function planApprovals(snapshot: ApprovalSnapshot, records: Record<string
     awaiting: plans.filter(p => p.category === 'awaiting').length,
     pendingSubmission: plans.filter(p => p.category === 'pending-submission').length,
     followUp: plans.filter(p => p.recommendation === 'follow-up').length,
+    urgent: plans.filter(p => p.urgent).length,
+    itineraryMissing: plans.filter(p => p.tour.itinerarySaved !== true && !sentAlready(p)).length,
+    approvable: plans.filter(p => p.approvable).length,
   };
   plans.sort((a, b) => a.priority - b.priority || a.tour.arrivalAt.localeCompare(b.tour.arrivalAt) || a.tour.id - b.tour.id);
   return { plans, capacity, days, shifts, counts, settings, today };
@@ -927,10 +978,12 @@ export function suggestion(p: TourPlan, plan?: ApprovalPlan): { issue: string; n
   const s = p.submission;
   const shift = plan?.shifts.find(x => x.admits.tour.id === p.tour.id);
   switch (p.recommendation) {
-    case 'follow-up': return { issue: `Dustbin sign: submission incomplete, ${s.daysToArrival} days to arrival (cut-off ${s.cutoffDays}).`,
-      next: 'Contact the Tour Operator now to complete the red-click itinerary and chat box.' };
+    case 'follow-up': return { issue: `Urgent: dustbin sign, submission incomplete, ${s.daysToArrival} days to arrival (cut-off ${s.cutoffDays}).`,
+      next: `Contact the Tour Operator now (NKERP chat or WhatsApp) to complete the pending details.${p.approvable ? ' You can still approve if required.' : ''}` };
     case 'wait': return { issue: `Dustbin sign: submission incomplete, ${s.daysToArrival} days to arrival.`,
       next: `Wait for the Tour Operator; follow up from ${fmtDay(addDays(tripStart(p.tour), -s.cutoffDays))} if still incomplete.` };
+    case 'needs-itinerary': return { issue: p.blockers[0] ?? ITINERARY_MISSING,
+      next: p.tour.itinerarySaved === false ? 'Ask the Tour Operator to save the transport itinerary in NKERP (NKERP chat or WhatsApp).' : 'Refresh from NKERP.' };
     case 'needs-chat': return { issue: 'No city dates or sequence in the chat box.', next: 'Ask the Tour Operator for the Karbala and Najaf dates in the chat box.' };
     case 'hold-capacity': return { issue: p.problems.find(x => x.startsWith('Over the')) ?? 'Does not fit capacity.',
       next: shift ? `Shift the whole of ${shift.move.tour.ref} to ${CITY_NAME[shift.to[0].city]} first, then approve.`
@@ -948,17 +1001,41 @@ export function suggestion(p: TourPlan, plan?: ApprovalPlan): { issue: string; n
 
 // ------------------------------------------------------------------------------------------------ follow-ups
 
-/** Tour IDs whose Tour Operator should be chased now: dustbin inside the cut-off, or a hotel tour with no chat dates. */
+/**
+ * Tour IDs whose Tour Operator should be chased now: dustbin inside the cut-off, or, inside the cut-off, a hotel
+ * tour with no chat dates or a tour whose itinerary is not saved.
+ */
 export const needsFollowUp = (p: TourPlan) => p.recommendation === 'follow-up' ||
-  (p.recommendation === 'needs-chat' && p.submission.daysToArrival <= p.submission.cutoffDays);
+  ((p.recommendation === 'needs-chat' || (p.recommendation === 'needs-itinerary' && p.tour.itinerarySaved === false)) &&
+    p.submission.daysToArrival <= p.submission.cutoffDays);
+
+/** What the approver should know before approving: shown in the confirmation, never a reason to refuse. */
+export function approvalWarnings(p: TourPlan): string[] {
+  const out: string[] = [];
+  const s = p.submission;
+  if (p.tour.dustbin) out.push(p.urgent
+    ? `Dustbin sign: some details are still pending, ${s.daysToArrival} days to arrival (inside the ${s.cutoffDays}-day cut-off).`
+    : `Dustbin sign: some details are still pending; arrival is ${s.daysToArrival} days away, beyond the ${s.cutoffDays}-day cut-off, so the Tour Operator normally still has time.`);
+  if (p.tour.reapproval && p.changes.length && reapprovalStatus(p) === 'Pending') out.push(`Re-approval: ${p.changes.length} change${p.changes.length === 1 ? '' : 's'} not marked reviewed yet.`);
+  if (!p.fits) {
+    const worst = p.over.reduce((m, o) => (o.after - o.limit > m.after - m.limit ? o : m), p.over[0]);
+    out.push(worst ? `Over the ${CITY_NAME[worst.city]} limit on ${fmtDay(worst.date)} (${worst.after}/${worst.limit}).` : 'Does not fit capacity.');
+  }
+  if (p.source === 'edited' && !p.chat.segments && p.kind === 'hotel') out.push('Hotel stay on the approver\'s dates: the chat box has none.');
+  for (const x of p.problems) if (!p.blockers.includes(x) && !/^Over the /.test(x) && !out.includes(x)) out.push(x);
+  if (p.tour.unread) out.push('Unread message from the Tour Operator in the NKERP chat box.');
+  return out;
+}
 
 const DATES_ITEM = 'Karbala and Najaf dates are not in the NKERP chat box';
 const needsDates = (p: TourPlan) => !p.segments.length || p.recommendation === 'needs-chat';
 /** How to write the city dates, shown once under the pending items. */
 const DATES_EXAMPLE = ['*Example:*', '• First Subvenue: *10 October to 15 October (Najaf)*', '• Second Subvenue: *15 October to 21 October (Karbala)*'];
+const ITINERARY_ITEM = 'Transport itinerary (flight details) is not saved in NKERP';
 function pendingItems(p: TourPlan): string[] {
   const items: string[] = [];
   if (p.tour.dustbin) items.push('Red-click itinerary and zaereen details are not fully submitted in NKERP');
+  if (p.tour.itinerarySaved === false && !sentAlready(p)) items.push(ITINERARY_ITEM);
   if (needsDates(p)) items.push(DATES_ITEM);
   if (p.tour.option === 1) items.push('Please confirm whether Faiz accommodation is Required or Not Required');
   return items;
@@ -1009,4 +1086,24 @@ export function officeFollowUps(plans: TourPlan[]): { office: string; tours: Tou
       `Submissions are due ${cutoff} days before arrival in Iraq. Kindly complete them at the earliest so the accommodation can be approved.`, '', 'Shukran',
     ].join('\n') };
   }).sort((a, b) => a.tours[0].tour.arrivalAt.localeCompare(b.tours[0].tour.arrivalAt));
+}
+
+// ------------------------------------------------------------------------------------------------ NKERP chat
+
+/** WhatsApp bold marks removed: NKERP's chat box shows plain text. */
+export const plainText = (text: string) => text.replace(/\*/g, '');
+
+/** Ready-made follow-ups for the Tour ID's NKERP chat box: the full list of pending items, then each on its own. */
+export function chatTemplates(p: TourPlan): { label: string; text: string }[] {
+  const t = p.tour;
+  const head = `Salaam Jameel\n\nTour ID: ${t.ref}\nIraq arrival: ${fmtDay(tripStart(t), true)} · ${t.paxTotal} pax\n\n`;
+  const tail = `\n\n${dueLine(p)} Kindly complete it at the earliest so the accommodation can be approved.\n\nShukran`;
+  const out: { label: string; text: string }[] = [];
+  const items = pendingItems(p);
+  if (items.length) out.push({ label: 'All pending details', text: plainText(followUpMessage(p)) });
+  if (t.itinerarySaved === false) out.push({ label: 'Itinerary', text: `${head}Kindly save the transport itinerary (arrival and departure flight details) for this Tour ID in NKERP. The accommodation can be approved only once it is saved.${tail}` });
+  if (needsDates(p)) out.push({ label: 'Subvenue dates', text: `${head}Kindly send the Karbala and Najaf dates in this chat box.\n\n${plainText(DATES_EXAMPLE.join('\n'))}${tail}` });
+  if (t.option === 1) out.push({ label: 'Accommodation', text: `${head}Kindly confirm whether Faiz accommodation is Required or Not Required for this Tour ID.${tail}` });
+  if (t.dustbin) out.push({ label: 'Submission', text: `${head}The red-click itinerary and zaereen details are not fully submitted in NKERP yet. Kindly complete them.${tail}` });
+  return out;
 }
